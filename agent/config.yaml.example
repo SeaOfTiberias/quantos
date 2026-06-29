@@ -1,0 +1,30 @@
+# ─── QuantOS Local Agent Configuration ───────────────────────────────────────
+# Copy to agent/config.yaml and fill in your values.
+# This file stays on YOUR machine — never synced to QuantOS servers.
+
+broker: fyers              # fyers | zerodha | angel_one | upstox
+
+credentials:
+  api_key: YOUR_API_KEY
+  api_secret: YOUR_API_SECRET
+  redirect_uri: YOUR_REDIRECT_URI   # Fyers only
+
+risk:
+  capital: 500000                   # Total trading capital (INR)
+  max_risk_per_trade: 0.02          # 2% max risk per trade
+  max_open_positions: 5             # Maximum concurrent positions
+  max_daily_loss: 0.05              # 5% daily loss circuit breaker
+
+cloud:
+  api_url: https://your-quantos-instance.railway.app
+  api_secret: YOUR_CLOUD_API_SECRET # Must match CLOUD_API_SECRET in cloud .env
+
+notifications:
+  whatsapp_phone: "+91XXXXXXXXXX"
+  whatsapp_api_key: YOUR_CALLMEBOT_KEY
+  confirm_before_execute: true      # ADR-05: human-in-loop default
+
+claude:
+  tier: pro                         # free | pro | enterprise
+  min_confluence_score: 70          # Only call Claude above this threshold
+  regime_cache_ttl: 900             # Seconds — 15 min cache on regime calls

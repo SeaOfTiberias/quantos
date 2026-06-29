@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+
+  # ── Cloud API (FastAPI webhook receiver + analyst) ──────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - CLOUD_API_SECRET=${CLOUD_API_SECRET}
+      - DATABASE_URL=postgresql://quantos:quantos@postgres:5432/quantos
+      - MIN_CONFLUENCE_SCORE=70
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: uvicorn cloud.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Postgres (multi-tenant DB, ADR-03) ────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quantos
+      POSTGRES_PASSWORD: quantos
+      POSTGRES_DB: quantos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (regime cache, ADR-04) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1
+
+volumes:
+  postgres_data:
