@@ -28,6 +28,7 @@ from cloud.api.health import router as health_router
 from cloud.api.screener_routes import router as screener_router
 from cloud.api.events_routes import router as events_router
 from cloud.api.risk_routes import router as risk_router
+from cloud.api.correlation_routes import router as correlation_router
 from cloud.api.notifier import send_whatsapp
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -44,6 +45,7 @@ app.include_router(health_router)
 app.include_router(screener_router)
 app.include_router(events_router)
 app.include_router(risk_router)
+app.include_router(correlation_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,6 +59,11 @@ MIN_CONFLUENCE = float(os.getenv("MIN_CONFLUENCE_SCORE", "70"))
 
 # Event risk filter (US-06) — singleton, loaded with macro calendar at startup
 _event_filter = EventFilterService()
+
+# Correlation service (US-08) — None until a broker is connected.
+# Production wiring: set this in an app startup hook once the broker
+# adapter is initialized (see agent/main.py for the broker connection pattern).
+_correlation_service = None
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
