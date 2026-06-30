@@ -29,6 +29,7 @@ from cloud.api.screener_routes import router as screener_router
 from cloud.api.events_routes import router as events_router
 from cloud.api.risk_routes import router as risk_router
 from cloud.api.correlation_routes import router as correlation_router
+from cloud.api.strategy_routes import router as strategy_router
 from cloud.api.notifier import send_whatsapp
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -46,6 +47,7 @@ app.include_router(screener_router)
 app.include_router(events_router)
 app.include_router(risk_router)
 app.include_router(correlation_router)
+app.include_router(strategy_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +66,10 @@ _event_filter = EventFilterService()
 # Production wiring: set this in an app startup hook once the broker
 # adapter is initialized (see agent/main.py for the broker connection pattern).
 _correlation_service = None
+
+# Regime service (US-05) — None until a broker is connected.
+# Production wiring: set in app startup hook once broker adapter is ready.
+_regime_service = None
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
