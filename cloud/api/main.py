@@ -27,6 +27,7 @@ from cloud.api.db import get_db, Signal
 from cloud.api.health import router as health_router
 from cloud.api.screener_routes import router as screener_router
 from cloud.api.events_routes import router as events_router
+from cloud.api.risk_routes import router as risk_router
 from cloud.api.notifier import send_whatsapp
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -42,6 +43,7 @@ app = FastAPI(
 app.include_router(health_router)
 app.include_router(screener_router)
 app.include_router(events_router)
+app.include_router(risk_router)
 
 app.add_middleware(
     CORSMiddleware,
