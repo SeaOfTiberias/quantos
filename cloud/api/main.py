@@ -26,8 +26,10 @@ from pydantic import BaseModel, Field
 from cloud.api.db import get_db, Signal
 from cloud.api.health import router as health_router
 from cloud.api.screener_routes import router as screener_router
+from cloud.api.events_routes import router as events_router
 from cloud.api.notifier import send_whatsapp
 from cloud.analyst.pre_trade import analyse_signal
+from core.events.service import EventFilterService, format_event_block_whatsapp
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(screener_router)
+app.include_router(events_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,6 +52,9 @@ app.add_middleware(
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 MIN_CONFLUENCE = float(os.getenv("MIN_CONFLUENCE_SCORE", "70"))
+
+# Event risk filter (US-06) — singleton, loaded with macro calendar at startup
+_event_filter = EventFilterService()
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
@@ -129,7 +135,28 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
             ),
         )
 
-    # ── 3. Claude pre-trade analysis (US-04) ─────────────────────────────────
+    # ── 3. Event risk filter (US-06) — cheap check before Claude call ───────
+    event_check = _event_filter.check(alert.symbol)
+    if event_check.is_blocked and not event_check.override_allowed:
+        logger.info("[%s] BLOCKED — high-impact event: %s",
+                    signal_id, event_check.reason)
+        await _persist_signal(signal_id, alert, "BLOCKED_EVENT_RISK", None)
+        try:
+            await send_whatsapp(format_event_block_whatsapp(event_check))
+        except Exception as e:
+            logger.error("Failed to send event block WhatsApp: %s", e)
+        return SignalResponse(
+            signal_id=signal_id,
+            symbol=alert.symbol,
+            action=alert.action,
+            status="BLOCKED_EVENT_RISK",
+            message=event_check.reason,
+        )
+    elif event_check.is_blocked:
+        logger.info("[%s] Advisory event risk (override allowed): %s",
+                    signal_id, event_check.reason)
+
+    # ── 4. Claude pre-trade analysis (US-04) ─────────────────────────────────
     confidence_score = None
     try:
         confidence_score = await analyse_signal({
@@ -146,11 +173,11 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     except Exception as e:
         logger.warning("[%s] Claude analysis failed: %s — proceeding", signal_id, e)
 
-    # ── 4. Persist signal ────────────────────────────────────────────────────
+    # ── 5. Persist signal ────────────────────────────────────────────────────
     signal_status = "PENDING_CONFIRMATION"
     await _persist_signal(signal_id, alert, signal_status, confidence_score)
 
-    # ── 5. WhatsApp confirmation (ADR-05: human-in-loop) ─────────────────────
+    # ── 6. WhatsApp confirmation (ADR-05: human-in-loop) ─────────────────────
     await _send_confirmation_request(signal_id, alert, confidence_score)
 
     return SignalResponse(
