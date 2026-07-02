@@ -32,6 +32,7 @@ from cloud.api.correlation_routes import router as correlation_router
 from cloud.api.strategy_routes import router as strategy_router
 from cloud.api.versioning_routes import router as versioning_router
 from cloud.api.backtest_routes import router as backtest_router
+from cloud.api.morning_routes import router as morning_router
 from cloud.api.notifier import send_whatsapp
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -52,6 +53,7 @@ app.include_router(correlation_router)
 app.include_router(strategy_router)
 app.include_router(versioning_router)
 app.include_router(backtest_router)
+app.include_router(morning_router)
 
 app.add_middleware(
     CORSMiddleware,
