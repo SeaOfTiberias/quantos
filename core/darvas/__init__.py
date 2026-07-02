@@ -11,3 +11,9 @@ __all__ = [
     "detect_darvas_boxes", "detect_breakout", "score_confluence",
     "DarvasScanner", "format_signal_alert", "format_watchlist_summary",
 ]
+
+from core.darvas.volume_profile import (
+    VolumeProfile, VolumeBin, DarvasFusionResult,
+    compute_volume_profile, check_darvas_fusion,
+    DEFAULT_BINS, HVN_THRESHOLD, LVN_THRESHOLD, PROXIMITY_PCT,
+)
