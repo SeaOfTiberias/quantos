@@ -332,7 +332,7 @@ class TestSizingWhatsappFormat:
         msg = format_sizing_whatsapp(result)
         assert "RELIANCE" in msg
         assert "2.50%" in msg
-        assert "₹12,500" in msg
+        assert "INR 12,500" in msg
 
     def test_format_fallback_method_label(self):
         result = SizingResult(

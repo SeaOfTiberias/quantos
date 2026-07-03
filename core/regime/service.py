@@ -129,16 +129,16 @@ def format_regime_whatsapp(result: RegimeResult) -> str:
     }
 
     lines = [
-        f"🧭 *Market Regime*",
-        f"━━━━━━━━━━━━━━",
-        f"{emoji.get(result.regime, '•')} *{result.regime.value.replace('_', ' ')}*",
+        f"🧭 Market Regime",
+        f"--------------------",
+        f"{emoji.get(result.regime, '•')} {result.regime.value.replace('_', ' ')}",
         f"Confidence:  {result.confidence:.0f}%",
         f"Trend:       {result.trend_signal}",
         f"VIX:         {result.vix_signal}",
         f"Breadth:     {result.breadth_signal}",
         f"Size mult:   {result.size_multiplier:.0%}",
         f"Darvas:      {'✅ ENABLED' if result.darvas_enabled else '❌ GATED'}",
-        f"━━━━━━━━━━━━━━",
+        f"--------------------",
     ]
 
     if result.allowed_strategies:
@@ -149,7 +149,7 @@ def format_regime_whatsapp(result: RegimeResult) -> str:
         lines.append("⚠️ No strategies active — stand aside")
 
     if result.notes:
-        lines.append("━━━━━━━━━━━━━━")
+        lines.append("--------------------")
         for note in result.notes:
             lines.append(f"  {note}")
 

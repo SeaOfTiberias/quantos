@@ -109,25 +109,25 @@ def format_sizing_whatsapp(result: SizingResult) -> str:
     }.get(result.method, result.method)
 
     lines = [
-        f"💰 *Position Sizing Update*",
-        f"━━━━━━━━━━━━━━",
+        f"💰 Position Sizing Update",
+        f"--------------------",
         f"Symbol:  {result.symbol}",
         f"Method:  {method_label}",
         f"Size:    {result.size_pct:.2%} of capital",
-        f"Risk:    ₹{result.risk_amount:,.0f}",
+        f"Risk:    INR {result.risk_amount:,.0f}",
     ]
 
     if result.kelly_stats and result.kelly_stats.has_sufficient_data:
         s = result.kelly_stats
         lines += [
-            f"━━━━━━━━━━━━━━",
+            f"--------------------",
             f"Sample:    {s.sample_size} trades",
             f"Win rate:  {s.win_rate:.1%}",
             f"W/L ratio: {s.win_loss_ratio:.2f}",
         ]
 
     if result.notes:
-        lines.append("━━━━━━━━━━━━━━")
+        lines.append("--------------------")
         for note in result.notes:
             lines.append(f"  {note}")
 

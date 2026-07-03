@@ -51,7 +51,6 @@ async def send_telegram(message: str) -> bool:
                 json={
                     "chat_id":    chat_id,
                     "text":       message,
-                    "parse_mode": "Markdown",
                 },
             )
             if resp.status_code == 200:
@@ -75,15 +74,15 @@ async def send_trade_confirmation(
     pnl: float | None = None,
 ) -> bool:
     """Send execution confirmation after order is filled."""
-    pnl_str = f"\nP&L: ₹{pnl:+,.2f}" if pnl is not None else ""
+    pnl_str = f"\nP&L: INR {pnl:+,.2f}" if pnl is not None else ""
     message = (
-        f"✅ *Trade Executed*\n"
-        f"ID: `{signal_id}`\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} *{symbol}*\n"
+        f"✅ <b>Trade Executed</b>\n"
+        f"ID: {signal_id}\n"
+        f"--------------------\n"
+        f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} <b>{symbol}</b>\n"
         f"Qty: {quantity} shares\n"
-        f"Price: ₹{execution_price:,.2f}{pnl_str}\n"
-        f"━━━━━━━━━━━━━━\n"
+        f"Price: INR {execution_price:,.2f}{pnl_str}\n"
+        f"--------------------\n"
         f"QuantOS · {signal_id}"
     )
     return await send_telegram(message)
@@ -92,7 +91,7 @@ async def send_trade_confirmation(
 async def send_error_alert(context: str, error: str) -> bool:
     """Send system error alert."""
     message = (
-        f"⚠️ *QuantOS Alert*\n"
+        f"⚠️ <b>QuantOS Alert</b>\n"
         f"Context: {context}\n"
         f"Error: {error[:200]}"
     )
