@@ -218,10 +218,10 @@ def format_alpha_whatsapp(metrics: AttributionMetrics, narrative: str) -> str:
     """Format alpha attribution report for WhatsApp."""
     icon = "✅" if metrics.is_beating_nifty else "🔻"
     lines = [
-        f"📈 *QuantOS Alpha Report*",
+        f"📈 <b>QuantOS Alpha Report</b>",
         f"_{metrics.start_date} → {metrics.end_date}_",
         "━━━━━━━━━━━━━━",
-        f"{icon} Alpha: *{metrics.alpha:+.2f}%*",
+        f"{icon} Alpha: <b>{metrics.alpha:+.2f}%</b>",
         f"QuantOS: {metrics.quantos_total_return:+.2f}%",
         f"Nifty:   {metrics.nifty_total_return:+.2f}%",
         "━━━━━━━━━━━━━━",

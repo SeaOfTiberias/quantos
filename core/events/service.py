@@ -61,9 +61,9 @@ class EventFilterService:
 def format_event_block_whatsapp(result: RiskCheckResult) -> str:
     """Format a blocked signal notification for WhatsApp."""
     lines = [
-        "⛔ *Signal Blocked — Event Risk*",
+        "⛔ <b>Signal Blocked — Event Risk</b>",
         "━━━━━━━━━━━━━━",
-        f"Symbol: *{result.symbol}*",
+        f"Symbol: <b>{result.symbol}</b>",
         "",
     ]
     for note in result.notes:
@@ -71,7 +71,7 @@ def format_event_block_whatsapp(result: RiskCheckResult) -> str:
 
     lines.append("━━━━━━━━━━━━━━")
     if result.override_allowed:
-        lines.append("Reply *override* to trade anyway (advisory only)")
+        lines.append("Reply <b>override</b> to trade anyway (advisory only)")
     else:
         lines.append("⚠️ Cannot be overridden — high-impact event")
 
@@ -84,7 +84,7 @@ def format_upcoming_events_whatsapp(events: list, days_ahead: int = 7) -> str:
         return f"📅 No major events in the next {days_ahead} days."
 
     lines = [
-        f"📅 *Upcoming Events ({days_ahead}d)*",
+        f"📅 <b>Upcoming Events ({days_ahead}d)</b>",
         "━━━━━━━━━━━━━━",
     ]
     for e in events:

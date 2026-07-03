@@ -129,9 +129,9 @@ def format_regime_whatsapp(result: RegimeResult) -> str:
     }
 
     lines = [
-        f"🧭 *Market Regime*",
+        f"🧭 <b>Market Regime</b>",
         f"━━━━━━━━━━━━━━",
-        f"{emoji.get(result.regime, '•')} *{result.regime.value.replace('_', ' ')}*",
+        f"{emoji.get(result.regime, '•')} <b>{result.regime.value.replace('_', ' ')}</b>",
         f"Confidence:  {result.confidence:.0f}%",
         f"Trend:       {result.trend_signal}",
         f"VIX:         {result.vix_signal}",

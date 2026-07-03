@@ -27,9 +27,9 @@ def format_signal_alert(result: MultiTimeframeResult) -> str:
     )
 
     lines = [
-        f"📦 *Darvas Breakout*",
+        f"📦 <b>Darvas Breakout</b>",
         f"━━━━━━━━━━━━━━",
-        f"🟢 *{result.symbol}*",
+        f"🟢 <b>{result.symbol}</b>",
         f"Price:      ₹{p.breakout_price:,.2f}",
         f"Box top:    ₹{p.box_top:,.2f}",
         f"Box bottom: ₹{p.box_bottom:,.2f}",
@@ -37,7 +37,7 @@ def format_signal_alert(result: MultiTimeframeResult) -> str:
         f"Volume:     {p.volume_ratio:.1f}× avg",
         f"━━━━━━━━━━━━━━",
         f"Timeframes: {tfs_str}",
-        f"Confluence: *{result.confluence_score:.0f}/100*",
+        f"Confluence: <b>{result.confluence_score:.0f}/100</b>",
     ]
 
     if result.notes:
@@ -47,8 +47,8 @@ def format_signal_alert(result: MultiTimeframeResult) -> str:
 
     lines += [
         "━━━━━━━━━━━━━━",
-        "Reply *execute* to trade",
-        "Reply *skip* to ignore",
+        "Reply <b>execute</b> to trade",
+        "Reply <b>skip</b> to ignore",
     ]
 
     return "\n".join(lines)
@@ -60,10 +60,10 @@ def format_watchlist_summary(results: list[MultiTimeframeResult]) -> str:
     Used by the morning screener (US-03).
     """
     if not results:
-        return "📊 *QuantOS Morning Scan*\nNo Darvas breakouts found today."
+        return "📊 <b>QuantOS Morning Scan</b>\nNo Darvas breakouts found today."
 
     lines = [
-        "📊 *QuantOS Morning Scan*",
+        "📊 <b>QuantOS Morning Scan</b>",
         f"Top {len(results)} Darvas setups:",
         "━━━━━━━━━━━━━━",
     ]
@@ -73,7 +73,7 @@ def format_watchlist_summary(results: list[MultiTimeframeResult]) -> str:
         price_str = f"₹{p.breakout_price:,.2f}" if p else "—"
         tfs = "+".join(r.timeframes_triggered)
         lines.append(
-            f"{i}. *{r.symbol}* {price_str}  "
+            f"{i}. <b>{r.symbol}</b> {price_str}  "
             f"[{tfs}] score={r.confluence_score:.0f}"
         )
 

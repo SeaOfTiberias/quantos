@@ -263,22 +263,22 @@ async def _persist_signal(signal_id, alert, signal_status, confidence_score):
 
 async def _send_confirmation_request(signal_id, alert, confidence_score):
     confidence_str = (
-        f"Claude confidence: *{confidence_score:.0f}/100*\n"
+        f"Claude confidence: <b>{confidence_score:.0f}/100</b>\n"
         if confidence_score is not None else ""
     )
     message = (
-        f"🚨 *QuantOS Signal*\n"
-        f"ID: `{signal_id}`\n"
+        f"🚨 <b>QuantOS Signal</b>\n"
+        f"ID: {signal_id}\n"
         f"━━━━━━━━━━━━━━\n"
-        f"{'🟢 BUY' if alert.action == 'BUY' else '🔴 SELL'} *{alert.symbol}*\n"
+        f"{'🟢 BUY' if alert.action == 'BUY' else '🔴 SELL'} <b>{alert.symbol}</b>\n"
         f"Price: ₹{alert.price:,.2f}\n"
         f"Strategy: {alert.strategy}\n"
         f"Timeframe: {alert.timeframe}\n"
         f"Confluence: {alert.confluence_score:.0f}/100\n"
         f"{confidence_str}"
         f"━━━━━━━━━━━━━━\n"
-        f"Reply *execute* to trade\n"
-        f"Reply *skip* to ignore"
+        f"Reply <b>execute</b> to trade\n"
+        f"Reply <b>skip</b> to ignore"
     )
     try:
         await send_whatsapp(message)

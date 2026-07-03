@@ -109,7 +109,7 @@ def format_sizing_whatsapp(result: SizingResult) -> str:
     }.get(result.method, result.method)
 
     lines = [
-        f"💰 *Position Sizing Update*",
+        f"💰 <b>Position Sizing Update</b>",
         f"━━━━━━━━━━━━━━",
         f"Symbol:  {result.symbol}",
         f"Method:  {method_label}",

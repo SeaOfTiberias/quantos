@@ -77,10 +77,10 @@ async def send_trade_confirmation(
     """Send execution confirmation after order is filled."""
     pnl_str = f"\nP&L: ₹{pnl:+,.2f}" if pnl is not None else ""
     message = (
-        f"✅ *Trade Executed*\n"
-        f"ID: `{signal_id}`\n"
+        f"✅ <b>Trade Executed</b>\n"
+        f"ID: {signal_id}\n"
         f"━━━━━━━━━━━━━━\n"
-        f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} *{symbol}*\n"
+        f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} <b>{symbol}</b>\n"
         f"Qty: {quantity} shares\n"
         f"Price: ₹{execution_price:,.2f}{pnl_str}\n"
         f"━━━━━━━━━━━━━━\n"
@@ -92,7 +92,7 @@ async def send_trade_confirmation(
 async def send_error_alert(context: str, error: str) -> bool:
     """Send system error alert."""
     message = (
-        f"⚠️ *QuantOS Alert*\n"
+        f"⚠️ <b>QuantOS Alert</b>\n"
         f"Context: {context}\n"
         f"Error: {error[:200]}"
     )
