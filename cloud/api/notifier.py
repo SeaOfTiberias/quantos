@@ -51,7 +51,7 @@ async def send_telegram(message: str) -> bool:
                 json={
                     "chat_id":    chat_id,
                     "text":       message,
-                    "parse_mode": "Markdown",
+                    "parse_mode": "HTML",
                 },
             )
             if resp.status_code == 200:
