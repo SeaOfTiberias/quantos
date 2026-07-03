@@ -27,28 +27,28 @@ def format_signal_alert(result: MultiTimeframeResult) -> str:
     )
 
     lines = [
-        f"📦 <b>Darvas Breakout</b>",
-        f"━━━━━━━━━━━━━━",
-        f"🟢 <b>{result.symbol}</b>",
-        f"Price:      ₹{p.breakout_price:,.2f}",
-        f"Box top:    ₹{p.box_top:,.2f}",
-        f"Box bottom: ₹{p.box_bottom:,.2f}",
+        f"📦 Darvas Breakout",
+        f"--------------------",
+        f"🟢 {result.symbol}",
+        f"Price:      INR {p.breakout_price:,.2f}",
+        f"Box top:    INR {p.box_top:,.2f}",
+        f"Box bottom: INR {p.box_bottom:,.2f}",
         f"Box width:  {p.box_width_pct:.1f}%",
         f"Volume:     {p.volume_ratio:.1f}× avg",
-        f"━━━━━━━━━━━━━━",
+        f"--------------------",
         f"Timeframes: {tfs_str}",
-        f"Confluence: <b>{result.confluence_score:.0f}/100</b>",
+        f"Confluence: {result.confluence_score:.0f}/100",
     ]
 
     if result.notes:
-        lines.append("━━━━━━━━━━━━━━")
+        lines.append("--------------------")
         for note in result.notes:
             lines.append(f"  {note}")
 
     lines += [
-        "━━━━━━━━━━━━━━",
-        "Reply <b>execute</b> to trade",
-        "Reply <b>skip</b> to ignore",
+        "--------------------",
+        "Reply execute to trade",
+        "Reply skip to ignore",
     ]
 
     return "\n".join(lines)
@@ -60,23 +60,23 @@ def format_watchlist_summary(results: list[MultiTimeframeResult]) -> str:
     Used by the morning screener (US-03).
     """
     if not results:
-        return "📊 <b>QuantOS Morning Scan</b>\nNo Darvas breakouts found today."
+        return "📊 QuantOS Morning Scan\nNo Darvas breakouts found today."
 
     lines = [
-        "📊 <b>QuantOS Morning Scan</b>",
+        "📊 QuantOS Morning Scan",
         f"Top {len(results)} Darvas setups:",
-        "━━━━━━━━━━━━━━",
+        "--------------------",
     ]
 
     for i, r in enumerate(results[:10], 1):
         p = r.primary_signal
-        price_str = f"₹{p.breakout_price:,.2f}" if p else "—"
+        price_str = f"INR {p.breakout_price:,.2f}" if p else "—"
         tfs = "+".join(r.timeframes_triggered)
         lines.append(
-            f"{i}. <b>{r.symbol}</b> {price_str}  "
+            f"{i}. {r.symbol} {price_str}  "
             f"[{tfs}] score={r.confluence_score:.0f}"
         )
 
-    lines.append("━━━━━━━━━━━━━━")
+    lines.append("--------------------")
     lines.append("QuantOS · Reply symbol name for details")
     return "\n".join(lines)

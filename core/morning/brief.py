@@ -111,7 +111,7 @@ Tone: direct, data-driven, practitioner. No fluff.
 - Top candidates: {candidates_str}
 - Event risk: {events_str}
 - Position sizing: {data.kelly_size_pct:.1%} of capital ({data.kelly_method})
-- Prev day P&L: {'₹' + f'{data.prev_day_pnl:+,.0f}' if data.prev_day_pnl != 0 else 'No trades'}
+- Prev day P&L: {'INR ' + f'{data.prev_day_pnl:+,.0f}' if data.prev_day_pnl != 0 else 'No trades'}
 - Open positions: {', '.join(data.open_positions) or 'None'}
 
 Write the brief now — 3-4 sentences, no headings, no bullets.
@@ -141,10 +141,10 @@ def _format_whatsapp(data: MorningBriefData, narrative: str) -> str:
     }.get(data.regime, "•")
 
     lines = [
-        f"☀️ <b>QuantOS Morning Brief</b>",
+        f"☀️ QuantOS Morning Brief",
         f"_{data.date.strftime('%A, %d %b %Y')}_",
-        "━━━━━━━━━━━━━━",
-        f"{regime_emoji} <b>{data.regime.replace('_', ' ')}</b> ({data.regime_confidence:.0f}%)",
+        "--------------------",
+        f"{regime_emoji} {data.regime.replace('_', ' ')} ({data.regime_confidence:.0f}%)",
         f"Trend: {data.trend_signal}  |  VIX: {data.vix_signal}",
         f"Darvas: {'✅ Active' if data.darvas_enabled else '❌ Gated'}",
         "",
@@ -152,17 +152,17 @@ def _format_whatsapp(data: MorningBriefData, narrative: str) -> str:
 
     # Top candidates
     if data.top_candidates:
-        lines.append("📋 <b>Top Candidates</b>")
+        lines.append("📋 Top Candidates")
         for i, c in enumerate(data.top_candidates[:5], 1):
-            lines.append(f"  {i}. <b>{c.get('symbol', '?')}</b>  score={c.get('score', 0):.0f}")
+            lines.append(f"  {i}. {c.get('symbol', '?')}  score={c.get('score', 0):.0f}")
     else:
-        lines.append("📋 <b>Top Candidates:</b> None today")
+        lines.append("📋 Top Candidates: None today")
 
     lines.append("")
 
     # Event risk
     if data.upcoming_events:
-        lines.append("📅 <b>Event Risk (7d)</b>")
+        lines.append("📅 Event Risk (7d)")
         for e in data.upcoming_events[:3]:
             impact_icon = "🔴" if e.get("impact") == "HIGH" else "🟡"
             lines.append(
@@ -172,20 +172,20 @@ def _format_whatsapp(data: MorningBriefData, narrative: str) -> str:
 
     # Sizing & P&L
     lines += [
-        f"💰 <b>Sizing:</b> {data.kelly_size_pct:.1%} ({data.kelly_method})",
+        f"💰 Sizing: {data.kelly_size_pct:.1%} ({data.kelly_method})",
     ]
     if data.prev_day_pnl != 0:
         pnl_icon = "✅" if data.prev_day_pnl > 0 else "🔻"
-        lines.append(f"{pnl_icon} <b>Prev Day P&L:</b> ₹{data.prev_day_pnl:+,.0f} ({data.prev_day_trades} trade(s))")
+        lines.append(f"{pnl_icon} Prev Day P&L: INR {data.prev_day_pnl:+,.0f} ({data.prev_day_trades} trade(s))")
 
     if data.open_positions:
-        lines.append(f"📦 <b>Open:</b> {', '.join(data.open_positions)}")
+        lines.append(f"📦 Open: {', '.join(data.open_positions)}")
 
     lines += [
         "",
-        "━━━━━━━━━━━━━━",
+        "--------------------",
         f"_{narrative}_",
-        "━━━━━━━━━━━━━━",
+        "--------------------",
         "QuantOS · 8:30 AM IST",
     ]
 
