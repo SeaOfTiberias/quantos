@@ -69,15 +69,15 @@ class TestQuantOSConfig:
 
     def test_whatsapp_configured_when_both_set(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "development")
-        monkeypatch.setenv("CALLMEBOT_PHONE", "+917000000000")
-        monkeypatch.setenv("CALLMEBOT_API_KEY", "testkey")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "7123456789:AAFxxxxx")
+        monkeypatch.setenv("TELEGRAM_CHAT_ID", "895737628")
         config = QuantOSConfig.from_env()
         assert config.whatsapp_configured is True
 
     def test_whatsapp_not_configured_when_missing(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "development")
-        monkeypatch.delenv("CALLMEBOT_PHONE", raising=False)
-        monkeypatch.delenv("CALLMEBOT_API_KEY", raising=False)
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
         config = QuantOSConfig.from_env()
         assert config.whatsapp_configured is False
 

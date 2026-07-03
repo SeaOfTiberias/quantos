@@ -50,8 +50,8 @@ class QuantOSConfig:
     cloud_api_secret:     str = ""
 
     # ── WhatsApp / CallMeBot ──────────────────────────────────────────────────
-    callmebot_phone:      str = ""
-    callmebot_api_key:    str = ""
+    telegram_bot_token:   str = ""
+    telegram_chat_id:     str = ""
 
     # ── Database ──────────────────────────────────────────────────────────────
     database_url:         str = ""           # empty = in-memory fallback
@@ -91,10 +91,10 @@ class QuantOSConfig:
                 missing.append("ANTHROPIC_API_KEY")
             if not os.getenv("WEBHOOK_SECRET"):
                 missing.append("WEBHOOK_SECRET")
-            if not os.getenv("CALLMEBOT_PHONE"):
-                missing.append("CALLMEBOT_PHONE")
-            if not os.getenv("CALLMEBOT_API_KEY"):
-                missing.append("CALLMEBOT_API_KEY")
+            if not os.getenv("TELEGRAM_BOT_TOKEN"):
+                missing.append("TELEGRAM_BOT_TOKEN")
+            if not os.getenv("TELEGRAM_CHAT_ID"):
+                missing.append("TELEGRAM_CHAT_ID")
             if missing:
                 raise ConfigError(
                     f"Missing required environment variables for production: "
@@ -108,8 +108,8 @@ class QuantOSConfig:
             claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
             webhook_secret=os.getenv("WEBHOOK_SECRET", ""),
             cloud_api_secret=os.getenv("CLOUD_API_SECRET", ""),
-            callmebot_phone=os.getenv("CALLMEBOT_PHONE", ""),
-            callmebot_api_key=os.getenv("CALLMEBOT_API_KEY", ""),
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
             database_url=os.getenv("DATABASE_URL", ""),
             min_confluence_score=float(os.getenv("MIN_CONFLUENCE_SCORE", "70")),
             regime_cache_ttl=int(os.getenv("REGIME_CACHE_TTL", "900")),
@@ -137,7 +137,7 @@ class QuantOSConfig:
 
     @property
     def whatsapp_configured(self) -> bool:
-        return bool(self.callmebot_phone and self.callmebot_api_key)
+        return bool(self.telegram_bot_token and self.telegram_chat_id)
 
     @property
     def database_configured(self) -> bool:
