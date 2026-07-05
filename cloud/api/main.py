@@ -109,15 +109,19 @@ class TradingViewAlert(BaseModel):
     """
     JSON payload from TradingView Premium webhook alert.
 
-    Pine Script alert message template:
+    See pine/darvas_breakout_alert.pine — it builds this exact JSON body
+    itself via Pine's alert() function (dynamic multi-timeframe confluence
+    score + stop_loss can't be expressed with the static {{plot_N}} message
+    template, since those only substitute a single script's own plot()
+    values, not values computed across multiple request.security() calls):
     {
-      "symbol":            "{{ticker}}",
-      "action":            "{{strategy.order.action}}",
-      "price":             {{close}},
-      "timeframe":         "{{interval}}",
+      "symbol":            "RELIANCE",
+      "action":             "BUY",
+      "price":              2950.25,
+      "timeframe":         "15m",
       "strategy":          "darvas_breakout",
-      "confluence_score":  {{plot_0}},
-      "stop_loss":         {{plot_1}},
+      "confluence_score":   85.0,
+      "stop_loss":          2890.0,
       "secret":            "YOUR_WEBHOOK_SECRET"
     }
     """

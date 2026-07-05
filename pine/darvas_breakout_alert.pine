@@ -1,0 +1,107 @@
+// QuantOS — Darvas Box Multi-Timeframe Confluence Alert (US-01 / US-02)
+// ─────────────────────────────────────────────────────────────────────
+// Mirrors core/darvas/box.py exactly:
+//   - Box top   = highest high over `lookback` candles
+//   - Box forms after price holds within `tolPct` of that high for
+//     `minConsol` candles (box bottom = lowest low during that window)
+//   - Box width must be <= maxWidthPct
+//   - Breakout  = close > box top on >= volMult x 20-period avg volume
+//   - Confluence score = 15m(25) + 1h(35) + 1d(40) weights, each with
+//     up to +5 volume bonus and +5 tight-box (<4%) bonus, capped at 100
+//     (see core/darvas/box.py score_confluence())
+//
+// Works on ANY chart timeframe you attach it to — all three confluence
+// timeframes (15m/1h/1D) are always pulled via request.security(), so the
+// script's own chart timeframe only affects what you see plotted, not
+// what triggers the alert.
+//
+// Setup (TradingView "Create Alert" dialog):
+//   Condition -> this indicator -> "Any alert() function call"
+//   Webhook URL -> https://web-production-b5527.up.railway.app/webhook/tradingview
+//   Message field is ignored — alert() supplies the JSON body directly.
+//
+// Only long/BUY breakouts are detected — matches core/darvas/box.py,
+// which has no short-side logic either.
+
+//@version=5
+indicator("QuantOS Darvas Box — Multi-TF Confluence", overlay=true)
+
+// ── Inputs ──────────────────────────────────────────────────────────────
+lookback      = input.int(20, "Box Lookback (candles)", minval=5)
+minConsol     = input.int(3, "Min Consolidation Candles", minval=1)
+volMult       = input.float(1.3, "Breakout Volume Multiplier", minval=1.0)
+maxWidthPct   = input.float(8.0, "Max Box Width %", minval=0.5)
+tolPct        = input.float(0.2, "Consolidation Tolerance %", minval=0.0)
+minConfluence = input.float(70, "Min Confluence to Fire (matches Railway MIN_CONFLUENCE_SCORE)")
+webhookSecret = input.string("", "Webhook Secret (paste yours here — do not share this script publicly with it filled in)")
+
+tol = tolPct / 100
+
+// ── Reusable Darvas Box detector — state persists per request.security context ──
+darvasBox() =>
+    var float candidateTop = na
+    var float boxTop       = na
+    var float boxBottom    = na
+    var int   consolCount  = 0
+    var bool  boxReady     = false
+
+    hh = ta.highest(high, lookback)
+    isNewHigh = high >= hh and (na(candidateTop) or high > candidateTop)
+
+    if isNewHigh
+        candidateTop := high
+        consolCount := 0
+        boxReady := false
+        boxBottom := low
+    else if not na(candidateTop)
+        if high <= candidateTop * (1 + tol)
+            consolCount := consolCount + 1
+            boxBottom := math.min(boxBottom, low)
+            if consolCount >= minConsol and not boxReady
+                widthPct = (candidateTop - boxBottom) / boxBottom * 100
+                if widthPct <= maxWidthPct
+                    boxTop := candidateTop
+                    boxReady := true
+        else
+            candidateTop := na
+            consolCount := 0
+            boxReady := false
+
+    avgVol      = ta.sma(volume, 20)
+    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
+    widthPctNow = (boxReady and not na(boxBottom) and boxBottom != 0) ? (boxTop - boxBottom) / boxBottom * 100 : 100.0
+    isTight     = widthPctNow < 4.0
+    breakoutNow = boxReady and close > boxTop and volRatio >= volMult
+
+    [breakoutNow, boxTop, boxBottom, volRatio, isTight, close]
+
+// ── Pull box state across all 3 confluence timeframes ────────────────────
+[brk15, top15, bot15, vr15, tight15, close15] = request.security(syminfo.tickerid, "15", darvasBox())
+[brk60, top60, bot60, vr60, tight60, close60] = request.security(syminfo.tickerid, "60", darvasBox())
+[brkD,  topD,  botD,  vrD,  tightD,  closeD ] = request.security(syminfo.tickerid, "D",  darvasBox())
+
+// ── Confluence scoring — mirrors core/darvas/box.py score_confluence() ───
+volBonus(vr) => vr >= 2.0 ? 5.0 : vr >= 1.5 ? 2.5 : 0.0
+
+score = 0.0
+score += brk15 ? 25 + volBonus(vr15) + (tight15 ? 5.0 : 0.0) : 0.0
+score += brk60 ? 35 + volBonus(vr60) + (tight60 ? 5.0 : 0.0) : 0.0
+score += brkD  ? 40 + volBonus(vrD)  + (tightD  ? 5.0 : 0.0) : 0.0
+confluenceScore = math.min(100.0, score)
+
+// ── Entry trigger: fires off the 15m breakout (finest / entry-timing TF) ─
+fireSignal = brk15 and confluenceScore >= minConfluence
+
+// ── Visuals ───────────────────────────────────────────────────────────────
+plot(top15, "15m Box Top", color=color.new(color.green, 0), style=plot.style_linebr)
+plot(bot15, "15m Box Bottom", color=color.new(color.red, 0), style=plot.style_linebr)
+plotshape(fireSignal, title="QuantOS Signal", style=shape.triangleup,
+          location=location.belowbar, color=color.lime, size=size.normal)
+
+// ── Fire the webhook ───────────────────────────────────────────────────────
+if fireSignal
+    msg = '{"symbol":"' + syminfo.ticker + '","action":"BUY","price":' + str.tostring(close15) +
+          ',"timeframe":"15m","strategy":"darvas_breakout","confluence_score":' + str.tostring(confluenceScore) +
+          ',"stop_loss":' + str.tostring(bot15) +
+          ',"secret":"' + webhookSecret + '"}'
+    alert(msg, alert.freq_once_per_bar_close)

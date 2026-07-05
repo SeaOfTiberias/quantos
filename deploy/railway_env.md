@@ -45,21 +45,19 @@ Set these in the Railway dashboard under your service → **Variables**.
 
 ## TradingView Webhook Setup
 
-1. In TradingView → Alert → **Webhook URL**: `https://your-app.railway.app/webhook/tradingview`
-2. Alert message (JSON):
-```json
-{
-  "symbol":           "{{ticker}}",
-  "action":           "{{strategy.order.action}}",
-  "price":            {{close}},
-  "timeframe":        "{{interval}}",
-  "strategy":         "darvas_breakout",
-  "confluence_score": {{plot_0}},
-  "stop_loss":        {{plot_1}},
-  "secret":           "YOUR_WEBHOOK_SECRET"
-}
-```
-3. `YOUR_WEBHOOK_SECRET` must match `WEBHOOK_SECRET` in Railway variables.
+Use `pine/darvas_breakout_alert.pine` — it computes a real multi-timeframe
+confluence score (15m/1h/1D, mirrors `core/darvas/box.py`) and fires the
+webhook itself via Pine's `alert()` function, since that dynamic JSON body
+can't be expressed with TradingView's static `{{plot_N}}` message template.
+
+1. Paste `pine/darvas_breakout_alert.pine` into TradingView's Pine Editor,
+   add it to any chart (works on any chart timeframe — it always pulls
+   15m/1h/1D internally via `request.security()`).
+2. In its settings, paste your webhook secret into the "Webhook Secret" input.
+3. Create an alert on it: **Condition** → this indicator → *Any alert() function
+   call*. **Webhook URL**: `https://your-app.railway.app/webhook/tradingview`.
+   The Message field is ignored — the script supplies the JSON body directly.
+4. The secret pasted into the script must match `WEBHOOK_SECRET` in Railway variables.
 
 ---
 
