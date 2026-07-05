@@ -25,6 +25,11 @@ import sys
 import time
 from pathlib import Path
 
+# Allow running as `python agent/main.py` from the repo root — the script's
+# own directory (agent/) is on sys.path by default, but the repo root
+# (needed for `core.*` imports) is not.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import requests
 import yaml
 
