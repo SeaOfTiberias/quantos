@@ -5,7 +5,6 @@ Postgres persistence for signals (ADR-03: user_id on every row).
 Uses SQLAlchemy async for non-blocking DB ops within FastAPI.
 """
 
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -40,7 +39,12 @@ class SignalDB:
 
     def __init__(self):
         self._store: list[Signal] = []   # dev fallback
-        self._use_postgres = bool(os.getenv("DATABASE_URL"))
+        # NOTE: _pg_* methods below are all unimplemented stubs (raise
+        # NotImplementedError) — gating on DATABASE_URL's mere presence
+        # crashes every DB call in any environment where a Postgres plugin
+        # happens to be linked (e.g. Railway) but the app code hasn't been
+        # wired to it yet. Flip this to a real check once _pg_* is built.
+        self._use_postgres = False
 
     async def insert_signal(self, signal: Signal) -> None:
         if self._use_postgres:
