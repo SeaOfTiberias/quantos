@@ -10,6 +10,8 @@ Setup:
   3. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env / Railway Variables
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import urllib.parse
@@ -76,10 +78,10 @@ async def send_trade_confirmation(
     """Send execution confirmation after order is filled."""
     pnl_str = f"\nP&L: INR {pnl:+,.2f}" if pnl is not None else ""
     message = (
-        f"✅ <b>Trade Executed</b>\n"
+        f"✅ Trade Executed\n"
         f"ID: {signal_id}\n"
         f"--------------------\n"
-        f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} <b>{symbol}</b>\n"
+        f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} {symbol}\n"
         f"Qty: {quantity} shares\n"
         f"Price: INR {execution_price:,.2f}{pnl_str}\n"
         f"--------------------\n"
@@ -91,8 +93,44 @@ async def send_trade_confirmation(
 async def send_error_alert(context: str, error: str) -> bool:
     """Send system error alert."""
     message = (
-        f"⚠️ <b>QuantOS Alert</b>\n"
+        f"⚠️ QuantOS Alert\n"
         f"Context: {context}\n"
         f"Error: {error[:200]}"
     )
     return await send_telegram(message)
+
+
+async def register_telegram_webhook() -> bool:
+    """
+    Registers this deployment's /webhook/telegram endpoint with Telegram's
+    Bot API (setWebhook). Idempotent — safe to call on every startup.
+    Requires TELEGRAM_BOT_TOKEN and PUBLIC_API_URL (or falls back to the
+    known Railway URL). TELEGRAM_WEBHOOK_SECRET, if set, is echoed back by
+    Telegram on every update as X-Telegram-Bot-Api-Secret-Token.
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        logger.warning("TELEGRAM_BOT_TOKEN not set — skipping webhook registration")
+        return False
+
+    public_url = os.getenv("PUBLIC_API_URL", "https://web-production-b5527.up.railway.app")
+    webhook_url = f"{public_url.rstrip('/')}/webhook/telegram"
+    secret_token = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+
+    payload = {"url": webhook_url, "allowed_updates": ["message"]}
+    if secret_token:
+        payload["secret_token"] = secret_token
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{TELEGRAM_URL}/bot{token}/setWebhook", json=payload)
+            data = resp.json()
+            if data.get("ok"):
+                logger.info("Telegram webhook registered: %s", webhook_url)
+                return True
+            logger.error("Telegram setWebhook failed: %s", data)
+            return False
+    except Exception as e:
+        logger.error("Telegram setWebhook error: %s", e)
+        return False

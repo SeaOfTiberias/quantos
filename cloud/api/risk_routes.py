@@ -6,6 +6,8 @@ Called by the local agent before placing an order, and by the
 cockpit dashboard to show current sizing stats.
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 

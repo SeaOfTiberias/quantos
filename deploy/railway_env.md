@@ -10,8 +10,10 @@ Set these in the Railway dashboard under your service → **Variables**.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Your Claude API key | `sk-ant-...` |
 | `WEBHOOK_SECRET` | Secret shared with TradingView | Any strong random string |
-| `CALLMEBOT_PHONE` | Your WhatsApp number (international format) | `+917xxxxxxxxx` |
-| `CALLMEBOT_API_KEY` | Your CallMeBot API key | `xxxxxxx` |
+| `TELEGRAM_BOT_TOKEN` | Token from @BotFather | `123456:ABC-...` |
+| `TELEGRAM_CHAT_ID` | Your Telegram chat ID | `895737628` |
+| `CLOUD_API_SECRET` | Shared secret for `/signals*` — must match `agent/config.yaml`'s `cloud.api_secret` | Any strong random string |
+| `TELEGRAM_WEBHOOK_SECRET` | Validates inbound Telegram updates on `/webhook/telegram` (echoed back as a header) | Any strong random string |
 
 ## Recommended
 
@@ -19,6 +21,7 @@ Set these in the Railway dashboard under your service → **Variables**.
 |---|---|---|
 | `MIN_CONFLUENCE_SCORE` | `70` | Minimum Darvas confluence to pass Claude |
 | `REGIME_CACHE_TTL` | `900` | Regime cache duration in seconds (15 min) |
+| `PUBLIC_API_URL` | Railway URL | Used to self-register the Telegram webhook on startup |
 | `ENVIRONMENT` | `production` | `development` or `production` |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
@@ -52,10 +55,24 @@ Set these in the Railway dashboard under your service → **Variables**.
   "timeframe":        "{{interval}}",
   "strategy":         "darvas_breakout",
   "confluence_score": {{plot_0}},
+  "stop_loss":        {{plot_1}},
   "secret":           "YOUR_WEBHOOK_SECRET"
 }
 ```
 3. `YOUR_WEBHOOK_SECRET` must match `WEBHOOK_SECRET` in Railway variables.
+
+---
+
+## Telegram Webhook (human-in-loop confirm/skip — ADR-05)
+
+No manual setup needed — the app calls Telegram's `setWebhook` on every
+startup (`register_telegram_webhook()` in `cloud/api/notifier.py`), pointing
+it at `{PUBLIC_API_URL}/webhook/telegram`. Just make sure `TELEGRAM_BOT_TOKEN`
+is set; deploy logs will show `Telegram webhook registered: ...` on boot.
+
+Reply **directly** (swipe-to-reply, not a new message) to a signal alert
+with `execute` or `skip` — the signal ID is parsed out of the original
+alert's text, so the reply must target that specific message.
 
 ---
 

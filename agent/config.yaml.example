@@ -10,19 +10,20 @@ credentials:
   redirect_uri: YOUR_REDIRECT_URI   # Fyers only
 
 risk:
-  capital: 500000                   # Total trading capital (INR)
+  capital: 500000                   # Reference only — actual sizing uses live broker.get_funds()
   max_risk_per_trade: 0.02          # 2% max risk per trade
   max_open_positions: 5             # Maximum concurrent positions
   max_daily_loss: 0.05              # 5% daily loss circuit breaker
+  product_type: INTRADAY            # INTRADAY | CNC | MARGIN — passed to every order
+  assumed_stop_pct: 0.015           # Fallback stop-loss % used only if a signal has no stop_loss
 
 cloud:
   api_url: https://your-quantos-instance.railway.app
-  api_secret: YOUR_CLOUD_API_SECRET # Must match CLOUD_API_SECRET in cloud .env
+  api_secret: YOUR_CLOUD_API_SECRET # Must match CLOUD_API_SECRET in cloud Railway variables
 
-notifications:
-  whatsapp_phone: "+91XXXXXXXXXX"
-  whatsapp_api_key: YOUR_CALLMEBOT_KEY
-  confirm_before_execute: true      # ADR-05: human-in-loop default
+# Note: Telegram confirm/skip (ADR-05) is handled entirely on the cloud side
+# (cloud/api/main.py /webhook/telegram) — this agent only polls /signals for
+# CONFIRMED status via REST, it never talks to Telegram directly.
 
 claude:
   tier: pro                         # free | pro | enterprise

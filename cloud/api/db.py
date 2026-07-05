@@ -27,6 +27,7 @@ class Signal:
     status:           str
     created_at:       datetime
     confidence_score: Optional[float] = None
+    stop_loss:        Optional[float] = None
     executed_at:      Optional[datetime] = None
     execution_price:  Optional[float] = None
 
@@ -47,9 +48,12 @@ class SignalDB:
         else:
             self._store.append(signal)
 
-    async def fetch_recent_signals(self, limit: int = 20) -> list[dict]:
+    async def fetch_recent_signals(self, limit: int = 20, status: Optional[str] = None) -> list[dict]:
         if self._use_postgres:
-            return await self._pg_fetch(limit)
+            return await self._pg_fetch(limit, status)
+        rows = self._store
+        if status:
+            rows = [s for s in rows if s.status == status]
         return [
             {
                 "signal_id":        s.signal_id,
@@ -57,13 +61,17 @@ class SignalDB:
                 "symbol":           s.symbol,
                 "action":           s.action,
                 "price":            s.price,
+                "timeframe":        s.timeframe,
                 "strategy":         s.strategy,
                 "confluence_score": s.confluence_score,
                 "confidence_score": s.confidence_score,
+                "stop_loss":        s.stop_loss,
                 "status":           s.status,
                 "created_at":       s.created_at.isoformat(),
+                "executed_at":      s.executed_at.isoformat() if s.executed_at else None,
+                "execution_price":  s.execution_price,
             }
-            for s in sorted(self._store,
+            for s in sorted(rows,
                             key=lambda x: x.created_at, reverse=True)[:limit]
         ]
 
@@ -76,6 +84,25 @@ class SignalDB:
                     s.status = new_status
                     break
 
+    async def mark_executed(self, signal_id: str, execution_price: float) -> None:
+        if self._use_postgres:
+            await self._pg_mark_executed(signal_id, execution_price)
+        else:
+            for s in self._store:
+                if s.signal_id == signal_id:
+                    s.status = "EXECUTED"
+                    s.execution_price = execution_price
+                    s.executed_at = datetime.now()
+                    break
+
+    async def get_signal(self, signal_id: str) -> Optional[Signal]:
+        if self._use_postgres:
+            return await self._pg_get(signal_id)
+        for s in self._store:
+            if s.signal_id == signal_id:
+                return s
+        return None
+
     # ── Postgres stubs (implemented when DATABASE_URL is set) ─────────────────
 
     async def _pg_insert(self, signal: Signal) -> None:
@@ -84,10 +111,16 @@ class SignalDB:
         #     await conn.execute(INSERT_SQL, signal.signal_id, signal.user_id, ...)
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
-    async def _pg_fetch(self, limit: int) -> list[dict]:
+    async def _pg_fetch(self, limit: int, status: Optional[str] = None) -> list[dict]:
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
     async def _pg_update_status(self, signal_id: str, status: str) -> None:
+        raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
+
+    async def _pg_mark_executed(self, signal_id: str, execution_price: float) -> None:
+        raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
+
+    async def _pg_get(self, signal_id: str) -> Optional[Signal]:
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
 

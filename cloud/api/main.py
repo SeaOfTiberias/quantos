@@ -14,12 +14,15 @@ Pipeline:
     → WhatsApp confirmation (ADR-05)
 """
 
+from __future__ import annotations
+
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -34,7 +37,7 @@ from cloud.api.versioning_routes import router as versioning_router
 from cloud.api.backtest_routes import router as backtest_router
 from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
-from cloud.api.notifier import send_whatsapp
+from cloud.api.notifier import send_whatsapp, send_telegram, register_telegram_webhook
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
 
@@ -66,6 +69,26 @@ app.add_middleware(
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 MIN_CONFLUENCE = float(os.getenv("MIN_CONFLUENCE_SCORE", "70"))
+CLOUD_API_SECRET = os.getenv("CLOUD_API_SECRET", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+
+_SIGNAL_ID_RE = re.compile(r"(SIG-[A-Z0-9]+-[A-F0-9]+)")
+
+
+def require_cloud_secret(x_cloud_secret: str = Header(default="")):
+    """Guards agent-facing endpoints. No-op if CLOUD_API_SECRET isn't set
+    (dev mode), but that's a deliberately loud default — see .env.example."""
+    if CLOUD_API_SECRET and x_cloud_secret != CLOUD_API_SECRET:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                             detail="Invalid or missing X-Cloud-Secret header")
+
+
+@app.on_event("startup")
+async def _register_telegram_webhook():
+    try:
+        await register_telegram_webhook()
+    except Exception as e:
+        logger.error("Telegram webhook self-registration failed: %s", e)
 
 # Event risk filter (US-06) — singleton, loaded with macro calendar at startup
 _event_filter = EventFilterService()
@@ -94,6 +117,7 @@ class TradingViewAlert(BaseModel):
       "timeframe":         "{{interval}}",
       "strategy":          "darvas_breakout",
       "confluence_score":  {{plot_0}},
+      "stop_loss":         {{plot_1}},
       "secret":            "YOUR_WEBHOOK_SECRET"
     }
     """
@@ -103,6 +127,7 @@ class TradingViewAlert(BaseModel):
     timeframe:         str   = Field(..., description="Chart timeframe e.g. 15, 60, D")
     strategy:          str   = Field(..., description="Strategy ID e.g. darvas_breakout")
     confluence_score:  float = Field(default=0, ge=0, le=100)
+    stop_loss:         float | None = Field(default=None, description="Darvas box low / stop price")
     secret:            str   = Field(..., description="Webhook validation secret")
     notes:             str   = Field(default="")
 
@@ -114,6 +139,18 @@ class SignalResponse(BaseModel):
     status:           str
     confidence_score: float | None = None
     message:          str
+
+
+class ExecutionReport(BaseModel):
+    """Reported by the local agent after placing an order via the broker."""
+    order_id:         str
+    quantity:         int
+    execution_price:  float
+
+
+class FailureReport(BaseModel):
+    """Reported by the local agent when it can't size/place a confirmed signal."""
+    reason: str
 
 
 # ─── Health ──────────────────────────────────────────────────────────────────
@@ -214,32 +251,114 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
 
 
 @app.get("/signals")
-async def list_signals(limit: int = 20):
-    """Return recent signals for the cockpit dashboard."""
+async def list_signals(limit: int = 20, status: str | None = None,
+                        _auth=Depends(require_cloud_secret)):
+    """Return recent signals for the cockpit dashboard / local agent poll."""
     db = await get_db()
-    signals = await db.fetch_recent_signals(limit=limit)
+    signals = await db.fetch_recent_signals(limit=limit, status=status)
     return {"signals": signals}
 
 
 @app.post("/signals/{signal_id}/confirm")
-async def confirm_signal(signal_id: str):
-    """Called by local agent when user replies 'execute' on WhatsApp."""
-    db = await get_db()
-    await db.update_signal_status(signal_id, "CONFIRMED")
-    logger.info("[%s] Confirmed for execution", signal_id)
+async def confirm_signal(signal_id: str, _auth=Depends(require_cloud_secret)):
+    """Mark a signal CONFIRMED — normally triggered by the Telegram webhook
+    below when the user replies 'execute', kept as a direct route for
+    admin/dashboard use."""
+    await _set_signal_status(signal_id, "CONFIRMED")
     return {"signal_id": signal_id, "status": "CONFIRMED"}
 
 
 @app.post("/signals/{signal_id}/skip")
-async def skip_signal(signal_id: str):
-    """Called by local agent when user replies 'skip' on WhatsApp."""
-    db = await get_db()
-    await db.update_signal_status(signal_id, "SKIPPED")
-    logger.info("[%s] Skipped by user", signal_id)
+async def skip_signal(signal_id: str, _auth=Depends(require_cloud_secret)):
+    """Mark a signal SKIPPED — normally triggered by the Telegram webhook
+    below when the user replies 'skip'."""
+    await _set_signal_status(signal_id, "SKIPPED")
     return {"signal_id": signal_id, "status": "SKIPPED"}
 
 
+@app.post("/signals/{signal_id}/executed")
+async def executed_signal(signal_id: str, payload: ExecutionReport,
+                           _auth=Depends(require_cloud_secret)):
+    """Called by the local agent once it has placed the order via the broker."""
+    db = await get_db()
+    await db.mark_executed(signal_id, payload.execution_price)
+    logger.info("[%s] Executed at %.2f (order %s)",
+                signal_id, payload.execution_price, payload.order_id)
+    signal = await db.get_signal(signal_id)
+    if signal:
+        try:
+            from cloud.api.notifier import send_trade_confirmation
+            await send_trade_confirmation(
+                signal_id=signal_id, symbol=signal.symbol, action=signal.action,
+                quantity=payload.quantity, execution_price=payload.execution_price,
+            )
+        except Exception as e:
+            logger.error("[%s] Trade confirmation notify failed: %s", signal_id, e)
+    return {"signal_id": signal_id, "status": "EXECUTED"}
+
+
+@app.post("/signals/{signal_id}/failed")
+async def failed_signal(signal_id: str, payload: FailureReport,
+                         _auth=Depends(require_cloud_secret)):
+    """Called by the local agent when a CONFIRMED signal couldn't be sized
+    or placed (e.g. insufficient funds, broker rejection)."""
+    await _set_signal_status(signal_id, "FAILED")
+    logger.error("[%s] Execution failed: %s", signal_id, payload.reason)
+    try:
+        from cloud.api.notifier import send_error_alert
+        await send_error_alert(f"Signal {signal_id} execution", payload.reason)
+    except Exception as e:
+        logger.error("[%s] Failure notify failed: %s", signal_id, e)
+    return {"signal_id": signal_id, "status": "FAILED"}
+
+
+@app.post("/webhook/telegram")
+async def telegram_webhook(request: Request,
+                            x_telegram_bot_api_secret_token: str = Header(default="")):
+    """
+    Receives Telegram Bot API updates (set up via register_telegram_webhook()
+    on startup). Handles the human-in-loop 'execute' / 'skip' reply (ADR-05).
+
+    The user must reply directly to the original signal alert message —
+    the signal ID is parsed out of that message's text, not guessed.
+    """
+    if TELEGRAM_WEBHOOK_SECRET and x_telegram_bot_api_secret_token != TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bad secret token")
+
+    update = await request.json()
+    message = update.get("message") or update.get("edited_message") or {}
+    text = (message.get("text") or "").strip().lower()
+    reply_to = message.get("reply_to_message") or {}
+    reply_text = reply_to.get("text") or ""
+
+    if text not in ("execute", "skip"):
+        return {"ok": True}  # not a command we care about
+
+    match = _SIGNAL_ID_RE.search(reply_text)
+    if not match:
+        await send_telegram(
+            "Couldn't find a signal ID — reply directly (swipe-to-reply) "
+            "to the original QuantOS Signal message."
+        )
+        return {"ok": True}
+
+    signal_id = match.group(1)
+    new_status = "CONFIRMED" if text == "execute" else "SKIPPED"
+    await _set_signal_status(signal_id, new_status)
+
+    ack = ("Confirmed — agent will execute shortly." if new_status == "CONFIRMED"
+           else "Skipped.")
+    await send_telegram(f"[{signal_id}] {ack}")
+    return {"ok": True}
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async def _set_signal_status(signal_id: str, new_status: str) -> None:
+    db = await get_db()
+    await db.update_signal_status(signal_id, new_status)
+    logger.info("[%s] Status → %s", signal_id, new_status)
+
 
 async def _persist_signal(signal_id, alert, signal_status, confidence_score):
     try:
@@ -254,6 +373,7 @@ async def _persist_signal(signal_id, alert, signal_status, confidence_score):
             strategy=alert.strategy,
             confluence_score=alert.confluence_score,
             confidence_score=confidence_score,
+            stop_loss=alert.stop_loss,
             status=signal_status,
             created_at=datetime.now(timezone.utc),
         ))
@@ -266,19 +386,21 @@ async def _send_confirmation_request(signal_id, alert, confidence_score):
         f"Claude confidence: {confidence_score:.0f}/100\n"
         if confidence_score is not None else ""
     )
+    stop_str = f"Stop loss: INR {alert.stop_loss:,.2f}\n" if alert.stop_loss else ""
     message = (
         f"🚨 QuantOS Signal\n"
         f"ID: {signal_id}\n"
         f"--------------------\n"
         f"{'🟢 BUY' if alert.action == 'BUY' else '🔴 SELL'} {alert.symbol}\n"
         f"Price: INR {alert.price:,.2f}\n"
+        f"{stop_str}"
         f"Strategy: {alert.strategy}\n"
         f"Timeframe: {alert.timeframe}\n"
         f"Confluence: {alert.confluence_score:.0f}/100\n"
         f"{confidence_str}"
         f"--------------------\n"
-        f"Reply execute to trade\n"
-        f"Reply skip to ignore"
+        f"Reply (to this message) execute to trade\n"
+        f"Reply (to this message) skip to ignore"
     )
     try:
         await send_whatsapp(message)

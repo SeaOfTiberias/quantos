@@ -6,6 +6,8 @@ In production this persists to Postgres (ADR-03: user_id on every row).
 For now it's an in-memory store, same pattern as cloud/api/db.py.
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timezone
 
