@@ -110,13 +110,13 @@ async def run_morning_brief_job(
 
     brief = await generate_morning_brief(data)
 
-    # ── Send to WhatsApp ──────────────────────────────────────────────────────
+    # ── Send to Telegram ──────────────────────────────────────────────────────
     delivered = False
     try:
-        from cloud.api.notifier import send_whatsapp
-        delivered = await send_whatsapp(brief.whatsapp_message)
+        from cloud.api.notifier import send_telegram
+        delivered = await send_telegram(brief.whatsapp_message)
     except Exception as e:
-        logger.error("WhatsApp delivery failed: %s", e)
+        logger.error("Telegram delivery failed: %s", e)
 
     logger.info("Morning brief generated%s", " and delivered" if delivered else " (WhatsApp not configured)")
     return {

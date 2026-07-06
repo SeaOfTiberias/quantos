@@ -23,6 +23,7 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Allow running as `python agent/main.py` from the repo root — the script's
@@ -32,6 +33,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import requests
 import yaml
+
+from agent.positions import (
+    OpenPosition, load_open_positions, add_position, update_stop, remove_position,
+)
+from core.darvas.box import next_trailing_stop
+
+# How often (in poll ticks) to re-check open positions for trailing/closure.
+# Kept slower than the 5s signal poll to avoid hammering the broker with
+# historical-data calls for every open position.
+TRAIL_EVERY_N_TICKS = 12  # ~60s at the default 5s poll_interval
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,7 +96,13 @@ def _report_outcome(cloud_url: str, headers: dict, signal_id: str,
 
 def _size_and_place_order(broker, sizer, signal: dict, config: dict):
     """Kelly-size the position (core/risk/kelly.py) and place it via the
-    broker adapter. Raises BrokerError if it can't be sized or placed."""
+    broker adapter. Raises BrokerError if it can't be sized or placed.
+
+    Places the entry as a Cover Order (CO) whenever a stop_loss is known, so
+    the broker itself carries a stop-loss leg from the moment of entry —
+    see core/brokers/base.py ProductType.CO and FyersBroker.place_order.
+    The trailing loop (_manage_open_positions) ratchets that stop up over
+    the life of the position; this function only places the initial one."""
     from core.brokers.base import Order, OrderDirection, OrderType, ProductType, BrokerError
 
     symbol = signal["symbol"]
@@ -94,7 +111,7 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
     stop_loss = signal.get("stop_loss")
 
     risk_cfg = config.get("risk", {})
-    product_type = ProductType[risk_cfg.get("product_type", "INTRADAY").upper()]
+    configured_product_type = ProductType[risk_cfg.get("product_type", "INTRADAY").upper()]
     assumed_stop_pct = float(risk_cfg.get("assumed_stop_pct", 0.015))
 
     funds = broker.get_funds()
@@ -122,12 +139,20 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
             f"insufficient funds or stop-loss too tight"
         )
 
+    # Auto-exit (Task 4): place the entry as a Cover Order carrying the
+    # Darvas stop_loss as its mandatory stop-loss leg, so the position is
+    # protected from the moment it fills. Disable via risk.auto_exit: false
+    # in config (e.g. for CNC/delivery trades CO doesn't apply to).
+    auto_exit = bool(risk_cfg.get("auto_exit", True))
+    product_type = ProductType.CO if auto_exit else configured_product_type
+
     order = Order(
         symbol=symbol,
         direction=OrderDirection.BUY if action == "BUY" else OrderDirection.SELL,
         quantity=quantity,
         order_type=OrderType.MARKET,
         product_type=product_type,
+        trigger_price=stop_loss if auto_exit else None,
         tag=signal["signal_id"],
     )
     result = broker.place_order(order)
@@ -146,7 +171,94 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
     if not fill_price:
         fill_price = price
 
-    return result.order_id, quantity, fill_price
+    return result.order_id, quantity, fill_price, stop_loss, auto_exit
+
+
+def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict):
+    """
+    For every locally-tracked open position: check whether the broker still
+    shows it open. If closed, record it as a ClosedTrade (this is what
+    finally feeds TradeHistoryService.record_closed_trade() — the call site
+    that's been missing since Task 2, so Kelly sizing can graduate off its
+    fixed-2% fallback). If still open, re-run the Darvas box scan and trail
+    the stop-loss up if a tighter one has formed.
+    """
+    from core.brokers.base import OrderStatus
+    from core.risk.kelly import ClosedTrade
+
+    try:
+        live_positions = {p.symbol: p for p in broker.get_positions()}
+    except Exception as e:
+        logger.error("Failed to fetch live positions for trailing/close check: %s", e)
+        return
+
+    for signal_id, pos in list(positions.items()):
+        live = live_positions.get(pos.symbol)
+        still_open = live is not None and live.quantity != 0
+
+        if not still_open:
+            exit_price, exit_date = None, None
+            try:
+                history = broker.get_order_history()
+                candidates = [
+                    o for o in history
+                    if o.symbol == pos.symbol
+                    and o.order_id != pos.sl_order_id
+                    and o.status == OrderStatus.EXECUTED
+                ]
+                if candidates:
+                    latest = max(candidates, key=lambda o: o.timestamp)
+                    exit_price, exit_date = latest.average_price, latest.timestamp
+            except Exception as e:
+                logger.error("[%s] Failed to read order history for exit fill: %s", signal_id, e)
+
+            if exit_price is None:
+                try:
+                    exit_price = broker.get_ltp([pos.symbol]).get(pos.symbol, pos.current_stop)
+                except Exception:
+                    exit_price = pos.current_stop
+            if exit_date is None:
+                exit_date = datetime.now(timezone.utc)
+
+            trade = ClosedTrade(
+                trade_id=pos.signal_id,
+                symbol=pos.symbol,
+                entry_price=pos.entry_price,
+                exit_price=exit_price,
+                quantity=pos.quantity,
+                direction=pos.direction,
+                entry_date=datetime.fromisoformat(pos.entry_date),
+                exit_date=exit_date,
+                strategy=pos.strategy,
+            )
+            sizer.record_closed_trade(trade)
+            _report_outcome(cloud_url, headers, signal_id, "closed", {
+                "exit_price": exit_price, "pnl": trade.pnl, "reason": "stop_hit",
+            })
+            logger.info("[%s] Position closed: %s pnl=%.2f", signal_id, pos.symbol, trade.pnl)
+            remove_position(positions, signal_id)
+            continue
+
+        if pos.direction != "BUY":
+            continue  # trailing only supported for long Darvas breakouts today
+
+        try:
+            to_date = datetime.now(timezone.utc)
+            from_date = to_date - timedelta(days=5)
+            candles = broker.get_historical_data(pos.symbol, pos.timeframe, from_date, to_date)
+            new_stop = next_trailing_stop(candles, pos.current_stop)
+        except Exception as e:
+            logger.error("[%s] Failed to recompute trailing stop for %s: %s",
+                         signal_id, pos.symbol, e)
+            continue
+
+        if new_stop:
+            if broker.modify_stop_loss(pos.sl_order_id, new_stop):
+                logger.info("[%s] Trailed stop for %s: %.2f -> %.2f",
+                            signal_id, pos.symbol, pos.current_stop, new_stop)
+                update_stop(positions, signal_id, new_stop)
+            else:
+                logger.error("[%s] Broker rejected stop trail for %s", signal_id, pos.symbol)
 
 
 def run_agent(config: dict):
@@ -165,6 +277,8 @@ def run_agent(config: dict):
 
     sizer = TradeHistoryService()
     processed = _load_processed_ids()
+    open_positions = load_open_positions()
+    tick = 0
 
     logger.info("Agent running. Cloud: %s | Polling every %ds for CONFIRMED signals.",
                 cloud_url, poll_interval)
@@ -197,7 +311,7 @@ def run_agent(config: dict):
                 logger.info("[%s] Executing %s %s @ %.2f",
                             signal_id, signal["action"], signal["symbol"], signal["price"])
                 try:
-                    order_id, quantity, fill_price = _size_and_place_order(
+                    order_id, quantity, fill_price, stop_loss, auto_exit = _size_and_place_order(
                         broker, sizer, signal, config
                     )
                     _report_outcome(cloud_url, headers, signal_id, "executed", {
@@ -206,10 +320,28 @@ def run_agent(config: dict):
                     })
                     logger.info("[%s] Executed: qty=%d @ %.2f (order %s)",
                                 signal_id, quantity, fill_price, order_id)
+
+                    if auto_exit:
+                        add_position(open_positions, OpenPosition(
+                            signal_id=signal_id,
+                            symbol=signal["symbol"],
+                            direction=signal["action"],
+                            quantity=quantity,
+                            entry_price=fill_price,
+                            entry_date=datetime.now(timezone.utc).isoformat(),
+                            timeframe=signal.get("timeframe", "15m"),
+                            current_stop=stop_loss,
+                            sl_order_id=order_id,
+                            strategy=signal.get("strategy", "darvas_breakout"),
+                        ))
                 except Exception as e:
                     logger.error("[%s] Execution failed: %s", signal_id, e)
                     _report_outcome(cloud_url, headers, signal_id, "failed",
                                     {"reason": str(e)})
+
+            tick += 1
+            if tick % TRAIL_EVERY_N_TICKS == 0 and open_positions:
+                _manage_open_positions(broker, cloud_url, headers, sizer, open_positions)
 
             time.sleep(poll_interval)
 

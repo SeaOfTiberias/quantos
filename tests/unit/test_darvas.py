@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from core.brokers.base import OHLCV
 from core.darvas.box import (
     DarvasBox, DarvasSignal,
-    detect_darvas_boxes, detect_breakout, score_confluence,
+    detect_darvas_boxes, detect_breakout, score_confluence, next_trailing_stop,
     LOOKBACK_PERIOD, MIN_CONSOLIDATION, VOLUME_MULTIPLIER,
 )
 from core.darvas.scanner import DarvasScanner
@@ -246,6 +246,27 @@ class TestConfluenceScoring:
         result = score_confluence(signals)
         assert "1d" in result.timeframes_triggered
         assert "15m" in result.timeframes_triggered
+
+
+# ─── Trailing Stop Tests (Task 4) ─────────────────────────────────────────────
+
+class TestTrailingStop:
+
+    def test_returns_none_when_no_box_formed(self):
+        candles = make_candle_series([100.0] * 10)  # too few for a box
+        assert next_trailing_stop(candles, current_stop=90.0) is None
+
+    def test_returns_none_when_box_bottom_not_tighter(self):
+        candles = build_breakout_series()[:-1]  # exclude the breakout candle
+        box = detect_darvas_boxes(candles, "TEST", "1h")[-1]
+        # current_stop already at (or above) the box bottom — nothing to trail
+        assert next_trailing_stop(candles, current_stop=box.bottom + 1) is None
+
+    def test_returns_tighter_stop_when_box_bottom_is_higher(self):
+        candles = build_breakout_series()[:-1]
+        box = detect_darvas_boxes(candles, "TEST", "1h")[-1]
+        new_stop = next_trailing_stop(candles, current_stop=box.bottom - 1)
+        assert new_stop == box.bottom
 
 
 # ─── Alert Formatting Tests ───────────────────────────────────────────────────

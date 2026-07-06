@@ -41,7 +41,7 @@ async def test_webhook_rejects_low_confluence(monkeypatch):
         "secret": "",
     }
     with patch("cloud.api.main._persist_signal", new_callable=AsyncMock), \
-         patch("cloud.api.main.send_whatsapp", new_callable=AsyncMock):
+         patch("cloud.api.main.send_telegram", new_callable=AsyncMock):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.post("/webhook/tradingview", json=payload)
     assert r.status_code == 200

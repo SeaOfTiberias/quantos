@@ -32,6 +32,7 @@ _PRODUCT_MAP = {
     ProductType.INTRADAY: "INTRADAY",
     ProductType.CNC: "CNC",
     ProductType.MARGIN: "MARGIN",
+    ProductType.CO: "CO",
 }
 
 
@@ -117,6 +118,21 @@ class FyersBroker(BrokerAdapter):
                 "offlineOrder": False,
                 "orderTag": order.tag or "quantos",
             }
+
+            # Cover Order: Fyers wants the stop-loss leg as points-from-LTP
+            # (not an absolute price like stopPrice above) — see
+            # BrokerAdapter.modify_stop_loss docstring for the trailing side
+            # of this. Verify this payload shape against the live Fyers API
+            # before relying on it — see Task 4 plan notes.
+            if order.product_type == ProductType.CO:
+                if order.trigger_price is None:
+                    raise BrokerError("CO order requires trigger_price (stop-loss level).")
+                ltp = self.get_ltp([order.symbol]).get(order.symbol)
+                if not ltp:
+                    raise BrokerError(f"Could not fetch LTP for {order.symbol} to size CO stop-loss.")
+                points = abs(ltp - order.trigger_price)
+                data["stopLoss"] = round(points / 0.05) * 0.05
+
             response = self._client.place_order(data=data)
             if response.get("code") != 200:
                 raise BrokerError(f"Order rejected: {response.get('message')}")
@@ -145,6 +161,28 @@ class FyersBroker(BrokerAdapter):
         self._assert_connected()
         response = self._client.cancel_order(data={"id": order_id})
         return response.get("code") == 200
+
+    def modify_stop_loss(self, order_id: str, new_trigger_price: float) -> bool:
+        """Trail a Cover/Bracket Order's stop-loss leg to a new absolute
+        price. NOT yet verified against a live Fyers account/order — the
+        exact modify_order payload for CO/BO stop legs needs confirming
+        against the fyers-apiv3 SDK docs before this is trusted live
+        (see Task 4 plan)."""
+        self._assert_connected()
+        try:
+            response = self._client.modify_order(data={
+                "id": order_id,
+                "type": self._map_order_type(OrderType.SL_M),
+                "stopPrice": new_trigger_price,
+            })
+            if response.get("code") != 200:
+                logger.error("modify_stop_loss rejected for order %s: %s",
+                             order_id, response.get("message"))
+                return False
+            return True
+        except Exception as e:
+            logger.error("modify_stop_loss failed for order %s: %s", order_id, e)
+            return False
 
     def get_order_status(self, order_id: str) -> OrderResult:
         self._assert_connected()

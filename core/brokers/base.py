@@ -41,6 +41,7 @@ class ProductType(str, Enum):
     INTRADAY = "INTRADAY"
     CNC = "CNC"         # Cash and Carry (delivery)
     MARGIN = "MARGIN"
+    CO = "CO"           # Cover Order — mandatory stop-loss leg, no fixed target
 
 
 @dataclass
@@ -131,6 +132,12 @@ class BrokerAdapter(ABC):
     @abstractmethod
     def cancel_order(self, order_id: str) -> bool:
         """Cancel a pending order. Returns True on success."""
+        ...
+
+    @abstractmethod
+    def modify_stop_loss(self, order_id: str, new_trigger_price: float) -> bool:
+        """Trail an open order's stop-loss leg to a new absolute trigger
+        price (e.g. a Cover Order's SL child order). Returns True on success."""
         ...
 
     @abstractmethod

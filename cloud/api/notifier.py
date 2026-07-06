@@ -24,15 +24,6 @@ BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID       = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
-async def send_whatsapp(message: str) -> bool:
-    """
-    Send a Telegram message. Function name kept as send_whatsapp
-    for API compatibility — all call sites remain unchanged.
-    Returns True on success, False on failure (never raises).
-    """
-    return await send_telegram(message)
-
-
 async def send_telegram(message: str) -> bool:
     """Send a message via Telegram Bot API."""
     token = BOT_TOKEN or os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -84,6 +75,29 @@ async def send_trade_confirmation(
         f"{'🟢 BOUGHT' if action == 'BUY' else '🔴 SOLD'} {symbol}\n"
         f"Qty: {quantity} shares\n"
         f"Price: INR {execution_price:,.2f}{pnl_str}\n"
+        f"--------------------\n"
+        f"QuantOS · {signal_id}"
+    )
+    return await send_telegram(message)
+
+
+async def send_exit_notification(
+    signal_id: str,
+    symbol: str,
+    exit_price: float,
+    pnl: float,
+    reason: str = "stop_hit",
+) -> bool:
+    """Send position-closed notification (Task 4: auto stop-loss/trail exit)."""
+    reason_label = {"stop_hit": "Stop-loss hit", "manual": "Manually closed"}.get(reason, reason)
+    message = (
+        f"📤 Position Closed\n"
+        f"ID: {signal_id}\n"
+        f"--------------------\n"
+        f"{symbol}\n"
+        f"Exit price: INR {exit_price:,.2f}\n"
+        f"P&L: INR {pnl:+,.2f}\n"
+        f"Reason: {reason_label}\n"
         f"--------------------\n"
         f"QuantOS · {signal_id}"
     )

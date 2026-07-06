@@ -255,6 +255,23 @@ def score_confluence(signals: list[DarvasSignal]) -> MultiTimeframeResult:
     )
 
 
+# ─── Trailing Stop ────────────────────────────────────────────────────────────
+
+def next_trailing_stop(candles: list[OHLCV], current_stop: float) -> Optional[float]:
+    """
+    Recompute Darvas boxes on the latest candles and return a tightened
+    (higher) stop-loss if a newer box has formed with a bottom above
+    `current_stop`. Returns None if no box has formed yet, or the latest
+    box's bottom isn't an improvement over the current stop.
+    """
+    boxes = detect_darvas_boxes(candles, symbol="", timeframe="")
+    if not boxes:
+        return None
+
+    latest_bottom = boxes[-1].bottom
+    return latest_bottom if latest_bottom > current_stop else None
+
+
 # ─── Utilities ────────────────────────────────────────────────────────────────
 
 def _average_volume(candles: list[OHLCV], lookback: int = 20) -> float:

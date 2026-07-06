@@ -28,6 +28,10 @@ _PRODUCT_MAP = {
     ProductType.INTRADAY: "MIS",
     ProductType.CNC: "CNC",
     ProductType.MARGIN: "NRML",
+    # Zerodha's Cover Order is a separate order *variety* ("co"), not a
+    # product type — place_order() below doesn't yet set variety=co, so
+    # this product type isn't wired for real CO behavior on Zerodha.
+    ProductType.CO: "MIS",
 }
 
 
@@ -140,6 +144,19 @@ class ZerodhaBroker(BrokerAdapter):
             return True
         except Exception as e:
             logger.error("cancel_order failed: %s", e)
+            return False
+
+    def modify_stop_loss(self, order_id: str, new_trigger_price: float) -> bool:
+        self._assert_connected()
+        try:
+            self._kite.modify_order(
+                variety=self._kite.VARIETY_REGULAR,
+                order_id=order_id,
+                trigger_price=new_trigger_price,
+            )
+            return True
+        except Exception as e:
+            logger.error("modify_stop_loss failed: %s", e)
             return False
 
     def get_order_status(self, order_id: str) -> OrderResult:

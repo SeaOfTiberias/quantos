@@ -29,6 +29,9 @@ class Signal:
     stop_loss:        Optional[float] = None
     executed_at:      Optional[datetime] = None
     execution_price:  Optional[float] = None
+    closed_at:        Optional[datetime] = None
+    exit_price:       Optional[float] = None
+    pnl:              Optional[float] = None
 
 
 class SignalDB:
@@ -74,6 +77,9 @@ class SignalDB:
                 "created_at":       s.created_at.isoformat(),
                 "executed_at":      s.executed_at.isoformat() if s.executed_at else None,
                 "execution_price":  s.execution_price,
+                "closed_at":        s.closed_at.isoformat() if s.closed_at else None,
+                "exit_price":       s.exit_price,
+                "pnl":              s.pnl,
             }
             for s in sorted(rows,
                             key=lambda x: x.created_at, reverse=True)[:limit]
@@ -99,6 +105,18 @@ class SignalDB:
                     s.executed_at = datetime.now()
                     break
 
+    async def mark_closed(self, signal_id: str, exit_price: float, pnl: float) -> None:
+        if self._use_postgres:
+            await self._pg_mark_closed(signal_id, exit_price, pnl)
+        else:
+            for s in self._store:
+                if s.signal_id == signal_id:
+                    s.status = "CLOSED"
+                    s.exit_price = exit_price
+                    s.pnl = pnl
+                    s.closed_at = datetime.now()
+                    break
+
     async def get_signal(self, signal_id: str) -> Optional[Signal]:
         if self._use_postgres:
             return await self._pg_get(signal_id)
@@ -122,6 +140,9 @@ class SignalDB:
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
     async def _pg_mark_executed(self, signal_id: str, execution_price: float) -> None:
+        raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
+
+    async def _pg_mark_closed(self, signal_id: str, exit_price: float, pnl: float) -> None:
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
     async def _pg_get(self, signal_id: str) -> Optional[Signal]:

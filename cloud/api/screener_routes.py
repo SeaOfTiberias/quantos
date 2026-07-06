@@ -18,7 +18,7 @@ from fastapi import APIRouter, UploadFile, HTTPException
 from core.screener.ingest import parse_screener_csv, apply_pre_filters
 from core.screener.ranker import rank_candidates
 from core.screener.alerts import format_shortlist_whatsapp, format_shortlist_summary_line
-from cloud.api.notifier import send_whatsapp
+from cloud.api.notifier import send_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +79,13 @@ async def run_screener_pipeline(
     except Exception as e:
         logger.error("Claude ranking failed: %s", e)
 
-    # 4. WhatsApp alert
+    # 4. Telegram alert
     if send_alert:
         message = format_shortlist_whatsapp(rankings, total_scanned=len(candidates))
         try:
-            await send_whatsapp(message)
+            await send_telegram(message)
         except Exception as e:
-            logger.error("Failed to send shortlist WhatsApp: %s", e)
+            logger.error("Failed to send shortlist alert: %s", e)
 
     logger.info(
         "Screener pipeline complete: %d scanned → %d filtered → %s",

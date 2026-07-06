@@ -11,7 +11,7 @@ Pipeline:
     → Claude pre-trade analyst (US-04)
     → persist signal to DB
     → notify local agent
-    → WhatsApp confirmation (ADR-05)
+    → Telegram confirmation (ADR-05)
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from cloud.api.versioning_routes import router as versioning_router
 from cloud.api.backtest_routes import router as backtest_router
 from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
-from cloud.api.notifier import send_whatsapp, send_telegram, register_telegram_webhook
+from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
 
@@ -157,6 +157,14 @@ class FailureReport(BaseModel):
     reason: str
 
 
+class ClosedReport(BaseModel):
+    """Reported by the local agent once an auto-exit (stop-loss/trail) has
+    closed a position — see Task 4 / agent/main.py _manage_open_positions."""
+    exit_price: float
+    pnl:        float
+    reason:     str = "stop_hit"
+
+
 # ─── Health ──────────────────────────────────────────────────────────────────
 
 # ─── Webhook ─────────────────────────────────────────────────────────────────
@@ -206,9 +214,9 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
                     signal_id, event_check.reason)
         await _persist_signal(signal_id, alert, "BLOCKED_EVENT_RISK", None)
         try:
-            await send_whatsapp(format_event_block_whatsapp(event_check))
+            await send_telegram(format_event_block_whatsapp(event_check))
         except Exception as e:
-            logger.error("Failed to send event block WhatsApp: %s", e)
+            logger.error("Failed to send event block alert: %s", e)
         return SignalResponse(
             signal_id=signal_id,
             symbol=alert.symbol,
@@ -241,7 +249,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     signal_status = "PENDING_CONFIRMATION"
     await _persist_signal(signal_id, alert, signal_status, confidence_score)
 
-    # ── 6. WhatsApp confirmation (ADR-05: human-in-loop) ─────────────────────
+    # ── 6. Telegram confirmation (ADR-05: human-in-loop) ─────────────────────
     await _send_confirmation_request(signal_id, alert, confidence_score)
 
     return SignalResponse(
@@ -250,7 +258,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         action=alert.action,
         status=signal_status,
         confidence_score=confidence_score,
-        message="Signal pending WhatsApp confirmation",
+        message="Signal pending Telegram confirmation",
     )
 
 
@@ -314,6 +322,27 @@ async def failed_signal(signal_id: str, payload: FailureReport,
     except Exception as e:
         logger.error("[%s] Failure notify failed: %s", signal_id, e)
     return {"signal_id": signal_id, "status": "FAILED"}
+
+
+@app.post("/signals/{signal_id}/closed")
+async def closed_signal(signal_id: str, payload: ClosedReport,
+                         _auth=Depends(require_cloud_secret)):
+    """Called by the local agent once auto-exit (Task 4: stop-loss/trail)
+    has closed a position — mirrors /executed and /failed above."""
+    db = await get_db()
+    await db.mark_closed(signal_id, payload.exit_price, payload.pnl)
+    logger.info("[%s] Position closed at %.2f (pnl=%.2f, %s)",
+                signal_id, payload.exit_price, payload.pnl, payload.reason)
+    signal = await db.get_signal(signal_id)
+    if signal:
+        try:
+            await send_exit_notification(
+                signal_id=signal_id, symbol=signal.symbol,
+                exit_price=payload.exit_price, pnl=payload.pnl, reason=payload.reason,
+            )
+        except Exception as e:
+            logger.error("[%s] Exit notify failed: %s", signal_id, e)
+    return {"signal_id": signal_id, "status": "CLOSED"}
 
 
 @app.post("/webhook/telegram")
@@ -407,7 +436,7 @@ async def _send_confirmation_request(signal_id, alert, confidence_score):
         f"Reply (to this message) skip to ignore"
     )
     try:
-        await send_whatsapp(message)
-        logger.info("[%s] WhatsApp confirmation sent", signal_id)
+        await send_telegram(message)
+        logger.info("[%s] Telegram confirmation sent", signal_id)
     except Exception as e:
-        logger.error("[%s] WhatsApp notification failed: %s", signal_id, e)
+        logger.error("[%s] Telegram notification failed: %s", signal_id, e)
