@@ -35,6 +35,38 @@ def load_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
+def _is_loopback(redirect_uri: str) -> bool:
+    host = urlparse(redirect_uri).hostname or ""
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+def capture_auth_code_manually() -> str:
+    """
+    Used when redirect_uri is a public URL we don't control (e.g. Fyers'
+    own https://trade.fyers.in/api-login/redirect-uri/index.html) — the
+    OAuth redirect lands on Fyers' page, not on this machine, so there's
+    no local server to catch it. Ask the user to paste the resulting URL
+    (or just the auth_code/code query param) after completing login.
+    """
+    pasted = input(
+        "\nAfter logging in, your browser will land on a Fyers page whose "
+        "URL contains 'auth_code=...' (or 'code=...').\n"
+        "Paste that full URL (or just the code value) here: "
+    ).strip()
+
+    if "auth_code=" in pasted or "code=" in pasted:
+        qs = parse_qs(urlparse(pasted).query)
+        auth_code = qs.get("auth_code", [None])[0] or qs.get("code", [None])[0]
+        if auth_code:
+            return auth_code
+    # Not a URL — assume the user pasted the raw code value directly.
+    if pasted:
+        return pasted
+
+    print("No auth code provided.")
+    sys.exit(1)
+
+
 def capture_auth_code(redirect_uri: str) -> str:
     """Spin up a one-shot local HTTP server to catch the OAuth redirect."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -104,7 +136,10 @@ def main():
     print(auth_url)
     webbrowser.open(auth_url)
 
-    auth_code = capture_auth_code(redirect_uri)
+    if _is_loopback(redirect_uri):
+        auth_code = capture_auth_code(redirect_uri)
+    else:
+        auth_code = capture_auth_code_manually()
 
     session.set_token(auth_code)
     response = session.generate_token()

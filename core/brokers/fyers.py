@@ -5,6 +5,7 @@ Implements BrokerAdapter for the Fyers API v3.
 Install: pip install fyers-apiv3
 """
 
+import re
 from datetime import datetime
 from typing import Optional
 import logging
@@ -27,13 +28,25 @@ _TF_MAP = {
     "1d": "D",
 }
 
-# Fyers product type mapping
+# Fyers product type mapping — note "CO"/"BO" are NOT valid values here;
+# Fyers v3's place_order rejects productType outright unless it's one of
+# these four (confirmed live: "productType must be one of the following:
+# \"CNC\", \"MARGIN\", \"INTRADAY\", \"MTF\""). Cover/Bracket orders are not
+# available through this endpoint — stop-loss is implemented as a second,
+# separate SL_M order instead (see agent/main.py _size_and_place_order).
 _PRODUCT_MAP = {
     ProductType.INTRADAY: "INTRADAY",
     ProductType.CNC: "CNC",
     ProductType.MARGIN: "MARGIN",
-    ProductType.CO: "CO",
 }
+
+
+def _sanitize_tag(tag: Optional[str]) -> str:
+    """Fyers rejects orderTag values containing anything but alphanumerics
+    (confirmed live: signal_ids like "SIG-DARV-ABC123" get rejected with
+    "orderTag: Only alphanumeric characters allowed") — strip everything
+    else rather than push this quirk onto every caller."""
+    return re.sub(r"[^A-Za-z0-9]", "", tag or "")
 
 
 class FyersBroker(BrokerAdapter):
@@ -116,22 +129,8 @@ class FyersBroker(BrokerAdapter):
                 "validity": "DAY",
                 "disclosedQty": 0,
                 "offlineOrder": False,
-                "orderTag": order.tag or "quantos",
+                "orderTag": _sanitize_tag(order.tag) or "quantos",
             }
-
-            # Cover Order: Fyers wants the stop-loss leg as points-from-LTP
-            # (not an absolute price like stopPrice above) — see
-            # BrokerAdapter.modify_stop_loss docstring for the trailing side
-            # of this. Verify this payload shape against the live Fyers API
-            # before relying on it — see Task 4 plan notes.
-            if order.product_type == ProductType.CO:
-                if order.trigger_price is None:
-                    raise BrokerError("CO order requires trigger_price (stop-loss level).")
-                ltp = self.get_ltp([order.symbol]).get(order.symbol)
-                if not ltp:
-                    raise BrokerError(f"Could not fetch LTP for {order.symbol} to size CO stop-loss.")
-                points = abs(ltp - order.trigger_price)
-                data["stopLoss"] = round(points / 0.05) * 0.05
 
             response = self._client.place_order(data=data)
             if response.get("code") != 200:
@@ -163,11 +162,11 @@ class FyersBroker(BrokerAdapter):
         return response.get("code") == 200
 
     def modify_stop_loss(self, order_id: str, new_trigger_price: float) -> bool:
-        """Trail a Cover/Bracket Order's stop-loss leg to a new absolute
-        price. NOT yet verified against a live Fyers account/order — the
-        exact modify_order payload for CO/BO stop legs needs confirming
-        against the fyers-apiv3 SDK docs before this is trusted live
-        (see Task 4 plan)."""
+        """Trail a standalone SL_M stop order (placed separately from the
+        entry — see agent/main.py _size_and_place_order) to a new absolute
+        trigger price. NOT yet verified against a live Fyers account/order —
+        confirm the modify_order payload shape with a real pending SL_M
+        order before trusting this live."""
         self._assert_connected()
         try:
             response = self._client.modify_order(data={

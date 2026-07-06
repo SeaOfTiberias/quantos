@@ -41,7 +41,6 @@ class ProductType(str, Enum):
     INTRADAY = "INTRADAY"
     CNC = "CNC"         # Cash and Carry (delivery)
     MARGIN = "MARGIN"
-    CO = "CO"           # Cover Order — mandatory stop-loss leg, no fixed target
 
 
 @dataclass

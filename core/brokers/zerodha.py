@@ -28,10 +28,6 @@ _PRODUCT_MAP = {
     ProductType.INTRADAY: "MIS",
     ProductType.CNC: "CNC",
     ProductType.MARGIN: "NRML",
-    # Zerodha's Cover Order is a separate order *variety* ("co"), not a
-    # product type — place_order() below doesn't yet set variety=co, so
-    # this product type isn't wired for real CO behavior on Zerodha.
-    ProductType.CO: "MIS",
 }
 
 

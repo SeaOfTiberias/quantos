@@ -98,11 +98,15 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
     """Kelly-size the position (core/risk/kelly.py) and place it via the
     broker adapter. Raises BrokerError if it can't be sized or placed.
 
-    Places the entry as a Cover Order (CO) whenever a stop_loss is known, so
-    the broker itself carries a stop-loss leg from the moment of entry —
-    see core/brokers/base.py ProductType.CO and FyersBroker.place_order.
-    The trailing loop (_manage_open_positions) ratchets that stop up over
-    the life of the position; this function only places the initial one."""
+    Places the entry as a plain MARKET order, then — if a stop_loss is
+    known — immediately places a second, separate SL_M (stop-loss market)
+    order in the opposite direction as the actual stop-loss leg. (An
+    earlier version of this tried to use a single Fyers Cover Order for
+    this; Fyers' v3 API rejects "CO" as a productType outright — CNC,
+    MARGIN, INTRADAY, MTF are the only valid values — so two plain orders
+    it is.) The trailing loop (_manage_open_positions) ratchets that SL_M
+    order's trigger price up over the life of the position via
+    broker.modify_stop_loss(sl_order_id, ...)."""
     from core.brokers.base import Order, OrderDirection, OrderType, ProductType, BrokerError
 
     symbol = signal["symbol"]
@@ -139,20 +143,13 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
             f"insufficient funds or stop-loss too tight"
         )
 
-    # Auto-exit (Task 4): place the entry as a Cover Order carrying the
-    # Darvas stop_loss as its mandatory stop-loss leg, so the position is
-    # protected from the moment it fills. Disable via risk.auto_exit: false
-    # in config (e.g. for CNC/delivery trades CO doesn't apply to).
-    auto_exit = bool(risk_cfg.get("auto_exit", True))
-    product_type = ProductType.CO if auto_exit else configured_product_type
-
+    entry_direction = OrderDirection.BUY if action == "BUY" else OrderDirection.SELL
     order = Order(
         symbol=symbol,
-        direction=OrderDirection.BUY if action == "BUY" else OrderDirection.SELL,
+        direction=entry_direction,
         quantity=quantity,
         order_type=OrderType.MARKET,
-        product_type=product_type,
-        trigger_price=stop_loss if auto_exit else None,
+        product_type=configured_product_type,
         tag=signal["signal_id"],
     )
     result = broker.place_order(order)
@@ -171,7 +168,26 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
     if not fill_price:
         fill_price = price
 
-    return result.order_id, quantity, fill_price, stop_loss, auto_exit
+    # Auto-exit (Task 4): place a separate SL_M stop order in the opposite
+    # direction as the actual stop-loss leg. Disable via risk.auto_exit:
+    # false in config (e.g. for CNC/delivery trades you intend to hold).
+    auto_exit = bool(risk_cfg.get("auto_exit", True))
+    sl_order_id = None
+    if auto_exit:
+        exit_direction = OrderDirection.SELL if entry_direction == OrderDirection.BUY else OrderDirection.BUY
+        sl_order = Order(
+            symbol=symbol,
+            direction=exit_direction,
+            quantity=quantity,
+            order_type=OrderType.SL_M,
+            product_type=configured_product_type,
+            trigger_price=stop_loss,
+            tag=f"{signal['signal_id']}-sl",
+        )
+        sl_result = broker.place_order(sl_order)
+        sl_order_id = sl_result.order_id
+
+    return result.order_id, quantity, fill_price, stop_loss, auto_exit, sl_order_id
 
 
 def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict):
@@ -200,15 +216,32 @@ def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict):
             exit_price, exit_date = None, None
             try:
                 history = broker.get_order_history()
-                candidates = [
-                    o for o in history
-                    if o.symbol == pos.symbol
-                    and o.order_id != pos.sl_order_id
-                    and o.status == OrderStatus.EXECUTED
-                ]
-                if candidates:
-                    latest = max(candidates, key=lambda o: o.timestamp)
-                    exit_price, exit_date = latest.average_price, latest.timestamp
+                # The SL_M stop order is a real, separate order now (not a
+                # bundled CO leg) — if it filled, that's the exit itself.
+                sl_fill = next(
+                    (o for o in history
+                     if o.order_id == pos.sl_order_id and o.status == OrderStatus.EXECUTED),
+                    None,
+                )
+                if sl_fill:
+                    exit_price, exit_date = sl_fill.average_price, sl_fill.timestamp
+                else:
+                    # Closed some other way (e.g. manual square-off in the
+                    # Fyers app) — fall back to the latest executed fill for
+                    # this symbol, and cancel the now-orphaned stop order.
+                    candidates = [
+                        o for o in history
+                        if o.symbol == pos.symbol
+                        and o.order_id != pos.sl_order_id
+                        and o.status == OrderStatus.EXECUTED
+                    ]
+                    if candidates:
+                        latest = max(candidates, key=lambda o: o.timestamp)
+                        exit_price, exit_date = latest.average_price, latest.timestamp
+                    try:
+                        broker.cancel_order(pos.sl_order_id)
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.error("[%s] Failed to read order history for exit fill: %s", signal_id, e)
 
@@ -311,7 +344,7 @@ def run_agent(config: dict):
                 logger.info("[%s] Executing %s %s @ %.2f",
                             signal_id, signal["action"], signal["symbol"], signal["price"])
                 try:
-                    order_id, quantity, fill_price, stop_loss, auto_exit = _size_and_place_order(
+                    order_id, quantity, fill_price, stop_loss, auto_exit, sl_order_id = _size_and_place_order(
                         broker, sizer, signal, config
                     )
                     _report_outcome(cloud_url, headers, signal_id, "executed", {
@@ -331,7 +364,7 @@ def run_agent(config: dict):
                             entry_date=datetime.now(timezone.utc).isoformat(),
                             timeframe=signal.get("timeframe", "15m"),
                             current_stop=stop_loss,
-                            sl_order_id=order_id,
+                            sl_order_id=sl_order_id,
                             strategy=signal.get("strategy", "darvas_breakout"),
                         ))
                 except Exception as e:

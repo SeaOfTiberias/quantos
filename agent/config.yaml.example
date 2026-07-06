@@ -14,11 +14,12 @@ risk:
   max_risk_per_trade: 0.02          # 2% max risk per trade
   max_open_positions: 5             # Maximum concurrent positions
   max_daily_loss: 0.05              # 5% daily loss circuit breaker
-  product_type: INTRADAY            # INTRADAY | CNC | MARGIN — used only when auto_exit is false
+  product_type: INTRADAY            # INTRADAY | CNC | MARGIN — used for both the entry and the SL_M stop order
   assumed_stop_pct: 0.015           # Fallback stop-loss % used only if a signal has no stop_loss
-  auto_exit: true                   # Place entries as Fyers Cover Orders (mandatory stop-loss
-                                     # leg, trailed up automatically) instead of a plain MARKET
-                                     # order. Set false for CNC/delivery trades, which CO doesn't apply to.
+  auto_exit: true                   # After the entry fills, place a second SL_M stop order at the
+                                     # Darvas stop_loss level, trailed up automatically as new boxes
+                                     # form. Set false to disable (e.g. for delivery trades you intend
+                                     # to manage manually).
 
 cloud:
   api_url: https://your-quantos-instance.railway.app
