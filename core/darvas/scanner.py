@@ -159,6 +159,16 @@ class DarvasScanner:
         if not candles:
             logger.warning("No candles returned for %s %s", symbol, timeframe)
             return None
+        # History is fetched up to now(), so mid-session the last candle is
+        # still forming — detect_breakout treats candles[-1] as the breakout
+        # candle, and an intrabar wick that retraces by close is exactly the
+        # false-breakout class Darvas filters out. Pine already fires on bar
+        # close only (alert.freq_once_per_bar_close); this makes the internal
+        # path match. Also keeps the forming candle's partial volume out of
+        # the volume-confirmation ratio.
+        candles = _drop_forming_candle(candles, timeframe)
+        if not candles:
+            return None
         return detect_breakout(candles, symbol, timeframe)
 
     async def _fetch_candles(
@@ -208,6 +218,43 @@ class DarvasScanner:
 
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
+
+# NSE cash session close — a daily candle is only closed once this has passed.
+_IST = timezone(timedelta(hours=5, minutes=30))
+_NSE_CLOSE = (15, 30)
+
+
+def _drop_forming_candle(
+    candles: list[OHLCV],
+    timeframe: str,
+    now: Optional[datetime] = None,
+) -> list[OHLCV]:
+    """
+    Return `candles` without the final candle if its time bucket hasn't
+    closed yet. Candle timestamps are bar-open times; intraday buckets
+    close open+15m/60m, daily buckets close at that session's NSE close
+    (15:30 IST). Naive timestamps are assumed UTC (FyersBroker returns
+    tz-aware UTC; this keeps other adapters/tests from crashing the
+    comparison).
+    """
+    if not candles:
+        return candles
+    now = now or datetime.now(timezone.utc)
+    last_open = candles[-1].timestamp
+    if last_open.tzinfo is None:
+        last_open = last_open.replace(tzinfo=timezone.utc)
+
+    if timeframe == "1d":
+        closes_at = last_open.astimezone(_IST).replace(
+            hour=_NSE_CLOSE[0], minute=_NSE_CLOSE[1], second=0, microsecond=0)
+    else:
+        minutes = {"15m": 15, "1h": 60}.get(timeframe)
+        if minutes is None:
+            return candles  # unknown timeframe — don't guess at bucket size
+        closes_at = last_open + timedelta(minutes=minutes)
+
+    return candles[:-1] if closes_at > now else candles
+
 
 def _lookback_date(timeframe: str, num_candles: int, to_date: datetime) -> datetime:
     """Calculate from_date based on timeframe and desired candle count."""

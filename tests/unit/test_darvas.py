@@ -420,3 +420,76 @@ class TestDarvasScannerThrottling:
 
         assert result == []
         assert broker.get_historical_data.call_count == DarvasScanner.MAX_RETRIES
+
+
+# ─── Confirmed-Candle Fix (S4-6 / P1-2) ──────────────────────────────────────
+#
+# Stage B fetches history up to now(), so mid-session candles[-1] is still
+# forming. detect_breakout treats candles[-1] as the breakout candle —
+# firing on an intrabar wick that retraces by close is the exact
+# false-breakout class Darvas methodology exists to filter.
+
+from core.darvas.scanner import _drop_forming_candle
+
+
+class TestConfirmedCandleFix:
+
+    def test_forming_15m_candle_is_dropped(self):
+        candles = build_breakout_series()
+        five_min_into_bar = candles[-1].timestamp + timedelta(minutes=5)
+        trimmed = _drop_forming_candle(candles, "15m", now=five_min_into_bar)
+        assert len(trimmed) == len(candles) - 1
+        assert trimmed == candles[:-1]
+
+    def test_closed_15m_candle_is_kept(self):
+        candles = build_breakout_series()
+        bar_closed = candles[-1].timestamp + timedelta(minutes=15)
+        assert _drop_forming_candle(candles, "15m", now=bar_closed) == candles
+
+    def test_forming_breakout_does_not_fire_closed_one_does(self):
+        """The S4-6 acceptance test: a final forming candle ticking above
+        the box top does NOT fire; the same series once that candle has
+        closed does."""
+        candles = build_breakout_series()
+        last_open = candles[-1].timestamp
+
+        mid_bar = _drop_forming_candle(candles, "15m", now=last_open + timedelta(minutes=5))
+        assert detect_breakout(mid_bar, "TEST", "15m") is None
+
+        closed = _drop_forming_candle(candles, "15m", now=last_open + timedelta(minutes=15))
+        assert detect_breakout(closed, "TEST", "15m") is not None
+
+    def test_hourly_bucket(self):
+        candles = build_breakout_series()
+        last_open = candles[-1].timestamp
+        assert len(_drop_forming_candle(candles, "1h", now=last_open + timedelta(minutes=59))) \
+            == len(candles) - 1
+        assert _drop_forming_candle(candles, "1h", now=last_open + timedelta(minutes=60)) == candles
+
+    def test_daily_candle_forms_until_nse_close(self):
+        ist = timezone(timedelta(hours=5, minutes=30))
+        candles = build_breakout_series()
+        # Rebuild the final candle as "today's" daily bar opening 09:15 IST
+        last = candles[-1]
+        session_open = datetime(2026, 7, 8, 9, 15, tzinfo=ist)
+        candles[-1] = OHLCV(timestamp=session_open, open=last.open, high=last.high,
+                            low=last.low, close=last.close, volume=last.volume)
+
+        mid_session = datetime(2026, 7, 8, 13, 0, tzinfo=ist)
+        assert len(_drop_forming_candle(candles, "1d", now=mid_session)) == len(candles) - 1
+
+        after_close = datetime(2026, 7, 8, 15, 31, tzinfo=ist)
+        assert _drop_forming_candle(candles, "1d", now=after_close) == candles
+
+    def test_naive_timestamps_are_treated_as_utc(self):
+        naive = [OHLCV(timestamp=datetime(2026, 1, 1, 9, 15), open=100, high=101,
+                       low=99, close=100.5, volume=1000)]
+        aware_now = datetime(2026, 1, 1, 9, 20, tzinfo=timezone.utc)
+        assert _drop_forming_candle(naive, "15m", now=aware_now) == []
+
+    def test_unknown_timeframe_left_untouched(self):
+        candles = build_breakout_series()
+        assert _drop_forming_candle(candles, "5m", now=candles[-1].timestamp) == candles
+
+    def test_empty_list_is_safe(self):
+        assert _drop_forming_candle([], "15m") == []
