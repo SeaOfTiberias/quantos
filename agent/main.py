@@ -292,6 +292,22 @@ def _run_discovery_scan(broker, universe_path: str, discovery_watchlist: dict,
     scanner = WeeklyDiscoveryScanner(broker)
     results = asyncio.run(scanner.scan_universe(symbols))
 
+    if not results:
+        # scan_universe swallows per-symbol exceptions (return_exceptions=True)
+        # rather than raising, so a systemic failure (bad credentials, broker
+        # outage, a bug in analyse_symbol) looks identical to a quiet day with
+        # zero candidates unless we raise here ourselves. Every symbol failing
+        # out of a non-empty universe is never a legitimate "no candidates
+        # today" — raise so run_agent's except block does NOT mark today as
+        # done, letting the next agent start retry instead of silently
+        # skipping for 24h (this happened three times live: date_format,
+        # event-loop binding, and history_days bugs each looked like "0
+        # candidates" until this check existed).
+        raise RuntimeError(
+            f"Stage A scan produced 0 results out of {len(symbols)} symbols — "
+            "treating as a systemic failure, not a quiet day."
+        )
+
     add_candidates = check_add_candidates(discovery_watchlist, results)
     merge_scan_results(discovery_watchlist, results,
                         watchlist_days=DISCOVERY_CONFIG["watchlist_days"])
