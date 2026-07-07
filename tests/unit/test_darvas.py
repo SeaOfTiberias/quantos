@@ -2,6 +2,7 @@
 US-02 Darvas Box Scanner — Unit Tests
 """
 
+import asyncio
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -322,3 +323,100 @@ class TestAlertFormatting:
         msg = format_watchlist_summary(results)
         assert "RELIANCE" in msg
         assert "TCS" in msg
+
+
+# ─── Scanner throttling ────────────────────────────────────────────────────────
+
+class TestDarvasScannerThrottling:
+    """
+    Regression coverage for a live bug found the moment Stage A finally
+    produced a real shortlist: scan_watchlist() had zero throttling, and
+    scan() alone fires 3 concurrent requests per symbol (15m/1h/1d) — a
+    130-symbol shortlist from Stage A would mean ~390 simultaneous Fyers
+    history calls. core/darvas/weekly_discovery.py's WeeklyDiscoveryScanner
+    already proved live that even 5 concurrent requests exhausts Fyers'
+    rate limit, so this was certain to fail identically. Same fix:
+    semaphore constructed inside the coroutine (not __init__, to avoid the
+    event-loop-binding bug also found in weekly_discovery.py) plus
+    retry-with-backoff specifically for 429s.
+    """
+
+    def _mock_broker_with(self, side_effect_or_return):
+        broker = MagicMock()
+        if isinstance(side_effect_or_return, list) and side_effect_or_return and \
+                isinstance(side_effect_or_return[0], Exception):
+            broker.get_historical_data.side_effect = side_effect_or_return
+        else:
+            broker.get_historical_data.return_value = side_effect_or_return
+        return broker
+
+    def test_scan_watchlist_via_asyncio_run_from_sync_context(self):
+        """Same construction pattern as agent/main.py's _run_granular_scan:
+        DarvasScanner(broker) built synchronously, then asyncio.run(...)."""
+        broker = self._mock_broker_with([])   # empty candles -> no breakout, but no crash
+        scanner = DarvasScanner(broker, max_concurrent=2)
+
+        results = asyncio.run(scanner.scan_watchlist(["RELIANCE", "TCS", "INFY"]))
+
+        assert len(results) == 0   # nothing above min_confluence, but no exceptions
+        assert broker.get_historical_data.call_count == 9   # 3 symbols x 3 timeframes
+
+    def test_scan_watchlist_can_run_more_than_once(self):
+        broker = self._mock_broker_with([])
+        scanner = DarvasScanner(broker, max_concurrent=2)
+
+        first = asyncio.run(scanner.scan_watchlist(["RELIANCE"]))
+        second = asyncio.run(scanner.scan_watchlist(["TCS"]))
+
+        assert first == []
+        assert second == []
+
+    def _run_fetch_candles(self, scanner, symbol="RELIANCE", timeframe="1d"):
+        """Exercises _fetch_candles directly (one timeframe, one semaphore
+        slot) rather than through scan()'s 3-way concurrent fan-out, where
+        a shared mock side_effect list would race across timeframes and
+        make call ordering ambiguous."""
+        async def _run():
+            sem = asyncio.Semaphore(1)
+            return await scanner._fetch_candles(symbol, timeframe, 120, sem)
+        return asyncio.run(_run())
+
+    def test_retries_on_429_then_succeeds(self, monkeypatch):
+        monkeypatch.setattr(DarvasScanner, "RETRY_BACKOFF_SECONDS", 0.01)
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = [
+            Exception("History fetch failed: {'code': 429, 'message': 'request limit reached'}"),
+            [],
+        ]
+        scanner = DarvasScanner(broker, max_concurrent=1)
+
+        result = self._run_fetch_candles(scanner)
+
+        assert result == []
+        assert broker.get_historical_data.call_count == 2
+
+    def test_non_rate_limit_error_does_not_retry(self, monkeypatch):
+        monkeypatch.setattr(DarvasScanner, "RETRY_BACKOFF_SECONDS", 0.01)
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = Exception(
+            "History fetch failed: {'code': -300, 'message': 'Invalid symbol provided'}"
+        )
+        scanner = DarvasScanner(broker, max_concurrent=1)
+
+        result = self._run_fetch_candles(scanner)
+
+        assert result == []
+        assert broker.get_historical_data.call_count == 1   # no retry for non-429 errors
+
+    def test_gives_up_after_max_retries(self, monkeypatch):
+        monkeypatch.setattr(DarvasScanner, "RETRY_BACKOFF_SECONDS", 0.01)
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = Exception(
+            "History fetch failed: {'code': 429, 'message': 'request limit reached'}"
+        )
+        scanner = DarvasScanner(broker, max_concurrent=1)
+
+        result = self._run_fetch_candles(scanner)
+
+        assert result == []
+        assert broker.get_historical_data.call_count == DarvasScanner.MAX_RETRIES

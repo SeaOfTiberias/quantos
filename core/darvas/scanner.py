@@ -45,10 +45,23 @@ class DarvasScanner:
     Multi-timeframe Darvas Box scanner.
     Wraps the broker adapter for data fetching and
     coordinates detection across all configured timeframes.
+
+    Throttled the same way core/darvas/weekly_discovery.py's
+    WeeklyDiscoveryScanner is: confirmed live that Fyers' history endpoint
+    rate-limits hard well below what an unthrottled asyncio.gather() fires.
+    scan_watchlist() feeds this scanner a shortlist that can run to 100+
+    symbols (from Stage A's discovery scan) and scan() alone already fires
+    3 concurrent requests per symbol (15m/1h/1d) — unthrottled, a 100+
+    symbol watchlist means hundreds of simultaneous requests.
     """
 
-    def __init__(self, broker: BrokerAdapter):
+    MAX_RETRIES = 3
+    RETRY_BACKOFF_SECONDS = 3.0
+
+    def __init__(self, broker: BrokerAdapter, max_concurrent: int = 2):
         self.broker = broker
+        self._max_concurrent = max_concurrent
+        self._sem: Optional[asyncio.Semaphore] = None
 
     async def scan(self, symbol: str) -> MultiTimeframeResult:
         """
@@ -57,9 +70,17 @@ class DarvasScanner:
         """
         logger.info("Scanning %s across %s", symbol, list(TIMEFRAMES.keys()))
 
-        # Fetch all timeframes concurrently
+        # Falls back to a fresh semaphore when called standalone (not via
+        # scan_watchlist) — created here, inside the running coroutine, for
+        # the same reason WeeklyDiscoveryScanner constructs its semaphore
+        # inside scan_universe() rather than __init__: binding it at
+        # construction time can attach it to a different event loop than
+        # the one that ends up running it.
+        sem = self._sem or asyncio.Semaphore(self._max_concurrent)
+
+        # Fetch all timeframes concurrently (throttled via `sem`)
         tasks = {
-            tf: self._fetch_and_detect(symbol, tf, cfg["candles"])
+            tf: self._fetch_and_detect(symbol, tf, cfg["candles"], sem)
             for tf, cfg in TIMEFRAMES.items()
         }
 
@@ -100,6 +121,12 @@ class DarvasScanner:
         """
         logger.info("Scanning watchlist: %d symbols", len(symbols))
 
+        # One shared semaphore across the whole watchlist, so total
+        # concurrent Fyers requests stay bounded regardless of how many
+        # symbols are being scanned in parallel (each scan() fires up to
+        # 3 requests on its own). Constructed here rather than __init__ —
+        # see scan()'s comment for why.
+        self._sem = asyncio.Semaphore(self._max_concurrent)
         tasks = [self.scan(symbol) for symbol in symbols]
         all_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -125,9 +152,10 @@ class DarvasScanner:
         symbol: str,
         timeframe: str,
         num_candles: int,
+        sem: asyncio.Semaphore,
     ) -> Optional[DarvasSignal]:
         """Fetch OHLCV data and run breakout detection for one timeframe."""
-        candles = await self._fetch_candles(symbol, timeframe, num_candles)
+        candles = await self._fetch_candles(symbol, timeframe, num_candles, sem)
         if not candles:
             logger.warning("No candles returned for %s %s", symbol, timeframe)
             return None
@@ -138,26 +166,45 @@ class DarvasScanner:
         symbol: str,
         timeframe: str,
         num_candles: int,
+        sem: asyncio.Semaphore,
     ) -> list[OHLCV]:
         """
         Fetch OHLCV candles from broker.
-        Runs in a thread pool since broker SDKs are synchronous.
+        Runs in a thread pool since broker SDKs are synchronous. Throttled
+        via `sem` and retried on Fyers 429s — see the class docstring.
         """
         to_date   = datetime.now(timezone.utc)
         from_date = _lookback_date(timeframe, num_candles, to_date)
-
         loop = asyncio.get_event_loop()
-        candles = await loop.run_in_executor(
-            None,
-            lambda: self.broker.get_historical_data(
-                symbol=symbol,
-                timeframe=timeframe,
-                from_date=from_date,
-                to_date=to_date,
-            )
-        )
-        logger.debug("Fetched %d candles for %s %s", len(candles), symbol, timeframe)
-        return candles
+
+        for attempt in range(self.MAX_RETRIES):
+            async with sem:
+                try:
+                    candles = await loop.run_in_executor(
+                        None,
+                        lambda: self.broker.get_historical_data(
+                            symbol=symbol,
+                            timeframe=timeframe,
+                            from_date=from_date,
+                            to_date=to_date,
+                        )
+                    )
+                    await asyncio.sleep(0.5)   # be polite to the Fyers API
+                    logger.debug("Fetched %d candles for %s %s", len(candles), symbol, timeframe)
+                    return candles
+                except Exception as e:
+                    is_rate_limited = "429" in str(e)
+                    if is_rate_limited and attempt < self.MAX_RETRIES - 1:
+                        wait = self.RETRY_BACKOFF_SECONDS * (attempt + 1)
+                        logger.debug(
+                            "Rate limited fetching %s %s (attempt %d/%d) — retrying in %.0fs",
+                            symbol, timeframe, attempt + 1, self.MAX_RETRIES, wait,
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+                    logger.warning("Failed to fetch %s candles for %s: %s", timeframe, symbol, e)
+                    return []
+        return []
 
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
