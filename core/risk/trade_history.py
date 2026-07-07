@@ -2,14 +2,22 @@
 QuantOS — Trade History Service
 ───────────────────────────────────
 US-07: Stores closed trades and exposes the recalc-on-close trigger.
-In production this persists to Postgres (ADR-03: user_id on every row).
-For now it's an in-memory store, same pattern as cloud/api/db.py.
+
+Persistence is opt-in via `persist_path` (the agent passes
+~/.quantos/trade_history.json — Kelly's 20-trade minimum is unreachable
+if history dies with each daily agent restart). Without a path it stays
+a pure in-memory store (cloud usage; the Postgres copy synced via
+/signals/{id}/closed is the analytics mirror, this file is the sizing
+source of truth per ADR-01: sizing must work offline).
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 from core.risk.kelly import ClosedTrade, SizingResult
 from core.risk.kelly_calculator import calculate_position_size
@@ -24,9 +32,12 @@ class TradeHistoryService:
     multi-tenant deployment (ADR-03); for now, single global instance.
     """
 
-    def __init__(self):
+    def __init__(self, persist_path: Path | str | None = None):
         self._trades: list[ClosedTrade] = []
         self._last_sizing: dict[str, SizingResult] = {}  # cache per symbol
+        self._persist_path = Path(persist_path) if persist_path else None
+        if self._persist_path:
+            self._load()
 
     def record_closed_trade(self, trade: ClosedTrade) -> SizingResult:
         """
@@ -34,6 +45,7 @@ class TradeHistoryService:
         This is the "recalc trigger on trade close" from ADR / US-07 spec.
         """
         self._trades.append(trade)
+        self._save()
         logger.info(
             "Trade closed: %s %s pnl=%.2f (%.2f%%) — recalculating Kelly sizing",
             trade.symbol, trade.direction, trade.pnl, trade.pnl_pct * 100,
@@ -91,6 +103,37 @@ class TradeHistoryService:
             "win_rate": round(wins / len(self._trades), 4),
             "total_pnl": round(total_pnl, 2),
         }
+
+    def _load(self) -> None:
+        """Load persisted trades. A corrupt/unreadable file is logged and
+        skipped rather than crashing the agent at startup — sizing then
+        rebuilds from FIXED_FALLBACK, which is safe (smaller, not larger)."""
+        if not self._persist_path.exists():
+            return
+        try:
+            raw = json.loads(self._persist_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Could not read trade history %s: %s — starting empty",
+                           self._persist_path, e)
+            return
+        for item in raw:
+            item["entry_date"] = datetime.fromisoformat(item["entry_date"])
+            item["exit_date"] = datetime.fromisoformat(item["exit_date"])
+            self._trades.append(ClosedTrade(**item))
+        logger.info("Loaded %d closed trade(s) from %s",
+                    len(self._trades), self._persist_path)
+
+    def _save(self) -> None:
+        if not self._persist_path:
+            return
+        self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+        data = []
+        for t in self._trades:
+            d = asdict(t)
+            d["entry_date"] = t.entry_date.isoformat()
+            d["exit_date"] = t.exit_date.isoformat()
+            data.append(d)
+        self._persist_path.write_text(json.dumps(data, indent=2))
 
     def _estimate_capital(self) -> float:
         """

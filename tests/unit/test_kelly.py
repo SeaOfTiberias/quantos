@@ -315,6 +315,61 @@ class TestTradeHistoryService:
         assert last is not None
 
 
+# ─── Trade History Persistence (S4-4 / P1-1) ───────────────────────────────────
+
+class TestTradeHistoryPersistence:
+
+    def test_history_survives_restart(self, tmp_path):
+        path = tmp_path / "trade_history.json"
+        service = TradeHistoryService(persist_path=path)
+        service.record_closed_trade(make_trade(symbol="RELIANCE"))
+        service.record_closed_trade(make_trade(symbol="TCS", entry=100, exit=95))
+
+        # Simulate the daily agent restart: brand-new instance, same file
+        reloaded = TradeHistoryService(persist_path=path)
+        trades = reloaded.get_trade_history()
+        assert len(trades) == 2
+        assert {t.symbol for t in trades} == {"RELIANCE", "TCS"}
+        assert trades[0].pnl == make_trade(symbol="RELIANCE").pnl
+
+    def test_twentieth_trade_flips_to_kelly_across_restarts(self, tmp_path):
+        """S4-4 AC: Kelly's 20-trade minimum must be reachable even though
+        the agent restarts daily."""
+        path = tmp_path / "trade_history.json"
+
+        # 19 trades recorded across three separate "agent sessions"
+        for session_slice in (range(0, 7), range(7, 14), range(14, 19)):
+            service = TradeHistoryService(persist_path=path)
+            for i in session_slice:
+                exit_price = 112.0 if i % 3 != 2 else 96.0  # ~2:1 winners, positive edge
+                service.record_closed_trade(
+                    make_trade(entry=100.0, exit=exit_price, days_ago=25 - i))
+
+        # Fresh restart, 19 trades on disk → still building history
+        service = TradeHistoryService(persist_path=path)
+        assert len(service.get_trade_history()) == 19
+        assert service.get_current_sizing("RELIANCE", capital=500000).method == "FIXED_FALLBACK"
+
+        # The 20th closed trade flips the method
+        result = service.record_closed_trade(make_trade(entry=100.0, exit=112.0, days_ago=5))
+        assert result.method == "KELLY"
+
+    def test_corrupt_file_starts_empty_without_crashing(self, tmp_path):
+        path = tmp_path / "trade_history.json"
+        path.write_text("{not valid json")
+        service = TradeHistoryService(persist_path=path)
+        assert service.get_trade_history() == []
+        # And recording still works (file gets rewritten cleanly)
+        service.record_closed_trade(make_trade())
+        assert len(TradeHistoryService(persist_path=path).get_trade_history()) == 1
+
+    def test_no_persist_path_stays_in_memory(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        service = TradeHistoryService()
+        service.record_closed_trade(make_trade())
+        assert list(tmp_path.iterdir()) == []  # nothing written anywhere near us
+
+
 # ─── WhatsApp Formatting Tests ─────────────────────────────────────────────────
 
 class TestSizingWhatsappFormat:

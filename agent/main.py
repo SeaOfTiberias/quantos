@@ -69,6 +69,11 @@ PROCESSED_SIGNALS_PATH = Path.home() / ".quantos" / "processed_signals.json"
 # once per calendar day — this file just records the date of the last run.
 LAST_DISCOVERY_PATH = Path.home() / ".quantos" / "last_discovery_scan.txt"
 
+# Closed-trade history feeding Kelly sizing (core/risk/trade_history.py) —
+# persisted because the agent restarts daily (Fyers token expiry) and the
+# Kelly 20-trade minimum would otherwise never be reached.
+TRADE_HISTORY_PATH = Path.home() / ".quantos" / "trade_history.json"
+
 # NSE cash market hours (IST). Stage B (granular intraday timing via
 # core/darvas/scanner.py) only makes sense while the market's open.
 IST          = timezone(timedelta(hours=5, minutes=30))
@@ -545,7 +550,9 @@ def run_agent(config: dict):
     regime_service = RegimeService(broker)
     regime_every_n_ticks = max(1, int(REGIME_CACHE_TTL / poll_interval))
 
-    sizer = TradeHistoryService()
+    # Persisted so Kelly's 20-trade minimum survives the daily agent
+    # restart (Fyers token expiry) — see core/risk/trade_history.py.
+    sizer = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
     processed = _load_processed_ids()
     open_positions = load_open_positions()
     discovery_watchlist = load_watchlist()
