@@ -279,10 +279,21 @@ class WeeklyDiscoveryScanner:
     def __init__(self, broker: BrokerAdapter, cfg: Optional[dict] = None, max_concurrent: int = 5):
         self.broker = broker
         self.cfg = {**DEFAULT_CONFIG, **(cfg or {})}
-        self._sem = asyncio.Semaphore(max_concurrent)
+        self._max_concurrent = max_concurrent
+        self._sem: Optional[asyncio.Semaphore] = None
 
     async def scan_universe(self, symbols: list[str]) -> list[DiscoveryResult]:
         logger.info("Discovery scan starting: %d symbols", len(symbols))
+        # Created here, not in __init__: agent/main.py constructs this
+        # scanner synchronously and then calls asyncio.run(scan_universe(...)),
+        # which spins up a brand new event loop. Python 3.9's asyncio.Semaphore
+        # binds to whatever loop is current at construction time — creating it
+        # in __init__ bound it to a *different* loop than the one scan_universe
+        # actually runs on, causing every _scan_one() call to fail with
+        # "Future attached to a different loop." Constructing it here, inside
+        # the coroutine itself, guarantees it's bound to the loop that's
+        # actually running.
+        self._sem = asyncio.Semaphore(self._max_concurrent)
         results = await asyncio.gather(
             *(self._scan_one(s) for s in symbols), return_exceptions=True,
         )

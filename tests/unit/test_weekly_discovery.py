@@ -5,11 +5,13 @@ Ported methodology from the user's DarvasTrader project onto Fyers daily
 candles. Mirrors the style of tests/unit/test_darvas.py.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 from core.brokers.base import OHLCV
 from core.darvas.weekly_discovery import (
-    DEFAULT_CONFIG, _to_weekly, _detect_box, analyse_symbol,
+    DEFAULT_CONFIG, WeeklyDiscoveryScanner, _to_weekly, _detect_box, analyse_symbol,
 )
 
 
@@ -191,3 +193,50 @@ class TestAnalyseSymbol:
         final_week = [{"close": 100, "high": 101, "low": 99}] * 5
         daily = build_flat_box_series(final_week)
         assert analyse_symbol("TEST", daily, cfg) is None
+
+
+# ─── Scanner — real asyncio.run() call pattern ────────────────────────────────
+
+class TestWeeklyDiscoveryScanner:
+    """
+    Regression coverage for a live bug: agent/main.py constructs
+    WeeklyDiscoveryScanner synchronously (no event loop running yet), then
+    calls asyncio.run(scanner.scan_universe(...)), which spins up a brand
+    new loop. Constructing the semaphore in __init__ bound it to whatever
+    loop happened to be "current" at construction time, not the one
+    scan_universe actually runs on — every _scan_one() call failed with
+    "Future attached to a different loop" and scan_universe silently
+    returned an empty list (the exception is caught by
+    return_exceptions=True and just logged). These tests call
+    asyncio.run() from a plain sync test function specifically to
+    reproduce that construction pattern — an `async def` test would not
+    have caught this, since pytest-asyncio already has a loop running by
+    the time the scanner is constructed.
+    """
+
+    def _mock_broker(self):
+        broker = MagicMock()
+        final_week = [{"close": 100, "high": 101, "low": 99}] * 5
+        broker.get_historical_data.return_value = build_flat_box_series(final_week)
+        return broker
+
+    def test_scan_universe_via_asyncio_run_from_sync_context(self):
+        broker = self._mock_broker()
+        scanner = WeeklyDiscoveryScanner(broker)   # constructed with no loop running
+
+        results = asyncio.run(scanner.scan_universe(["RELIANCE", "TCS", "INFY"]))
+
+        assert len(results) == 3
+        assert broker.get_historical_data.call_count == 3
+
+    def test_scan_universe_can_run_more_than_once(self):
+        """Same scanner instance, two separate asyncio.run() calls — each
+        must get its own correctly-bound semaphore."""
+        broker = self._mock_broker()
+        scanner = WeeklyDiscoveryScanner(broker)
+
+        first = asyncio.run(scanner.scan_universe(["RELIANCE"]))
+        second = asyncio.run(scanner.scan_universe(["TCS"]))
+
+        assert len(first) == 1
+        assert len(second) == 1
