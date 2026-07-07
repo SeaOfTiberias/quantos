@@ -240,3 +240,58 @@ class TestWeeklyDiscoveryScanner:
 
         assert len(first) == 1
         assert len(second) == 1
+
+
+class TestFetchDailyRetry:
+    """
+    Regression coverage for a second live bug found on the same run: even
+    with the event-loop fix, 5 concurrent requests instantly exhausted
+    Fyers' history endpoint rate limit — every symbol in a 247-symbol
+    universe came back HTTP 429. _fetch_daily now retries 429s with
+    backoff instead of dropping the symbol on the first hit.
+    """
+
+    def _good_candles(self):
+        final_week = [{"close": 100, "high": 101, "low": 99}] * 5
+        return build_flat_box_series(final_week)
+
+    def test_retries_on_429_then_succeeds(self, monkeypatch):
+        monkeypatch.setattr(WeeklyDiscoveryScanner, "RETRY_BACKOFF_SECONDS", 0.01)
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = [
+            Exception("History fetch failed: {'code': 429, 'message': 'request limit reached'}"),
+            Exception("History fetch failed: {'s': 'error', 'code': 429, 'message': 'Bad request'}"),
+            self._good_candles(),
+        ]
+        scanner = WeeklyDiscoveryScanner(broker, max_concurrent=1)
+
+        results = asyncio.run(scanner.scan_universe(["RELIANCE"]))
+
+        assert len(results) == 1
+        assert broker.get_historical_data.call_count == 3
+
+    def test_non_rate_limit_error_does_not_retry(self, monkeypatch):
+        monkeypatch.setattr(WeeklyDiscoveryScanner, "RETRY_BACKOFF_SECONDS", 0.01)
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = Exception(
+            "History fetch failed: {'code': -50, 'message': 'invalid symbol'}"
+        )
+        scanner = WeeklyDiscoveryScanner(broker, max_concurrent=1)
+
+        results = asyncio.run(scanner.scan_universe(["BADSYM"]))
+
+        assert results == []
+        assert broker.get_historical_data.call_count == 1   # no retry for non-429 errors
+
+    def test_gives_up_after_max_retries(self, monkeypatch):
+        monkeypatch.setattr(WeeklyDiscoveryScanner, "RETRY_BACKOFF_SECONDS", 0.01)
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = Exception(
+            "History fetch failed: {'code': 429, 'message': 'request limit reached'}"
+        )
+        scanner = WeeklyDiscoveryScanner(broker, max_concurrent=1)
+
+        results = asyncio.run(scanner.scan_universe(["RELIANCE"]))
+
+        assert results == []
+        assert broker.get_historical_data.call_count == WeeklyDiscoveryScanner.MAX_RETRIES

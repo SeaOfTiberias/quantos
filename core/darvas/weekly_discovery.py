@@ -271,12 +271,23 @@ def analyse_symbol(symbol: str, daily: list[OHLCV], cfg: Optional[dict] = None) 
 class WeeklyDiscoveryScanner:
     """
     Scans a symbol universe for weekly Darvas box candidates via the
-    broker's daily historical data. Throttled (semaphore + short delay)
+    broker's daily historical data. Throttled (semaphore + delay + retry)
     since core/brokers/fyers.py doesn't implement its own rate limiting
     and a full-universe scan can mean hundreds of sequential API calls.
+
+    Confirmed live: even 5 concurrent requests immediately exhausts
+    Fyers' history endpoint rate limit — every symbol in a 247-symbol
+    universe came back HTTP 429 on the first real run. Default
+    concurrency dropped to 2 with a longer inter-request delay, plus a
+    short retry-with-backoff for 429s specifically (the limit window is
+    typically per-second/per-minute and resets quickly, so a transient
+    hit shouldn't just permanently drop a symbol from the scan).
     """
 
-    def __init__(self, broker: BrokerAdapter, cfg: Optional[dict] = None, max_concurrent: int = 5):
+    MAX_RETRIES = 3
+    RETRY_BACKOFF_SECONDS = 3.0
+
+    def __init__(self, broker: BrokerAdapter, cfg: Optional[dict] = None, max_concurrent: int = 2):
         self.broker = broker
         self.cfg = {**DEFAULT_CONFIG, **(cfg or {})}
         self._max_concurrent = max_concurrent
@@ -313,7 +324,7 @@ class WeeklyDiscoveryScanner:
     async def _scan_one(self, symbol: str) -> Optional[DiscoveryResult]:
         async with self._sem:
             candles = await self._fetch_daily(symbol)
-            await asyncio.sleep(0.2)   # be polite to the Fyers API
+            await asyncio.sleep(0.5)   # be polite to the Fyers API
         if not candles:
             return None
         return analyse_symbol(symbol, candles, self.cfg)
@@ -322,14 +333,26 @@ class WeeklyDiscoveryScanner:
         to_date = datetime.now(timezone.utc)
         from_date = to_date - timedelta(days=self.cfg["history_days"])
         loop = asyncio.get_event_loop()
-        try:
-            return await loop.run_in_executor(
-                None,
-                lambda: self.broker.get_historical_data(symbol, "1d", from_date, to_date),
-            )
-        except Exception as e:
-            logger.warning("Failed to fetch daily candles for %s: %s", symbol, e)
-            return []
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                return await loop.run_in_executor(
+                    None,
+                    lambda: self.broker.get_historical_data(symbol, "1d", from_date, to_date),
+                )
+            except Exception as e:
+                is_rate_limited = "429" in str(e)
+                if is_rate_limited and attempt < self.MAX_RETRIES - 1:
+                    wait = self.RETRY_BACKOFF_SECONDS * (attempt + 1)
+                    logger.debug(
+                        "Rate limited fetching %s (attempt %d/%d) — retrying in %.0fs",
+                        symbol, attempt + 1, self.MAX_RETRIES, wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                logger.warning("Failed to fetch daily candles for %s: %s", symbol, e)
+                return []
+        return []
 
 
 # ─── Utilities ────────────────────────────────────────────────────────────────
