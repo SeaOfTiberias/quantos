@@ -73,3 +73,45 @@ class TestGetHistoricalDataPayload:
         )
 
         assert candles[0].timestamp.tzinfo is not None
+
+
+class TestIndexSymbolFormatting:
+    """
+    Regression coverage found while wiring core/regime/fetcher.py (the real
+    regime engine) up to a live broker call for the first time: it requests
+    "NIFTY 50" / "INDIA VIX" as symbols, but get_historical_data blindly
+    formatted every symbol as an equity ("NSE:{symbol}-EQ") — Fyers indices
+    use "-INDEX" with no spaces in the name instead
+    ("NSE:NIFTY50-INDEX" / "NSE:INDIAVIX-INDEX"). Every prior caller
+    (core/darvas/*.py) only ever dealt in equities, so this never surfaced.
+    """
+
+    def test_nifty_50_formatted_as_index_not_equity(self):
+        broker = _connected_broker()
+        broker.get_historical_data(
+            "NIFTY 50", "1d",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 8, tzinfo=timezone.utc),
+        )
+        sent = broker._client.history.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:NIFTY50-INDEX"
+
+    def test_india_vix_formatted_as_index_not_equity(self):
+        broker = _connected_broker()
+        broker.get_historical_data(
+            "INDIA VIX", "1d",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 8, tzinfo=timezone.utc),
+        )
+        sent = broker._client.history.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:INDIAVIX-INDEX"
+
+    def test_regular_equity_unaffected(self):
+        broker = _connected_broker()
+        broker.get_historical_data(
+            "RELIANCE", "1d",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 8, tzinfo=timezone.utc),
+        )
+        sent = broker._client.history.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:RELIANCE-EQ"

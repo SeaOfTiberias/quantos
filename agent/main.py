@@ -47,6 +47,7 @@ from agent.discovery_watchlist import (
 from core.darvas.box import next_trailing_stop
 from core.darvas.scanner import DarvasScanner
 from core.darvas.weekly_discovery import WeeklyDiscoveryScanner, DEFAULT_CONFIG as DISCOVERY_CONFIG
+from core.regime.service import RegimeService, CACHE_TTL as REGIME_CACHE_TTL
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
 # Kept slower than the 5s signal poll to avoid hammering the broker with
@@ -380,6 +381,37 @@ def _run_granular_scan(broker, cloud_url: str, headers: dict, webhook_secret: st
         _sync_watchlist_to_cloud(cloud_url, headers, discovery_watchlist)
 
 
+def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dict) -> None:
+    """
+    Refresh the market regime classification (core/regime/service.py — a
+    cheap no-op call if still within its own 15-min cache, ADR-04) and
+    push it to the cloud (cloud/api/regime_routes.py). Only the local
+    agent ever holds a connected broker (ADR-01), so this is the only
+    place RegimeService can actually run — before this was wired up,
+    cloud/analyst/pre_trade.py fed every pre-trade analysis a hardcoded
+    fake regime, and POST /strategy/recommend 503'd unconditionally.
+
+    Runs regardless of scanner.enabled — regime informs every signal's
+    pre-trade analysis (Pine Script or internal Stage B), not just the
+    Darvas discovery pipeline.
+    """
+    result = asyncio.run(regime_service.get_regime())
+    payload = {
+        "regime": result.regime.value,
+        "confidence": result.confidence,
+        "allowed_strategies": result.allowed_strategies,
+        "size_multiplier": result.size_multiplier,
+        "timestamp": result.timestamp.isoformat(),
+        "trend_signal": result.trend_signal,
+        "vix_signal": result.vix_signal,
+        "breadth_signal": result.breadth_signal,
+        "notes": result.notes,
+    }
+    resp = requests.post(f"{cloud_url}/regime/sync", json=payload, headers=headers, timeout=10)
+    resp.raise_for_status()
+    logger.info("Regime synced: %s (confidence=%.0f)", result.regime.value, result.confidence)
+
+
 def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict,
                             discovery_watchlist: dict):
     """
@@ -507,6 +539,9 @@ def run_agent(config: dict):
     granular_interval_min = float(scanner_cfg.get("granular_scan_interval_minutes", 5))
     granular_every_n_ticks = max(1, int(granular_interval_min * 60 / poll_interval))
 
+    regime_service = RegimeService(broker)
+    regime_every_n_ticks = max(1, int(REGIME_CACHE_TTL / poll_interval))
+
     sizer = TradeHistoryService()
     processed = _load_processed_ids()
     open_positions = load_open_positions()
@@ -533,6 +568,11 @@ def run_agent(config: dict):
                 logger.error("Stage A discovery scan failed: %s", e)
         else:
             logger.info("Stage A discovery already ran today — skipping.")
+
+    try:
+        _run_regime_sync(regime_service, cloud_url, headers)
+    except Exception as e:
+        logger.error("Regime sync failed: %s", e)
 
     try:
         while True:
@@ -602,6 +642,12 @@ def run_agent(config: dict):
                     _run_granular_scan(broker, cloud_url, headers, webhook_secret, discovery_watchlist)
                 except Exception as e:
                     logger.error("Stage B granular scan failed: %s", e)
+
+            if tick % regime_every_n_ticks == 0:
+                try:
+                    _run_regime_sync(regime_service, cloud_url, headers)
+                except Exception as e:
+                    logger.error("Regime sync failed: %s", e)
 
             time.sleep(poll_interval)
 

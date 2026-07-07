@@ -28,6 +28,24 @@ _TF_MAP = {
     "1d": "D",
 }
 
+# Fyers formats index symbols differently from equities: "-INDEX" suffix
+# instead of "-EQ", and no spaces in the name. core/regime/fetcher.py is
+# the first caller to ever request an index symbol here (NIFTY_SYMBOL,
+# VIX_SYMBOL) — every existing caller (core/darvas/*.py) only ever deals
+# in individual equities, so this gap was never exercised before.
+_INDEX_SYMBOL_MAP = {
+    "NIFTY 50":   "NIFTY50",
+    "NIFTY BANK": "NIFTYBANK",
+    "INDIA VIX":  "INDIAVIX",
+}
+
+
+def _fyers_symbol(symbol: str) -> str:
+    if symbol in _INDEX_SYMBOL_MAP:
+        return f"NSE:{_INDEX_SYMBOL_MAP[symbol]}-INDEX"
+    return f"NSE:{symbol}-EQ"
+
+
 # Fyers product type mapping — note "CO"/"BO" are NOT valid values here;
 # Fyers v3's place_order rejects productType outright unless it's one of
 # these four (confirmed live: "productType must be one of the following:
@@ -249,7 +267,7 @@ class FyersBroker(BrokerAdapter):
             raise BrokerError(f"Unsupported timeframe: {timeframe}. "
                               f"Use one of: {list(_TF_MAP.keys())}")
         data = {
-            "symbol": f"NSE:{symbol}-EQ",
+            "symbol": _fyers_symbol(symbol),
             "resolution": tf,
             # date_format=0 means range_from/range_to are Unix epoch seconds
             # (date_format=1 would mean "yyyy-mm-dd" strings instead) —

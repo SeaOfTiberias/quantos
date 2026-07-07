@@ -29,8 +29,10 @@ quantos/
 ```
 
 ### Deployment Model (ADR-01)
-- **Cloud core** — regime engine, Claude analyst, cockpit, scheduler hosted on Railway
-- **Local agent** — thin Python process on customer machine; broker keys never leave the customer
+- **Cloud core** — Claude analyst, cockpit, scheduler hosted on Railway
+- **Local agent** — thin Python process on customer machine; broker keys never leave the customer.
+  This is also where the regime engine actually runs (see ADR-09) — anything needing a live
+  broker connection has to live here, not on Railway.
 - **Migration path** — full SaaS (broker OAuth) once SOC2 posture established
 
 ### Two-Stage Darvas Pipeline (ADR-07)
@@ -53,6 +55,17 @@ inside the local agent (broker access lives there, not on Railway):
   cloud API purely so the cockpit's **Discovery Watchlist** panel has
   something to read — enable with `scanner.enabled: true` in
   `agent/config.yaml` (see `agent/config.yaml.example`).
+
+### Regime Engine Sync (ADR-09)
+`core/regime/service.py`'s `RegimeService` (US-05: Nifty trend + India VIX +
+market breadth → TRENDING_BULL/TRENDING_BEAR/RANGING/VOLATILE/UNCERTAIN) runs
+in the local agent — same reasoning as the Darvas pipeline above, it needs a
+live broker connection Railway never has. The agent refreshes it every ~15
+minutes (matching its own ADR-04 cache TTL) and POSTs the result to
+`POST /regime/sync`. `cloud/analyst/pre_trade.py`'s pre-trade analysis and
+`POST /strategy/recommend`'s options strategy advisor both read the synced
+regime instead of a hardcoded placeholder — no config flag, this runs
+unconditionally whenever the agent is running.
 
 ---
 
@@ -154,7 +167,7 @@ Current sprint: **Sprint 1 — Foundation**
 - [ ] US-01: TradingView → Fyers Webhook Bridge
 - [ ] US-02: Multi-Timeframe Darvas Box Scanner
 - [ ] US-04: Claude Pre-Trade Analyst
-- [ ] US-05: Market Regime Detection Engine
+- [x] US-05: Market Regime Detection Engine
 - [ ] US-15: Webhook Server Deployment
 
 ---

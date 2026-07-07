@@ -41,6 +41,7 @@ from cloud.api.backtest_routes import router as backtest_router
 from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
 from cloud.api.discovery_routes import router as discovery_router
+from cloud.api.regime_routes import router as regime_router
 from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -64,6 +65,7 @@ app.include_router(backtest_router)
 app.include_router(morning_router)
 app.include_router(options_router)
 app.include_router(discovery_router)
+app.include_router(regime_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,10 +95,6 @@ _event_filter = EventFilterService()
 # Production wiring: set this in an app startup hook once the broker
 # adapter is initialized (see agent/main.py for the broker connection pattern).
 _correlation_service = None
-
-# Regime service (US-05) — None until a broker is connected.
-# Production wiring: set in app startup hook once broker adapter is ready.
-_regime_service = None
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────

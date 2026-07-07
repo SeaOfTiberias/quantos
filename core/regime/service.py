@@ -44,7 +44,23 @@ class RegimeService:
         self._broker        = broker
         self._cached:        Optional[RegimeResult] = None
         self._cached_at:     Optional[float]        = None
-        self._refresh_lock   = asyncio.Lock()
+        # Lazily (re)created per running loop in _get_lock() — a lock built
+        # here at construction time binds to whatever loop is "current" then,
+        # which breaks the moment a caller uses the agent/main.py pattern of
+        # asyncio.run(service.get_regime()) once per poll tick: each tick
+        # spins up a brand new loop, so a lock bound to a previous tick's
+        # (now-closed) loop raises. Same failure mode already found and
+        # fixed in core/darvas/weekly_discovery.py's Semaphore and
+        # core/darvas/scanner.py's Semaphore.
+        self._refresh_lock:  Optional[asyncio.Lock] = None
+        self._lock_loop:     Optional[asyncio.AbstractEventLoop] = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        loop = asyncio.get_event_loop()
+        if self._refresh_lock is None or self._lock_loop is not loop:
+            self._refresh_lock = asyncio.Lock()
+            self._lock_loop = loop
+        return self._refresh_lock
 
     async def get_regime(self, force_refresh: bool = False) -> RegimeResult:
         """
@@ -65,7 +81,7 @@ class RegimeService:
             logger.debug("Regime cache hit: %s (age %ds)", self._cached.regime.value, age)
             return self._cached
 
-        async with self._refresh_lock:
+        async with self._get_lock():
             # Double-check after acquiring lock (another coroutine may have refreshed)
             now = datetime.now(timezone.utc).timestamp()
             if (

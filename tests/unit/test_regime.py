@@ -2,6 +2,7 @@
 US-05 Regime Detection Engine — Unit Tests
 """
 
+import asyncio
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -344,3 +345,43 @@ class TestRegimeService:
     def test_is_stale_when_empty(self):
         service = RegimeService(MagicMock())
         assert service.is_stale() is True
+
+
+class TestRegimeServiceEventLoopBinding:
+    """
+    Regression coverage for the same event-loop-binding bug found and
+    fixed twice already today in core/darvas/weekly_discovery.py and
+    core/darvas/scanner.py: RegimeService.__init__ used to construct
+    asyncio.Lock() at construction time. agent/main.py constructs
+    RegimeService once (synchronously, no loop running) and then calls
+    asyncio.run(service.get_regime()) repeatedly, once per poll tick —
+    each tick spins up a brand new event loop, so a lock bound to a
+    previous tick's (now-closed) loop would raise. These tests call
+    asyncio.run() from a plain sync test function specifically to
+    reproduce that construction/call pattern.
+    """
+
+    def test_get_regime_via_asyncio_run_from_sync_context(self):
+        service = RegimeService(MagicMock())   # constructed with no loop running
+
+        with patch("core.regime.service.fetch_regime_inputs",
+                   new_callable=AsyncMock, return_value=make_inputs()):
+            result = asyncio.run(service.get_regime())
+
+        assert isinstance(result.regime, Regime)
+
+    def test_get_regime_can_run_more_than_once_across_separate_event_loops(self):
+        """Same instance, two separate asyncio.run() calls — each must
+        get a correctly-bound lock for its own loop."""
+        service = RegimeService(MagicMock())
+
+        with patch("core.regime.service.fetch_regime_inputs",
+                   new_callable=AsyncMock, return_value=make_inputs()) as mock_fetch:
+            first = asyncio.run(service.get_regime())
+            second = asyncio.run(service.get_regime())
+
+        assert isinstance(first.regime, Regime)
+        assert isinstance(second.regime, Regime)
+        # Still within the 15-min cache, so the second asyncio.run() call
+        # (a fresh loop) must reuse the cached result, not refetch.
+        assert mock_fetch.call_count == 1

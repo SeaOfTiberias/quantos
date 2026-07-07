@@ -16,6 +16,7 @@ from core.options.models import OptionChainSnapshot, OptionLeg, OptionType
 from core.options.recommender import recommend_strategy
 from core.options.alerts import format_strategy_whatsapp
 from core.options.strategy_builder import StrategyBuildError
+from cloud.api.regime_routes import get_synced_regime
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +52,13 @@ async def recommend(request: StrategyRequest):
     Uses the cached regime (US-05) to determine which strategies are
     allowed, then asks Claude to pick the best fit and explain why.
     """
-    from cloud.api.main import _regime_service
-
-    if _regime_service is None:
+    regime = get_synced_regime()
+    if regime is None:
         raise HTTPException(
             status_code=503,
-            detail="Regime service not initialized — no broker connected",
+            detail="Regime not available yet — waiting for the local agent's next sync "
+                   "(agent/main.py runs RegimeService and POSTs to /regime/sync)",
         )
-
-    regime = await _regime_service.get_regime()
 
     chain = OptionChainSnapshot(
         underlying=request.underlying,

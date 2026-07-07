@@ -132,3 +132,43 @@ remains mock data pending a separate effort to wire the rest of the dashboard.
 - The watchlist itself never leaves the agent's machine as a system of
   record — the cloud copy is a disposable, wholesale-replaced mirror purely
   for display (`~/.quantos/discovery_watchlist.json` is the source of truth).
+
+---
+
+## ADR-09 · Regime Engine Sync (Agent → Cloud)
+
+**Decision:** `core/regime/service.py`'s `RegimeService` (US-05, real Nifty
+trend/VIX/breadth classification) runs in the local agent — the only
+process with a connected broker (ADR-01) — and pushes its result to the
+cloud via `POST /regime/sync` (`cloud/api/regime_routes.py`), the same
+sync-mirror pattern ADR-08 established for the discovery watchlist.
+`cloud/analyst/pre_trade.py` and `POST /strategy/recommend`
+(`cloud/api/strategy_routes.py`) both read the synced result instead of
+touching a broker directly.
+
+**Why:** before this, `cloud/api/main.py` declared a `_regime_service = None`
+global with a comment saying it'd be set "once broker adapter is ready" —
+that never happened, because Railway can never hold a broker connection
+(ADR-01). Two consequences: `pre_trade.py`'s `_get_regime()` was a
+hardcoded stub feeding every trade signal a fake, static "TRENDING/
+UPTREND/VIX 14.2" regardless of real conditions, and `/strategy/recommend`
+503'd unconditionally since `_regime_service` was always `None`. Both bugs
+trace to the same root cause and are fixed by the same sync.
+
+The agent refreshes and syncs on a cadence matching `RegimeService`'s own
+15-minute cache TTL (ADR-04) — each sync tick both keeps the cache fresh
+and reflects it to the cloud. `get_synced_regime()` treats a sync older
+than 30 minutes as unavailable (double the TTL — tolerates one missed
+tick) and falls back to an explicitly-labeled `UNKNOWN` regime rather than
+ever returning stale data silently.
+
+**Bugs found while wiring this up** (same pattern as ADR-07's two-stage
+pipeline): `RegimeService.__init__` built its `asyncio.Lock()` at
+construction time, which breaks under the agent's `asyncio.run()`-per-tick
+call pattern exactly like the `asyncio.Semaphore` bugs in
+`weekly_discovery.py`/`scanner.py` — fixed by lazily rebinding the lock to
+whichever loop is current. Separately, `core/regime/fetcher.py` requests
+index symbols (`"NIFTY 50"`, `"INDIA VIX"`) that `FyersBroker` had never
+been asked for before — it blindly formatted every symbol as an equity
+(`NSE:{symbol}-EQ`); Fyers indices need `NSE:NIFTY50-INDEX` /
+`NSE:INDIAVIX-INDEX` instead. Fixed in `core/brokers/fyers.py`.
