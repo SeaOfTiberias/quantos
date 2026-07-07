@@ -251,7 +251,14 @@ class FyersBroker(BrokerAdapter):
         data = {
             "symbol": f"NSE:{symbol}-EQ",
             "resolution": tf,
-            "date_format": "1",
+            # date_format=0 means range_from/range_to are Unix epoch seconds
+            # (date_format=1 would mean "yyyy-mm-dd" strings instead) —
+            # confirmed live via agent/debug_discovery_scan.py: this was
+            # "1" while range_from/range_to were already epoch integers,
+            # so every single history call failed with Fyers error code -50
+            # until the two-stage Darvas pipeline was the first caller to
+            # actually exercise this method against live daily candles.
+            "date_format": "0",
             "range_from": str(int(from_date.timestamp())),
             "range_to": str(int(to_date.timestamp())),
             "cont_flag": "1",

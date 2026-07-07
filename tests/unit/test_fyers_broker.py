@@ -1,0 +1,55 @@
+"""
+FyersBroker — regression test for the get_historical_data date_format bug.
+
+Found via agent/debug_discovery_scan.py during the two-stage Darvas
+pipeline's first live run: date_format was "1" (meaning range_from/
+range_to should be "yyyy-mm-dd" strings) while the payload actually sent
+epoch integers — Fyers rejected every single history call with error
+code -50. This was a pre-existing bug never exercised live before,
+since the only prior callers of get_historical_data("1d", ...) were
+never actually wired into production.
+"""
+
+from datetime import datetime, timezone
+from unittest.mock import MagicMock
+
+from core.brokers.fyers import FyersBroker
+
+
+def _connected_broker() -> FyersBroker:
+    """A FyersBroker with a mock Fyers SDK client, bypassing the real
+    connect() OAuth flow — same pattern as any other broker-adapter unit
+    test that only needs to inspect the outgoing request payload."""
+    broker = FyersBroker(config={})
+    broker._client = MagicMock()
+    broker._client.history.return_value = {"code": 200, "candles": []}
+    broker._connected = True
+    return broker
+
+
+class TestGetHistoricalDataPayload:
+
+    def test_date_format_matches_epoch_range_values(self):
+        """range_from/range_to are sent as Unix epoch seconds, so
+        date_format must be "0" — not "1" (yyyy-mm-dd strings)."""
+        broker = _connected_broker()
+        from_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        to_date = datetime(2026, 7, 1, tzinfo=timezone.utc)
+
+        broker.get_historical_data("RELIANCE", "1d", from_date, to_date)
+
+        sent = broker._client.history.call_args.kwargs["data"]
+        assert sent["date_format"] == "0"
+        assert sent["range_from"] == str(int(from_date.timestamp()))
+        assert sent["range_to"] == str(int(to_date.timestamp()))
+
+    def test_symbol_and_resolution_formatted_for_fyers(self):
+        broker = _connected_broker()
+        from_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        to_date = datetime(2026, 1, 8, tzinfo=timezone.utc)
+
+        broker.get_historical_data("TCS", "1d", from_date, to_date)
+
+        sent = broker._client.history.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:TCS-EQ"
+        assert sent["resolution"] == "D"
