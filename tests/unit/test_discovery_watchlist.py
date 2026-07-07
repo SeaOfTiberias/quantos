@@ -106,13 +106,20 @@ class TestPositionLifecycle:
 
 class TestGranularScanCandidates:
 
-    def test_only_approaching_and_watching_selected(self):
+    def test_only_approaching_hot_or_warm_selected(self):
+        """WATCHING is excluded even for an otherwise-close setup (it
+        doubles as analyse_symbol's catch-all for "confirmed box, far
+        from ceiling, no volume" — see GRANULAR_SCAN_STATUSES) and
+        APPROACHING/WATCH-tier is excluded as still too far out; only
+        APPROACHING + HOT/WARM qualifies."""
         watchlist = {}
         dw.merge_scan_results(watchlist, [
-            _result(symbol="A", status="APPROACHING"),
-            _result(symbol="B", status="WATCHING"),
+            _result(symbol="A", status="APPROACHING", alert_tier="HOT"),
+            _result(symbol="B", status="APPROACHING", alert_tier="WARM"),
+            _result(symbol="C", status="APPROACHING", alert_tier="WATCH"),
+            _result(symbol="E", status="WATCHING", alert_tier="HOT"),
         ])
-        dw.merge_scan_results(watchlist, [_result(symbol="C", status="BOX FORMING", alert_tier="")])
+        dw.merge_scan_results(watchlist, [_result(symbol="F", status="BOX FORMING", alert_tier="")])
         dw.mark_position_open(watchlist, "D", entry_price=100.0, quantity=1)
 
         candidates = set(dw.candidates_for_granular_scan(watchlist))

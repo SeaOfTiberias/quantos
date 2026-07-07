@@ -30,7 +30,18 @@ PROTECTED_STATUSES = {"POSITION_OPEN"}
 # Discovery-scan statuses worth handing to Stage B (core/darvas/scanner.py)
 # for precise intraday entry timing. BOX FORMING is too early; FRESH
 # BREAKOUT is already too late — exactly the problem this pipeline fixes.
-GRANULAR_SCAN_STATUSES = {"APPROACHING", "WATCHING"}
+# WATCHING is excluded even though analyse_symbol() can assign it to
+# APPROACHING-adjacent setups, because it also doubles as a catch-all for
+# "confirmed box, far from ceiling, no volume surge" (see
+# core/darvas/weekly_discovery.py's analyse_symbol) — including it live
+# ballooned a 247-symbol universe into a 130-symbol "shortlist", defeating
+# the point of narrowing down to a short, high-relevance list.
+GRANULAR_SCAN_STATUSES = {"APPROACHING"}
+
+# Within APPROACHING, only HOT/WARM (close to the ceiling AND showing
+# volume confirmation) qualify — WATCH-tier APPROACHING is still too far
+# out to be worth granular intraday timing yet.
+GRANULAR_SCAN_TIERS = {"HOT", "WARM"}
 
 
 @dataclass
@@ -181,7 +192,10 @@ def candidates_for_granular_scan(watchlist: dict[str, WatchlistEntry]) -> list[s
     """Symbols worth handing to Stage B (core/darvas/scanner.py) for
     precise intraday entry timing — the whole point of narrowing a broad
     universe scan down to a short, high-relevance shortlist."""
-    return [sym for sym, e in watchlist.items() if e.status in GRANULAR_SCAN_STATUSES]
+    return [
+        sym for sym, e in watchlist.items()
+        if e.status in GRANULAR_SCAN_STATUSES and e.alert_tier in GRANULAR_SCAN_TIERS
+    ]
 
 
 def check_add_candidates(watchlist: dict[str, WatchlistEntry],
