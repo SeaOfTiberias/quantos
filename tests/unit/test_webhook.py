@@ -69,6 +69,33 @@ async def test_webhook_fails_closed_when_secret_empty(monkeypatch):
     assert r.status_code == 503
 
 
+# ── Kill-switch halt relay (S4-2) ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_agent_halt_relays_to_telegram():
+    """The agent has no bot token (ADR-01) — POST /agent/halt must relay the
+    reason to Telegram via send_halt_alert."""
+    with patch("cloud.api.notifier.send_halt_alert", new=AsyncMock(return_value=True)) as m:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.post("/agent/halt",
+                                  json={"reason": "3 consecutive losing trades (limit 3)"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "HALTED"
+    m.assert_awaited_once()
+    assert "consecutive" in m.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_agent_halt_survives_notify_failure():
+    """A failed Telegram relay must not 500 the endpoint — the local halt
+    flag is already set regardless of whether the push lands."""
+    with patch("cloud.api.notifier.send_halt_alert",
+               new=AsyncMock(side_effect=RuntimeError("telegram down"))):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.post("/agent/halt", json={"reason": "daily loss breached"})
+    assert r.status_code == 200
+
+
 # ── Replay guard ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

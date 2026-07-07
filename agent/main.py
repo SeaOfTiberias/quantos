@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import requests
 import yaml
 
+from agent import risk_guard
 from agent.positions import (
     OpenPosition, load_open_positions, add_position, update_stop, remove_position,
 )
@@ -117,6 +118,42 @@ def _report_outcome(cloud_url: str, headers: dict, signal_id: str,
         r.raise_for_status()
     except Exception as e:
         logger.error("[%s] Failed to report '%s' to cloud: %s", signal_id, endpoint, e)
+
+
+def _report_halt(cloud_url: str, headers: dict, reason: str) -> None:
+    """Relay a kill-switch halt to the cloud so it can Telegram-notify —
+    the agent holds no bot token (ADR-01). Best-effort: a failed relay
+    still leaves the local halt flag set, so entries stay refused; it just
+    means the human doesn't get the push. Logged, not raised."""
+    try:
+        r = requests.post(f"{cloud_url}/agent/halt",
+                          json={"reason": reason}, headers=headers, timeout=10)
+        r.raise_for_status()
+    except Exception as e:
+        logger.error("Failed to relay halt to cloud (halt flag still set locally): %s", e)
+
+
+def _check_and_set_halt(broker, sizer, open_positions, cloud_url, headers,
+                        capital, max_daily_loss_pct, ltp=None) -> None:
+    """Evaluate the automatic kill-switch triggers and, if one has fired,
+    set the persistent halt flag and Telegram-notify exactly once. `ltp`
+    (symbol→price), when supplied, adds open-position mark-to-market to the
+    daily-loss check; without it only realized closed-trade P&L counts.
+
+    Already-halted is a no-op (the flag persists and only a human clears
+    it) so we never re-notify on every tick."""
+    if risk_guard.is_halted():
+        return
+    reason = risk_guard.evaluate_halt_triggers(
+        trades=sizer.get_trade_history(),
+        open_positions=open_positions,
+        capital=capital,
+        max_daily_loss_pct=max_daily_loss_pct,
+        ltp=ltp,
+    )
+    if reason:
+        risk_guard.set_halt(reason)
+        _report_halt(cloud_url, headers, reason)
 
 
 def _size_and_place_order(broker, sizer, signal: dict, config: dict):
@@ -550,6 +587,32 @@ def run_agent(config: dict):
     regime_service = RegimeService(broker)
     regime_every_n_ticks = max(1, int(REGIME_CACHE_TTL / poll_interval))
 
+    # Portfolio kill switch (S4-2 / P0-2). Limits come from the agent's own
+    # config.yaml risk block — core/config/settings.py is a cloud module the
+    # agent never imports, so the defaults here mirror its 5-position /
+    # 5%-daily-loss values.
+    risk_cfg = config.get("risk", {})
+    max_open_positions = int(risk_cfg.get("max_open_positions", 5))
+    max_daily_loss_pct = float(risk_cfg.get("max_daily_loss", 0.05))
+    # Day-start capital base for the daily-loss %. The agent restarts daily
+    # (Fyers token expiry), so funds at startup ≈ start-of-day equity. Falls
+    # back to the configured reference capital if the broker call fails.
+    try:
+        risk_capital = float(broker.get_funds().get("available")
+                             or risk_cfg.get("capital", 500_000))
+    except Exception as e:
+        risk_capital = float(risk_cfg.get("capital", 500_000))
+        logger.warning("Could not read broker funds for daily-loss base — "
+                       "using configured capital %.2f: %s", risk_capital, e)
+
+    # Dead-man's switch (ADR-01: no agent-side Telegram fallback). Repeated
+    # cloud-poll failures with positions open get one loud CRITICAL log; the
+    # actual protection is that stops are broker-resident SL_M orders that
+    # survive agent death, so we keep managing them and never auto-flatten.
+    deadman_poll_failures = max(1, int(5 * 60 / poll_interval))  # ~5 min
+    poll_failures = 0
+    deadman_alerted = False
+
     # Persisted so Kelly's 20-trade minimum survives the daily agent
     # restart (Fyers token expiry) — see core/risk/trade_history.py.
     sizer = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
@@ -557,6 +620,12 @@ def run_agent(config: dict):
     open_positions = load_open_positions()
     discovery_watchlist = load_watchlist()
     tick = 0
+
+    if risk_guard.is_halted():
+        logger.critical(
+            "Kill switch ACTIVE at startup — halt flag present (%s). New "
+            "entries will be refused until it is manually cleared. Exit "
+            "management continues normally.", risk_guard.read_halt_reason())
 
     logger.info("Agent running. Cloud: %s | Polling every %ds for CONFIRMED signals.",
                 cloud_url, poll_interval)
@@ -594,14 +663,54 @@ def run_agent(config: dict):
                 )
                 resp.raise_for_status()
                 signals = resp.json().get("signals", [])
+                poll_failures = 0
+                deadman_alerted = False
             except Exception as e:
                 logger.error("Failed to poll /signals: %s", e)
                 signals = []
+                poll_failures += 1
+                # Dead-man's switch (ADR-01): no agent-side Telegram fallback.
+                # Log loudly once when the cloud has been unreachable for a
+                # while with positions open, and keep managing stops — the
+                # broker-resident SL_M orders are the actual protection.
+                if (poll_failures >= deadman_poll_failures and open_positions
+                        and not deadman_alerted):
+                    logger.critical(
+                        "DEAD-MAN: cloud unreachable for %d consecutive polls with "
+                        "%d open position(s). NOT auto-flattening — broker-resident "
+                        "SL_M stop orders survive agent death and remain the "
+                        "protection. Continuing to manage stops locally.",
+                        poll_failures, len(open_positions))
+                    deadman_alerted = True
+
+            # Kill switch (S4-2): checked every poll tick. Automatic triggers
+            # (consecutive losses + realized daily loss) are cheap in-memory
+            # checks; open-position MTM is folded in at the trailing cadence
+            # below, where we already hold live prices.
+            _check_and_set_halt(broker, sizer, open_positions, cloud_url, headers,
+                                risk_capital, max_daily_loss_pct)
 
             for signal in signals:
                 signal_id = signal["signal_id"]
                 if signal_id in processed:
                     continue
+
+                # Kill switch gate (S4-2): refuse the entry if halted or the
+                # concurrent-position cap is hit. This overrides the human
+                # "execute" confirmation that already promoted the signal to
+                # CONFIRMED — it is a hard refusal layer on top of ADR-05.
+                # Exit management is never gated here, so open positions keep
+                # trailing/closing while halted.
+                refusal = risk_guard.entry_refusal_reason(
+                    open_positions, max_open_positions=max_open_positions)
+                if refusal:
+                    logger.warning("[%s] REFUSED entry (%s %s): %s",
+                                   signal_id, signal["action"], signal["symbol"], refusal)
+                    _mark_processed(signal_id, processed)
+                    _report_outcome(cloud_url, headers, signal_id, "failed",
+                                    {"reason": f"REFUSED by kill switch: {refusal}"})
+                    continue
+
                 # Mark BEFORE placing the order — a crash after this point
                 # but before place_order() simply drops the trade (safe);
                 # a crash after place_order() but before reporting back
@@ -645,6 +754,18 @@ def run_agent(config: dict):
             if tick % TRAIL_EVERY_N_TICKS == 0 and open_positions:
                 _manage_open_positions(broker, cloud_url, headers, sizer,
                                         open_positions, discovery_watchlist)
+                # Re-evaluate the daily-loss trigger with open-position MTM
+                # folded in (bleeding open positions can breach the circuit
+                # breaker even with no closed trade today). Only fetch LTP if
+                # there's still something open after the close sweep above.
+                if open_positions and not risk_guard.is_halted():
+                    try:
+                        ltp = broker.get_ltp([p.symbol for p in open_positions.values()])
+                    except Exception as e:
+                        logger.error("Could not fetch LTP for kill-switch MTM check: %s", e)
+                        ltp = None
+                    _check_and_set_halt(broker, sizer, open_positions, cloud_url,
+                                        headers, risk_capital, max_daily_loss_pct, ltp=ltp)
 
             if (scanner_enabled and tick % granular_every_n_ticks == 0
                     and _is_market_hours(datetime.now(timezone.utc))):

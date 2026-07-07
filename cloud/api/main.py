@@ -187,6 +187,13 @@ class ClosedReport(BaseModel):
     reason:     str = "stop_hit"
 
 
+class HaltReport(BaseModel):
+    """Reported by the local agent when its portfolio kill switch (S4-2)
+    trips. The agent has no Telegram token (ADR-01), so it relays the halt
+    here and the cloud sends the Telegram alert."""
+    reason: str
+
+
 # ─── Health ──────────────────────────────────────────────────────────────────
 
 # ─── Webhook ─────────────────────────────────────────────────────────────────
@@ -417,6 +424,20 @@ async def closed_signal(signal_id: str, payload: ClosedReport,
         except Exception as e:
             logger.error("[%s] Exit notify failed: %s", signal_id, e)
     return {"signal_id": signal_id, "status": "CLOSED"}
+
+
+@app.post("/agent/halt")
+async def agent_halt(payload: HaltReport, _auth=Depends(require_cloud_secret)):
+    """Called by the local agent when its portfolio kill switch (S4-2)
+    trips — relays the halt to Telegram, since the agent holds no bot
+    token (ADR-01). Not signal-scoped: a halt is an account-wide state."""
+    logger.critical("Agent reported TRADING HALT: %s", payload.reason)
+    try:
+        from cloud.api.notifier import send_halt_alert
+        await send_halt_alert(payload.reason)
+    except Exception as e:
+        logger.error("Halt alert notify failed: %s", e)
+    return {"status": "HALTED", "reason": payload.reason}
 
 
 @app.post("/webhook/telegram")

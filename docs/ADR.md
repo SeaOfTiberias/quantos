@@ -172,3 +172,47 @@ index symbols (`"NIFTY 50"`, `"INDIA VIX"`) that `FyersBroker` had never
 been asked for before — it blindly formatted every symbol as an equity
 (`NSE:{symbol}-EQ`); Fyers indices need `NSE:NIFTY50-INDEX` /
 `NSE:INDIAVIX-INDEX` instead. Fixed in `core/brokers/fyers.py`.
+
+---
+
+## ADR-10 · Portfolio Kill Switch & Dead-Man Protection (S4-2 / P0-2)
+
+**Decision:** The local agent enforces a hard refusal layer in front of
+order placement (`agent/risk_guard.py`, gated in the poll loop of
+`agent/main.py`). Two mechanisms:
+
+- **Persistent halt flag** (`~/.quantos/halt`, same `Path.home()/.quantos`
+  convention as the rest of the agent's local state). Set automatically on
+  a daily-loss breach (realized closed-trade P&L today + open-position
+  mark-to-market ≤ −`max_daily_loss` × day-start capital) or on
+  `CONSECUTIVE_LOSS_LIMIT` (3) losing trades in a row. Checked every poll
+  tick. **Cleared only by a human deleting the file — the agent never
+  auto-clears it.**
+- **Concurrent-position cap** (`max_open_positions`). Not persisted; a
+  soft refusal that lifts on its own as positions close.
+
+Halting refuses **entries only** — `_manage_open_positions` (the trailing
+SL_M loop) keeps running while halted, so a halt never abandons an open
+position. The halt overrides even a human "execute" confirmation (ADR-05
+is the default gate; this is a hard gate on top of it).
+
+Limits are read from the agent's own `config.yaml` risk block, not
+`core/config/settings.py` — that module is cloud-only and the agent never
+imports it (its defaults, 5 positions / 5% daily loss, are mirrored here).
+
+**Telegram path:** the agent has no bot token (ADR-01), so it relays a
+halt to the cloud via `POST /agent/halt`, which sends the plain-text alert
+(`send_halt_alert` in `cloud/api/notifier.py`) — the same
+agent→cloud→Telegram pattern used for exit notifications.
+
+**Dead-man's switch — why there is no agent-side auto-flatten:** the real
+dead-man protection is that stops are **broker-resident SL_M orders that
+survive agent death**. If the agent crashes, loses power, or can't reach
+the cloud, those stop orders remain live at the broker and will still
+trigger. Building an agent-side Telegram fallback would require giving the
+agent a bot token (violates ADR-01), and auto-flattening on cloud-poll
+failure would be strictly *more* dangerous than doing nothing (it would
+close protected positions on a transient network blip). So on repeated
+cloud-poll failures the agent only (a) logs one loud CRITICAL line and
+(b) keeps managing its stops. The cloud-side stale-agent sweep (a heartbeat
+panel that flags agents that stopped reporting) is deferred to S5-6.

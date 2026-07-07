@@ -132,6 +132,23 @@ async def send_exit_notification(
     return await send_telegram(message)
 
 
+async def send_halt_alert(reason: str) -> bool:
+    """Send a portfolio kill-switch alert (S4-2 / P0-2).
+
+    The local agent has no Telegram token (ADR-01) — it POSTs the halt to
+    /agent/halt and the cloud relays it here, the same agent→cloud→Telegram
+    path used for exit notifications. Plain text, no parse_mode."""
+    message = (
+        f"🛑 TRADING HALTED\n"
+        f"--------------------\n"
+        f"{reason}\n"
+        f"--------------------\n"
+        f"New entries are refused (existing stops still managed).\n"
+        f"Clear manually: delete ~/.quantos/halt on the agent machine."
+    )
+    return await send_telegram(message)
+
+
 async def send_error_alert(context: str, error: str) -> bool:
     """Send system error alert."""
     message = (
