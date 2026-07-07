@@ -18,6 +18,7 @@ Pipeline:
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import re
@@ -77,6 +78,10 @@ app.add_middleware(
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 MIN_CONFLUENCE = float(os.getenv("MIN_CONFLUENCE_SCORE", "70"))
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+# Replay guard window: alerts older (or further in the future) than this
+# are rejected. 2 minutes tolerates TradingView delivery lag + minor clock
+# skew while making captured-payload replays useless.
+MAX_ALERT_AGE_SECONDS = float(os.getenv("MAX_ALERT_AGE_SECONDS", "120"))
 
 _SIGNAL_ID_RE = re.compile(r"(SIG-[A-Z0-9]+-[A-F0-9]+)")
 
@@ -116,7 +121,8 @@ class TradingViewAlert(BaseModel):
       "strategy":          "darvas_breakout",
       "confluence_score":   85.0,
       "stop_loss":          2890.0,
-      "secret":            "YOUR_WEBHOOK_SECRET"
+      "secret":            "YOUR_WEBHOOK_SECRET",
+      "timestamp":          1751884200
     }
     """
     symbol:            str   = Field(..., description="NSE symbol e.g. RELIANCE")
@@ -127,6 +133,11 @@ class TradingViewAlert(BaseModel):
     confluence_score:  float = Field(default=0, ge=0, le=100)
     stop_loss:         float | None = Field(default=None, description="Darvas box low / stop price")
     secret:            str   = Field(..., description="Webhook validation secret")
+    timestamp:         float | None = Field(
+        default=None,
+        description="Epoch seconds when the alert fired — replay guard, "
+                    "payloads outside MAX_ALERT_AGE_SECONDS are rejected",
+    )
     notes:             str   = Field(default="")
 
 
@@ -170,12 +181,43 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     through the QuantOS signal pipeline.
     """
 
-    # ── 1. Validate secret ───────────────────────────────────────────────────
-    if os.getenv("WEBHOOK_SECRET", "") and alert.secret != os.getenv("WEBHOOK_SECRET", ""):
+    # ── 1. Validate secret (fail closed) ─────────────────────────────────────
+    # A missing WEBHOOK_SECRET must disable the endpoint, not disable the
+    # check — this route accepts trade signals for a system that places
+    # real orders behind one human tap.
+    expected_secret = os.getenv("WEBHOOK_SECRET", "")
+    if not expected_secret:
+        logger.error("Rejected webhook — WEBHOOK_SECRET is not configured; "
+                     "endpoint is disabled until it is set")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook disabled: WEBHOOK_SECRET not configured",
+        )
+    if not hmac.compare_digest(alert.secret, expected_secret):
         logger.warning("Rejected webhook — bad secret from %s", request.client.host)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid webhook secret",
+        )
+
+    # ── 2. Replay guard ──────────────────────────────────────────────────────
+    # Both senders (Pine alert() and the agent's Stage B) stamp the payload
+    # when it fires; a captured payload replayed later is rejected. abs()
+    # also rejects far-future stamps (clock skew beyond tolerance).
+    if alert.timestamp is None:
+        logger.warning("Rejected webhook — missing timestamp (replay guard) from %s",
+                       request.client.host)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing timestamp",
+        )
+    age_seconds = abs(datetime.now(timezone.utc).timestamp() - alert.timestamp)
+    if age_seconds > MAX_ALERT_AGE_SECONDS:
+        logger.warning("Rejected webhook — stale timestamp (%.0fs old) from %s",
+                       age_seconds, request.client.host)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Stale alert: {age_seconds:.0f}s outside {MAX_ALERT_AGE_SECONDS}s window",
         )
 
     signal_id = f"SIG-{alert.strategy[:4].upper()}-{uuid.uuid4().hex[:8].upper()}"
@@ -185,7 +227,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         alert.price, alert.timeframe, alert.confluence_score,
     )
 
-    # ── 2. Confluence gate (ADR-04) ──────────────────────────────────────────
+    # ── 3. Confluence gate (ADR-04) ──────────────────────────────────────────
     if alert.confluence_score < MIN_CONFLUENCE:
         logger.info("[%s] Rejected — confluence %.0f < %.0f",
                     signal_id, alert.confluence_score, MIN_CONFLUENCE)
@@ -201,7 +243,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
             ),
         )
 
-    # ── 3. Same-day dedup guard ───────────────────────────────────────────────
+    # ── 4. Same-day dedup guard ───────────────────────────────────────────────
     # TradingView Pine Script alerts and the internal scanner (agent/main.py
     # Stage B, strategy="darvas_scanner_internal") can both name the same
     # symbol on the same day — don't let a second source re-fire a signal
@@ -222,7 +264,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
             ),
         )
 
-    # ── 4. Event risk filter (US-06) — cheap check before Claude call ───────
+    # ── 5. Event risk filter (US-06) — cheap check before Claude call ───────
     event_check = _event_filter.check(alert.symbol)
     if event_check.is_blocked and not event_check.override_allowed:
         logger.info("[%s] BLOCKED — high-impact event: %s",
@@ -243,7 +285,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         logger.info("[%s] Advisory event risk (override allowed): %s",
                     signal_id, event_check.reason)
 
-    # ── 5. Claude pre-trade analysis (US-04) ─────────────────────────────────
+    # ── 6. Claude pre-trade analysis (US-04) ─────────────────────────────────
     confidence_score = None
     try:
         confidence_score = await analyse_signal({
@@ -260,11 +302,11 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     except Exception as e:
         logger.warning("[%s] Claude analysis failed: %s — proceeding", signal_id, e)
 
-    # ── 6. Persist signal ────────────────────────────────────────────────────
+    # ── 7. Persist signal ────────────────────────────────────────────────────
     signal_status = "PENDING_CONFIRMATION"
     await _persist_signal(signal_id, alert, signal_status, confidence_score)
 
-    # ── 7. Telegram confirmation (ADR-05: human-in-loop) ─────────────────────
+    # ── 8. Telegram confirmation (ADR-05: human-in-loop) ─────────────────────
     await _send_confirmation_request(signal_id, alert, confidence_score)
 
     return SignalResponse(
@@ -370,7 +412,8 @@ async def telegram_webhook(request: Request,
     The user must reply directly to the original signal alert message —
     the signal ID is parsed out of that message's text, not guessed.
     """
-    if TELEGRAM_WEBHOOK_SECRET and x_telegram_bot_api_secret_token != TELEGRAM_WEBHOOK_SECRET:
+    if TELEGRAM_WEBHOOK_SECRET and not hmac.compare_digest(
+            x_telegram_bot_api_secret_token, TELEGRAM_WEBHOOK_SECRET):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bad secret token")
 
     update = await request.json()
@@ -404,14 +447,18 @@ async def telegram_webhook(request: Request,
 
 async def _find_open_signal_today(symbol: str) -> dict | None:
     """Same-day duplicate guard — see the dedup step in tradingview_webhook
-    above. Returns the existing signal dict if one's still pending/
-    confirmed for this symbol today, else None."""
+    above. Returns the existing signal dict if this symbol already has a
+    live or spent signal today, else None. EXECUTED is in the set so a
+    re-fired alert can't open a second same-day position on one symbol;
+    BLOCKED_EVENT_RISK so a blocked symbol can't be re-attempted until it
+    slips through on an event-calendar refresh."""
     db = await get_db()
     today = datetime.now(timezone.utc).date()
     recent = await db.fetch_recent_signals(limit=200)
     for s in recent:
         if (s["symbol"] == symbol
-                and s["status"] in ("PENDING_CONFIRMATION", "CONFIRMED")
+                and s["status"] in ("PENDING_CONFIRMATION", "CONFIRMED",
+                                     "EXECUTED", "BLOCKED_EVENT_RISK")
                 and datetime.fromisoformat(s["created_at"]).date() == today):
             return s
     return None

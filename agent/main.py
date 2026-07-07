@@ -361,6 +361,9 @@ def _run_granular_scan(broker, cloud_url: str, headers: dict, webhook_secret: st
             "confluence_score": result.confluence_score,
             "stop_loss": signal.box_bottom,
             "secret": webhook_secret,
+            # Replay guard on the webhook: payloads without a fresh epoch-
+            # seconds timestamp are rejected (cloud/api/main.py).
+            "timestamp": time.time(),
         }
         try:
             resp = requests.post(f"{cloud_url}/webhook/tradingview", json=payload, timeout=10)

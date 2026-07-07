@@ -100,8 +100,11 @@ plotshape(fireSignal, title="QuantOS Signal", style=shape.triangleup,
 
 // ── Fire the webhook ───────────────────────────────────────────────────────
 if fireSignal
+    // timenow is epoch ms; the webhook's replay guard expects epoch seconds
+    // and rejects payloads outside its freshness window (default 2 min).
     msg = '{"symbol":"' + syminfo.ticker + '","action":"BUY","price":' + str.tostring(close15) +
           ',"timeframe":"15m","strategy":"darvas_breakout","confluence_score":' + str.tostring(confluenceScore) +
           ',"stop_loss":' + str.tostring(bot15) +
+          ',"timestamp":' + str.tostring(timenow / 1000) +
           ',"secret":"' + webhookSecret + '"}'
     alert(msg, alert.freq_once_per_bar_close)
