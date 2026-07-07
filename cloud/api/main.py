@@ -4,10 +4,12 @@ QuantOS Cloud API — FastAPI Webhook Receiver
 US-01: TradingView Premium → QuantOS → Agent → Broker
 
 Pipeline:
-  TradingView alert
+  TradingView alert (or agent/main.py Stage B internal scanner)
     → POST /webhook/tradingview
     → validate secret
     → confluence gate (ADR-04: min score 70)
+    → same-day dedup guard (one open signal per symbol per day)
+    → event risk filter (US-06)
     → Claude pre-trade analyst (US-04)
     → persist signal to DB
     → notify local agent
@@ -26,6 +28,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from cloud.api.auth import require_cloud_secret
 from cloud.api.db import get_db, Signal
 from cloud.api.health import router as health_router
 from cloud.api.screener_routes import router as screener_router
@@ -37,6 +40,7 @@ from cloud.api.versioning_routes import router as versioning_router
 from cloud.api.backtest_routes import router as backtest_router
 from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
+from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -59,6 +63,7 @@ app.include_router(versioning_router)
 app.include_router(backtest_router)
 app.include_router(morning_router)
 app.include_router(options_router)
+app.include_router(discovery_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -69,18 +74,9 @@ app.add_middleware(
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 MIN_CONFLUENCE = float(os.getenv("MIN_CONFLUENCE_SCORE", "70"))
-CLOUD_API_SECRET = os.getenv("CLOUD_API_SECRET", "")
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 
 _SIGNAL_ID_RE = re.compile(r"(SIG-[A-Z0-9]+-[A-F0-9]+)")
-
-
-def require_cloud_secret(x_cloud_secret: str = Header(default="")):
-    """Guards agent-facing endpoints. No-op if CLOUD_API_SECRET isn't set
-    (dev mode), but that's a deliberately loud default — see .env.example."""
-    if CLOUD_API_SECRET and x_cloud_secret != CLOUD_API_SECRET:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                             detail="Invalid or missing X-Cloud-Secret header")
 
 
 @app.on_event("startup")
@@ -207,7 +203,28 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
             ),
         )
 
-    # ── 3. Event risk filter (US-06) — cheap check before Claude call ───────
+    # ── 3. Same-day dedup guard ───────────────────────────────────────────────
+    # TradingView Pine Script alerts and the internal scanner (agent/main.py
+    # Stage B, strategy="darvas_scanner_internal") can both name the same
+    # symbol on the same day — don't let a second source re-fire a signal
+    # while an earlier one for it is still pending or confirmed.
+    duplicate = await _find_open_signal_today(alert.symbol)
+    if duplicate:
+        logger.info("[%s] Rejected — duplicate of %s (%s) for %s today",
+                    signal_id, duplicate["signal_id"], duplicate["status"], alert.symbol)
+        await _persist_signal(signal_id, alert, "REJECTED_DUPLICATE", None)
+        return SignalResponse(
+            signal_id=signal_id,
+            symbol=alert.symbol,
+            action=alert.action,
+            status="REJECTED_DUPLICATE",
+            message=(
+                f"Signal {duplicate['signal_id']} already {duplicate['status']} "
+                f"for {alert.symbol} today"
+            ),
+        )
+
+    # ── 4. Event risk filter (US-06) — cheap check before Claude call ───────
     event_check = _event_filter.check(alert.symbol)
     if event_check.is_blocked and not event_check.override_allowed:
         logger.info("[%s] BLOCKED — high-impact event: %s",
@@ -228,7 +245,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         logger.info("[%s] Advisory event risk (override allowed): %s",
                     signal_id, event_check.reason)
 
-    # ── 4. Claude pre-trade analysis (US-04) ─────────────────────────────────
+    # ── 5. Claude pre-trade analysis (US-04) ─────────────────────────────────
     confidence_score = None
     try:
         confidence_score = await analyse_signal({
@@ -245,11 +262,11 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     except Exception as e:
         logger.warning("[%s] Claude analysis failed: %s — proceeding", signal_id, e)
 
-    # ── 5. Persist signal ────────────────────────────────────────────────────
+    # ── 6. Persist signal ────────────────────────────────────────────────────
     signal_status = "PENDING_CONFIRMATION"
     await _persist_signal(signal_id, alert, signal_status, confidence_score)
 
-    # ── 6. Telegram confirmation (ADR-05: human-in-loop) ─────────────────────
+    # ── 7. Telegram confirmation (ADR-05: human-in-loop) ─────────────────────
     await _send_confirmation_request(signal_id, alert, confidence_score)
 
     return SignalResponse(
@@ -386,6 +403,21 @@ async def telegram_webhook(request: Request,
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async def _find_open_signal_today(symbol: str) -> dict | None:
+    """Same-day duplicate guard — see the dedup step in tradingview_webhook
+    above. Returns the existing signal dict if one's still pending/
+    confirmed for this symbol today, else None."""
+    db = await get_db()
+    today = datetime.now(timezone.utc).date()
+    recent = await db.fetch_recent_signals(limit=200)
+    for s in recent:
+        if (s["symbol"] == symbol
+                and s["status"] in ("PENDING_CONFIRMATION", "CONFIRMED")
+                and datetime.fromisoformat(s["created_at"]).date() == today):
+            return s
+    return None
+
 
 async def _set_signal_status(signal_id: str, new_status: str) -> None:
     db = await get_db()

@@ -24,6 +24,10 @@ risk:
 cloud:
   api_url: https://your-quantos-instance.railway.app
   api_secret: YOUR_CLOUD_API_SECRET # Must match CLOUD_API_SECRET in cloud Railway variables
+  webhook_secret: YOUR_WEBHOOK_SECRET # Must match WEBHOOK_SECRET in cloud Railway variables —
+                                       # used when the internal scanner (below) POSTs a
+                                       # synthetic alert to /webhook/tradingview, same as
+                                       # TradingView's own Pine Script alerts do.
 
 # Note: Telegram confirm/skip (ADR-05) is handled entirely on the cloud side
 # (cloud/api/main.py /webhook/telegram) — this agent only polls /signals for
@@ -33,3 +37,14 @@ claude:
   tier: pro                         # free | pro | enterprise
   min_confluence_score: 70          # Only call Claude above this threshold
   regime_cache_ttl: 900             # Seconds — 15 min cache on regime calls
+
+scanner:
+  enabled: true                     # Two-stage Darvas discovery + timing pipeline:
+                                     #   Stage A (core/darvas/weekly_discovery.py) — once/day,
+                                     #     scans universe_file on daily/weekly bars for candidates.
+                                     #   Stage B (core/darvas/scanner.py) — every
+                                     #     granular_scan_interval_minutes during market hours,
+                                     #     times the intraday entry on Stage A's shortlist and
+                                     #     POSTs any fired signal to /webhook/tradingview.
+  universe_file: agent/universe.txt # Symbols Stage A scans daily — edit freely.
+  granular_scan_interval_minutes: 5 # How often Stage B re-scans the candidate shortlist.

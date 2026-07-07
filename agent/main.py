@@ -19,11 +19,13 @@ Usage:
 """
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from dataclasses import asdict
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # Allow running as `python agent/main.py` from the repo root — the script's
@@ -37,7 +39,14 @@ import yaml
 from agent.positions import (
     OpenPosition, load_open_positions, add_position, update_stop, remove_position,
 )
+from agent.discovery_watchlist import (
+    load_watchlist, merge_scan_results, candidates_for_granular_scan,
+    mark_fired, already_fired_today, mark_position_open, clear_position,
+    check_add_candidates,
+)
 from core.darvas.box import next_trailing_stop
+from core.darvas.scanner import DarvasScanner
+from core.darvas.weekly_discovery import WeeklyDiscoveryScanner, DEFAULT_CONFIG as DISCOVERY_CONFIG
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
 # Kept slower than the 5s signal poll to avoid hammering the broker with
@@ -54,6 +63,16 @@ logger = logging.getLogger("quantos.agent")
 # crash/restart between "order placed" and "reported to cloud" can never
 # result in the same signal being placed twice.
 PROCESSED_SIGNALS_PATH = Path.home() / ".quantos" / "processed_signals.json"
+
+# Stage A (weekly discovery, core/darvas/weekly_discovery.py) runs at most
+# once per calendar day — this file just records the date of the last run.
+LAST_DISCOVERY_PATH = Path.home() / ".quantos" / "last_discovery_scan.txt"
+
+# NSE cash market hours (IST). Stage B (granular intraday timing via
+# core/darvas/scanner.py) only makes sense while the market's open.
+IST          = timezone(timedelta(hours=5, minutes=30))
+MARKET_OPEN  = (9, 15)
+MARKET_CLOSE = (15, 30)
 
 
 def load_config(config_path: str) -> dict:
@@ -190,7 +209,163 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
     return result.order_id, quantity, fill_price, stop_loss, auto_exit, sl_order_id
 
 
-def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict):
+def _is_market_hours(now_utc: datetime) -> bool:
+    """NSE cash market: 9:15-15:30 IST, Monday-Friday."""
+    now_ist = now_utc.astimezone(IST)
+    if now_ist.weekday() >= 5:  # Sat/Sun
+        return False
+    open_t = now_ist.replace(hour=MARKET_OPEN[0], minute=MARKET_OPEN[1], second=0, microsecond=0)
+    close_t = now_ist.replace(hour=MARKET_CLOSE[0], minute=MARKET_CLOSE[1], second=0, microsecond=0)
+    return open_t <= now_ist <= close_t
+
+
+def _should_run_discovery_today() -> bool:
+    if not LAST_DISCOVERY_PATH.exists():
+        return True
+    try:
+        return LAST_DISCOVERY_PATH.read_text().strip() != date.today().isoformat()
+    except OSError:
+        return True
+
+
+def _mark_discovery_ran_today() -> None:
+    LAST_DISCOVERY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LAST_DISCOVERY_PATH.write_text(date.today().isoformat())
+
+
+def _load_universe(path: str) -> list:
+    """Parse the discovery universe file — comma/newline separated NSE
+    symbols, '#' comment lines and inline comments ignored."""
+    file_path = Path(path)
+    if not file_path.exists():
+        logger.warning("Discovery universe file not found: %s", path)
+        return []
+    symbols, seen = [], set()
+    for line in file_path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        for sym in line.split(","):
+            sym = sym.strip().upper()
+            if sym and sym not in seen:
+                seen.add(sym)
+                symbols.append(sym)
+    return symbols
+
+
+def _sync_watchlist_to_cloud(cloud_url: str, headers: dict, discovery_watchlist: dict) -> None:
+    """
+    Push the local discovery watchlist to the cloud (cloud/api/discovery_routes.py)
+    purely so the cockpit dashboard has something to display — the watchlist
+    itself only ever lives on this machine (~/.quantos/discovery_watchlist.json),
+    same "keys never leave this machine" reasoning as everything else here.
+    Best-effort: a failed sync just means a stale cockpit view, not a
+    functional problem, so it's logged and swallowed rather than raised.
+    """
+    entries = [asdict(e) for e in discovery_watchlist.values()]
+    try:
+        resp = requests.post(f"{cloud_url}/discovery/watchlist",
+                              json={"entries": entries}, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("Failed to sync discovery watchlist to cloud: %s", e)
+
+
+def _run_discovery_scan(broker, universe_path: str, discovery_watchlist: dict,
+                         cloud_url: str, headers: dict) -> None:
+    """
+    Stage A: once-per-day weekly Darvas discovery scan across the
+    configured universe (core/darvas/weekly_discovery.py) — the "Bloomberg
+    terminal" candidate-finding half of the pipeline. Narrows a broad
+    universe down to a short candidate shortlist that Stage B
+    (_run_granular_scan, below) then times intraday entries on. Ported
+    from the user's DarvasTrader project, but sourced from Fyers daily
+    candles instead of yfinance so discovery and execution share one
+    broker/data source.
+    """
+    symbols = _load_universe(universe_path)
+    if not symbols:
+        logger.warning("Discovery universe is empty (%s) — skipping Stage A scan.", universe_path)
+        return
+
+    logger.info("Stage A: scanning %d symbols from %s", len(symbols), universe_path)
+    scanner = WeeklyDiscoveryScanner(broker)
+    results = asyncio.run(scanner.scan_universe(symbols))
+
+    add_candidates = check_add_candidates(discovery_watchlist, results)
+    merge_scan_results(discovery_watchlist, results,
+                        watchlist_days=DISCOVERY_CONFIG["watchlist_days"])
+
+    candidates = candidates_for_granular_scan(discovery_watchlist)
+    logger.info("Stage A complete: %d candidate(s) queued for Stage B timing: %s",
+                len(candidates), ", ".join(candidates) or "none")
+
+    for c in add_candidates:
+        logger.info(
+            "[ADD?] %s: new box ceiling %.2f is %.1f%% above your %.2f entry "
+            "(status=%s, tier=%s) — consider adding to this winner",
+            c["symbol"], c["new_ceiling"], c["gain_pct"], c["orig_entry"],
+            c["status"], c["alert_tier"],
+        )
+
+    _sync_watchlist_to_cloud(cloud_url, headers, discovery_watchlist)
+
+
+def _run_granular_scan(broker, cloud_url: str, headers: dict, webhook_secret: str,
+                        discovery_watchlist: dict) -> None:
+    """
+    Stage B: time the actual intraday entry on Stage A's shortlist using
+    the existing multi-timeframe confluence scanner
+    (core/darvas/scanner.py) — unmodified. Any fired result is POSTed to
+    the same /webhook/tradingview endpoint TradingView alerts already
+    use, so it gets exactly the same Claude pre-trade analysis, event-risk
+    filter, and Telegram human-in-loop confirmation as a Pine Script
+    signal — just tagged with a different strategy name so the source is
+    distinguishable in the signal history.
+    """
+    candidates = candidates_for_granular_scan(discovery_watchlist)
+    if not candidates:
+        return
+
+    scanner = DarvasScanner(broker)
+    results = asyncio.run(scanner.scan_watchlist(candidates))
+    fired = [r for r in results if r.primary_signal is not None]
+
+    any_fired = False
+    for result in fired:
+        if already_fired_today(discovery_watchlist, result.symbol):
+            continue
+
+        signal = result.primary_signal
+        payload = {
+            "symbol": result.symbol, "action": "BUY",
+            "price": signal.breakout_price, "timeframe": signal.timeframe,
+            "strategy": "darvas_scanner_internal",
+            "confluence_score": result.confluence_score,
+            "stop_loss": signal.box_bottom,
+            "secret": webhook_secret,
+        }
+        try:
+            resp = requests.post(f"{cloud_url}/webhook/tradingview", json=payload, timeout=10)
+            resp.raise_for_status()
+            body = resp.json()
+            mark_fired(discovery_watchlist, result.symbol,
+                       signal_id=body.get("signal_id", ""),
+                       confluence=result.confluence_score,
+                       signal_status=body.get("status", ""))
+            any_fired = True
+            logger.info("[Stage B] Fired internal signal for %s (confluence=%.0f)",
+                        result.symbol, result.confluence_score)
+        except Exception as e:
+            logger.error("[Stage B] Failed to POST internal signal for %s: %s",
+                         result.symbol, e)
+
+    if any_fired:
+        _sync_watchlist_to_cloud(cloud_url, headers, discovery_watchlist)
+
+
+def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict,
+                            discovery_watchlist: dict):
     """
     For every locally-tracked open position: check whether the broker still
     shows it open. If closed, record it as a ClosedTrade (this is what
@@ -270,6 +445,7 @@ def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict):
             })
             logger.info("[%s] Position closed: %s pnl=%.2f", signal_id, pos.symbol, trade.pnl)
             remove_position(positions, signal_id)
+            clear_position(discovery_watchlist, pos.symbol)
             continue
 
         if pos.direction != "BUY":
@@ -305,17 +481,42 @@ def run_agent(config: dict):
 
     cloud_url = config["cloud"]["api_url"].rstrip("/")
     cloud_secret = config["cloud"].get("api_secret", "")
+    webhook_secret = config["cloud"].get("webhook_secret", "")
     headers = {"X-Cloud-Secret": cloud_secret} if cloud_secret else {}
     poll_interval = 5  # seconds
+
+    scanner_cfg = config.get("scanner", {})
+    scanner_enabled = bool(scanner_cfg.get("enabled", True))
+    universe_path = scanner_cfg.get("universe_file", "agent/universe.txt")
+    granular_interval_min = float(scanner_cfg.get("granular_scan_interval_minutes", 5))
+    granular_every_n_ticks = max(1, int(granular_interval_min * 60 / poll_interval))
 
     sizer = TradeHistoryService()
     processed = _load_processed_ids()
     open_positions = load_open_positions()
+    discovery_watchlist = load_watchlist()
     tick = 0
 
     logger.info("Agent running. Cloud: %s | Polling every %ds for CONFIRMED signals.",
                 cloud_url, poll_interval)
     logger.info("Press Ctrl+C to stop.")
+
+    if scanner_enabled:
+        if not webhook_secret:
+            logger.warning(
+                "scanner.enabled but cloud.webhook_secret is not set — Stage B "
+                "won't be able to POST internally-detected signals to "
+                "/webhook/tradingview. Set it to match Railway's WEBHOOK_SECRET."
+            )
+        if _should_run_discovery_today():
+            try:
+                _run_discovery_scan(broker, universe_path, discovery_watchlist,
+                                     cloud_url, headers)
+                _mark_discovery_ran_today()
+            except Exception as e:
+                logger.error("Stage A discovery scan failed: %s", e)
+        else:
+            logger.info("Stage A discovery already ran today — skipping.")
 
     try:
         while True:
@@ -367,6 +568,8 @@ def run_agent(config: dict):
                             sl_order_id=sl_order_id,
                             strategy=signal.get("strategy", "darvas_breakout"),
                         ))
+                        mark_position_open(discovery_watchlist, signal["symbol"],
+                                            fill_price, quantity)
                 except Exception as e:
                     logger.error("[%s] Execution failed: %s", signal_id, e)
                     _report_outcome(cloud_url, headers, signal_id, "failed",
@@ -374,7 +577,15 @@ def run_agent(config: dict):
 
             tick += 1
             if tick % TRAIL_EVERY_N_TICKS == 0 and open_positions:
-                _manage_open_positions(broker, cloud_url, headers, sizer, open_positions)
+                _manage_open_positions(broker, cloud_url, headers, sizer,
+                                        open_positions, discovery_watchlist)
+
+            if (scanner_enabled and tick % granular_every_n_ticks == 0
+                    and _is_market_hours(datetime.now(timezone.utc))):
+                try:
+                    _run_granular_scan(broker, cloud_url, headers, webhook_secret, discovery_watchlist)
+                except Exception as e:
+                    logger.error("Stage B granular scan failed: %s", e)
 
             time.sleep(poll_interval)
 

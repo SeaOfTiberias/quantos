@@ -17,3 +17,7 @@ from core.darvas.volume_profile import (
     compute_volume_profile, check_darvas_fusion,
     DEFAULT_BINS, HVN_THRESHOLD, LVN_THRESHOLD, PROXIMITY_PCT,
 )
+
+from core.darvas.weekly_discovery import (
+    DiscoveryResult, WeeklyDiscoveryScanner, analyse_symbol,
+)

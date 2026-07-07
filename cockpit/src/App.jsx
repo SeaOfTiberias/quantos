@@ -20,6 +20,14 @@ const C = {
   mid:      "#94A3B8",
 };
 
+// ─── Cloud API ──────────────────────────────────────────────────────────────
+// Must match agent/config.yaml's cloud.api_url (the same Railway instance the
+// local agent talks to). Override via cockpit/.env's VITE_CLOUD_API_URL — see
+// .env.example. Everything below except the Discovery Watchlist panel is
+// still mock data.
+const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
+  || "https://web-production-b5527.up.railway.app";
+
 // ─── Mock data (real app fetches from cloud API) ───────────────────────────
 const MOCK_REGIME = {
   regime: "TRENDING_BULL",
@@ -377,6 +385,99 @@ function ScreenerPanel({ candidates }) {
   );
 }
 
+const tierColor = t => ({
+  HOT: C.red, WARM: C.gold, WATCH: C.mid, "VOL-SURGE": C.purple,
+})[t] ?? C.muted;
+
+const discoveryStatusColor = s => ({
+  "FRESH BREAKOUT": C.green, APPROACHING: C.gold, WATCHING: C.accent,
+  "BOX FORMING": C.muted, POSITION_OPEN: C.purple,
+})[s] ?? C.muted;
+
+function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const firedToday = entries.filter(e => e.last_fired_date === today);
+
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Label color={C.gold}>Discovery Watchlist</Label>
+        <span style={{ fontSize: 10, color: C.muted }}>
+          {error ? "offline"
+            : updatedAt ? `synced ${new Date(updatedAt).toLocaleTimeString("en-IN", { hour12: false })}`
+            : "waiting for agent…"}
+        </span>
+      </div>
+
+      {entries.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
+          {error ? "Could not reach cloud API." : "No candidates yet — Stage A runs once/day."}
+        </div>
+      ) : (
+        <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {["Symbol", "Status", "Tier", "Ceiling", "Dist%", "R:R"].map(h => (
+                <th key={h} style={{
+                  textAlign: (h === "Symbol" || h === "Status") ? "left" : "right",
+                  fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
+                  color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
+                  textTransform: "uppercase",
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(e => (
+              <tr key={e.symbol}>
+                <td style={{ padding: "8px 6px", color: C.white, fontWeight: 600 }}>{e.symbol}</td>
+                <td style={{ padding: "8px 6px", color: discoveryStatusColor(e.status), fontSize: 11 }}>
+                  {e.status}
+                </td>
+                <td style={{ padding: "8px 6px" }}>
+                  {e.alert_tier && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                      color: tierColor(e.alert_tier), background: `${tierColor(e.alert_tier)}20`,
+                      border: `1px solid ${tierColor(e.alert_tier)}40`,
+                    }}>{e.alert_tier}</span>
+                  )}
+                </td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
+                  {fmtINR(e.box_ceiling)}
+                </td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
+                  {e.dist_to_ceil != null ? fmtPct(e.dist_to_ceil) : "—"}
+                </td>
+                <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
+                  {e.rr_ratio != null ? e.rr_ratio.toFixed(2) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {firedToday.length > 0 && (
+        <>
+          <Divider />
+          <Label color={C.accent}>Fired Today (Stage B → webhook)</Label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+            {firedToday.map(e => (
+              <div key={e.symbol} style={{ fontSize: 11, color: C.mid }}>
+                <span style={{ color: C.white, fontWeight: 600 }}>{e.symbol}</span>
+                {" "}confluence={e.last_fired_confluence ?? "—"}
+                {" → "}{e.last_fired_signal_id || "—"}
+                {" "}({e.last_fired_status || "unknown"})
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 function ClaudeChat() {
   const [messages, setMessages] = useState([
     { role: "assistant", text: "QuantOS analyst ready. Ask me about current signals, regime, or position sizing." }
@@ -503,6 +604,7 @@ export default function QuantOSCockpit() {
   const [alphaCurve] = useState(MOCK_ALPHA_CURVE);
   const [greeks] = useState(MOCK_GREEKS);
   const [screener] = useState(MOCK_SCREENER);
+  const [discovery, setDiscovery] = useState({ entries: [], updatedAt: null, error: false });
 
   useEffect(() => {
     const fmt = new Intl.DateTimeFormat("en-IN", {
@@ -512,6 +614,28 @@ export default function QuantOSCockpit() {
     tick();
     const id = setInterval(tick, 60000);
     return () => clearInterval(id);
+  }, []);
+
+  // The only panel below wired to real data — see cloud/api/discovery_routes.py.
+  // Polled rather than pushed since the agent syncs at most once/day (Stage A)
+  // plus whenever Stage B fires, not on a fixed schedule.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/discovery/watchlist`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setDiscovery({ entries: data.entries ?? [], updatedAt: data.updated_at, error: false });
+        }
+      } catch {
+        if (!cancelled) setDiscovery(d => ({ ...d, error: true }));
+      }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
   return (
@@ -556,10 +680,19 @@ export default function QuantOSCockpit() {
         <div style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
-          gap: 16,
+          gap: 16, marginBottom: 16,
         }}>
           <ScreenerPanel candidates={screener} />
           <ClaudeChat />
+        </div>
+
+        {/* Row 4: Discovery Watchlist (Stage A/B two-stage Darvas pipeline) */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
+          <DiscoveryWatchlistPanel
+            entries={discovery.entries}
+            updatedAt={discovery.updatedAt}
+            error={discovery.error}
+          />
         </div>
       </div>
     </div>

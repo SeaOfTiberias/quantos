@@ -12,15 +12,18 @@ QuantOS is an AI-native trading ecosystem for NSE Indian equities. It combines T
 quantos/
 ├── core/               # Shared logic — broker adapter, regime engine, Claude client, risk
 │   ├── brokers/        # BrokerAdapter interface + Fyers/Zerodha implementations
+│   ├── darvas/         # Two-stage Darvas pipeline — see below
 │   ├── regime/         # Market regime classifier (Trending/Ranging/Volatile/Bearish)
 │   ├── claude_client/  # Claude API wrapper with cost management + caching
 │   └── risk/           # Kelly sizing, correlation checker, position limits
 ├── agent/              # Thin local agent (runs on customer machine, holds broker keys)
+│   ├── discovery_watchlist.py  # Persistent Stage A watchlist store
+│   └── universe.txt             # Symbols Stage A scans daily — edit freely
 ├── cloud/              # Cloud-hosted services (Railway → AWS)
 │   ├── api/            # FastAPI webhook receiver (US-01)
 │   ├── analyst/        # Claude pre-trade analyst (US-04)
 │   └── scheduler/      # Morning brief, screener jobs, regime refresh
-├── cockpit/            # React dashboard (US-13)
+├── cockpit/            # React + Vite dashboard (US-13) — `cd cockpit && npm install && npm run dev`
 ├── tests/
 └── docs/               # ADRs, runbooks, API specs
 ```
@@ -29,6 +32,27 @@ quantos/
 - **Cloud core** — regime engine, Claude analyst, cockpit, scheduler hosted on Railway
 - **Local agent** — thin Python process on customer machine; broker keys never leave the customer
 - **Migration path** — full SaaS (broker OAuth) once SOC2 posture established
+
+### Two-Stage Darvas Pipeline (ADR-07)
+Candidate discovery and intraday entry timing are deliberately split, both running
+inside the local agent (broker access lives there, not on Railway):
+
+- **Stage A — discovery** (`core/darvas/weekly_discovery.py`): once/day, scans
+  `agent/universe.txt` on daily/weekly bars for classic Nicholas Darvas boxes,
+  tiering candidates HOT/WARM/WATCH by proximity + volume. Persists to
+  `agent/discovery_watchlist.py` (`~/.quantos/discovery_watchlist.json`).
+- **Stage B — timing** (`core/darvas/scanner.py`): every few minutes during
+  market hours, re-scans just Stage A's shortlist on 15m/1h/1d confluence to
+  time the actual entry — this is what fixes "found the setup after price
+  already cleared the box." A fired signal is POSTed to the same
+  `/webhook/tradingview` endpoint TradingView's Pine Script alerts use, so it
+  gets identical Claude pre-trade analysis, event-risk filtering, and Telegram
+  human-in-loop confirmation (ADR-05) — just tagged
+  `strategy: darvas_scanner_internal` to distinguish the source.
+- The agent also syncs its watchlist to `GET/POST /discovery/watchlist` on the
+  cloud API purely so the cockpit's **Discovery Watchlist** panel has
+  something to read — enable with `scanner.enabled: true` in
+  `agent/config.yaml` (see `agent/config.yaml.example`).
 
 ---
 
@@ -60,6 +84,17 @@ uvicorn cloud.api.main:app --reload --port 8000
 # Local agent (separate terminal)
 python agent/main.py
 ```
+
+### 4. Run the cockpit dashboard
+```bash
+cd cockpit
+npm install
+cp .env.example .env   # set VITE_CLOUD_API_URL if your Railway instance differs
+npm run dev            # http://localhost:5173
+```
+`npm run build` produces a static `dist/` bundle for deployment. Every panel
+except **Discovery Watchlist** still renders mock data (`cockpit/src/App.jsx`)
+— wiring the rest of the dashboard to live cloud data is tracked separately.
 
 ---
 

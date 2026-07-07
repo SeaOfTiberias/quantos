@@ -86,3 +86,49 @@ credentials:
 | Free | ₹0 | Signals + screener only |
 | Pro | ₹2,999/mo | Full AI analyst, options intelligence, Greeks panel, journal, cockpit |
 | Enterprise | Custom | Multi-account, white-label, direct API access |
+
+---
+
+## ADR-07 · Two-Stage Darvas Pipeline
+
+**Decision:** Split candidate *discovery* from entry *timing* into two scanners,
+both running in the local agent, both funnelling into the existing
+`/webhook/tradingview` pipeline rather than each having their own execution path.
+
+| Stage | Module | Cadence | Job |
+|---|---|---|---|
+| A — Discovery | `core/darvas/weekly_discovery.py` | Once/day | Classic weekly-box scan across a broad symbol universe (`agent/universe.txt`); tiers candidates HOT/WARM/WATCH |
+| B — Timing | `core/darvas/scanner.py` | Every few minutes, market hours only | Multi-timeframe (15m/1h/1d) confluence scan on Stage A's shortlist only — this is what times the actual entry |
+
+**Why:** an earlier daily/weekly-only scanner (the user's prior DarvasTrader
+project) found genuinely good candidates but surfaced them after price had
+often already cleared the box — poor entry R:R, no time to react. Narrowing
+a broad daily scan down to a shortlist, then re-timing that shortlist
+intraday, fixes the lag without discarding either methodology.
+
+**Both stages run in the local agent, not on Railway** — broker credentials
+only ever live there (ADR-01), so discovery and timing can't run cloud-side.
+A Stage B fire is POSTed to `/webhook/tradingview` tagged
+`strategy: darvas_scanner_internal`, so it gets identical Claude analysis,
+event-risk filtering, and Telegram confirmation (ADR-05) as a Pine Script
+alert — no separate execution path to keep in sync. A same-day, same-symbol
+dedup guard on the webhook prevents both sources firing on the same setup.
+
+---
+
+## ADR-08 · Discovery Watchlist Sync & Cockpit Build
+
+**Decision:** The cockpit (`cockpit/`) is a real Vite + React app (not just a
+source file) with one panel — Discovery Watchlist — wired to live data via a
+new `GET/POST /discovery/watchlist` pair on the cloud API. Every other panel
+remains mock data pending a separate effort to wire the rest of the dashboard.
+
+- **POST** (agent → cloud) is guarded by the existing `X-Cloud-Secret`
+  (`cloud/api/auth.py`, shared with `/signals*` to avoid a circular import).
+- **GET** (cockpit → cloud) is intentionally unauthenticated, consistent with
+  every other read-only router in this app (screener/risk/events/etc.) — the
+  cockpit is a browser client, and embedding the cloud secret in frontend JS
+  would defeat the point of guarding it.
+- The watchlist itself never leaves the agent's machine as a system of
+  record — the cloud copy is a disposable, wholesale-replaced mirror purely
+  for display (`~/.quantos/discovery_watchlist.json` is the source of truth).

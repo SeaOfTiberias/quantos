@@ -77,6 +77,36 @@ cp .env.example .env
 python agent/main.py
 ```
 
+To enable the two-stage Darvas discovery pipeline (Stage A daily scan + Stage
+B intraday timing — ADR-07), set `cloud.webhook_secret` in `agent/config.yaml`
+to match Railway's `WEBHOOK_SECRET`, review `agent/universe.txt`, then flip
+`scanner.enabled: true`. It's `false` by default since it's a new live-signal
+source.
+
+---
+
+## Step 2b — Run Cockpit Dashboard
+
+```bash
+cd cockpit
+npm install
+cp .env.example .env   # set VITE_CLOUD_API_URL if it differs from the default
+npm run dev            # http://localhost:5173
+```
+
+Only the **Discovery Watchlist** panel reads real data (from
+`GET /discovery/watchlist`, populated by the local agent's Stage A/B sync —
+see Step 2 above); everything else is still mock data. `npm run build`
+produces a static `dist/` bundle you can host anywhere (Railway static site,
+Netlify, Vercel, etc.) — it isn't currently part of the Railway deploy in
+Step 1.
+
+Keep `cockpit/` dependencies current — `npm audit` periodically, since Vite's
+dev server has had several real CVEs (arbitrary-origin requests to the dev
+server, `server.fs.deny` bypass on Windows). Pin to the latest patch within
+whatever major version you're on; run `npm audit` after any `package.json`
+change and treat non-zero output as a blocker, not a formality.
+
 ---
 
 ## Step 3 — Run Uptime Monitor
@@ -144,6 +174,9 @@ curl https://YOUR-APP.railway.app/status
 | WhatsApp not received | CallMeBot not configured | Check `CALLMEBOT_PHONE` and `CALLMEBOT_API_KEY` |
 | `confidence_score: null` | `ANTHROPIC_API_KEY` missing | Add key in Railway Variables |
 | Signal status `REJECTED_LOW_CONFLUENCE` | TV alert score too low | Lower `MIN_CONFLUENCE_SCORE` or tune Pine Script |
+| Signal status `REJECTED_DUPLICATE` | Another source (Pine Script or the internal scanner) already fired for that symbol today | Expected behavior (ADR-07 dedup guard) — check `/signals` for the original |
+| Cockpit Discovery Watchlist shows "offline" | Cloud API unreachable, or `/discovery/watchlist` 404s on an older deployed backend | Redeploy cloud API with the discovery routes; confirm `VITE_CLOUD_API_URL` in `cockpit/.env` |
+| Discovery Watchlist never populates | Agent's `scanner.enabled` is `false` (the default), or `cloud.webhook_secret` unset | Set both in `agent/config.yaml`, restart the agent |
 
 ---
 

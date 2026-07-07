@@ -12,7 +12,7 @@ Set these in the Railway dashboard under your service → **Variables**.
 | `WEBHOOK_SECRET` | Secret shared with TradingView | Any strong random string |
 | `TELEGRAM_BOT_TOKEN` | Token from @BotFather | `123456:ABC-...` |
 | `TELEGRAM_CHAT_ID` | Your Telegram chat ID | `895737628` |
-| `CLOUD_API_SECRET` | Shared secret for `/signals*` — must match `agent/config.yaml`'s `cloud.api_secret` | Any strong random string |
+| `CLOUD_API_SECRET` | Shared secret for `/signals*` and `POST /discovery/watchlist` — must match `agent/config.yaml`'s `cloud.api_secret` | Any strong random string |
 | `TELEGRAM_WEBHOOK_SECRET` | Validates inbound Telegram updates on `/webhook/telegram` (echoed back as a header) | Any strong random string |
 
 ## Recommended
@@ -58,6 +58,24 @@ can't be expressed with TradingView's static `{{plot_N}}` message template.
    call*. **Webhook URL**: `https://your-app.railway.app/webhook/tradingview`.
    The Message field is ignored — the script supplies the JSON body directly.
 4. The secret pasted into the script must match `WEBHOOK_SECRET` in Railway variables.
+
+---
+
+## Discovery Watchlist Sync (ADR-07/08)
+
+No new Railway variable needed — `POST /discovery/watchlist` reuses
+`CLOUD_API_SECRET` above. The local agent pushes to it after every Stage A
+scan and Stage B fire; `GET /discovery/watchlist` (read by the cockpit) is
+intentionally unauthenticated (see ADR-08 for why). Note the *agent-side*
+config field for the webhook itself is `cloud.webhook_secret` in
+`agent/config.yaml` — matched against `WEBHOOK_SECRET` above, not
+`CLOUD_API_SECRET` (same "same value, different names" gotcha as
+`cloud.api_secret`/`CLOUD_API_SECRET`).
+
+```bash
+curl https://your-app.railway.app/discovery/watchlist
+# → {"entries": [...], "updated_at": "2026-07-06T...Z"}
+```
 
 ---
 
