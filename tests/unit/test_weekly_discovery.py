@@ -242,6 +242,32 @@ class TestWeeklyDiscoveryScanner:
         assert len(second) == 1
 
 
+class TestHistoryDaysWithinFyersCap:
+    """
+    Regression coverage for a third live bug found on the same run: even
+    with throttling and 429-retry in place, every symbol still failed —
+    this time with a hard rejection (code -50, "Date range cannot exceed
+    366 days for 1D, 1W, and 1M resolutions") because history_days=420
+    itself exceeded Fyers' cap on daily-resolution requests, so no amount
+    of retrying would ever have helped.
+    """
+
+    def test_default_history_days_within_fyers_cap(self):
+        assert DEFAULT_CONFIG["history_days"] <= 366
+
+    def test_fetch_daily_requests_a_range_within_fyers_cap(self):
+        broker = MagicMock()
+        broker.get_historical_data.return_value = []
+        scanner = WeeklyDiscoveryScanner(broker, max_concurrent=1)
+
+        asyncio.run(scanner.scan_universe(["RELIANCE"]))
+
+        _, kwargs = broker.get_historical_data.call_args
+        args = broker.get_historical_data.call_args.args
+        from_date, to_date = args[2], args[3]
+        assert (to_date - from_date).days <= 366
+
+
 class TestFetchDailyRetry:
     """
     Regression coverage for a second live bug found on the same run: even

@@ -61,7 +61,11 @@ DEFAULT_CONFIG = {
     "warm_vol_mult":       1.3,   # WARM requires at least this vol
 
     # Scan settings
-    "history_days":        420,   # days of daily history to fetch (>52 weeks)
+    # Fyers rejects daily-resolution history requests spanning more than
+    # 366 days outright ("Date range cannot exceed 366 days for 1D, 1W,
+    # and 1M resolutions") — confirmed live, every symbol failed with
+    # this error at 420. 365 stays under the cap with a one-day buffer.
+    "history_days":        365,   # days of daily history to fetch (52 weeks)
     "proximity_pct":       7.0,   # flag APPROACHING when within this % of ceiling
     "watchlist_days":      45,    # auto-expire watchlist entries after N days
 }
