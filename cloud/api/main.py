@@ -88,6 +88,15 @@ _SIGNAL_ID_RE = re.compile(r"(SIG-[A-Z0-9]+-[A-F0-9]+)")
 
 
 @app.on_event("startup")
+async def _init_signal_db():
+    # Gate persistence on a real connectivity check (P0-3): if Postgres is
+    # reachable, signals survive redeploys; if not, connect() logs a loud
+    # warning and leaves SignalDB on its in-memory fallback so the app boots.
+    db = await get_db()
+    await db.connect()
+
+
+@app.on_event("startup")
 async def _register_telegram_webhook():
     try:
         await register_telegram_webhook()
@@ -461,15 +470,10 @@ async def _find_open_signal_today(symbol: str) -> dict | None:
     BLOCKED_EVENT_RISK so a blocked symbol can't be re-attempted until it
     slips through on an event-calendar refresh."""
     db = await get_db()
-    today = datetime.now(timezone.utc).date()
-    recent = await db.fetch_recent_signals(limit=200)
-    for s in recent:
-        if (s["symbol"] == symbol
-                and s["status"] in ("PENDING_CONFIRMATION", "CONFIRMED",
-                                     "EXECUTED", "BLOCKED_EVENT_RISK")
-                and datetime.fromisoformat(s["created_at"]).date() == today):
-            return s
-    return None
+    return await db.find_open_signal_today(
+        symbol,
+        ("PENDING_CONFIRMATION", "CONFIRMED", "EXECUTED", "BLOCKED_EVENT_RISK"),
+    )
 
 
 async def _set_signal_status(signal_id: str, new_status: str) -> None:
