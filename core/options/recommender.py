@@ -25,7 +25,10 @@ from core.regime.models import RegimeResult
 
 logger = logging.getLogger(__name__)
 
-_claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+# timeout bounds /strategy/recommend latency — this call runs inside the
+# HTTP request; the SDK default waits far longer than the route should (P2-3).
+_claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+                                   timeout=30.0)
 MODEL = "claude-sonnet-4-6"
 
 # Maps regime strategy gating (from core/regime) to our StrategyTemplate enum

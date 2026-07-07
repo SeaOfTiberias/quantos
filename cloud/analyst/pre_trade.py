@@ -9,7 +9,6 @@ ADR-04: Only called when confluence_score >= MIN_CONFLUENCE (70).
         Regime classification is cached — not recalculated per signal.
 """
 
-import json
 import logging
 import os
 
@@ -17,8 +16,40 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-_claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+# timeout bounds webhook latency — this call sits inside the
+# /webhook/tradingview request; the SDK default retries/waits far longer
+# than a trade signal can afford (P2-3).
+_claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+                                   timeout=30.0)
 MODEL   = "claude-sonnet-4-6"
+
+# Structured output via forced tool use: Claude must call this tool, so a
+# malformed/free-text response is impossible by construction. If anything
+# is still off (no tool block, non-numeric score) we raise instead of
+# inventing a score — the webhook's existing except-path then records the
+# signal as unscored (confidence None), which the Telegram message renders
+# honestly, rather than a fake-neutral 50.0 a human can't distinguish from
+# a genuine mid score (P1-9).
+_SCORE_TOOL = {
+    "name": "submit_score",
+    "description": "Submit the structured pre-trade evaluation of the signal.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "confidence_score": {"type": "number", "minimum": 0, "maximum": 100},
+            "regime_alignment": {"type": "string",
+                                 "enum": ["STRONG", "MODERATE", "WEAK", "AGAINST"]},
+            "key_concern":      {"type": "string",
+                                 "description": "single biggest risk in one sentence"},
+            "key_strength":     {"type": "string",
+                                 "description": "single biggest edge in one sentence"},
+            "recommendation":   {"type": "string",
+                                 "enum": ["EXECUTE", "REDUCE_SIZE", "SKIP"]},
+        },
+        "required": ["confidence_score", "regime_alignment", "key_concern",
+                     "key_strength", "recommendation"],
+    },
+}
 
 
 async def analyse_signal(signal: dict) -> float:
@@ -45,12 +76,11 @@ async def analyse_signal(signal: dict) -> float:
         max_tokens=1000,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
+        tools=[_SCORE_TOOL],
+        tool_choice={"type": "tool", "name": "submit_score"},
     )
 
-    raw = response.content[0].text.strip()
-    logger.debug("[%s] Claude raw response: %s", signal.get("signal_id"), raw[:300])
-
-    score = _parse_confidence_score(raw)
+    score = _extract_confidence_score(response)
     logger.info("[%s] Pre-trade confidence: %.1f", signal.get("signal_id"), score)
     return score
 
@@ -124,35 +154,31 @@ Evaluate this signal across these dimensions:
 3. **Strategy fit** — Is {signal['strategy']} appropriate given the regime's allowed strategies above?
 4. **Risk/reward** — Does this setup offer asymmetric potential?
 
-Return your response as JSON only — no preamble, no explanation outside the JSON:
-
-{{
-  "confidence_score": <number 0-100>,
-  "regime_alignment": "<STRONG|MODERATE|WEAK|AGAINST>",
-  "key_concern": "<single biggest risk in one sentence>",
-  "key_strength": "<single biggest edge in one sentence>",
-  "recommendation": "<EXECUTE|REDUCE_SIZE|SKIP>"
-}}
+Submit your evaluation via the submit_score tool.
 """.strip()
 
 
 _SYSTEM_PROMPT = """
 You are QuantOS, an AI pre-trade analyst for NSE Indian equities.
-Your role is to evaluate trading signals and return structured JSON confidence scores.
+Your role is to evaluate trading signals and submit structured confidence scores.
 Be concise, data-driven, and appropriately conservative on risk.
-Never refuse to score — always return valid JSON even if data is incomplete.
+Never refuse to score — always submit a score via the tool even if data is incomplete.
 """.strip()
 
 
-def _parse_confidence_score(raw: str) -> float:
-    """Extract confidence_score from Claude's JSON response."""
-    try:
-        # Strip markdown code fences if present
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        data = json.loads(clean)
-        score = float(data["confidence_score"])
-        return max(0.0, min(100.0, score))
-    except Exception as e:
-        logger.warning("Could not parse Claude response as JSON: %s | raw: %s", e, raw[:200])
-        # Conservative fallback — don't block pipeline, return mid score
-        return 50.0
+def _extract_confidence_score(response) -> float:
+    """Pull confidence_score out of the forced tool_use block.
+
+    Raises ValueError on anything unexpected — analyse_signal's caller
+    (the webhook) already handles exceptions by proceeding with
+    confidence None ("unscored"), which is the honest outcome here.
+    """
+    for block in response.content:
+        if getattr(block, "type", None) == "tool_use" and block.name == _SCORE_TOOL["name"]:
+            raw = block.input.get("confidence_score")
+            try:
+                score = float(raw)
+            except (TypeError, ValueError):
+                raise ValueError(f"submit_score returned non-numeric confidence_score: {raw!r}")
+            return max(0.0, min(100.0, score))
+    raise ValueError("Claude response contained no submit_score tool_use block")
