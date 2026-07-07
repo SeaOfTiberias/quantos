@@ -53,3 +53,23 @@ class TestGetHistoricalDataPayload:
         sent = broker._client.history.call_args.kwargs["data"]
         assert sent["symbol"] == "NSE:TCS-EQ"
         assert sent["resolution"] == "D"
+
+    def test_returned_candle_timestamps_are_tz_aware(self):
+        """Regression: candles came back as naive datetimes, which broke
+        the discovery scanner's `datetime.now(timezone.utc) - candle.timestamp`
+        with "can't subtract offset-naive and offset-aware datetimes" —
+        found live once Bugs 1-3 (date_format, event loop, history_days)
+        were fixed and candles actually started coming back."""
+        broker = _connected_broker()
+        broker._client.history.return_value = {
+            "code": 200,
+            "candles": [[1735689600, 100, 105, 99, 102, 50000]],
+        }
+
+        candles = broker.get_historical_data(
+            "RELIANCE", "1d",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 8, tzinfo=timezone.utc),
+        )
+
+        assert candles[0].timestamp.tzinfo is not None

@@ -6,7 +6,7 @@ Install: pip install fyers-apiv3
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import logging
 
@@ -270,7 +270,12 @@ class FyersBroker(BrokerAdapter):
         candles = response.get("candles", [])
         return [
             OHLCV(
-                timestamp=datetime.fromtimestamp(c[0]),
+                # tz-aware UTC — a naive timestamp here broke Stage A's
+                # discovery scanner, which subtracts these from
+                # datetime.now(timezone.utc) to compute days_in_box
+                # ("can't subtract offset-naive and offset-aware
+                # datetimes"). Fyers candle epochs are UTC seconds.
+                timestamp=datetime.fromtimestamp(c[0], tz=timezone.utc),
                 open=c[1], high=c[2], low=c[3], close=c[4], volume=int(c[5])
             )
             for c in candles
