@@ -12,10 +12,10 @@ Setup:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import urllib.parse
-import urllib.request
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,31 @@ TELEGRAM_URL  = "https://api.telegram.org"
 BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID       = os.getenv("TELEGRAM_CHAT_ID", "")
 
+SEND_RETRIES          = 3
+RETRY_BACKOFF_SECONDS = 1.0
+
+# Bot API URLs embed the token as /bot<token>/ — httpx transport errors
+# include the request URL in their message, so any raw exception reaching
+# the logs is a token leak (P1-5).
+_BOT_URL_RE = re.compile(r"/bot[^/\s'\"]*")
+
+
+def _sanitized(err: BaseException | str, token: str = "") -> str:
+    """Render an error for logging with the bot token scrubbed out."""
+    text = f"{type(err).__name__}: {err}" if isinstance(err, BaseException) else str(err)
+    if token:
+        text = text.replace(token, "<redacted>")
+    return _BOT_URL_RE.sub("/<redacted>", text)
+
 
 async def send_telegram(message: str) -> bool:
-    """Send a message via Telegram Bot API."""
+    """Send a message via Telegram Bot API.
+
+    Retries transient failures (network errors, non-200s) with linear
+    backoff. Returns False only after all attempts fail — callers on the
+    confirmation path leave the signal un-notified so the periodic sweep
+    in cloud/api/main.py re-attempts delivery (P1-4).
+    """
     token = BOT_TOKEN or os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = CHAT_ID or os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -36,26 +58,32 @@ async def send_telegram(message: str) -> bool:
         )
         return False
 
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{TELEGRAM_URL}/bot{token}/sendMessage",
-                json={
-                    "chat_id":    chat_id,
-                    "text":       message,
-                },
-            )
+    import httpx
+    for attempt in range(1, SEND_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{TELEGRAM_URL}/bot{token}/sendMessage",
+                    json={
+                        "chat_id":    chat_id,
+                        "text":       message,
+                    },
+                )
             if resp.status_code == 200:
                 logger.info("Telegram message sent to chat %s", chat_id)
                 return True
-            else:
-                logger.error("Telegram send failed: %d — %s",
-                             resp.status_code, resp.text[:200])
-                return False
-    except Exception as e:
-        logger.error("Telegram send error: %s", e)
-        return False
+            logger.warning("Telegram send failed (attempt %d/%d): %d — %s",
+                           attempt, SEND_RETRIES, resp.status_code,
+                           _sanitized(resp.text[:200], token))
+        except Exception as e:
+            logger.warning("Telegram send error (attempt %d/%d): %s",
+                           attempt, SEND_RETRIES, _sanitized(e, token))
+        if attempt < SEND_RETRIES:
+            await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    logger.error("Telegram send failed after %d attempts — message not delivered",
+                 SEND_RETRIES)
+    return False
 
 
 async def send_trade_confirmation(
@@ -143,8 +171,8 @@ async def register_telegram_webhook() -> bool:
             if data.get("ok"):
                 logger.info("Telegram webhook registered: %s", webhook_url)
                 return True
-            logger.error("Telegram setWebhook failed: %s", data)
+            logger.error("Telegram setWebhook failed: %s", _sanitized(str(data), token))
             return False
     except Exception as e:
-        logger.error("Telegram setWebhook error: %s", e)
+        logger.error("Telegram setWebhook error: %s", _sanitized(e, token))
         return False

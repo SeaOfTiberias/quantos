@@ -18,6 +18,7 @@ Pipeline:
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -92,6 +93,13 @@ async def _register_telegram_webhook():
         await register_telegram_webhook()
     except Exception as e:
         logger.error("Telegram webhook self-registration failed: %s", e)
+
+
+@app.on_event("startup")
+async def _start_notify_sweep():
+    # First iteration runs immediately — that's the startup sweep catching
+    # signals stranded by a Telegram outage or a mid-flight redeploy.
+    asyncio.create_task(_notify_sweep_loop())
 
 # Event risk filter (US-06) — singleton, loaded with macro calendar at startup
 _event_filter = EventFilterService()
@@ -491,29 +499,96 @@ async def _persist_signal(signal_id, alert, signal_status, confidence_score):
         logger.error("Failed to persist signal %s: %s", signal_id, e)
 
 
-async def _send_confirmation_request(signal_id, alert, confidence_score):
+def _confirmation_message(signal_id, symbol, action, price, stop_loss, strategy,
+                          timeframe, confluence_score, confidence_score) -> str:
+    """Plain-text (no parse_mode) confirmation message — built from bare
+    fields so both the webhook path (fresh alert) and the re-notify sweep
+    (persisted signal dict) can produce the identical message."""
     confidence_str = (
         f"Claude confidence: {confidence_score:.0f}/100\n"
         if confidence_score is not None else ""
     )
-    stop_str = f"Stop loss: INR {alert.stop_loss:,.2f}\n" if alert.stop_loss else ""
-    message = (
+    stop_str = f"Stop loss: INR {stop_loss:,.2f}\n" if stop_loss else ""
+    return (
         f"🚨 QuantOS Signal\n"
         f"ID: {signal_id}\n"
         f"--------------------\n"
-        f"{'🟢 BUY' if alert.action == 'BUY' else '🔴 SELL'} {alert.symbol}\n"
-        f"Price: INR {alert.price:,.2f}\n"
+        f"{'🟢 BUY' if action == 'BUY' else '🔴 SELL'} {symbol}\n"
+        f"Price: INR {price:,.2f}\n"
         f"{stop_str}"
-        f"Strategy: {alert.strategy}\n"
-        f"Timeframe: {alert.timeframe}\n"
-        f"Confluence: {alert.confluence_score:.0f}/100\n"
+        f"Strategy: {strategy}\n"
+        f"Timeframe: {timeframe}\n"
+        f"Confluence: {confluence_score:.0f}/100\n"
         f"{confidence_str}"
         f"--------------------\n"
         f"Reply (to this message) execute to trade\n"
         f"Reply (to this message) skip to ignore"
     )
+
+
+async def _deliver_confirmation(signal_id: str, message: str) -> bool:
+    """Send a confirmation message; stamp notified_at only on success so
+    the sweep below knows which PENDING_CONFIRMATION signals never reached
+    the human (P1-4: an unnotified signal used to strand silently)."""
     try:
-        await send_telegram(message)
-        logger.info("[%s] Telegram confirmation sent", signal_id)
+        sent = await send_telegram(message)
     except Exception as e:
-        logger.error("[%s] Telegram notification failed: %s", signal_id, e)
+        sent = False
+        logger.error("[%s] Telegram notification raised: %s", signal_id, type(e).__name__)
+    if sent:
+        db = await get_db()
+        await db.mark_notified(signal_id)
+        logger.info("[%s] Telegram confirmation sent", signal_id)
+    else:
+        logger.error("[%s] Telegram confirmation NOT delivered — signal stays "
+                     "PENDING_CONFIRMATION, re-notify sweep will retry", signal_id)
+    return sent
+
+
+async def _send_confirmation_request(signal_id, alert, confidence_score):
+    message = _confirmation_message(
+        signal_id, alert.symbol, alert.action, alert.price, alert.stop_loss,
+        alert.strategy, alert.timeframe, alert.confluence_score, confidence_score,
+    )
+    await _deliver_confirmation(signal_id, message)
+
+
+# Re-notify sweep (P1-4): a PENDING_CONFIRMATION signal older than this
+# with no successful Telegram delivery gets re-sent.
+RENOTIFY_AFTER_SECONDS = float(os.getenv("RENOTIFY_AFTER_SECONDS", "300"))
+NOTIFY_SWEEP_INTERVAL_SECONDS = 60
+
+
+async def _renotify_stranded_signals() -> int:
+    """Re-send the confirmation for pending signals that never got one.
+    Runs at startup and every NOTIFY_SWEEP_INTERVAL_SECONDS thereafter."""
+    db = await get_db()
+    pending = await db.fetch_recent_signals(limit=200, status="PENDING_CONFIRMATION")
+    now = datetime.now(timezone.utc)
+    attempted = 0
+    for s in pending:
+        if s.get("notified_at"):
+            continue
+        created = datetime.fromisoformat(s["created_at"])
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if (now - created).total_seconds() < RENOTIFY_AFTER_SECONDS:
+            continue  # webhook path may still be delivering/retrying
+        message = _confirmation_message(
+            s["signal_id"], s["symbol"], s["action"], s["price"], s["stop_loss"],
+            s["strategy"], s["timeframe"], s["confluence_score"], s["confidence_score"],
+        )
+        await _deliver_confirmation(s["signal_id"], message)
+        attempted += 1
+    return attempted
+
+
+async def _notify_sweep_loop() -> None:
+    while True:
+        try:
+            n = await _renotify_stranded_signals()
+            if n:
+                logger.info("Notify sweep re-attempted %d stranded signal(s)", n)
+        except Exception as e:
+            logger.error("Notify sweep failed: %s", e)
+        await asyncio.sleep(NOTIFY_SWEEP_INTERVAL_SECONDS)

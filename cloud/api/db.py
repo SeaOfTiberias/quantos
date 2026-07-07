@@ -27,6 +27,7 @@ class Signal:
     created_at:       datetime
     confidence_score: Optional[float] = None
     stop_loss:        Optional[float] = None
+    notified_at:      Optional[datetime] = None   # confirmation delivered on Telegram
     executed_at:      Optional[datetime] = None
     execution_price:  Optional[float] = None
     closed_at:        Optional[datetime] = None
@@ -75,6 +76,7 @@ class SignalDB:
                 "stop_loss":        s.stop_loss,
                 "status":           s.status,
                 "created_at":       s.created_at.isoformat(),
+                "notified_at":      s.notified_at.isoformat() if s.notified_at else None,
                 "executed_at":      s.executed_at.isoformat() if s.executed_at else None,
                 "execution_price":  s.execution_price,
                 "closed_at":        s.closed_at.isoformat() if s.closed_at else None,
@@ -92,6 +94,18 @@ class SignalDB:
             for s in self._store:
                 if s.signal_id == signal_id:
                     s.status = new_status
+                    break
+
+    async def mark_notified(self, signal_id: str) -> None:
+        """Record that the Telegram confirmation for this signal was
+        actually delivered — the re-notify sweep (cloud/api/main.py) only
+        re-sends PENDING_CONFIRMATION signals that never got this stamp."""
+        if self._use_postgres:
+            await self._pg_mark_notified(signal_id)
+        else:
+            for s in self._store:
+                if s.signal_id == signal_id:
+                    s.notified_at = datetime.now()
                     break
 
     async def mark_executed(self, signal_id: str, execution_price: float) -> None:
@@ -137,6 +151,9 @@ class SignalDB:
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
     async def _pg_update_status(self, signal_id: str, status: str) -> None:
+        raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
+
+    async def _pg_mark_notified(self, signal_id: str) -> None:
         raise NotImplementedError("Postgres not yet wired — set DATABASE_URL")
 
     async def _pg_mark_executed(self, signal_id: str, execution_price: float) -> None:

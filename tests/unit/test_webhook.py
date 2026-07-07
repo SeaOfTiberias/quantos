@@ -200,3 +200,78 @@ async def test_webhook_dedup_ignores_settled_statuses(monkeypatch, existing_stat
         r = await _post(_payload(symbol))
     assert r.status_code == 200
     assert r.json()["status"] == "PENDING_CONFIRMATION"
+
+
+# ── Re-notify sweep (S4-5 / P1-4) ────────────────────────────────────────────
+
+from datetime import timedelta
+
+from cloud.api.main import _renotify_stranded_signals
+
+
+async def _seed_stranded(symbol: str, age_seconds: float) -> str:
+    """Insert a PENDING_CONFIRMATION signal created age_seconds ago with no
+    successful Telegram delivery recorded."""
+    db = await get_db()
+    signal_id = f"SIG-TEST-{uuid.uuid4().hex[:8].upper()}"
+    await db.insert_signal(Signal(
+        signal_id=signal_id, user_id="system", symbol=symbol, action="BUY",
+        price=100.0, timeframe="1h", strategy="darvas_breakout",
+        confluence_score=90, confidence_score=80.0, stop_loss=95.0,
+        status="PENDING_CONFIRMATION",
+        created_at=datetime.now(timezone.utc) - timedelta(seconds=age_seconds),
+    ))
+    return signal_id
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_recent_and_already_notified_signals():
+    """A signal the webhook path is still delivering (recent) or that was
+    already delivered must not be re-sent."""
+    db = await get_db()
+    await _seed_stranded(f"RC{uuid.uuid4().hex[:6].upper()}", age_seconds=10)
+    notified_id = await _seed_stranded(f"NT{uuid.uuid4().hex[:6].upper()}", age_seconds=600)
+    await db.mark_notified(notified_id)
+
+    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+               return_value=True) as mock_send:
+        attempted = await _renotify_stranded_signals()
+    assert attempted == 0
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sweep_renotifies_stranded_signal_and_marks_it():
+    """S4-5 AC: with Telegram back up, a signal stranded >5 min gets
+    re-notified and stamped so it isn't sent a third time."""
+    signal_id = await _seed_stranded(f"ST{uuid.uuid4().hex[:6].upper()}", age_seconds=600)
+
+    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+               return_value=True) as mock_send:
+        attempted = await _renotify_stranded_signals()
+    assert attempted == 1
+    assert signal_id in mock_send.call_args[0][0]  # message carries the ID
+
+    db = await get_db()
+    assert (await db.get_signal(signal_id)).notified_at is not None
+
+    # Second sweep: nothing left to do
+    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+               return_value=True) as mock_send:
+        assert await _renotify_stranded_signals() == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_failure_leaves_signal_unmarked_for_next_pass():
+    signal_id = await _seed_stranded(f"FL{uuid.uuid4().hex[:6].upper()}", age_seconds=600)
+
+    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+               return_value=False):
+        attempted = await _renotify_stranded_signals()
+    assert attempted == 1
+
+    db = await get_db()
+    assert (await db.get_signal(signal_id)).notified_at is None  # next sweep retries
+
+    # Clean up so this stranded seed doesn't leak into later sweep calls
+    await db.mark_notified(signal_id)
