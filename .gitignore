@@ -12,6 +12,8 @@ env/
 
 # Environment & secrets — NEVER commit these
 .env
+.env.local
+*.env.local
 agent/config.yaml
 
 # IDE

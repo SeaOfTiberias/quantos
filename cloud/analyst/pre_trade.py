@@ -11,8 +11,11 @@ ADR-04: Only called when confluence_score >= MIN_CONFLUENCE (70).
 
 import logging
 import os
+import time
 
 import anthropic
+
+from cloud.api.metrics import record_claude
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +74,28 @@ async def analyse_signal(signal: dict) -> float:
 
     prompt = _build_prompt(signal, regime)
 
-    response = await _claude.messages.create(
-        model=MODEL,
-        max_tokens=1000,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-        tools=[_SCORE_TOOL],
-        tool_choice={"type": "tool", "name": "submit_score"},
-    )
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await _claude.messages.create(
+            model=MODEL,
+            max_tokens=1000,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+            tools=[_SCORE_TOOL],
+            tool_choice={"type": "tool", "name": "submit_score"},
+        )
+    finally:
+        # One record per call, in a finally so latency lands even on a
+        # failure/timeout (the cockpit should see slow or erroring Claude,
+        # not just successes). Token usage only exists on success → spend 0
+        # on failure (S5-6).
+        usage = getattr(response, "usage", None) if response is not None else None
+        record_claude(
+            (time.perf_counter() - started) * 1000.0,
+            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
+            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+        )
 
     score = _extract_confidence_score(response)
     logger.info("[%s] Pre-trade confidence: %.1f", signal.get("signal_id"), score)

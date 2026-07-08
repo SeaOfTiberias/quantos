@@ -23,8 +23,8 @@ const C = {
 // ─── Cloud API ──────────────────────────────────────────────────────────────
 // Must match agent/config.yaml's cloud.api_url (the same Railway instance the
 // local agent talks to). Override via cockpit/.env's VITE_CLOUD_API_URL — see
-// .env.example. Everything below except the Discovery Watchlist panel is
-// still mock data.
+// .env.example. The System Health (S5-6) and Discovery Watchlist panels are
+// wired to real cloud data; the remaining panels are still mock.
 const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
   || "https://web-production-b5527.up.railway.app";
 
@@ -75,6 +75,13 @@ const MOCK_SCREENER = [
 const fmt = (n, dp = 2) => n?.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp }) ?? "—";
 const fmtPct = n => n != null ? `${n > 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
 const fmtINR = n => n != null ? `₹${fmt(n, 0)}` : "—";
+const fmtMs = n => n != null ? `${Math.round(n)} ms` : "—";
+const fmtAge = s => {
+  if (s == null) return "never";
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ago`;
+};
 
 const regimeColor = r => ({
   TRENDING_BULL: C.green, TRENDING_BEAR: C.red,
@@ -566,9 +573,109 @@ function ClaudeChat() {
   );
 }
 
+// ─── System health (S5-6 observability, real data) ─────────────────────────
+
+const SIGNAL_STATUS_COLOR = s => ({
+  PENDING_CONFIRMATION: C.gold, CONFIRMED: C.green, EXECUTED: C.accent,
+  CLOSED: C.mid, FAILED: C.red, BLOCKED_EVENT_RISK: C.red,
+  REJECTED_LOW_CONFLUENCE: C.muted, REJECTED_DUPLICATE: C.muted, SKIPPED: C.muted,
+})[s] ?? C.muted;
+
+function Metric({ label, value, sub, color = C.white }) {
+  return (
+    <div style={{
+      background: C.bg, borderRadius: 6, padding: "10px 12px",
+      border: `1px solid ${C.border}`, flex: 1, minWidth: 0,
+    }}>
+      <Label color={C.muted}>{label}</Label>
+      <div style={{ fontSize: 16, fontWeight: 700, marginTop: 4, color }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function SystemHealthPanel({ obs, error }) {
+  const hb = obs?.heartbeat;
+  const counts = obs?.signal_counts_today ?? {};
+  const wl = obs?.webhook_latency ?? {};
+  const cl = obs?.claude_latency ?? {};
+  const spend = obs?.claude_spend_today ?? {};
+  const hbColor = !hb || hb.stale ? C.red : C.green;
+
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Label color={C.accent}>System Health</Label>
+        <span style={{ fontSize: 10, color: hbColor, fontWeight: 600 }}>
+          {error ? "offline"
+            : !hb || hb.last_contact == null ? "agent never synced"
+            : `agent ${hb.stale ? "STALE" : "live"} · ${fmtAge(hb.age_seconds)}`}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+        <Metric
+          label="Agent Heartbeat"
+          value={!hb || hb.stale ? "STALE" : "LIVE"}
+          color={hbColor}
+          sub={hb?.last_contact ? fmtAge(hb.age_seconds) : "no sync yet"}
+        />
+        <Metric
+          label="Signals Today"
+          value={obs?.signals_today_total ?? "—"}
+          sub={`${counts.EXECUTED ?? 0} executed`}
+        />
+        <Metric
+          label="Webhook p50 / p95"
+          value={`${fmtMs(wl.p50_ms)} / ${fmtMs(wl.p95_ms)}`}
+          sub={`${wl.count ?? 0} samples`}
+        />
+        <Metric
+          label="Claude p50 / p95"
+          value={`${fmtMs(cl.p50_ms)} / ${fmtMs(cl.p95_ms)}`}
+          sub={`${cl.count ?? 0} calls`}
+        />
+        <Metric
+          label="Claude Spend (today)"
+          value={spend.est_usd != null ? `$${spend.est_usd.toFixed(3)}` : "—"}
+          color={C.gold}
+          sub={`${spend.calls ?? 0} calls · est.`}
+        />
+      </div>
+
+      {Object.keys(counts).length > 0 && (
+        <>
+          <Divider />
+          <Label>Signals by Status (today)</Label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+            {Object.entries(counts).map(([status, n]) => {
+              const color = SIGNAL_STATUS_COLOR(status);
+              return (
+                <span key={status} style={{
+                  fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 600,
+                  background: `${color}20`, color, border: `1px solid ${color}40`,
+                }}>
+                  {status.replace(/_/g, " ")} · {n}
+                </span>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 // ─── Top bar ──────────────────────────────────────────────────────────────
 
-function TopBar({ lastRefresh }) {
+function TopBar({ lastRefresh, heartbeat, obsError }) {
+  // The LIVE indicator is now real: green only when the agent's most recent
+  // sync (regime/watchlist) is within the heartbeat window (S5-6 dead-man).
+  const stale = obsError || !heartbeat || heartbeat.stale || heartbeat.last_contact == null;
+  const dotColor = stale ? C.red : C.green;
+  const statusText = obsError ? "API DOWN"
+    : !heartbeat || heartbeat.last_contact == null ? "NO AGENT"
+    : heartbeat.stale ? "AGENT STALE" : "LIVE";
   return (
     <div style={{
       background: C.panel, borderBottom: `1px solid ${C.border}`,
@@ -582,9 +689,9 @@ function TopBar({ lastRefresh }) {
       <span style={{ fontSize: 11, color: C.muted }}>Bloomberg. But Smarter.</span>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.green,
-            animation: "pulse 2s infinite" }} />
-          <span style={{ fontSize: 11, color: C.green }}>LIVE</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor,
+            animation: stale ? "none" : "pulse 2s infinite" }} />
+          <span style={{ fontSize: 11, color: dotColor }}>{statusText}</span>
         </div>
         <span style={{ fontSize: 11, color: C.muted }}>
           {lastRefresh ? `Updated ${lastRefresh}` : "Connecting…"}
@@ -605,6 +712,8 @@ export default function QuantOSCockpit() {
   const [greeks] = useState(MOCK_GREEKS);
   const [screener] = useState(MOCK_SCREENER);
   const [discovery, setDiscovery] = useState({ entries: [], updatedAt: null, error: false });
+  const [obs, setObs] = useState(null);
+  const [obsError, setObsError] = useState(false);
 
   useEffect(() => {
     const fmt = new Intl.DateTimeFormat("en-IN", {
@@ -638,6 +747,25 @@ export default function QuantOSCockpit() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  // System health (S5-6): signal counts, webhook/Claude latency, spend, and
+  // the agent heartbeat. Polled every 15s so a dead agent surfaces promptly.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/observability`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) { setObs(data); setObsError(false); }
+      } catch {
+        if (!cancelled) setObsError(true);
+      }
+    };
+    load();
+    const id = setInterval(load, 15000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
   return (
     <div style={{
       background: C.bg, minHeight: "100vh", color: C.white,
@@ -652,9 +780,14 @@ export default function QuantOSCockpit() {
         input::placeholder { color: ${C.muted}; }
       `}</style>
 
-      <TopBar lastRefresh={lastRefresh} />
+      <TopBar lastRefresh={lastRefresh} heartbeat={obs?.heartbeat} obsError={obsError} />
 
       <div style={{ padding: "20px 24px" }}>
+        {/* Row 0: System health (real data — S5-6 observability) */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
+          <SystemHealthPanel obs={obs} error={obsError} />
+        </div>
+
         {/* Row 1: Regime · Greeks · Alpha curve */}
         <div style={{
           display: "grid",

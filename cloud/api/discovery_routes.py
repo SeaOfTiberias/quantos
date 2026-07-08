@@ -81,3 +81,9 @@ async def get_watchlist():
         "entries": list(_watchlist_store.values()),
         "updated_at": _last_synced_at.isoformat() if _last_synced_at else None,
     }
+
+
+def get_last_synced_at() -> Optional[datetime]:
+    """Last time the agent pushed its watchlist — one of the agent-liveness
+    signals the S5-6 observability heartbeat aggregates."""
+    return _last_synced_at

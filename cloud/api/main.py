@@ -23,6 +23,7 @@ import hmac
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -44,6 +45,8 @@ from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
 from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.regime_routes import router as regime_router
+from cloud.api.observability_routes import router as observability_router
+from cloud.api import metrics
 from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -68,6 +71,7 @@ app.include_router(morning_router)
 app.include_router(options_router)
 app.include_router(discovery_router)
 app.include_router(regime_router)
+app.include_router(observability_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,6 +79,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _webhook_latency_middleware(request: Request, call_next):
+    """Time the /webhook/tradingview round trip for the observability cockpit
+    (S5-6). Covers every return path — confluence reject, dedup, event block,
+    happy path, and errors — since it wraps the whole request."""
+    if request.url.path != "/webhook/tradingview":
+        return await call_next(request)
+    started = time.perf_counter()
+    try:
+        return await call_next(request)
+    finally:
+        metrics.record_webhook_ms((time.perf_counter() - started) * 1000.0)
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 MIN_CONFLUENCE = float(os.getenv("MIN_CONFLUENCE_SCORE", "70"))

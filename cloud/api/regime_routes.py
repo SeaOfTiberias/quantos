@@ -72,6 +72,14 @@ async def sync_regime(payload: RegimeSyncRequest, _auth=Depends(require_cloud_se
     return {"synced": True}
 
 
+def get_last_synced_at() -> Optional[datetime]:
+    """Last time the agent pushed a regime classification — the primary
+    agent-liveness signal for the S5-6 observability heartbeat, since the
+    agent re-syncs regime on a fixed cadence (REGIME_CACHE_TTL) whereas the
+    watchlist syncs only sporadically (Stage A once/day + Stage B fires)."""
+    return _synced_at
+
+
 def get_synced_regime() -> Optional[RegimeResult]:
     """
     Read by cloud/analyst/pre_trade.py and cloud/api/strategy_routes.py.

@@ -325,6 +325,18 @@ class SignalDB:
                 return s
         return None
 
+    async def counts_by_status_today(self) -> dict[str, int]:
+        """{status: count} for signals created today (UTC) — feeds the S5-6
+        observability cockpit. Empty dict on a quiet day."""
+        if self._use_postgres:
+            return await self._pg_counts_by_status_today()
+        today = datetime.now(timezone.utc).date()
+        counts: dict[str, int] = {}
+        for s in self._store:
+            if _as_utc(s.created_at).date() == today:
+                counts[s.status] = counts.get(s.status, 0) + 1
+        return counts
+
     # ── Postgres implementations (live once connect() succeeds) ───────────────
 
     async def _pg_insert(self, signal: Signal) -> None:
@@ -440,6 +452,19 @@ class SignalDB:
             )
             row = result.first()
             return _row_to_signal(row) if row is not None else None
+
+    async def _pg_counts_by_status_today(self) -> dict[str, int]:
+        from sqlalchemy import text
+        now = datetime.now(timezone.utc)
+        day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        # Uses idx_signals_status_created (status, created_at).
+        sql = text(
+            "SELECT status, COUNT(*) AS n FROM signals "
+            "WHERE created_at >= :day_start GROUP BY status"
+        )
+        async with self._engine.begin() as conn:
+            result = await conn.execute(sql, {"day_start": day_start})
+            return {r._mapping["status"]: r._mapping["n"] for r in result}
 
 
 def _as_utc(dt: datetime) -> datetime:
