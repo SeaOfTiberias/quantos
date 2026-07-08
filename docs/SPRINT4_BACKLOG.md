@@ -119,7 +119,7 @@ sprint is effectively complete. See `docs/CORP_ACTION_SPIKE.md`,
 - **EMA 9/20 crossover strategy** (3 pts): sibling of Stage B scanner; hard-gated to TRENDING regimes via synced regime; tagged `strategy="ema_crossover"` for segmented expectancy.
 - **Mean-reversion strategy for RANGING** (5 pts): RSI(2)/Bollinger snap-back, Nifty-100 universe only; hard regime gate mandatory (counter-trend).
 - **52-week-high RS momentum** (3 pts): weekly cadence, reuses Stage A discovery pattern.
-- **Fill reconciliation** (2 pts): compare intended entry (signal price) vs. actual fill (`execution_price`) per trade; feeds the slippage parameter in S5-1. Written as delta: fill capture already exists, only the comparison/report is new.
+- ✅ **Fill reconciliation** (2 pts) — **DONE 2026-07-08** (the one Sprint 6 item with no live-data gate; done early). `core/risk/fill_reconciliation.py` compares intended entry (`price`) vs actual fill (`execution_price`) per trade, direction-aware, signed bps (+ = adverse). `GET /reconciliation/slippage` surfaces per-trade deltas + aggregate; `suggested_slippage_bps` = `max(0, mean_bps)` feeds the S5-1 cost model's per-leg `slippage_bps` for backtests. Entry leg only (no intended-exit stored). 17 tests. Empty-but-valid until fills accrue.
 - **Options execution path** (L, separate epic): options order support in `BrokerAdapter`/Fyers adapter — prerequisite for the already-built condor/spread advisor to become tradeable.
 
 ## Explicitly deferred (with reasons)

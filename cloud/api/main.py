@@ -46,6 +46,7 @@ from cloud.api.options_routes import router as options_router
 from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.regime_routes import router as regime_router
 from cloud.api.observability_routes import router as observability_router
+from cloud.api.reconciliation_routes import router as reconciliation_router
 from cloud.api import metrics
 from core import prompts
 from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
@@ -73,6 +74,7 @@ app.include_router(options_router)
 app.include_router(discovery_router)
 app.include_router(regime_router)
 app.include_router(observability_router)
+app.include_router(reconciliation_router)
 
 app.add_middleware(
     CORSMiddleware,
