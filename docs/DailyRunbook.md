@@ -52,3 +52,49 @@ The cockpit's Discovery Watchlist panel should visibly update as tiers shift (WA
 5. Shutdown
 Ctrl+C the agent when you're done for the day (it manages open positions and trailing stops only while running — if you have open positions, don't stop it mid-session without a reason).
 Ctrl+C the cockpit dev server, or just leave it running — it's stateless.
+
+---
+
+## One-time carryover verification — next market session (Sprint 5/6)
+
+Two things landed in code but were never confirmed against a live, market-hours
+agent. Do these once at the next open; after they pass, delete this section.
+
+### A. Agent restart → S4-3 `timestamp` on Stage B signals  ⚠️ can silently zero out ALL signals
+
+The cloud now **rejects any webhook missing `timestamp` with HTTP 400**
+(`cloud/api/main.py` replay guard, MAX_ALERT_AGE_SECONDS=120). The agent's
+internal Stage B POST already sends it (`agent/main.py:461`, `"timestamp":
+time.time()`), so the code is correct — but **any agent process still running
+from before that commit landed will have every Stage B signal 400-rejected by
+the cloud.** Symptom: agent log says `[Stage B] Fired internal signal for X` but
+**no Telegram confirm prompt ever arrives** (the cloud dropped it).
+
+- **Fix:** just start the agent fresh today from repo root — it's the current
+  `main` code, so a normal daily start resolves it. No special step.
+- **Verify:** on the first Stage B fire of the day, a `[Stage B] Fired internal
+  signal…` log line **must** be followed by a Telegram confirm/skip prompt
+  within a few seconds. If the log line fires but no Telegram prompt comes,
+  the signal was rejected — capture the agent log + check Railway logs for
+  `Rejected webhook — missing timestamp` and send it to me.
+- If no signal fires all day (quiet market), this stays unverified — that's
+  fine, the code path is unit-tested; just re-check on the next firing day.
+
+### B. S5-4 live breadth — `broker.get_quotes()` returns real advance/decline
+
+S5-4 replaced the 250/250 neutral breadth placeholder with a live
+advance/decline sample over the discovery universe. It's only exercised when the
+market is open (quotes move), so it was never confirmed live.
+
+- **When:** during market hours (9:15–15:30 IST), after the agent has run at
+  least one regime refresh (every ~15 min, REGIME_CACHE_TTL).
+- **Verify (cockpit):** the Market Regime panel should show a **Breadth** row
+  with non-zero counts, e.g. `312 ▲ / 168 ▼ · A/D 1.86 · STRONG` — NOT absent
+  and NOT 0/0.
+- **Verify (API, equivalent):** `GET <cloud>/regime/status` → `advance_count`
+  and `decline_count` are non-zero and their sum is ≥ 20 (MIN_BREADTH_SAMPLE).
+- **If it shows neutral/0-0:** `get_quotes()` likely threw and was caught into
+  the neutral fallback (by design — breadth is a signal, not a safety stop).
+  Grep the agent log for the regime refresh around that time and send me the
+  line; the usual suspects are a Fyers quote-endpoint field/paging mismatch or
+  an empty breadth universe.
