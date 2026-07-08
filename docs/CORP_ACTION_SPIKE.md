@@ -1,8 +1,9 @@
 # S5-3 Spike — Is the broker's daily OHLC split-adjusted?
 
-**Status:** ⏳ Tooling ready — **verdict PENDING one live run** (needs a fresh Fyers token).
+**Status:** ✅ **RESOLVED 2026-07-08 — broker daily OHLC is SPLIT-ADJUSTED.** Conditional 5-pt adjusted-store work is **not needed** (dropped).
 **Backlog item:** S5-3 (P1-8), `docs/SPRINT4_BACKLOG.md`.
 **Tool:** [`agent/spike_corp_action.py`](../agent/spike_corp_action.py) (read-only market-data reads).
+**Verified against:** Fyers (`BrokerAdapter.get_historical_data`, `"1d"`), account BRIDGET PRIYA JOHN, run 2026-07-08.
 
 ## Why this matters
 
@@ -61,30 +62,63 @@ python agent/spike_corp_action.py --symbol IRCTC --ex-date 2021-10-28 --factor 5
 The script prints the candle table around the ex-date, the boundary ratio, and
 a one-line VERDICT (ADJUSTED / UNADJUSTED / INCONCLUSIVE).
 
-## Verdict
+## Verdict — ADJUSTED
 
-> _Pending the live run above. Paste the script's output here (the candle table +
-> boundary analysis) as the evidence, and record the verdict._
+Two independent known splits, run 2026-07-08 against live Fyers daily history.
+In both, the price series is **continuous across the ex-date** — no
+split-factor gap — so the feed is already corporate-action adjusted.
 
-**Boundary evidence (fill in after the run):**
+| symbol | split | ex-date | last close before | first open on/after | boundary ratio | verdict |
+|---|---|---|---|---|---|---|
+| NESTLEIND | 1:10 | 2024-01-05 | 1355.82 | 1377.00 | **0.985** | ADJUSTED |
+| IRCTC | 1:5 | 2021-10-28 | 826.03 | 817.00 | **1.011** | ADJUSTED |
 
-| field | value |
-|---|---|
-| symbol / ex-date / factor | NESTLEIND / 2024-01-05 / 10 |
-| last close before ex-date | `____` |
-| first open on/after ex-date | `____` |
-| boundary ratio | `____` |
-| **verdict** | `ADJUSTED` / `UNADJUSTED` |
+An *unadjusted* feed would have shown ratios of ≈10 and ≈5 respectively (a
+90% / 80% artificial overnight drop on the ex-date). Both landed at ≈1.0 —
+a 10× / 5× discriminator, so the result is unambiguous.
 
-### Decision (drives the conditional 5 pts)
+NESTLEIND candle table around the split (note the smooth 2024-01-04 close
+1355.82 → 2024-01-05 open 1377.00, exactly where a raw feed would gap to ~136):
 
-- **If UNADJUSTED** → the conditional half of S5-3 is warranted: build the
-  DuckDB + parquet adjusted-OHLC store (with adjustment factors) and route the
-  Stage A/B fetch path through it. Until then, splits in the scan universe are a
-  live hazard — a mitigation stopgap is to exclude symbols with a corporate
-  action inside the box lookback window.
-- **If ADJUSTED** → the broker already does the work; **drop the conditional
-  5 pts** and note that the fetch path needs no change.
+```
+date                open        high         low       close        volume
+2023-12-29       1312.50     1332.50     1307.28     1329.02     2,068,160
+2024-01-01       1332.50     1372.26     1332.00     1368.62     2,632,200
+2024-01-02       1375.00     1384.65     1351.21     1361.16     2,831,540
+2024-01-03       1367.25     1370.87     1328.65     1331.76     2,026,920
+2024-01-04       1342.55     1357.51     1332.61     1355.82     2,647,800
+2024-01-05       1377.00     1377.00     1321.23     1333.20     5,154,128  <== ex-date
+2024-01-08       1341.50     1344.50     1305.50     1309.65     2,064,756
+2024-01-09       1320.00     1320.15     1293.47     1296.30     1,626,054
+```
+
+### Decision
+
+**Fyers already back-adjusts, so drop the conditional 5-pt adjusted-OHLC store**
+(DuckDB+parquet). The Stage A/B fetch path needs no change — splits and bonuses
+in the scan universe will not fabricate Darvas breakouts or corrupt ATR/stops.
+
+(Had the verdict been UNADJUSTED, the conditional half of S5-3 would have been
+warranted: build the adjusted store, or as a stopgap exclude symbols with a
+corporate action inside the box lookback window.)
+
+## Caveats / notes
+
+- **Level, not just gap:** the adjusted 2024-01-04 close shows as ~₹1,356, below
+  the pure split-only level (~₹2,700). Fyers appears to apply *continuous*
+  back-adjustment (folding in later actions/dividends) so the historical series
+  is scaled to line up with the current price. That's fine — and ideal — for the
+  pipeline, which works on **relative** levels within a lookback window (box
+  widths, ATR, RR), never absolute rupee prices. Only the continuity across the
+  ex-date matters, and it holds.
+- **History depth:** IRCTC 2021 data returned fine, so Fyers daily history reaches
+  back **at least ~4.5 years** — comfortably more than any Darvas lookback needs.
+- **Scope:** verified for NSE **equity** daily candles. Not tested for indices or
+  intraday resolutions (the pipeline's corp-action exposure is entirely in the
+  daily equity path, so that's the relevant surface).
+- **Reproduce:** `python agent/spike_corp_action.py` (Nestlé) or
+  `python agent/spike_corp_action.py --symbol IRCTC --ex-date 2021-10-28 --factor 5`.
+  Needs a fresh Fyers token (see below).
 
 ## Notes
 

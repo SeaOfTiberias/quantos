@@ -79,8 +79,8 @@ def main() -> int:
     broker.connect()
     print(f"Broker connected: {broker}\n")
 
-    print(f"Corporate action under test: {args.symbol} — 1:{args.factor:g} on {args.ex_date}")
-    print(f"Fetching daily candles {from_date.date()} → {to_date.date()} ...\n")
+    print(f"Corporate action under test: {args.symbol} - 1:{args.factor:g} on {args.ex_date}")
+    print(f"Fetching daily candles {from_date.date()} -> {to_date.date()} ...\n")
     candles = broker.get_historical_data(args.symbol, "1d", from_date, to_date)
 
     if not candles:
@@ -95,7 +95,7 @@ def main() -> int:
 
     print(f"{'date':<12}{'open':>12}{'high':>12}{'low':>12}{'close':>12}{'volume':>14}")
     for c in candles:
-        marker = "  <-- ex-date onward" if c.timestamp.date() >= ex_naive else ""
+        marker = "  <== ex-date onward" if c.timestamp.date() >= ex_naive else ""
         print(f"{str(c.timestamp.date()):<12}{c.open:>12.2f}{c.high:>12.2f}"
               f"{c.low:>12.2f}{c.close:>12.2f}{c.volume:>14,d}{marker}")
 
@@ -110,7 +110,7 @@ def main() -> int:
     ratio = pre_close / post_open if post_open else float("inf")
     verdict = _classify(ratio, args.factor)
 
-    print("── Boundary analysis ─────────────────────────────────────")
+    print("-- Boundary analysis -------------------------------------")
     print(f"  last close BEFORE ex-date ({pre[-1].timestamp.date()}):  {pre_close:>12.2f}")
     print(f"  first open ON/AFTER ex-date ({post[0].timestamp.date()}): {post_open:>12.2f}")
     print(f"  boundary ratio (pre_close / post_open):     {ratio:>8.3f}")
@@ -118,11 +118,11 @@ def main() -> int:
     print()
     print(f"  VERDICT: broker daily OHLC is {verdict}")
     if verdict == "UNADJUSTED":
-        print("           → a corp-action-adjusted OHLC store IS needed (S5-3 conditional).")
+        print("           -> a corp-action-adjusted OHLC store IS needed (S5-3 conditional).")
     elif verdict == "ADJUSTED":
-        print("           → no adjusted store needed; the conditional 5 pts can be dropped.")
+        print("           -> no adjusted store needed; the conditional 5 pts can be dropped.")
     else:
-        print("           → ratio matched neither ~1 nor ~factor; verify the ex-date/factor,")
+        print("           -> ratio matched neither ~1 nor ~factor; verify the ex-date/factor,")
         print("             the split may not be the one in this window.")
     return 0
 
