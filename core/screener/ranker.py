@@ -18,6 +18,7 @@ import os
 import anthropic
 
 from core.screener.ingest import ScreenerCandidate
+from core import prompts
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ async def rank_candidates(
     response = await _claude.messages.create(
         model=MODEL,
         max_tokens=2000,
-        system=_SYSTEM_PROMPT,
+        system=prompts.load("screener_ranker_system"),
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -92,50 +93,13 @@ def _build_ranking_prompt(
 
     candidates_block = "\n".join(rows)
 
-    return f"""
-You are ranking pre-filtered NSE stock candidates for Darvas Box breakout potential.
-
-## Market Context
-Nifty 50 change over lookback period: {nifty_change_pct:+.2f}%
-
-## Candidates ({len(candidates)} total)
-{candidates_block}
-
-## Ranking Criteria (in priority order)
-1. **Darvas setup quality** — stocks near a clean consolidation, holding above
-   key moving averages, NOT already extended from a big move
-2. **Relative strength vs Nifty** — outperforming the index, not just rising
-   with the broad market
-3. **Liquidity** — sufficient volume and relative volume surge to suggest
-   institutional interest, without being a thin/illiquid mover
-
-## Your Task
-Rank the top {top_n} candidates. Penalize stocks that are:
-- Already extended >15% from 50-day SMA (chasing risk)
-- Showing declining relative volume (interest fading)
-- RSI > 75 (overbought, poor risk/reward for new entries)
-
-Return ONLY valid JSON, no preamble:
-
-{{
-  "rankings": [
-    {{
-      "symbol": "<symbol>",
-      "rank": <1-{top_n}>,
-      "score": <0-100>,
-      "rationale": "<one sentence, specific to this stock's data>"
-    }}
-  ]
-}}
-""".strip()
-
-
-_SYSTEM_PROMPT = """
-You are QuantOS, an AI screener analyst for NSE Indian equities.
-Rank candidates objectively based on the data provided.
-Always return valid JSON. Be specific in your rationale — reference
-actual numbers from the data, not generic statements.
-""".strip()
+    return prompts.render(
+        "screener_ranker_user",
+        nifty_change_pct=nifty_change_pct,
+        n_candidates=len(candidates),
+        candidates_block=candidates_block,
+        top_n=top_n,
+    )
 
 
 def _parse_ranking_response(raw: str) -> list[dict]:

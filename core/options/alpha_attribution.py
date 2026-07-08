@@ -23,6 +23,8 @@ from typing import Optional
 
 import anthropic
 
+from core import prompts
+
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
@@ -182,21 +184,18 @@ async def generate_alpha_narrative(metrics: AttributionMetrics, trade_pnls: list
         f"{t.get('signal_id', '?')} ({t.get('pnl_pct', 0):.1f}%)" for t in top_losers
     ) or "none"
 
-    prompt = f"""
-Write a concise 3-sentence weekly alpha attribution narrative for a quant trader.
-
-## Period: {metrics.start_date} to {metrics.end_date}
-- QuantOS return: {metrics.quantos_total_return:+.2f}%
-- Nifty return:   {metrics.nifty_total_return:+.2f}%
-- Alpha:          {metrics.alpha:+.2f}%
-- Sharpe:         {metrics.quantos_sharpe:.2f}
-- Win rate:       {metrics.quantos_win_rate:.0%}
-- Top contributors: {winners_str}
-- Top detractors:   {losers_str}
-
-3 sentences: (1) overall alpha verdict, (2) what drove performance, (3) what to watch next week.
-Direct and data-driven. No fluff.
-""".strip()
+    prompt = prompts.render(
+        "alpha_attribution_user",
+        start_date=metrics.start_date,
+        end_date=metrics.end_date,
+        quantos_total_return=metrics.quantos_total_return,
+        nifty_total_return=metrics.nifty_total_return,
+        alpha=metrics.alpha,
+        quantos_sharpe=metrics.quantos_sharpe,
+        quantos_win_rate=metrics.quantos_win_rate,
+        winners_str=winners_str,
+        losers_str=losers_str,
+    )
 
     try:
         response = await _claude.messages.create(

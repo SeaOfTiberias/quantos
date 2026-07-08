@@ -16,6 +16,7 @@ import time
 import anthropic
 
 from cloud.api.metrics import record_claude
+from core import prompts
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ async def analyse_signal(signal: dict) -> float:
         response = await _claude.messages.create(
             model=MODEL,
             max_tokens=1000,
-            system=_SYSTEM_PROMPT,
+            system=prompts.load("pre_trade_system"),
             messages=[{"role": "user", "content": prompt}],
             tools=[_SCORE_TOOL],
             tool_choice={"type": "tool", "name": "submit_score"},
@@ -142,45 +143,27 @@ async def _get_regime(symbol: str) -> dict:
 
 
 def _build_prompt(signal: dict, regime: dict) -> str:
-    return f"""
-You are the QuantOS pre-trade analyst. Evaluate this trading signal and return a confidence score.
-
-## Signal
-- Symbol:          {signal['symbol']}
-- Action:          {signal['action']}
-- Price:           ₹{signal['price']:,.2f}
-- Timeframe:       {signal['timeframe']}
-- Strategy:        {signal['strategy']}
-- Confluence:      {signal['confluence_score']:.0f}/100
-- Notes:           {signal.get('notes', 'None')}
-
-## Market Regime
-- Classification:      {regime['classification']}
-- Nifty trend signal:  {regime['nifty_trend']}
-- VIX signal:          {regime['vix_signal']}
-- Breadth signal:      {regime['breadth_signal']}
-- Regime confidence:   {regime['confidence']}
-- Strategies allowed in this regime: {', '.join(regime['allowed_strategies']) or 'none'}
-{f"- Note: {regime['note']}" if regime.get('note') else ""}
-
-## Your Task
-Evaluate this signal across these dimensions:
-1. **Regime alignment** — Does the signal direction match the current regime? If the regime
-   is UNKNOWN, treat this dimension as neutral — don't penalize or reward for it.
-2. **Extension risk** — Is the stock likely overextended after a big move?
-3. **Strategy fit** — Is {signal['strategy']} appropriate given the regime's allowed strategies above?
-4. **Risk/reward** — Does this setup offer asymmetric potential?
-
-Submit your evaluation via the submit_score tool.
-""".strip()
-
-
-_SYSTEM_PROMPT = """
-You are QuantOS, an AI pre-trade analyst for NSE Indian equities.
-Your role is to evaluate trading signals and submit structured confidence scores.
-Be concise, data-driven, and appropriately conservative on risk.
-Never refuse to score — always submit a score via the tool even if data is incomplete.
-""".strip()
+    # Prompt text lives in prompts/pre_trade_user.md (S5-8); derived holes
+    # (the optional note line, the joined strategy list) are computed here so
+    # the template stays a flat str.format with no embedded logic.
+    note = regime.get("note")
+    return prompts.render(
+        "pre_trade_user",
+        symbol=signal["symbol"],
+        action=signal["action"],
+        price=signal["price"],
+        timeframe=signal["timeframe"],
+        strategy=signal["strategy"],
+        confluence_score=signal["confluence_score"],
+        notes=signal.get("notes", "None"),
+        classification=regime["classification"],
+        nifty_trend=regime["nifty_trend"],
+        vix_signal=regime["vix_signal"],
+        breadth_signal=regime["breadth_signal"],
+        confidence=regime["confidence"],
+        allowed_strategies=", ".join(regime["allowed_strategies"]) or "none",
+        note_line=f"- Note: {note}" if note else "",
+    )
 
 
 def _extract_confidence_score(response) -> float:

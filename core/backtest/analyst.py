@@ -15,6 +15,7 @@ import os
 import anthropic
 
 from core.backtest.parser import BacktestReport, BacktestMetrics
+from core import prompts
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ async def analyse_backtest(report: BacktestReport) -> dict:
     response = await _claude.messages.create(
         model=MODEL,
         max_tokens=2000,
-        system=_SYSTEM_PROMPT,
+        system=prompts.load("backtest_analyst_system"),
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -74,51 +75,24 @@ def _build_analysis_prompt(report: BacktestReport) -> str:
 
     flags = "\n".join(f"  - {n}" for n in report.notes) or "  None detected"
 
-    return f"""
-Analyse this TradingView backtest for the "{report.strategy_name}" strategy.
-
-## Overall Performance
-- Total trades:     {o.total_trades}
-- Win rate:         {o.win_rate:.1%}
-- Avg win / loss:   {o.avg_win_pct:.2f}% / {o.avg_loss_pct:.2f}%
-- Win/loss ratio:   {o.win_loss_ratio:.2f}
-- Profit factor:    {o.profit_factor:.2f}
-- Sharpe ratio:     {o.sharpe_ratio:.2f}
-- Max drawdown:     {o.max_drawdown_pct:.1f}%
-- Net profit:       {o.net_profit_pct:.1f}%
-- Trades/month:     {o.trades_per_month:.1f}
-- Avg bars held:    {o.avg_bars_held:.0f}
-
-## Year-by-Year
-{year_block}
-
-## Walk-Forward Split (first half vs second half)
-{wf_block}
-
-## Pre-detected Flags
-{flags}
-
-## Your Analysis Task
-Return ONLY valid JSON, no preamble:
-
-{{
-  "verdict": "<PROMISING|MARGINAL|OVERFIT_RISK|AVOID>",
-  "confidence": <0-100>,
-  "strengths": ["<strength 1>", "<strength 2>"],
-  "weaknesses": ["<weakness 1>", "<weakness 2>"],
-  "overfitting_assessment": "<2-3 sentences on whether this looks overfit>",
-  "walk_forward_recommendation": "<recommended walk-forward test approach>",
-  "suggested_improvements": ["<specific, actionable suggestion 1>", "<suggestion 2>"],
-  "narrative": "<3-4 sentence overall summary a practitioner would find useful>"
-}}
-""".strip()
-
-
-_SYSTEM_PROMPT = """
-You are QuantOS, an AI quant analyst specialising in NSE Indian equity strategy evaluation.
-Analyse backtests critically — your job is to protect the trader from overfit strategies
-and false confidence. Be direct about weaknesses. Always return valid JSON.
-""".strip()
+    return prompts.render(
+        "backtest_analyst_user",
+        strategy_name=report.strategy_name,
+        total_trades=o.total_trades,
+        win_rate=o.win_rate,
+        avg_win_pct=o.avg_win_pct,
+        avg_loss_pct=o.avg_loss_pct,
+        win_loss_ratio=o.win_loss_ratio,
+        profit_factor=o.profit_factor,
+        sharpe_ratio=o.sharpe_ratio,
+        max_drawdown_pct=o.max_drawdown_pct,
+        net_profit_pct=o.net_profit_pct,
+        trades_per_month=o.trades_per_month,
+        avg_bars_held=o.avg_bars_held,
+        year_block=year_block,
+        wf_block=wf_block,
+        flags=flags,
+    )
 
 
 def _parse_analysis(raw: str, report: BacktestReport) -> dict:

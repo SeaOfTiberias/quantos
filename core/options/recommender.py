@@ -22,6 +22,7 @@ from core.options.models import (
 from core.options.strategy_builder import build_strategy, StrategyBuildError
 from core.options.greeks import compute_greeks, estimate_probability_of_profit
 from core.regime.models import RegimeResult
+from core import prompts
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ async def recommend_strategy(
     response = await _claude.messages.create(
         model=MODEL,
         max_tokens=1200,
-        system=_SYSTEM_PROMPT,
+        system=prompts.load("options_recommender_system"),
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -130,54 +131,21 @@ def _build_recommendation_prompt(
     allowed_strategies: list[str],
 ) -> str:
     days_to_expiry = (chain.expiry - date.today()).days
-
-    return f"""
-You are recommending an options strategy for {chain.underlying}.
-
-## Market Context
-- Regime:          {regime.regime.value} (confidence {regime.confidence:.0f}%)
-- Trend signal:     {regime.trend_signal}
-- VIX signal:       {regime.vix_signal}
-- Spot price:       ₹{chain.spot_price:,.2f}
-- Days to expiry:   {days_to_expiry}
-
-## Options Context
-- IV Rank:          {chain.iv_rank:.0f}/100
-- IV Percentile:     {chain.iv_percentile:.0f}/100
-- PCR (OI-based):    {chain.pcr:.2f}
-- Max Pain:          ₹{chain.max_pain:,.2f}
-
-## Allowed Strategies (regime-gated)
-{', '.join(allowed_strategies)}
-
-## Your Task
-Pick the ONE strategy from the allowed list above that best fits this
-market context. Consider:
-- High IV Rank (>60) favours premium-selling strategies (iron_condor,
-  short_strangle, covered_call, cash_secured_put)
-- Low IV Rank (<40) favours premium-buying strategies (bull_call_spread,
-  bear_put_spread, debit_spread)
-- PCR > 1.2 suggests put-heavy positioning (potential support); PCR < 0.8
-  suggests call-heavy positioning (potential resistance)
-- Max pain proximity to spot suggests pin risk near expiry
-
-Return ONLY valid JSON, no preamble:
-
-{{
-  "strategy": "<one of: {', '.join(allowed_strategies)}>",
-  "confidence": <0-100>,
-  "rationale": "<2-3 sentences explaining the pick, referencing the actual
-                 regime, IVR, and PCR numbers above>"
-}}
-""".strip()
-
-
-_SYSTEM_PROMPT = """
-You are QuantOS, an AI options strategist for NSE Indian equity and index options.
-Recommend strategies based on regime, implied volatility, and positioning data.
-Always return valid JSON. Be specific in your rationale — cite actual numbers.
-Never recommend a strategy outside the allowed list provided.
-""".strip()
+    return prompts.render(
+        "options_recommender_user",
+        underlying=chain.underlying,
+        regime_value=regime.regime.value,
+        confidence=regime.confidence,
+        trend_signal=regime.trend_signal,
+        vix_signal=regime.vix_signal,
+        spot_price=chain.spot_price,
+        days_to_expiry=days_to_expiry,
+        iv_rank=chain.iv_rank,
+        iv_percentile=chain.iv_percentile,
+        pcr=chain.pcr,
+        max_pain=chain.max_pain,
+        allowed_strategies=", ".join(allowed_strategies),
+    )
 
 
 def _parse_strategy_choice(raw: str, allowed: list[str]) -> dict:

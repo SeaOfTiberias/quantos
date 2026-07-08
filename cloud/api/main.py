@@ -47,6 +47,7 @@ from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.regime_routes import router as regime_router
 from cloud.api.observability_routes import router as observability_router
 from cloud.api import metrics
+from core import prompts
 from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -103,6 +104,14 @@ TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 MAX_ALERT_AGE_SECONDS = float(os.getenv("MAX_ALERT_AGE_SECONDS", "120"))
 
 _SIGNAL_ID_RE = re.compile(r"(SIG-[A-Z0-9]+-[A-F0-9]+)")
+
+
+@app.on_event("startup")
+async def _preload_prompts():
+    # Fail fast at deploy if a prompt file is missing, rather than on the
+    # first live signal (S5-8). Only the hot-path pre_trade prompts are
+    # webhook-critical; the rest load lazily on first use in their own paths.
+    prompts.preload("pre_trade_system", "pre_trade_user")
 
 
 @app.on_event("startup")

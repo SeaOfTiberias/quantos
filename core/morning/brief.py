@@ -22,6 +22,8 @@ from typing import Optional
 
 import anthropic
 
+from core import prompts
+
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
@@ -100,22 +102,25 @@ async def _generate_narrative(data: MorningBriefData) -> str:
         for e in data.upcoming_events[:3]
     ) or "None in 7-day window"
 
-    prompt = f"""
-Write a concise 3-4 sentence morning intelligence brief for a quant trader.
-Tone: direct, data-driven, practitioner. No fluff.
+    darvas_status = "ENABLED" if data.darvas_enabled else "GATED (wrong regime)"
+    prev_pnl_str = (f"INR {data.prev_day_pnl:+,.0f}"
+                    if data.prev_day_pnl != 0 else "No trades")
 
-## Today's Data ({data.date.strftime('%d %b %Y')})
-- Regime: {data.regime} (confidence {data.regime_confidence:.0f}%)
-- Trend: {data.trend_signal} | VIX: {data.vix_signal}
-- Darvas scanner: {'ENABLED' if data.darvas_enabled else 'GATED (wrong regime)'}
-- Top candidates: {candidates_str}
-- Event risk: {events_str}
-- Position sizing: {data.kelly_size_pct:.1%} of capital ({data.kelly_method})
-- Prev day P&L: {'INR ' + f'{data.prev_day_pnl:+,.0f}' if data.prev_day_pnl != 0 else 'No trades'}
-- Open positions: {', '.join(data.open_positions) or 'None'}
-
-Write the brief now — 3-4 sentences, no headings, no bullets.
-""".strip()
+    prompt = prompts.render(
+        "morning_brief_user",
+        date_str=data.date.strftime("%d %b %Y"),
+        regime=data.regime,
+        regime_confidence=data.regime_confidence,
+        trend_signal=data.trend_signal,
+        vix_signal=data.vix_signal,
+        darvas_status=darvas_status,
+        candidates_str=candidates_str,
+        events_str=events_str,
+        kelly_size_pct=data.kelly_size_pct,
+        kelly_method=data.kelly_method,
+        prev_pnl_str=prev_pnl_str,
+        open_positions_str=", ".join(data.open_positions) or "None",
+    )
 
     try:
         response = await _claude.messages.create(
