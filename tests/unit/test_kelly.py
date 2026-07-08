@@ -64,30 +64,45 @@ def make_mixed_trades(wins: int, losses: int, win_pct=0.05, loss_pct=0.03) -> li
 # ─── ClosedTrade Tests ─────────────────────────────────────────────────────────
 
 class TestClosedTrade:
+    # S5-1: `pnl`/`pnl_pct`/`is_win` are now NET of transaction costs; the raw
+    # price move lives on `gross_pnl`/`gross_pnl_pct`. Costs are small (~₹1 on a
+    # ₹1k notional) but always > 0, so net is strictly inside gross.
 
-    def test_pnl_long_winning(self):
+    def test_gross_pnl_long_winning(self):
         trade = make_trade(entry=100.0, exit=110.0, qty=10, direction="BUY")
-        assert trade.pnl == 100.0   # (110-100)*10
+        assert trade.gross_pnl == 100.0   # (110-100)*10
 
-    def test_pnl_long_losing(self):
+    def test_pnl_long_winning_is_net(self):
+        trade = make_trade(entry=100.0, exit=110.0, qty=10, direction="BUY")
+        assert trade.costs > 0
+        assert trade.pnl == pytest.approx(100.0 - trade.costs)
+        assert trade.pnl < trade.gross_pnl
+
+    def test_pnl_long_losing_is_net(self):
         trade = make_trade(entry=100.0, exit=95.0, qty=10, direction="BUY")
-        assert trade.pnl == -50.0
+        assert trade.gross_pnl == -50.0
+        assert trade.pnl == pytest.approx(-50.0 - trade.costs)  # costs deepen the loss
 
-    def test_pnl_short_winning(self):
+    def test_gross_pnl_short_winning(self):
         trade = make_trade(entry=100.0, exit=90.0, qty=10, direction="SELL")
-        assert trade.pnl == 100.0   # short profits when price falls
+        assert trade.gross_pnl == 100.0   # short profits when price falls
+        assert trade.pnl == pytest.approx(100.0 - trade.costs)
 
-    def test_pnl_short_losing(self):
+    def test_pnl_short_losing_is_net(self):
         trade = make_trade(entry=100.0, exit=110.0, qty=10, direction="SELL")
-        assert trade.pnl == -100.0
+        assert trade.gross_pnl == -100.0
+        assert trade.pnl == pytest.approx(-100.0 - trade.costs)
 
-    def test_pnl_pct_long(self):
+    def test_pnl_pct_long_net(self):
         trade = make_trade(entry=100.0, exit=110.0, direction="BUY")
-        assert trade.pnl_pct == pytest.approx(0.10)
+        assert trade.gross_pnl_pct == pytest.approx(0.10)
+        assert trade.pnl_pct < 0.10                      # costs shave the return
+        assert trade.pnl_pct == pytest.approx(0.10, abs=0.005)
 
-    def test_pnl_pct_short(self):
+    def test_pnl_pct_short_net(self):
         trade = make_trade(entry=100.0, exit=90.0, direction="SELL")
-        assert trade.pnl_pct == pytest.approx(0.10)
+        assert trade.gross_pnl_pct == pytest.approx(0.10)
+        assert trade.pnl_pct < 0.10
 
     def test_is_win_true(self):
         trade = make_trade(entry=100.0, exit=110.0, direction="BUY")
@@ -95,6 +110,14 @@ class TestClosedTrade:
 
     def test_is_win_false(self):
         trade = make_trade(entry=100.0, exit=90.0, direction="BUY")
+        assert trade.is_win is False
+
+    def test_marginal_gross_win_that_costs_flip_to_loss(self):
+        # A trade whose gross gain is smaller than its round-trip costs is a
+        # NET loss — the whole point of S5-1.
+        trade = make_trade(entry=1000.0, exit=1000.05, qty=10, direction="BUY")
+        assert trade.gross_pnl > 0
+        assert trade.pnl < 0
         assert trade.is_win is False
 
     def test_pnl_pct_zero_entry_safe(self):
@@ -148,15 +171,21 @@ class TestComputeKellyStats:
         assert stats.win_rate == pytest.approx(15 / 25)
 
     def test_avg_win_loss_pct(self):
+        # Net-of-cost (S5-1): costs (~0.1% of notional) shave winners and deepen
+        # losers, so the averages sit just inside the gross 5%/3% inputs.
         trades = make_mixed_trades(wins=15, losses=10, win_pct=0.05, loss_pct=0.03)
         stats = compute_kelly_stats(trades)
-        assert stats.avg_win_pct == pytest.approx(0.05, abs=0.001)
-        assert stats.avg_loss_pct == pytest.approx(0.03, abs=0.001)
+        assert stats.avg_win_pct == pytest.approx(0.05, abs=0.003)
+        assert stats.avg_win_pct < 0.05
+        assert stats.avg_loss_pct == pytest.approx(0.03, abs=0.003)
+        assert stats.avg_loss_pct > 0.03
 
     def test_win_loss_ratio(self):
+        # Gross 2:1 (6% vs 3%) compresses slightly once costs bite both sides.
         trades = make_mixed_trades(wins=15, losses=10, win_pct=0.06, loss_pct=0.03)
         stats = compute_kelly_stats(trades)
-        assert stats.win_loss_ratio == pytest.approx(2.0, abs=0.01)
+        assert stats.win_loss_ratio == pytest.approx(2.0, abs=0.15)
+        assert stats.win_loss_ratio < 2.0
 
     def test_all_wins_no_losses_handled(self):
         trades = make_winning_trades(25)

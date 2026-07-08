@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from core.risk.costs import DEFAULT_COST_MODEL
+
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -48,21 +50,52 @@ class ClosedTrade:
     strategy:     str = ""
 
     @property
-    def pnl(self) -> float:
+    def gross_pnl(self) -> float:
+        """P&L before transaction costs — raw price move × quantity."""
         if self.direction == "BUY":
             return (self.exit_price - self.entry_price) * self.quantity
         else:  # SELL / short
             return (self.entry_price - self.exit_price) * self.quantity
 
     @property
-    def pnl_pct(self) -> float:
+    def costs(self) -> float:
+        """Round-trip transaction cost (brokerage/STT/GST/etc.) in INR.
+
+        Computed from the DEFAULT_COST_MODEL (Fyers NSE intraday). Costs are
+        deterministic from the stored price/qty/direction fields, so a reloaded
+        trade reproduces the identical net figure — nothing extra is persisted.
+        """
+        return DEFAULT_COST_MODEL.cost_of(
+            self.entry_price, self.exit_price, self.quantity, self.direction,
+        )
+
+    @property
+    def pnl(self) -> float:
+        """NET P&L — gross move minus round-trip costs. This is the number that
+        feeds Kelly/expectancy, the daily-loss guard, and outcome reporting, so
+        every downstream statistic is net-of-cost (S5-1)."""
+        return self.gross_pnl - self.costs
+
+    @property
+    def gross_pnl_pct(self) -> float:
+        """Return % before costs, on entry notional."""
         if self.entry_price == 0:
             return 0.0
         raw = (self.exit_price - self.entry_price) / self.entry_price
         return raw if self.direction == "BUY" else -raw
 
     @property
+    def pnl_pct(self) -> float:
+        """NET return %, on entry notional — gross % less costs as a fraction of
+        that notional."""
+        if self.entry_price == 0 or self.quantity == 0:
+            return 0.0
+        notional = abs(self.entry_price) * abs(self.quantity)
+        return self.gross_pnl_pct - (self.costs / notional)
+
+    @property
     def is_win(self) -> bool:
+        """A trade wins only if it clears its own transaction costs."""
         return self.pnl > 0
 
 

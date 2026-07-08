@@ -79,19 +79,26 @@ class TestConsecutiveLosses:
 class TestRealizedPnlToday:
 
     def test_sums_only_todays_exits(self):
+        # Realized P&L is now net of transaction costs (S5-1), so assert against
+        # the two same-day trades' net pnl rather than the gross -500 — this
+        # still proves the 3-days-ago -5,000 is excluded.
         trades = [
-            make_trade(-1, exit_delta=10, qty=100, days_ago=0),   # -1000 today
+            make_trade(-1, exit_delta=10, qty=100, days_ago=0),   # ~-1000 today
             make_trade(-1, exit_delta=50, qty=100, days_ago=3),   # -5000 but 3d ago
-            make_trade(1, exit_delta=5, qty=100, days_ago=0),     # +500 today
+            make_trade(1, exit_delta=5, qty=100, days_ago=0),     # ~+500 today
         ]
-        assert risk_guard.realized_pnl_today(trades) == pytest.approx(-500.0)
+        expected_today = trades[0].pnl + trades[2].pnl            # net, both today
+        result = risk_guard.realized_pnl_today(trades)
+        assert result == pytest.approx(expected_today)
+        assert -600 < result < -450                               # excludes the -5,000
 
     def test_naive_exit_dates_are_taken_at_face_value(self):
         # A broker order history may hand back a naive timestamp.
-        t = make_trade(-1, exit_delta=10, qty=100, days_ago=0)
+        t = make_trade(-1, exit_delta=10, qty=100, days_ago=0)    # ~-1000 net
         t.exit_date = t.exit_date.replace(tzinfo=None)
         now = datetime.now(IST).replace(tzinfo=None)
-        assert risk_guard.realized_pnl_today([t], now=now) == pytest.approx(-1000.0)
+        assert risk_guard.realized_pnl_today([t], now=now) == pytest.approx(t.pnl)
+        assert t.pnl < -1000                                       # costs deepen the loss
 
 
 class TestPositionsMtm:

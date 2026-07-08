@@ -20,12 +20,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from core.risk.costs import CostModel, DEFAULT_COST_MODEL
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class BacktestTrade:
-    """A single trade from the TradingView trade list export."""
+    """A single trade from the TradingView trade list export.
+
+    TradingView reports GROSS `profit`/`profit_pct` (its Strategy Tester ignores
+    Indian brokerage/STT/GST unless a commission is configured). `costs` holds
+    the round-trip transaction cost we apply, and every metric downstream reads
+    the net_* views so backtested edge matches what actually trades (S5-1)."""
     trade_num:      int
     direction:      str        # "Long" or "Short"
     qty:            float
@@ -33,14 +40,34 @@ class BacktestTrade:
     entry_price:    float
     exit_date:      datetime
     exit_price:     float
-    profit:         float      # absolute P&L in quote currency
-    profit_pct:     float      # % P&L
-    cum_profit:     float      # cumulative P&L to this trade
+    profit:         float      # GROSS absolute P&L in quote currency (from TV)
+    profit_pct:     float      # GROSS % P&L (from TV)
+    cum_profit:     float      # cumulative gross P&L to this trade
     bars_held:      int
+    costs:          float = 0.0   # round-trip transaction cost (INR), from CostModel
+
+    @property
+    def net_profit(self) -> float:
+        """Absolute P&L after transaction costs."""
+        return self.profit - self.costs
+
+    @property
+    def costs_pct(self) -> float:
+        """Costs as a % of entry notional (same basis as profit_pct)."""
+        notional = abs(self.entry_price) * abs(self.qty)
+        if notional == 0:
+            return 0.0
+        return self.costs / notional * 100.0
+
+    @property
+    def net_profit_pct(self) -> float:
+        """% P&L after transaction costs."""
+        return self.profit_pct - self.costs_pct
 
     @property
     def is_win(self) -> bool:
-        return self.profit > 0
+        """Net of costs — a trade wins only if it clears its own frictions."""
+        return self.net_profit > 0
 
     @property
     def duration_days(self) -> float:
@@ -95,14 +122,23 @@ class BacktestReport:
         return degradation > 0.5
 
 
-def parse_tradingview_csv(csv_content: str, strategy_name: str = "Unknown") -> BacktestReport:
+def parse_tradingview_csv(
+    csv_content: str,
+    strategy_name: str = "Unknown",
+    cost_model: CostModel = DEFAULT_COST_MODEL,
+) -> BacktestReport:
     """
     Parse TradingView trade list CSV and return a BacktestReport.
 
     Expected columns (TradingView default export):
       Trade #, Type, Signal, Date/Time, Price, Contracts, Profit, Cum. Profit, Run-up, Drawdown
+
+    `cost_model` applies the NSE transaction-cost stack to every trade so the
+    metrics are net-of-cost. Pass a model with `slippage_bps > 0` to also charge
+    slippage — backtest fills are frictionless, unlike live fills which already
+    embed it (which is why the default model's slippage is 0).
     """
-    trades = _parse_trades(csv_content)
+    trades = _parse_trades(csv_content, cost_model)
     if not trades:
         raise ValueError("No trades found in CSV — check the format")
 
@@ -125,6 +161,13 @@ def parse_tradingview_csv(csv_content: str, strategy_name: str = "Unknown") -> B
         notes.append(f"⚠️  Low sample size ({len(trades)} trades) — statistical significance uncertain")
     if overall.sharpe_ratio < 0.5:
         notes.append(f"⚠️  Low Sharpe ratio ({overall.sharpe_ratio:.2f}) — strategy barely better than random")
+    total_costs = sum(t.costs for t in trades)
+    if total_costs > 0:
+        slip = f", slippage {cost_model.slippage_bps:.1f}bps" if cost_model.slippage_bps else ""
+        notes.append(
+            f"Metrics are NET of ₹{total_costs:,.0f} transaction costs "
+            f"across {len(trades)} trades (NSE stack{slip})."
+        )
 
     return BacktestReport(
         strategy_name=strategy_name,
@@ -137,7 +180,7 @@ def parse_tradingview_csv(csv_content: str, strategy_name: str = "Unknown") -> B
     )
 
 
-def _parse_trades(csv_content: str) -> list[BacktestTrade]:
+def _parse_trades(csv_content: str, cost_model: CostModel = DEFAULT_COST_MODEL) -> list[BacktestTrade]:
     """Parse raw CSV into BacktestTrade objects."""
     reader = csv.DictReader(io.StringIO(csv_content))
     if not reader.fieldnames:
@@ -159,7 +202,7 @@ def _parse_trades(csv_content: str) -> list[BacktestTrade]:
             continue
 
         if ("Exit" in trade_type or "exit" in trade_type.lower()) and entry_row:
-            trade = _parse_trade_pair(trade_num, entry_row, row)
+            trade = _parse_trade_pair(trade_num, entry_row, row, cost_model)
             if trade:
                 trades.append(trade)
             entry_row = None
@@ -168,7 +211,9 @@ def _parse_trades(csv_content: str) -> list[BacktestTrade]:
     return trades
 
 
-def _parse_trade_pair(num: int, entry: dict, exit_: dict) -> Optional[BacktestTrade]:
+def _parse_trade_pair(
+    num: int, entry: dict, exit_: dict, cost_model: CostModel = DEFAULT_COST_MODEL,
+) -> Optional[BacktestTrade]:
     """Build a BacktestTrade from an entry/exit row pair."""
     try:
         def parse_dt(s: str) -> datetime:
@@ -194,12 +239,16 @@ def _parse_trade_pair(num: int, entry: dict, exit_: dict) -> Optional[BacktestTr
 
         bars_held = max(1, (exit_date - entry_date).days)
 
+        # "Long" → BUY-side entry, anything else treated as a short.
+        cost_direction = "BUY" if direction == "Long" else "SELL"
+        costs = cost_model.cost_of(entry_price, exit_price, contracts, cost_direction)
+
         return BacktestTrade(
             trade_num=num, direction=direction, qty=contracts,
             entry_date=entry_date, entry_price=entry_price,
             exit_date=exit_date, exit_price=exit_price,
             profit=profit, profit_pct=profit_pct,
-            cum_profit=cum_profit, bars_held=bars_held,
+            cum_profit=cum_profit, bars_held=bars_held, costs=costs,
         )
     except Exception as e:
         logger.warning("Could not parse trade pair: %s", e)
@@ -215,18 +264,19 @@ def _compute_metrics(trades: list[BacktestTrade]) -> BacktestMetrics:
     losses = [t for t in trades if not t.is_win]
 
     win_rate    = len(wins) / len(trades)
-    avg_win_pct = sum(abs(t.profit_pct) for t in wins) / len(wins) if wins else 0
-    avg_loss_pct = sum(abs(t.profit_pct) for t in losses) / len(losses) if losses else 0
+    # All figures net of transaction costs (see BacktestTrade.net_profit*).
+    avg_win_pct = sum(abs(t.net_profit_pct) for t in wins) / len(wins) if wins else 0
+    avg_loss_pct = sum(abs(t.net_profit_pct) for t in losses) / len(losses) if losses else 0
     wl_ratio    = avg_win_pct / avg_loss_pct if avg_loss_pct > 0 else float("inf")
 
-    gross_profit = sum(t.profit for t in wins)
-    gross_loss   = abs(sum(t.profit for t in losses))
-    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+    net_profit_sum = sum(t.net_profit for t in wins)
+    net_loss_sum   = abs(sum(t.net_profit for t in losses))
+    profit_factor = net_profit_sum / net_loss_sum if net_loss_sum > 0 else float("inf")
 
-    returns = [t.profit_pct / 100 for t in trades]
+    returns = [t.net_profit_pct / 100 for t in trades]
     sharpe  = _sharpe_ratio(returns)
     max_dd  = _max_drawdown(trades)
-    net_pct = sum(t.profit_pct for t in trades)
+    net_pct = sum(t.net_profit_pct for t in trades)
 
     avg_bars = sum(t.bars_held for t in trades) / len(trades)
 
@@ -255,7 +305,7 @@ def _sharpe_ratio(returns: list[float], risk_free: float = 0.0) -> float:
     mean = sum(returns) / len(returns)
     variance = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
     std = math.sqrt(variance)
-    if std == 0:
+    if std < 1e-9:
         return 0.0
     # Annualise assuming ~12 trades per month = 144/yr (rough for swing trading)
     return (mean - risk_free) / std * math.sqrt(144)
@@ -268,7 +318,7 @@ def _max_drawdown(trades: list[BacktestTrade]) -> float:
     peak = cum = 0.0
     max_dd = 0.0
     for t in trades:
-        cum += t.profit_pct
+        cum += t.net_profit_pct
         if cum > peak:
             peak = cum
         dd = peak - cum
