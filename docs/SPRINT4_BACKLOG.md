@@ -67,6 +67,18 @@ loss/exposure limits even if I'd confirm the signal.
 
 ## Sprint 5 — Measure (≈21 pts)
 
+**Status (2026-07-08): 7 of 8 stories DONE + pushed; 619 tests green.**
+✅ S5-1 costs (reconciles Fyers note to the paisa) · ✅ S5-3 corp-action spike
+(Fyers daily OHLC is split-adjusted → 5-pt conditional store dropped) ·
+✅ S5-4 real breadth (+ cockpit A/D panel; live market-hours quote check pending)
+· ✅ S5-5 correlation gate · ✅ S5-6 observability · ✅ S5-7 SEBI compliance doc
+(QuantOS ≪10 OPS → no algo registration) · ✅ S5-8 prompt files.
+⏳ **S5-2 Claude calibration — the only story left; hard-gated on S4-1 Postgres
++ 30 recorded closed trades, so it cannot start until live-trade data accrues.**
+The 5-pt conditional half of S5-3 was dropped by the spike, so the codeable
+sprint is effectively complete. See `docs/CORP_ACTION_SPIKE.md`,
+`docs/SEBI_COMPLIANCE.md`, and the per-story commit trail for evidence.
+
 ### S5-1 · Transaction cost & slippage model — **3 pts** (P1-7)
 - `core/risk/costs.py`: NSE intraday stack (brokerage, STT, exchange txn, SEBI, stamp, GST) + configurable slippage bps.
 - Wire into `ClosedTrade` net-P&L and the backtest module. All expectancy/Kelly inputs become net-of-cost.
