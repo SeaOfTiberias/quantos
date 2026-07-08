@@ -200,11 +200,28 @@ def _size_and_place_order(broker, sizer, signal: dict, config: dict):
         )
 
     quantity = sizing.position_quantity(entry_price=price, stop_loss_price=stop_loss)
+
+    # Trial-phase notional cap: risk-based sizing lets a tight stop blow the
+    # position value up (quantity = risk ÷ stop-distance), so bound the ₹ value
+    # of any single position regardless of stop distance. 0/absent = disabled.
+    max_position_value = float(risk_cfg.get("max_position_value", 0) or 0)
+    if max_position_value > 0 and price > 0:
+        cap_qty = int(max_position_value / price)
+        if cap_qty < quantity:
+            logger.info(
+                "[%s] Position capped by max_position_value=%.0f: qty %d → %d "
+                "(price=%.2f, notional %.0f → %.0f)",
+                signal["signal_id"], max_position_value, quantity, cap_qty,
+                price, quantity * price, cap_qty * price,
+            )
+            quantity = cap_qty
+
     if quantity <= 0:
         raise BrokerError(
             f"Computed quantity {quantity} (capital={capital:.2f}, "
-            f"size_pct={sizing.size_pct:.2%}, method={sizing.method}) — "
-            f"insufficient funds or stop-loss too tight"
+            f"size_pct={sizing.size_pct:.2%}, method={sizing.method}, "
+            f"max_position_value={max_position_value:.0f}, price={price:.2f}) — "
+            f"insufficient funds, stop-loss too tight, or price exceeds the cap"
         )
 
     entry_direction = OrderDirection.BUY if action == "BUY" else OrderDirection.SELL

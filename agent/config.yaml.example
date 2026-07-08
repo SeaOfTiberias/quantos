@@ -11,7 +11,9 @@ credentials:
 
 risk:
   capital: 500000                   # Reference only — actual sizing uses live broker.get_funds()
-  max_risk_per_trade: 0.02          # 2% max risk per trade
+  max_risk_per_trade: 0.02          # Kelly cap. NOTE: not applied until 20+ closed trades are on
+                                     # record — until then sizing uses the fixed FALLBACK_SIZE_PCT
+                                     # in core/risk/kelly.py (also 2%), NOT this value.
   max_open_positions: 5             # Kill switch (S4-2): refuse new entries while this many
                                      # positions are already open. Lifts on its own as they close.
   max_daily_loss: 0.05              # Kill switch (S4-2): 5% daily-loss circuit breaker. On breach
@@ -19,6 +21,11 @@ risk:
                                      # capital) the agent sets ~/.quantos/halt and refuses all new
                                      # entries — clear it by deleting that file. 3 consecutive losing
                                      # trades trips the same halt. Existing stops keep trailing/closing.
+  max_position_value: 0             # Hard cap on the ₹ value of any single position, applied AFTER
+                                     # risk-sizing (quantity = min(risk_qty, max_position_value/price)).
+                                     # Bounds notional regardless of stop distance — useful on small or
+                                     # trial accounts where a tight stop would otherwise size up hard.
+                                     # 0 = disabled. If price alone exceeds the cap the signal is skipped.
   product_type: INTRADAY            # INTRADAY | CNC | MARGIN — used for both the entry and the SL_M stop order
   assumed_stop_pct: 0.015           # Fallback stop-loss % used only if a signal has no stop_loss
   auto_exit: true                   # After the entry fills, place a second SL_M stop order at the
