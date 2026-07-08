@@ -18,6 +18,30 @@ Also make sure you run python agent/main.py from the repo root (quantos/), not f
 
 Tomorrow's runbook
 QuantOS Runbook — Tomorrow (2026-07-08)
+
+⚠️ 0. ONE-TIME (do this FIRST, before the token refresh): rebuild the Fyers app — ISP IP changed
+The whitelisted IP on the current app can't be edited (Fyers enforces a 7-day
+lock-in on IP changes), so trade tomorrow on a NEW app. Only two config lines
+change; the auth flow is otherwise identical.
+
+  0a. Find your CURRENT public IP: run `curl ifconfig.me` (or open whatismyipaddress.com). Note it.
+  0b. Fyers API dashboard (https://myapi.fyers.in) → create a new app:
+        - Permissions: match the old app (needs order placement + market data).
+        - Redirect URI: reuse EXACTLY  https://trade.fyers.in/api-login/redirect-uri/index.html
+          (fyers_auth.py's manual auth-code paste flow depends on this exact URI — reusing it = zero code change).
+        - Whitelist IP: enter the public IP from 0a. (If the dashboard accepts a CIDR/range,
+          whitelist your ISP subnet so a DHCP change within it doesn't lock you out again — check the field.)
+  0c. Copy the new App ID + Secret. In agent/config.yaml (local, untracked) under `credentials:` replace
+        api_key: <new App ID>   and   api_secret: <new Secret>   — leave redirect_uri unchanged.
+  0d. Then do step 1a (token refresh) — it now authenticates against the new app and writes a fresh token.
+
+  ‼️ Durable fix (schedule this — do NOT keep recreating apps): your ISP IP is dynamic and each app
+  locks IP edits for 7 days, so if the IP changes again inside a week you're forced to make YET another
+  app. Fix the root cause: (1) ask your ISP for a STATIC IP (usually a small monthly add-on) — cleanest;
+  or (2) move the agent onto a small cloud VM with a fixed/Elastic IP (~₹400/mo) — since ADR-01 makes the
+  agent the only process holding the broker connection, a fixed-IP box solves this permanently AND frees
+  it from your laptop being on; or (3) a dedicated-IP VPN routing just Fyers traffic.
+
 1. Pre-market (before 9:15 AM IST)
 a. Refresh the Fyers token — it expires daily, this is the #1 thing that will silently break everything else if skipped:
 
