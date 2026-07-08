@@ -27,17 +27,30 @@ NIFTY_SYMBOL  = "NIFTY 50"
 VIX_SYMBOL    = "INDIA VIX"
 BANK_NIFTY    = "NIFTY BANK"
 
+# Minimum number of symbols whose quote must resolve for a breadth reading
+# to be trusted. A universe scan that returns only a handful of names (auth
+# blip, most symbols rejected) would otherwise yield a wildly skewed A/D
+# ratio — better to fall back to neutral than feed the classifier noise.
+MIN_BREADTH_SAMPLE = 20
 
-async def fetch_regime_inputs(broker: BrokerAdapter) -> RegimeInputs:
+
+async def fetch_regime_inputs(
+    broker: BrokerAdapter,
+    breadth_universe: Optional[list[str]] = None,
+) -> RegimeInputs:
     """
     Fetch all regime inputs concurrently from the broker.
     Returns a RegimeInputs dataclass ready for classification.
+
+    `breadth_universe` is the list of NSE equity symbols sampled for the
+    advance/decline reading. When empty/None, breadth falls back to a neutral
+    placeholder (the pre-S5-4 behaviour).
     """
     logger.info("Fetching regime inputs...")
 
     nifty_task   = _fetch_nifty(broker)
     vix_task     = _fetch_vix(broker)
-    breadth_task = _fetch_breadth(broker)
+    breadth_task = _fetch_breadth(broker, breadth_universe or [])
 
     nifty, vix, breadth = await asyncio.gather(
         nifty_task, vix_task, breadth_task,
@@ -154,19 +167,55 @@ async def _fetch_vix(broker: BrokerAdapter) -> VIXData:
     )
 
 
-async def _fetch_breadth(broker: BrokerAdapter) -> BreadthData:
+async def _fetch_breadth(broker: BrokerAdapter, universe: list[str]) -> BreadthData:
     """
-    Fetch NSE advance/decline breadth.
+    Compute NSE advance/decline breadth from a universe sample.
 
-    Most broker APIs don't provide A/D directly.
-    We approximate by sampling Nifty 500 constituents' LTP vs previous close.
-    A proper implementation uses NSE bhavcopy or a data vendor.
+    Broker quote endpoints (Fyers, Kite) carry the previous close alongside
+    the LTP, so one batched `get_quotes` call yields A/D directly — no NSE
+    bhavcopy download and no second historical fetch. A symbol whose LTP
+    equals its previous close counts as unchanged; symbols with missing or
+    non-positive reference data are dropped from the sample.
+
+    Falls back to a neutral placeholder when the universe is empty, the
+    broker doesn't support quote snapshots, or too few symbols resolve to
+    trust the reading. (The caller — fetch_regime_inputs — also catches any
+    exception raised here and substitutes neutral breadth.)
     """
-    # TODO: implement full Nifty 500 breadth scan
-    # For now return a neutral placeholder that will be replaced
-    # when NSE bhavcopy integration is complete (Sprint 2)
-    logger.warning("Breadth data: using placeholder — implement NSE bhavcopy in Sprint 2")
-    return _neutral_breadth()
+    if not universe:
+        logger.warning("Breadth: no universe configured — using neutral placeholder")
+        return _neutral_breadth()
+
+    loop = asyncio.get_event_loop()
+    quotes = await loop.run_in_executor(None, lambda: broker.get_quotes(universe))
+
+    advance = decline = unchanged = 0
+    for q in quotes.values():
+        if q.prev_close <= 0 or q.ltp <= 0:
+            continue
+        if q.ltp > q.prev_close:
+            advance += 1
+        elif q.ltp < q.prev_close:
+            decline += 1
+        else:
+            unchanged += 1
+
+    sample = advance + decline + unchanged
+    if sample < MIN_BREADTH_SAMPLE:
+        logger.warning(
+            "Breadth: only %d/%d symbols resolved (< %d) — using neutral",
+            sample, len(universe), MIN_BREADTH_SAMPLE,
+        )
+        return _neutral_breadth()
+
+    logger.info(
+        "Breadth: %d adv / %d dec / %d unch across %d symbols (A/D=%.2f)",
+        advance, decline, unchanged, sample,
+        (advance / decline) if decline else float(advance),
+    )
+    return BreadthData(
+        advance_count=advance, decline_count=decline, unchanged_count=unchanged,
+    )
 
 
 # ─── Math utilities ───────────────────────────────────────────────────────────

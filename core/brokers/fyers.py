@@ -13,10 +13,14 @@ import logging
 from core.brokers.base import (
     BrokerAdapter, BrokerError, InsufficientFundsError,
     Order, OrderResult, OrderStatus, OrderDirection,
-    OrderType, Position, OHLCV, ProductType
+    OrderType, Position, OHLCV, Quote, ProductType
 )
 
 logger = logging.getLogger(__name__)
+
+# Fyers' /quotes endpoint rejects a request carrying more than 50 symbols,
+# so get_quotes() batches a larger (breadth-sized) universe into chunks.
+_QUOTES_CHUNK = 50
 
 
 # Fyers timeframe string mapping
@@ -310,6 +314,35 @@ class FyersBroker(BrokerAdapter):
             clean = q["n"].replace("NSE:", "").replace("-EQ", "")
             result[clean] = q["v"]["lp"]
         return result
+
+    def get_quotes(self, symbols: list[str]) -> dict[str, Quote]:
+        """
+        Fetch full quote snapshots (LTP + previous close) for a symbol list.
+
+        Fyers' /quotes endpoint caps a request at 50 symbols, so a
+        breadth-sized universe (hundreds of names) is split into chunks and
+        merged. Each quote's `v` block carries `lp` (last), `prev_close_price`,
+        `ch` (change) and `chp` (change %) — everything advance/decline needs.
+        """
+        self._assert_connected()
+        out: dict[str, Quote] = {}
+        for i in range(0, len(symbols), _QUOTES_CHUNK):
+            chunk = symbols[i:i + _QUOTES_CHUNK]
+            fyers_symbols = [f"NSE:{s}-EQ" for s in chunk]
+            response = self._client.quotes(data={"symbols": ",".join(fyers_symbols)})
+            if response.get("code") != 200:
+                raise BrokerError(f"Quotes fetch failed: {response}")
+            for q in response.get("d", []):
+                v = q.get("v", {}) or {}
+                clean = q["n"].replace("NSE:", "").replace("-EQ", "")
+                out[clean] = Quote(
+                    symbol=clean,
+                    ltp=v.get("lp", 0.0) or 0.0,
+                    prev_close=v.get("prev_close_price", 0.0) or 0.0,
+                    change=v.get("ch", 0.0) or 0.0,
+                    change_pct=v.get("chp", 0.0) or 0.0,
+                )
+        return out
 
     def get_option_chain(self, underlying: str, expiry: str) -> dict:
         self._assert_connected()

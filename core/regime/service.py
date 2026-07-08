@@ -40,8 +40,11 @@ class RegimeService:
     One instance should be shared across the app (singleton pattern).
     """
 
-    def __init__(self, broker):
+    def __init__(self, broker, breadth_universe: Optional[list[str]] = None):
         self._broker        = broker
+        # NSE equity symbols sampled for the advance/decline breadth reading
+        # (S5-4). Empty → breadth falls back to a neutral placeholder.
+        self._breadth_universe = breadth_universe or []
         self._cached:        Optional[RegimeResult] = None
         self._cached_at:     Optional[float]        = None
         # Lazily (re)created per running loop in _get_lock() — a lock built
@@ -98,7 +101,7 @@ class RegimeService:
         """Fetch fresh data and reclassify."""
         logger.info("Refreshing regime classification...")
         try:
-            inputs  = await fetch_regime_inputs(self._broker)
+            inputs  = await fetch_regime_inputs(self._broker, self._breadth_universe)
             result  = classify(inputs)
             self._cached    = result
             self._cached_at = datetime.now(timezone.utc).timestamp()

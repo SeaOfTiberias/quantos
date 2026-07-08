@@ -262,4 +262,7 @@ def _build_result(
         vix_signal=vix_signal,
         breadth_signal=breadth_signal,
         notes=notes,
+        advance_count=inputs.breadth.advance_count,
+        decline_count=inputs.breadth.decline_count,
+        unchanged_count=inputs.breadth.unchanged_count,
     )

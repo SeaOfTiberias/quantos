@@ -11,10 +11,14 @@ import logging
 from core.brokers.base import (
     BrokerAdapter, BrokerError,
     Order, OrderResult, OrderStatus, OrderDirection,
-    OrderType, Position, OHLCV, ProductType
+    OrderType, Position, OHLCV, Quote, ProductType
 )
 
 logger = logging.getLogger(__name__)
+
+# Kite's /quote endpoint caps a request at 500 instruments; chunk well
+# under that so a breadth-sized universe fetches in a couple of calls.
+_QUOTES_CHUNK = 200
 
 _TF_MAP = {
     "1m": "minute",
@@ -235,6 +239,31 @@ class ZerodhaBroker(BrokerAdapter):
             k.replace("NSE:", ""): v["last_price"]
             for k, v in quotes.items()
         }
+
+    def get_quotes(self, symbols: list[str]) -> dict[str, Quote]:
+        """
+        Fetch full quote snapshots (LTP + previous close) for a symbol list.
+
+        Kite's /quote returns an `ohlc` block whose `close` is the previous
+        day's close, plus `net_change` — everything advance/decline needs.
+        The universe is chunked to stay under the endpoint's per-call cap.
+        """
+        self._assert_connected()
+        out: dict[str, Quote] = {}
+        for i in range(0, len(symbols), _QUOTES_CHUNK):
+            chunk = [f"NSE:{s}" for s in symbols[i:i + _QUOTES_CHUNK]]
+            quotes = self._kite.quote(chunk)
+            for k, v in quotes.items():
+                clean = k.replace("NSE:", "")
+                prev_close = (v.get("ohlc") or {}).get("close", 0.0) or 0.0
+                ltp = v.get("last_price", 0.0) or 0.0
+                change = v.get("net_change", 0.0) or 0.0
+                change_pct = (change / prev_close * 100) if prev_close else 0.0
+                out[clean] = Quote(
+                    symbol=clean, ltp=ltp, prev_close=prev_close,
+                    change=change, change_pct=round(change_pct, 2),
+                )
+        return out
 
     def get_option_chain(self, underlying: str, expiry: str) -> dict:
         # Zerodha doesn't have a native option chain endpoint;

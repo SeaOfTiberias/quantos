@@ -34,6 +34,11 @@ const MOCK_REGIME = {
   confidence: 83,
   trend_signal: "BULL",
   vix_signal: "LOW",
+  breadth_signal: "STRONG",
+  advance_count: 312,
+  decline_count: 168,
+  unchanged_count: 8,
+  ad_ratio: 1.86,
   darvas_enabled: true,
   allowed_strategies: ["darvas_breakout", "bull_call_spread", "covered_call"],
 };
@@ -154,6 +159,30 @@ function RegimePanel({ regime }) {
           </div>
         ))}
       </div>
+      {(regime.advance_count > 0 || regime.decline_count > 0) && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Label>Breadth</Label>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.green }}>
+              {regime.advance_count} ▲
+            </span>
+            <span style={{ fontSize: 13, color: C.muted }}>/</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.red }}>
+              {regime.decline_count} ▼
+            </span>
+            {regime.unchanged_count > 0 && (
+              <span style={{ fontSize: 11, color: C.muted }}>
+                · {regime.unchanged_count} unch
+              </span>
+            )}
+            <span style={{ fontSize: 12, color: C.mid, marginLeft: "auto" }}>
+              A/D {(regime.ad_ratio ?? (regime.advance_count / (regime.decline_count || 1))).toFixed(2)}
+              {regime.breadth_signal ? ` · ${regime.breadth_signal}` : ""}
+            </span>
+          </div>
+        </>
+      )}
       <Divider />
       <Label>Active Strategies</Label>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
@@ -705,7 +734,7 @@ function TopBar({ lastRefresh, heartbeat, obsError }) {
 
 export default function QuantOSCockpit() {
   const [lastRefresh, setLastRefresh] = useState(null);
-  const [regime] = useState(MOCK_REGIME);
+  const [regime, setRegime] = useState(MOCK_REGIME);
   const [signals] = useState(MOCK_SIGNALS);
   const [positions] = useState(MOCK_POSITIONS);
   const [alphaCurve] = useState(MOCK_ALPHA_CURVE);
@@ -744,6 +773,26 @@ export default function QuantOSCockpit() {
     };
     load();
     const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Market regime (S5-4): the agent classifies regime locally (only it has a
+  // broker, ADR-01) and syncs it here; we poll the read-only mirror. Falls back
+  // to MOCK_REGIME until the agent's first sync lands so the panel is never empty.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/regime/status`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled && data && data.regime) setRegime(data);
+      } catch {
+        /* keep last-known / mock — TopBar's LIVE/STALE badge conveys agent liveness */
+      }
+    };
+    load();
+    const id = setInterval(load, 15000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 

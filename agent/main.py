@@ -503,6 +503,9 @@ def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dic
         "trend_signal": result.trend_signal,
         "vix_signal": result.vix_signal,
         "breadth_signal": result.breadth_signal,
+        "advance_count": result.advance_count,
+        "decline_count": result.decline_count,
+        "unchanged_count": result.unchanged_count,
         "notes": result.notes,
     }
     resp = requests.post(f"{cloud_url}/regime/sync", json=payload, headers=headers, timeout=10)
@@ -637,7 +640,11 @@ def run_agent(config: dict):
     granular_interval_min = float(scanner_cfg.get("granular_scan_interval_minutes", 5))
     granular_every_n_ticks = max(1, int(granular_interval_min * 60 / poll_interval))
 
-    regime_service = RegimeService(broker)
+    # Reuse the discovery universe as the breadth (advance/decline) sample for
+    # regime classification (S5-4). Loaded once at startup — a static file; the
+    # regime engine only needs a broad, liquid cross-section, not the exact
+    # NSE 500. Empty file → breadth degrades to a neutral placeholder.
+    regime_service = RegimeService(broker, breadth_universe=_load_universe(universe_path))
     regime_every_n_ticks = max(1, int(REGIME_CACHE_TTL / poll_interval))
 
     # Portfolio kill switch (S4-2 / P0-2). Limits come from the agent's own

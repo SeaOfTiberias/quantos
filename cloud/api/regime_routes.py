@@ -8,11 +8,13 @@ Fyers broker connection only ever exists on the local agent's machine
 agent runs it locally (it already has a connected broker) and pushes the
 classified result here after every refresh.
 
-POST is guarded with the same X-Cloud-Secret the agent already sends to
-/signals* and /discovery/watchlist (cloud/api/auth.py). There's no public
-GET here (unlike /discovery/watchlist) because nothing outside this
-process needs to read it yet — cloud/analyst/pre_trade.py and
-cloud/api/strategy_routes.py just import get_synced_regime() directly.
+POST /regime/sync is guarded with the same X-Cloud-Secret the agent already
+sends to /signals* and /discovery/watchlist (cloud/api/auth.py).
+GET /regime/status is public (read-only aggregate, like /discovery/watchlist
+and /correlation/status): it feeds the cockpit's live Market Regime panel,
+including the raw advance/decline counts behind the breadth signal (S5-4).
+Internal cloud consumers (cloud/analyst/pre_trade.py, strategy_routes.py) still
+import get_synced_regime() directly rather than going through the HTTP GET.
 """
 
 import logging
@@ -49,6 +51,9 @@ class RegimeSyncRequest(BaseModel):
     trend_signal:       str = ""
     vix_signal:         str = ""
     breadth_signal:     str = ""
+    advance_count:      int = 0       # raw A/D behind breadth_signal (S5-4)
+    decline_count:      int = 0
+    unchanged_count:    int = 0
     notes:              list[str] = []
 
 
@@ -65,11 +70,49 @@ async def sync_regime(payload: RegimeSyncRequest, _auth=Depends(require_cloud_se
         trend_signal=payload.trend_signal,
         vix_signal=payload.vix_signal,
         breadth_signal=payload.breadth_signal,
+        advance_count=payload.advance_count,
+        decline_count=payload.decline_count,
+        unchanged_count=payload.unchanged_count,
         notes=payload.notes,
     )
     _synced_at = datetime.now(timezone.utc)
-    logger.info("Regime synced: %s (confidence=%.0f)", payload.regime, payload.confidence)
+    logger.info(
+        "Regime synced: %s (confidence=%.0f, A/D=%d/%d)",
+        payload.regime, payload.confidence,
+        payload.advance_count, payload.decline_count,
+    )
     return {"synced": True}
+
+
+@router.get("/status")
+async def regime_status():
+    """
+    Public read for the cockpit's Market Regime panel — the latest regime the
+    agent synced, including raw advance/decline (S5-4). `regime` is null until
+    the agent's first sync (or after a Railway redeploy wipes the mirror).
+    Deliberately returns the last value regardless of age; the cockpit's LIVE/
+    STALE badge (S5-6 heartbeat) already conveys agent liveness.
+    """
+    if _synced_regime is None or _synced_at is None:
+        return {"regime": None, "updated_at": None}
+    r = _synced_regime
+    return {
+        "regime":             r.regime.value,
+        "confidence":         r.confidence,
+        "allowed_strategies": r.allowed_strategies,
+        "size_multiplier":    r.size_multiplier,
+        "darvas_enabled":     r.darvas_enabled,
+        "trend_signal":       r.trend_signal,
+        "vix_signal":         r.vix_signal,
+        "breadth_signal":     r.breadth_signal,
+        "advance_count":      r.advance_count,
+        "decline_count":      r.decline_count,
+        "unchanged_count":    r.unchanged_count,
+        "ad_ratio":           round(r.ad_ratio, 2),
+        "notes":              r.notes,
+        "timestamp":          r.timestamp.isoformat(),
+        "updated_at":         _synced_at.isoformat(),
+    }
 
 
 def get_last_synced_at() -> Optional[datetime]:

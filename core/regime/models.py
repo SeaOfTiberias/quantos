@@ -141,6 +141,19 @@ class RegimeResult:
     breadth_signal:    str = ""      # STRONG / NEUTRAL / WEAK
     notes:             list[str] = field(default_factory=list)
 
+    # Raw advance/decline counts behind breadth_signal (S5-4) — carried through
+    # so the cockpit can show live A/D, not just the STRONG/NEUTRAL/WEAK label.
+    advance_count:     int = 0
+    decline_count:     int = 0
+    unchanged_count:   int = 0
+
+    @property
+    def ad_ratio(self) -> float:
+        """Advance/decline ratio behind the breadth signal."""
+        if self.decline_count == 0:
+            return float(self.advance_count)
+        return self.advance_count / self.decline_count
+
     @property
     def is_tradeable(self) -> bool:
         return self.regime != Regime.UNCERTAIN and self.size_multiplier > 0

@@ -35,6 +35,9 @@ def _payload(**overrides) -> dict:
         "trend_signal": "BULL",
         "vix_signal": "LOW",
         "breadth_signal": "STRONG",
+        "advance_count": 312,
+        "decline_count": 168,
+        "unchanged_count": 8,
         "notes": ["Trend=60, VIX=12.0 -> TRENDING BULL"],
     }
     payload.update(overrides)
@@ -87,6 +90,37 @@ class TestGetSyncedRegime:
         assert result.regime == Regime.TRENDING_BULL
         assert result.confidence == 91.0
         assert result.allowed_strategies == ["darvas_breakout", "bull_call_spread"]
+        # S5-4: raw advance/decline survives the sync round-trip.
+        assert result.advance_count == 312
+        assert result.decline_count == 168
+        assert result.ad_ratio == pytest.approx(312 / 168)
+
+
+class TestRegimeStatusEndpoint:
+    """GET /regime/status — public read for the cockpit Market Regime panel."""
+
+    @pytest.mark.asyncio
+    async def test_returns_null_before_any_sync(self):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/regime/status")
+        assert r.status_code == 200
+        assert r.json()["regime"] is None
+
+    @pytest.mark.asyncio
+    async def test_exposes_breadth_counts_after_sync(self, monkeypatch):
+        monkeypatch.setattr(auth, "CLOUD_API_SECRET", "")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post("/regime/sync", json=_payload())
+            r = await client.get("/regime/status")
+
+        body = r.json()
+        assert body["regime"] == "TRENDING_BULL"
+        assert body["advance_count"] == 312
+        assert body["decline_count"] == 168
+        assert body["unchanged_count"] == 8
+        assert body["ad_ratio"] == round(312 / 168, 2)
+        assert body["darvas_enabled"] is True
+        assert body["updated_at"] is not None
 
     def test_stale_sync_treated_as_unavailable(self, monkeypatch):
         monkeypatch.setattr(regime_routes, "_synced_regime", object())  # any non-None sentinel

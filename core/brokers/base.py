@@ -89,6 +89,29 @@ class OHLCV:
     volume: int
 
 
+@dataclass
+class Quote:
+    """
+    A market quote snapshot — last traded price plus the day's previous
+    close. Lets a consumer determine advance/decline (breadth) without a
+    second historical fetch, since broker quote endpoints already carry the
+    reference close alongside the LTP.
+    """
+    symbol: str
+    ltp: float
+    prev_close: float
+    change: float = 0.0
+    change_pct: float = 0.0
+
+    @property
+    def is_advancing(self) -> bool:
+        return self.prev_close > 0 and self.ltp > self.prev_close
+
+    @property
+    def is_declining(self) -> bool:
+        return self.prev_close > 0 and self.ltp < self.prev_close
+
+
 class BrokerAdapter(ABC):
     """
     Abstract broker adapter. All broker implementations must
@@ -178,6 +201,18 @@ class BrokerAdapter(ABC):
     def get_ltp(self, symbols: list[str]) -> dict[str, float]:
         """Get last traded price for one or more symbols."""
         ...
+
+    def get_quotes(self, symbols: list[str]) -> dict[str, "Quote"]:
+        """
+        Get full quote snapshots (LTP + previous close) keyed by symbol.
+
+        Default raises NotImplementedError — brokers whose quote endpoint
+        exposes the previous close should override this. Consumers (e.g.
+        regime breadth) must degrade gracefully when a broker lacks it.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support quote snapshots."
+        )
 
     # ── Options (used by Epic 7) ──────────────────────────────────────────────
 
