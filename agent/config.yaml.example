@@ -25,6 +25,13 @@ risk:
                                      # Darvas stop_loss level, trailed up automatically as new boxes
                                      # form. Set false to disable (e.g. for delivery trades you intend
                                      # to manage manually).
+  correlation_gate: true            # Correlation gate (S5-5): refuse a new entry whose daily-return
+                                     # correlation with an already-open position exceeds the threshold
+                                     # below, so the book doesn't stack one factor bet (e.g. a second
+                                     # bank breakout while the first bank is open). Set false to disable.
+  correlation_threshold: 0.75       # r above which a candidate is refused (default 0.75). Runs agent-
+                                     # side (only the agent has a broker for price history) and syncs
+                                     # each decision to the cloud for cockpit display.
 
 cloud:
   api_url: https://your-quantos-instance.railway.app

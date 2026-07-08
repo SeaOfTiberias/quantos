@@ -140,10 +140,10 @@ async def _start_notify_sweep():
 # Event risk filter (US-06) — singleton, loaded with macro calendar at startup
 _event_filter = EventFilterService()
 
-# Correlation service (US-08) — None until a broker is connected.
-# Production wiring: set this in an app startup hook once the broker
-# adapter is initialized (see agent/main.py for the broker connection pattern).
-_correlation_service = None
+# NOTE: the correlation gate (S5-5) runs on the local agent, not here — only
+# the agent holds a broker to fetch price history (ADR-01). It pushes decisions
+# to cloud/api/correlation_routes.py for display. (The old cloud-side
+# _correlation_service = None dead-wiring was removed with that change.)
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────

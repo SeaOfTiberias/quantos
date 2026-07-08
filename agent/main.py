@@ -49,6 +49,8 @@ from core.darvas.box import next_trailing_stop
 from core.darvas.scanner import DarvasScanner
 from core.darvas.weekly_discovery import WeeklyDiscoveryScanner, DEFAULT_CONFIG as DISCOVERY_CONFIG
 from core.regime.service import RegimeService, CACHE_TTL as REGIME_CACHE_TTL
+from core.risk.correlation_service import CorrelationPortfolioService
+from core.risk.correlation import CORRELATION_THRESHOLD
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
 # Kept slower than the 5s signal poll to avoid hammering the broker with
@@ -312,6 +314,57 @@ def _sync_watchlist_to_cloud(cloud_url: str, headers: dict, discovery_watchlist:
         resp.raise_for_status()
     except Exception as e:
         logger.error("Failed to sync discovery watchlist to cloud: %s", e)
+
+
+def _sync_correlation_to_cloud(cloud_url: str, headers: dict, result) -> None:
+    """Push one correlation gate decision to the cloud
+    (cloud/api/correlation_routes.py) purely so the cockpit can show the gate
+    working. Best-effort: a failed sync just means a stale display, never a
+    functional problem, so it's logged and swallowed — same reasoning as
+    _sync_watchlist_to_cloud."""
+    payload = {
+        "candidate_symbol": result.candidate_symbol,
+        "is_blocked":       result.is_blocked,
+        "max_correlation":  result.max_correlation,
+        "correlated_with":  [c.symbol_b for c in result.correlated_with],
+        "reason":           result.reason,
+        "checked_at":       datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        resp = requests.post(f"{cloud_url}/correlation/sync",
+                             json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("Failed to sync correlation decision to cloud: %s", e)
+
+
+def _correlation_refusal_reason(corr_service, symbol: str, open_positions: dict,
+                                threshold: float, cloud_url: str, headers: dict):
+    """Correlation gate (S5-5 / P1-6). Returns a refusal string if `symbol` is
+    too correlated (r>threshold) with an already-open position, else None.
+
+    Runs agent-side because only the agent holds a broker to fetch the price
+    history a correlation check needs (ADR-01). Each decision is best-effort
+    synced to the cloud for cockpit display. Fails OPEN: if the check itself
+    errors (data fetch failure, etc.), the entry is allowed rather than
+    silently dropped — the gate reduces concentration risk, it isn't a
+    safety-critical stop like the kill switch."""
+    if corr_service is None:
+        return None
+    open_symbols = [p.symbol for p in open_positions.values()]
+    if not open_symbols:
+        return None
+    try:
+        result = asyncio.run(
+            corr_service.check_candidate(symbol, open_symbols, threshold=threshold))
+    except Exception as e:
+        logger.error("Correlation check failed for %s — allowing entry: %s", symbol, e)
+        return None
+
+    _sync_correlation_to_cloud(cloud_url, headers, result)
+    if result.is_blocked:
+        return f"REFUSED by correlation gate: {result.reason}"
+    return None
 
 
 def _run_discovery_scan(broker, universe_path: str, discovery_watchlist: dict,
@@ -594,6 +647,12 @@ def run_agent(config: dict):
     risk_cfg = config.get("risk", {})
     max_open_positions = int(risk_cfg.get("max_open_positions", 5))
     max_daily_loss_pct = float(risk_cfg.get("max_daily_loss", 0.05))
+    # Correlation gate (S5-5 / P1-6): refuse a new entry too correlated with an
+    # open position. On by default; set risk.correlation_gate: false to disable,
+    # risk.correlation_threshold to tune (default 0.75).
+    correlation_gate = bool(risk_cfg.get("correlation_gate", True))
+    correlation_threshold = float(
+        risk_cfg.get("correlation_threshold", CORRELATION_THRESHOLD))
     # Day-start capital base for the daily-loss %. The agent restarts daily
     # (Fyers token expiry), so funds at startup ≈ start-of-day equity. Falls
     # back to the configured reference capital if the broker call fails.
@@ -616,6 +675,10 @@ def run_agent(config: dict):
     # Persisted so Kelly's 20-trade minimum survives the daily agent
     # restart (Fyers token expiry) — see core/risk/trade_history.py.
     sizer = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
+    # Correlation gate needs the connected broker to fetch price history (ADR-01).
+    corr_service = CorrelationPortfolioService(broker) if correlation_gate else None
+    if correlation_gate:
+        logger.info("Correlation gate ON (threshold r=%.2f).", correlation_threshold)
     processed = _load_processed_ids()
     open_positions = load_open_positions()
     discovery_watchlist = load_watchlist()
@@ -709,6 +772,21 @@ def run_agent(config: dict):
                     _mark_processed(signal_id, processed)
                     _report_outcome(cloud_url, headers, signal_id, "failed",
                                     {"reason": f"REFUSED by kill switch: {refusal}"})
+                    continue
+
+                # Correlation gate (S5-5): refuse an entry too correlated with an
+                # already-open position so the book doesn't stack one factor bet
+                # (e.g. a second bank breakout while the first bank is open).
+                # Layered AFTER the kill switch, BEFORE the order is placed.
+                corr_refusal = _correlation_refusal_reason(
+                    corr_service, signal["symbol"], open_positions,
+                    correlation_threshold, cloud_url, headers)
+                if corr_refusal:
+                    logger.warning("[%s] %s (%s %s)", signal_id, corr_refusal,
+                                   signal["action"], signal["symbol"])
+                    _mark_processed(signal_id, processed)
+                    _report_outcome(cloud_url, headers, signal_id, "failed",
+                                    {"reason": corr_refusal})
                     continue
 
                 # Mark BEFORE placing the order — a crash after this point
