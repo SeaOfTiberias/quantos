@@ -530,6 +530,41 @@ def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dic
     logger.info("Regime synced: %s (confidence=%.0f)", result.regime.value, result.confidence)
 
 
+def _sync_positions_to_cloud(broker, cloud_url: str, headers: dict, positions: dict) -> None:
+    """
+    Push live open positions (qty/entry/LTP/PnL, already computed broker-
+    side — core/brokers/base.py's Position) to the cloud so the cockpit can
+    show a real Open Positions panel. Same reasoning as _run_regime_sync:
+    only the agent holds a connected broker (ADR-01). Runs on its own tick
+    (not gated on `positions` being non-empty) so the cloud mirror clears to
+    an empty list once the last position closes, instead of showing stale
+    rows forever.
+    """
+    try:
+        live = broker.get_positions()
+    except Exception as e:
+        logger.error("Failed to fetch positions for cloud sync: %s", e)
+        return
+
+    strategy_by_symbol = {p.symbol: p.strategy for p in positions.values()}
+    payload = {
+        "positions": [
+            {
+                "symbol":   p.symbol,
+                "qty":      p.quantity,
+                "entry":    p.average_price,
+                "ltp":      p.current_price,
+                "pnl":      p.pnl,
+                "pnl_pct":  p.pnl_percent,
+                "strategy": strategy_by_symbol.get(p.symbol, "unknown"),
+            }
+            for p in live if p.quantity != 0
+        ],
+    }
+    resp = requests.post(f"{cloud_url}/positions/sync", json=payload, headers=headers, timeout=10)
+    resp.raise_for_status()
+
+
 def _manage_open_positions(broker, cloud_url, headers, sizer, positions: dict,
                             discovery_watchlist: dict):
     """
@@ -853,21 +888,27 @@ def run_agent(config: dict):
                                     {"reason": str(e)})
 
             tick += 1
-            if tick % TRAIL_EVERY_N_TICKS == 0 and open_positions:
-                _manage_open_positions(broker, cloud_url, headers, sizer,
-                                        open_positions, discovery_watchlist)
-                # Re-evaluate the daily-loss trigger with open-position MTM
-                # folded in (bleeding open positions can breach the circuit
-                # breaker even with no closed trade today). Only fetch LTP if
-                # there's still something open after the close sweep above.
-                if open_positions and not risk_guard.is_halted():
-                    try:
-                        ltp = broker.get_ltp([p.symbol for p in open_positions.values()])
-                    except Exception as e:
-                        logger.error("Could not fetch LTP for kill-switch MTM check: %s", e)
-                        ltp = None
-                    _check_and_set_halt(broker, sizer, open_positions, cloud_url,
-                                        headers, risk_capital, max_daily_loss_pct, ltp=ltp)
+            if tick % TRAIL_EVERY_N_TICKS == 0:
+                try:
+                    _sync_positions_to_cloud(broker, cloud_url, headers, open_positions)
+                except Exception as e:
+                    logger.error("Positions sync failed: %s", e)
+
+                if open_positions:
+                    _manage_open_positions(broker, cloud_url, headers, sizer,
+                                            open_positions, discovery_watchlist)
+                    # Re-evaluate the daily-loss trigger with open-position MTM
+                    # folded in (bleeding open positions can breach the circuit
+                    # breaker even with no closed trade today). Only fetch LTP if
+                    # there's still something open after the close sweep above.
+                    if open_positions and not risk_guard.is_halted():
+                        try:
+                            ltp = broker.get_ltp([p.symbol for p in open_positions.values()])
+                        except Exception as e:
+                            logger.error("Could not fetch LTP for kill-switch MTM check: %s", e)
+                            ltp = None
+                        _check_and_set_halt(broker, sizer, open_positions, cloud_url,
+                                            headers, risk_capital, max_daily_loss_pct, ltp=ltp)
 
             if (scanner_enabled and tick % granular_every_n_ticks == 0
                     and _is_market_hours(datetime.now(timezone.utc))):

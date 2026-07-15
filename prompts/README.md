@@ -43,3 +43,4 @@ missing file fails at deploy, not on the first live signal.
 | `alpha_attribution_user.md` | `core/options/alpha_attribution.py` |
 | `backtest_analyst_system.md`, `backtest_analyst_user.md` | `core/backtest/analyst.py` |
 | `screener_ranker_system.md`, `screener_ranker_user.md` | `core/screener/ranker.py` |
+| `analyst_chat_system.md` | `cloud/analyst/chat.py` (cockpit chat) |

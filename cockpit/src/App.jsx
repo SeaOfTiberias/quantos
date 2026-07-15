@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -44,12 +44,6 @@ const MOCK_REGIME = {
   allowed_strategies: ["darvas_breakout", "bull_call_spread", "covered_call"],
 };
 
-const MOCK_POSITIONS = [
-  { symbol: "HDFCBANK", qty: 50, entry: 1680, ltp: 1705, pnl: 1250, pnl_pct: 1.49, strategy: "darvas_breakout" },
-  { symbol: "ICICIBANK", qty: 75, entry: 1200, ltp: 1188, pnl: -900, pnl_pct: -1.0, strategy: "darvas_breakout" },
-  { symbol: "RELIANCE", qty: 25, entry: 2900, ltp: 2950, pnl: 1250, pnl_pct: 1.72, strategy: "darvas_breakout" },
-];
-
 const MOCK_ALPHA_CURVE = Array.from({ length: 30 }, (_, i) => ({
   day: `D${i + 1}`,
   quantos: +(Math.random() * 2 + i * 0.25).toFixed(2),
@@ -64,13 +58,35 @@ const MOCK_GREEKS = {
   is_theta_positive: true,
 };
 
-const MOCK_SCREENER = [
-  { rank: 1, symbol: "RELIANCE", score: 88, rationale: "Clean Darvas box, 1.8× relative volume vs avg" },
-  { rank: 2, symbol: "BAJFINANCE", score: 82, rationale: "Daily + 1H confluence, above 200 SMA" },
-  { rank: 3, symbol: "TITAN", score: 75, rationale: "Tight consolidation, sector strength" },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+// Morning Shortlist derives from the Discovery Watchlist (Stage A) rather
+// than the older CSV-upload screener pipeline (core/screener/ranker.py),
+// which has no automated daily feed — this stays fully live with no manual
+// upload step. "score" is the real R:R ratio, not a fabricated composite.
+const SHORTLIST_TIER_PRIORITY = { HOT: 3, WARM: 2, "VOL-SURGE": 1.5, WATCH: 1 };
+
+function buildMorningShortlist(entries) {
+  return entries
+    .filter(e => e.status === "APPROACHING" || e.status === "FRESH BREAKOUT")
+    .sort((a, b) => {
+      const tierDiff = (SHORTLIST_TIER_PRIORITY[b.alert_tier] ?? 0)
+        - (SHORTLIST_TIER_PRIORITY[a.alert_tier] ?? 0);
+      if (tierDiff !== 0) return tierDiff;
+      return (a.dist_to_ceil ?? 999) - (b.dist_to_ceil ?? 999);
+    })
+    .slice(0, 5)
+    .map((e, i) => ({
+      rank: i + 1,
+      symbol: e.symbol,
+      score: e.rr_ratio != null ? Math.round(e.rr_ratio * 10) / 10 : "—",
+      rationale: [
+        e.status,
+        e.alert_tier || null,
+        e.dist_to_ceil != null ? `${e.dist_to_ceil.toFixed(1)}% from ceiling` : null,
+      ].filter(Boolean).join(" · "),
+    }));
+}
 
 const fmt = (n, dp = 2) => n?.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp }) ?? "—";
 const fmtPct = n => n != null ? `${n > 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
@@ -330,19 +346,26 @@ function SignalFeed({ signals, error }) {
   );
 }
 
-function PositionsTable({ positions }) {
+function PositionsTable({ positions, error }) {
   const totalPnl = positions.reduce((s, p) => s + p.pnl, 0);
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Label color={C.accent}>Open Positions</Label>
-        <div style={{
-          fontSize: 14, fontWeight: 700,
-          color: totalPnl >= 0 ? C.green : C.red,
-        }}>
-          {totalPnl >= 0 ? "+" : ""}₹{fmt(Math.abs(totalPnl), 0)} today
-        </div>
+        {positions.length > 0 && (
+          <div style={{
+            fontSize: 14, fontWeight: 700,
+            color: totalPnl >= 0 ? C.green : C.red,
+          }}>
+            {totalPnl >= 0 ? "+" : ""}₹{fmt(Math.abs(totalPnl), 0)} today
+          </div>
+        )}
       </div>
+      {positions.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
+          {error ? "Could not reach cloud API." : "No open positions."}
+        </div>
+      ) : (
       <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
         <thead>
           <tr>
@@ -385,6 +408,7 @@ function PositionsTable({ positions }) {
           ))}
         </tbody>
       </table>
+      )}
     </Card>
   );
 }
@@ -393,6 +417,11 @@ function ScreenerPanel({ candidates }) {
   return (
     <Card>
       <Label color={C.gold}>Morning Shortlist</Label>
+      {candidates.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
+          Nothing approaching a breakout right now.
+        </div>
+      ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
         {candidates.map(c => (
           <div key={c.symbol} style={{
@@ -418,6 +447,7 @@ function ScreenerPanel({ candidates }) {
           </div>
         ))}
       </div>
+      )}
     </Card>
   );
 }
@@ -516,17 +546,81 @@ function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
 }
 
 function ClaudeChat() {
+  const [messages, setMessages] = useState([
+    { role: "assistant", text: "QuantOS analyst ready. Ask me about current signals, regime, or open positions." }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = input.trim();
+    setInput("");
+    setMessages(m => [...m, { role: "user", text: userMsg }]);
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${CLOUD_API_URL}/analyst/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMsg }),
+      });
+      const data = await response.json();
+      const text = data.reply ?? "Unable to get response.";
+      setMessages(m => [...m, { role: "assistant", text }]);
+    } catch {
+      setMessages(m => [...m, { role: "assistant", text: "Connection error — try again." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Card style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Label color={C.purple}>Claude Analyst</Label>
       <div style={{
-        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        marginTop: 10, minHeight: 120,
+        flex: 1, overflowY: "auto", marginTop: 10,
+        display: "flex", flexDirection: "column", gap: 8,
+        maxHeight: 300,
       }}>
-        <span style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>
-          Not wired yet — freeform chat needs a backend proxy endpoint
-          (server-held API key, no browser calls to Anthropic directly).
-        </span>
+        {messages.map((m, i) => (
+          <div key={i} style={{
+            padding: "8px 10px", borderRadius: 6, fontSize: 12, lineHeight: 1.5,
+            ...(m.role === "user"
+              ? { background: `${C.purple}20`, border: `1px solid ${C.purple}40`,
+                  color: C.white, alignSelf: "flex-end", maxWidth: "85%" }
+              : { background: C.bg, border: `1px solid ${C.border}`,
+                  color: C.mid, alignSelf: "flex-start", maxWidth: "90%" }
+            ),
+          }}>{m.text}</div>
+        ))}
+        {loading && (
+          <div style={{ color: C.purple, fontSize: 12, padding: "4px 10px" }}>
+            Claude is thinking…
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && send()}
+          placeholder="Ask Claude about your positions…"
+          style={{
+            flex: 1, background: C.bg, border: `1px solid ${C.border}`,
+            borderRadius: 6, padding: "8px 12px", color: C.white,
+            fontSize: 12, outline: "none",
+          }}
+        />
+        <button
+          onClick={send}
+          disabled={loading || !input.trim()}
+          style={{
+            background: C.purple, color: C.white, border: "none",
+            borderRadius: 6, padding: "8px 14px", cursor: "pointer",
+            fontSize: 12, fontWeight: 600, opacity: loading ? 0.5 : 1,
+          }}
+        >→</button>
       </div>
     </Card>
   );
@@ -666,11 +760,11 @@ export default function QuantOSCockpit() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [regime, setRegime] = useState(MOCK_REGIME);
   const [signals, setSignals] = useState({ list: [], error: false });
-  const [positions] = useState(MOCK_POSITIONS);
+  const [positions, setPositions] = useState({ list: [], error: false });
   const [alphaCurve] = useState(MOCK_ALPHA_CURVE);
   const [greeks] = useState(MOCK_GREEKS);
-  const [screener] = useState(MOCK_SCREENER);
   const [discovery, setDiscovery] = useState({ entries: [], updatedAt: null, error: false });
+  const screener = useMemo(() => buildMorningShortlist(discovery.entries), [discovery.entries]);
   const [obs, setObs] = useState(null);
   const [obsError, setObsError] = useState(false);
 
@@ -719,6 +813,26 @@ export default function QuantOSCockpit() {
         if (!cancelled) setSignals({ list: data.signals ?? [], error: false });
       } catch {
         if (!cancelled) setSignals(s => ({ ...s, error: true }));
+      }
+    };
+    load();
+    const id = setInterval(load, 15000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Open positions: broker-reported qty/entry/LTP/PnL, see
+  // cloud/api/positions_routes.py's GET /positions/status. Polled every 15s
+  // to match the trailing-stop check's ~60s push cadence with headroom.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/positions/status`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setPositions({ list: data.positions ?? [], error: false });
+      } catch {
+        if (!cancelled) setPositions(p => ({ ...p, error: true }));
       }
     };
     load();
@@ -805,7 +919,7 @@ export default function QuantOSCockpit() {
           gap: 16, marginBottom: 16,
         }}>
           <SignalFeed signals={signals.list} error={signals.error} />
-          <PositionsTable positions={positions} />
+          <PositionsTable positions={positions.list} error={positions.error} />
         </div>
 
         {/* Row 3: Screener · Claude Chat */}

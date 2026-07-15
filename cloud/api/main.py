@@ -45,6 +45,8 @@ from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
 from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.regime_routes import router as regime_router
+from cloud.api.positions_routes import router as positions_router
+from cloud.api.analyst_routes import router as analyst_router
 from cloud.api.observability_routes import router as observability_router
 from cloud.api.reconciliation_routes import router as reconciliation_router
 from cloud.api import metrics
@@ -73,6 +75,8 @@ app.include_router(morning_router)
 app.include_router(options_router)
 app.include_router(discovery_router)
 app.include_router(regime_router)
+app.include_router(positions_router)
+app.include_router(analyst_router)
 app.include_router(observability_router)
 app.include_router(reconciliation_router)
 
