@@ -1,0 +1,28 @@
+[Unit]
+Description=QuantOS Trading Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/agent/main.py
+Restart=on-failure
+RestartSec=30
+Environment=HOME=/home/ubuntu
+
+# 2026-07-15: the agent OOM-killed itself twice in one session (RSS grew
+# past 700MB on this 1GB-RAM VM), and the kernel's global OOM killer took
+# systemd-journald and snapd down with it (journald missed its watchdog and
+# had to be force-killed, corrupting its journal file) — SSH went dark both
+# times. MemoryMax scopes the kill to just this cgroup, well before memory
+# pressure escalates to a whole-VM event; MemoryHigh throttles/reclaims
+# earlier still, as a softer first line of defense. Restart=on-failure
+# above already recovers from a MemoryMax-triggered kill the same way it
+# recovered from the global OOM kills.
+MemoryHigh=550M
+MemoryMax=650M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily restart of QuantOS Trading Agent (16:00 IST, market-close+30min)
+
+[Timer]
+# Resets heap-fragmentation buildup once a day rather than waiting for the
+# next MemoryMax kill or the next pre-market token-refresh restart — the
+# only other point the agent process normally restarts.
+OnCalendar=*-*-* 10:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -112,6 +112,17 @@ class FyersBroker(BrokerAdapter):
                 is_async=False,
                 log_path=""
             )
+            # fyers_apiv3 unconditionally writes every API call to
+            # fyersApi.log/fyersRequests.log via its own FileHandlers
+            # (request_logger is hardcoded to DEBUG regardless of what we
+            # pass here) — unbounded disk growth over the agent's lifetime.
+            # Capping each handler's own level (independent of the SDK's
+            # internal logger level) stops the writes without depending on
+            # the vendored aws_lambda_powertools logger's internals.
+            for sdk_logger in (getattr(self._client, "api_logger", None),
+                               getattr(self._client, "request_logger", None)):
+                for handler in getattr(sdk_logger, "handlers", []):
+                    handler.setLevel(logging.CRITICAL)
 
             # Validate connection
             profile = self._client.get_profile()

@@ -1,0 +1,6 @@
+[Unit]
+Description=Daily restart of QuantOS Trading Agent (heap-fragmentation hygiene)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart quantos-agent.service
