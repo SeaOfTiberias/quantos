@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -23,8 +23,9 @@ const C = {
 // ─── Cloud API ──────────────────────────────────────────────────────────────
 // Must match agent/config.yaml's cloud.api_url (the same Railway instance the
 // local agent talks to). Override via cockpit/.env's VITE_CLOUD_API_URL — see
-// .env.example. The System Health (S5-6) and Discovery Watchlist panels are
-// wired to real cloud data; the remaining panels are still mock.
+// .env.example. System Health (S5-6), Discovery Watchlist, and Signal Feed are
+// wired to real cloud data; Positions/Greeks/Alpha Curve/Screener are still
+// mock (need agent→cloud sync plumbing that doesn't exist yet).
 const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
   || "https://web-production-b5527.up.railway.app";
 
@@ -42,12 +43,6 @@ const MOCK_REGIME = {
   darvas_enabled: true,
   allowed_strategies: ["darvas_breakout", "bull_call_spread", "covered_call"],
 };
-
-const MOCK_SIGNALS = [
-  { signal_id: "SIG-DARV-A1B2C3D4", symbol: "RELIANCE", action: "BUY", price: 2950.50, strategy: "darvas_breakout", confluence_score: 88, confidence_score: 81, status: "PENDING_CONFIRMATION", created_at: "2026-07-02T04:12:00Z" },
-  { signal_id: "SIG-DARV-E5F6G7H8", symbol: "TCS", action: "BUY", price: 3820.00, strategy: "darvas_breakout", confluence_score: 74, confidence_score: 68, status: "CONFIRMED", created_at: "2026-07-02T03:55:00Z" },
-  { signal_id: "SIG-DARV-I9J0K1L2", symbol: "INFY", action: "BUY", price: 1520.00, strategy: "darvas_breakout", confluence_score: 61, confidence_score: null, status: "REJECTED_LOW_CONFLUENCE", created_at: "2026-07-02T03:30:00Z" },
-];
 
 const MOCK_POSITIONS = [
   { symbol: "HDFCBANK", qty: 50, entry: 1680, ltp: 1705, pnl: 1250, pnl_pct: 1.49, strategy: "darvas_breakout" },
@@ -282,10 +277,15 @@ function AlphaCurve({ data }) {
   );
 }
 
-function SignalFeed({ signals }) {
+function SignalFeed({ signals, error }) {
   return (
     <Card>
       <Label color={C.accent}>Signal Feed</Label>
+      {signals.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
+          {error ? "Could not reach cloud API." : "No signals yet today."}
+        </div>
+      ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
         {signals.map(sig => {
           const badge = statusBadge(sig.status);
@@ -325,6 +325,7 @@ function SignalFeed({ signals }) {
           );
         })}
       </div>
+      )}
     </Card>
   );
 }
@@ -515,88 +516,17 @@ function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
 }
 
 function ClaudeChat() {
-  const [messages, setMessages] = useState([
-    { role: "assistant", text: "QuantOS analyst ready. Ask me about current signals, regime, or position sizing." }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const send = useCallback(async () => {
-    if (!input.trim() || loading) return;
-    const userMsg = input.trim();
-    setInput("");
-    setMessages(m => [...m, { role: "user", text: userMsg }]);
-    setLoading(true);
-
-    try {
-      const systemCtx = `You are the QuantOS AI analyst embedded in the trading cockpit. Current regime: TRENDING_BULL (83% confidence). Open positions: HDFCBANK, ICICIBANK, RELIANCE. Be concise and data-driven. Answer questions about signals, positions, regime, options, or strategy sizing in 2-3 sentences max.`;
-
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 300,
-          system: systemCtx,
-          messages: [{ role: "user", content: userMsg }],
-        }),
-      });
-      const data = await response.json();
-      const text = data.content?.[0]?.text ?? "Unable to get response.";
-      setMessages(m => [...m, { role: "assistant", text }]);
-    } catch {
-      setMessages(m => [...m, { role: "assistant", text: "Connection error — try again." }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [input, loading]);
-
   return (
     <Card style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Label color={C.purple}>Claude Analyst</Label>
       <div style={{
-        flex: 1, overflowY: "auto", marginTop: 10,
-        display: "flex", flexDirection: "column", gap: 8,
-        maxHeight: 300,
+        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+        marginTop: 10, minHeight: 120,
       }}>
-        {messages.map((m, i) => (
-          <div key={i} style={{
-            padding: "8px 10px", borderRadius: 6, fontSize: 12, lineHeight: 1.5,
-            ...(m.role === "user"
-              ? { background: `${C.purple}20`, border: `1px solid ${C.purple}40`,
-                  color: C.white, alignSelf: "flex-end", maxWidth: "85%" }
-              : { background: C.bg, border: `1px solid ${C.border}`,
-                  color: C.mid, alignSelf: "flex-start", maxWidth: "90%" }
-            ),
-          }}>{m.text}</div>
-        ))}
-        {loading && (
-          <div style={{ color: C.purple, fontSize: 12, padding: "4px 10px" }}>
-            Claude is thinking…
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && send()}
-          placeholder="Ask Claude about your positions…"
-          style={{
-            flex: 1, background: C.bg, border: `1px solid ${C.border}`,
-            borderRadius: 6, padding: "8px 12px", color: C.white,
-            fontSize: 12, outline: "none",
-          }}
-        />
-        <button
-          onClick={send}
-          disabled={loading || !input.trim()}
-          style={{
-            background: C.purple, color: C.white, border: "none",
-            borderRadius: 6, padding: "8px 14px", cursor: "pointer",
-            fontSize: 12, fontWeight: 600, opacity: loading ? 0.5 : 1,
-          }}
-        >→</button>
+        <span style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>
+          Not wired yet — freeform chat needs a backend proxy endpoint
+          (server-held API key, no browser calls to Anthropic directly).
+        </span>
       </div>
     </Card>
   );
@@ -735,7 +665,7 @@ function TopBar({ lastRefresh, heartbeat, obsError }) {
 export default function QuantOSCockpit() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [regime, setRegime] = useState(MOCK_REGIME);
-  const [signals] = useState(MOCK_SIGNALS);
+  const [signals, setSignals] = useState({ list: [], error: false });
   const [positions] = useState(MOCK_POSITIONS);
   const [alphaCurve] = useState(MOCK_ALPHA_CURVE);
   const [greeks] = useState(MOCK_GREEKS);
@@ -773,6 +703,26 @@ export default function QuantOSCockpit() {
     };
     load();
     const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Signal feed: recent signals across all sources (Pine + internal Stage B),
+  // see cloud/api/main.py's GET /signals. Polled since signals arrive at
+  // irregular times, not on a fixed schedule.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/signals?limit=20`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setSignals({ list: data.signals ?? [], error: false });
+      } catch {
+        if (!cancelled) setSignals(s => ({ ...s, error: true }));
+      }
+    };
+    load();
+    const id = setInterval(load, 15000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
@@ -854,7 +804,7 @@ export default function QuantOSCockpit() {
           gridTemplateColumns: "1fr 1fr",
           gap: 16, marginBottom: 16,
         }}>
-          <SignalFeed signals={signals} />
+          <SignalFeed signals={signals.list} error={signals.error} />
           <PositionsTable positions={positions} />
         </div>
 

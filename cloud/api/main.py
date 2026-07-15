@@ -373,9 +373,14 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
 
 
 @app.get("/signals")
-async def list_signals(limit: int = 20, status: str | None = None,
-                        _auth=Depends(require_cloud_secret)):
-    """Return recent signals for the cockpit dashboard / local agent poll."""
+async def list_signals(limit: int = 20, status: str | None = None):
+    """Return recent signals for the cockpit dashboard.
+
+    Public/unauthenticated, matching the read-only pattern used by
+    /regime/status, /observability, and /discovery/watchlist — no
+    credentials in the payload. Write actions (confirm/skip/executed/
+    failed/halt) remain behind require_cloud_secret.
+    """
     db = await get_db()
     signals = await db.fetch_recent_signals(limit=limit, status=status)
     return {"signals": signals}
