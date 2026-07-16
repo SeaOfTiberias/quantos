@@ -22,6 +22,10 @@
 //
 // Only long/BUY breakouts are detected — matches core/darvas/box.py,
 // which has no short-side logic either.
+//
+// For Strategy Tester backtesting (S7-3), use the sibling
+// darvas_breakout_strategy.pine instead — this file is an indicator only
+// and has no strategy.entry/exit calls to backtest against.
 
 //@version=5
 indicator("QuantOS Darvas Box — Multi-TF Confluence", overlay=true)

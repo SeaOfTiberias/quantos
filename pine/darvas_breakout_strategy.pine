@@ -1,0 +1,124 @@
+// QuantOS — Darvas Box Multi-Timeframe Confluence STRATEGY (S7-3 backtest)
+// ──────────────────────────────────────────────────────────────────────────
+// Backtest-only sibling of darvas_breakout_alert.pine. Do NOT wire this to
+// the live webhook — the alert script stays the production signal source.
+// This file exists so TradingView's Strategy Tester can produce a trade
+// list CSV that core/backtest/parser.py already knows how to ingest.
+//
+// Detection/scoring logic is copied verbatim from darvas_breakout_alert.pine
+// (which mirrors core/darvas/box.py) — same box formation, same multi-TF
+// confluence weights, same >=70 fire threshold. Only two things are new:
+//   1. strategy.entry/strategy.exit calls in place of alert()/plotshape.
+//   2. A trailing stop that mirrors core/darvas/box.py's next_trailing_stop:
+//      initial stop = box bottom at entry (bot15, same value the live agent
+//      receives as `stop_loss`, agent/main.py:502); the stop can only
+//      RATCHET UP when a fresh 15m box confirms with a higher bottom, never
+//      down. That "only if strictly higher" rule is the entirety of the
+//      live exit logic today — there is no fixed take-profit, no time stop
+//      (S7-7 tracks that gap; this backtest deliberately does not invent
+//      an exit rule that doesn't exist in the live system).
+//
+// Cost model: commission/slippage are left at 0 here on purpose.
+// core/backtest/parser.py applies the real NSE cost stack (core/risk/costs.py)
+// to the exported GROSS trades afterward, with a configurable slippage_bps
+// to approximate breakout-entry fill friction (backtest fills are
+// frictionless; live fills already embed slippage) — baking a second,
+// TradingView-side slippage model in here would double-count it.
+//
+// Usage: paste into TradingView Pine Editor, run on 15m chart timeframe
+// (the 1h/1D confluence legs are pulled via request.security regardless of
+// chart timeframe, same as the alert indicator), open Strategy Tester,
+// export the trade list CSV, feed it to scripts/ingest_s73_backtests.py.
+
+//@version=5
+strategy("QuantOS Darvas Box — Backtest (S7-3)", overlay=true,
+     initial_capital=100000, currency=currency.INR,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=100,
+     commission_type=strategy.commission.percent, commission_value=0,
+     slippage=0, calc_on_every_tick=false)
+
+// ── Inputs (identical defaults to darvas_breakout_alert.pine) ────────────
+lookback      = input.int(20, "Box Lookback (candles)", minval=5)
+minConsol     = input.int(3, "Min Consolidation Candles", minval=1)
+volMult       = input.float(1.3, "Breakout Volume Multiplier", minval=1.0)
+maxWidthPct   = input.float(8.0, "Max Box Width %", minval=0.5)
+tolPct        = input.float(0.2, "Consolidation Tolerance %", minval=0.0)
+minConfluence = input.float(70, "Min Confluence to Fire (matches Railway MIN_CONFLUENCE_SCORE)")
+
+tol = tolPct / 100
+
+// ── Reusable Darvas Box detector — state persists per request.security context ──
+darvasBox() =>
+    var float candidateTop = na
+    var float boxTop       = na
+    var float boxBottom    = na
+    var int   consolCount  = 0
+    var bool  boxReady     = false
+
+    hh = ta.highest(high, lookback)
+    isNewHigh = high >= hh and (na(candidateTop) or high > candidateTop)
+
+    if isNewHigh
+        candidateTop := high
+        consolCount := 0
+        boxReady := false
+        boxBottom := low
+    else if not na(candidateTop)
+        if high <= candidateTop * (1 + tol)
+            consolCount := consolCount + 1
+            boxBottom := math.min(boxBottom, low)
+            if consolCount >= minConsol and not boxReady
+                widthPct = (candidateTop - boxBottom) / boxBottom * 100
+                if widthPct <= maxWidthPct
+                    boxTop := candidateTop
+                    boxReady := true
+        else
+            candidateTop := na
+            consolCount := 0
+            boxReady := false
+
+    avgVol      = ta.sma(volume, 20)
+    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
+    widthPctNow = (boxReady and not na(boxBottom) and boxBottom != 0) ? (boxTop - boxBottom) / boxBottom * 100 : 100.0
+    isTight     = widthPctNow < 4.0
+    breakoutNow = boxReady and close > boxTop and volRatio >= volMult
+
+    [breakoutNow, boxTop, boxBottom, volRatio, isTight, close, boxReady]
+
+// ── Pull box state across all 3 confluence timeframes ────────────────────
+[brk15, top15, bot15, vr15, tight15, close15, ready15] = request.security(syminfo.tickerid, "15", darvasBox())
+[brk60, top60, bot60, vr60, tight60, close60, ready60] = request.security(syminfo.tickerid, "60", darvasBox())
+[brkD,  topD,  botD,  vrD,  tightD,  closeD,  readyD ] = request.security(syminfo.tickerid, "D",  darvasBox())
+
+// ── Confluence scoring — mirrors core/darvas/box.py score_confluence() ───
+volBonus(vr) => vr >= 2.0 ? 5.0 : vr >= 1.5 ? 2.5 : 0.0
+
+score = 0.0
+score += brk15 ? 25 + volBonus(vr15) + (tight15 ? 5.0 : 0.0) : 0.0
+score += brk60 ? 35 + volBonus(vr60) + (tight60 ? 5.0 : 0.0) : 0.0
+score += brkD  ? 40 + volBonus(vrD)  + (tightD  ? 5.0 : 0.0) : 0.0
+confluenceScore = math.min(100.0, score)
+
+// ── Entry trigger: fires off the 15m breakout (finest / entry-timing TF) ─
+fireSignal = brk15 and confluenceScore >= minConfluence
+
+// ── Position management: single position, trailing stop only (no target,
+// no time stop — matches the live agent's actual exit logic, not an
+// idealised one) ─────────────────────────────────────────────────────────
+var float trailStop = na
+
+if fireSignal and strategy.position_size == 0
+    trailStop := bot15
+    strategy.entry("Long", strategy.long)
+
+if strategy.position_size > 0
+    if ready15 and not na(bot15) and bot15 > trailStop
+        trailStop := bot15
+    strategy.exit("Exit", "Long", stop=trailStop)
+
+// ── Visuals (unchanged from the alert indicator, useful for eyeballing) ──
+plot(top15, "15m Box Top", color=color.new(color.green, 0), style=plot.style_linebr)
+plot(bot15, "15m Box Bottom", color=color.new(color.red, 0), style=plot.style_linebr)
+plot(trailStop, "Trailing Stop", color=color.new(color.orange, 0), style=plot.style_linebr)
+plotshape(fireSignal, title="Entry Signal", style=shape.triangleup,
+          location=location.belowbar, color=color.lime, size=size.normal)

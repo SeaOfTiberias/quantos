@@ -190,6 +190,19 @@ rules that would be wasted work if the edge doesn't exist.
   ingest path (built for exactly this in Sprint 4/US-11).
 - **AC:** a documented go/no-go verdict on whether net-of-cost expectancy is
   positive across the sample. This verdict gates Sprint 6 and S7-4–S7-7.
+- ⏳ **IN PROGRESS 2026-07-16.** Sample pre-committed BEFORE any result exists:
+  `docs/S7_3_BACKTEST_SAMPLE.md` (40 symbols, seed `20260716`, stratified 20
+  large/mid + 20 small cap via NSE's actual Smallcap 250 membership — see
+  `scripts/sample_s73_backtest_universe.py`). Strategy converted:
+  `pine/darvas_breakout_strategy.pine` (entry/trailing-stop only, no
+  invented take-profit or time stop — matches what the live agent actually
+  does today; commission/slippage left at 0 in Pine so `core/risk/costs.py`
+  applies costs once, not twice). Ingestion tooling built + smoke-tested:
+  `scripts/ingest_s73_backtests.py` pools per-symbol CSV exports, refuses to
+  run on a set that doesn't exactly match the pre-commit (missing or extra),
+  and writes `docs/S7_3_BACKTEST_RESULTS.md` with the pooled + per-tier +
+  per-symbol verdict. **Blocked on:** the actual TradingView Strategy Tester
+  runs, which are manual (user's Premium account, one symbol at a time).
 
 ### S7-4 · Instrument the veto — **8 pts** (gated on S7-3 surviving)
 As the person whose discretion sits in the execution loop, I want to know
