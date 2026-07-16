@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily restart of QuantOS Trading Agent (heap-fragmentation hygiene)
+Description=Daily restart of QuantOS Trading Agent (bounds unexplained memory growth)
 
 [Service]
 Type=oneshot

@@ -2,9 +2,16 @@
 Description=Daily restart of QuantOS Trading Agent (16:00 IST, market-close+30min)
 
 [Timer]
-# Resets heap-fragmentation buildup once a day rather than waiting for the
-# next MemoryMax kill or the next pre-market token-refresh restart — the
-# only other point the agent process normally restarts.
+# Resets the agent's memory growth once a day rather than waiting for the next
+# MemoryMax kill or the next pre-market token-refresh restart — the only other
+# point the agent process normally restarts.
+#
+# NB: "heap fragmentation" was the original hypothesis for the 2026-07-15 OOM
+# kills, and it is NOT proven — the supporting claim (Stage A firing hundreds of
+# concurrent DataFrame builds) was disproven: the scanner throttles to
+# max_concurrent=2. The root cause is still open. This timer is worth keeping
+# regardless, because a periodic restart bounds unexplained growth whatever
+# causes it — but do not read it as evidence that we know what that is.
 OnCalendar=*-*-* 10:30:00
 Persistent=true
 

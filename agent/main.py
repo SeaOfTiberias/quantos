@@ -303,7 +303,10 @@ def _load_universe(path: str) -> list:
         logger.warning("Discovery universe file not found: %s", path)
         return []
     symbols, seen = [], set()
-    for line in file_path.read_text().splitlines():
+    # Explicit utf-8: universe files are generated on Windows (cp1252 locale)
+    # and read here on the Linux VM, where read_text() would otherwise default
+    # to utf-8 and raise on any byte the generator's locale encoded differently.
+    for line in file_path.read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()
         if not line:
             continue
@@ -384,6 +387,28 @@ def _correlation_refusal_reason(corr_service, symbol: str, open_positions: dict,
     return None
 
 
+def _log_peak_rss(label: str) -> None:
+    """Log this process's high-water-mark RSS.
+
+    The agent OOM-killed itself twice on 2026-07-15 and the root cause is still
+    unknown — the originally documented hypothesis (Stage A firing hundreds of
+    concurrent DataFrame builds) is disproven, since the scanner is throttled to
+    max_concurrent=2. Stage A has since gone from 247 to 500 symbols against a
+    650MB cgroup cap, so the high-water mark after a scan is the one number that
+    would actually narrow this down. Cheap enough to log unconditionally.
+
+    `resource` is Unix-only and the agent runs on Linux, but the tests run on
+    Windows — degrade to silence rather than guard every caller. ru_maxrss is
+    KB on Linux (bytes on macOS; we don't deploy there).
+    """
+    try:
+        import resource
+        peak_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except (ImportError, AttributeError, OSError):
+        return
+    logger.info("Memory: peak RSS %.0f MB after %s", peak_kb / 1024, label)
+
+
 def _run_discovery_scan(broker, universe_path: str, discovery_watchlist: dict,
                          cloud_url: str, headers: dict) -> None:
     """
@@ -404,6 +429,9 @@ def _run_discovery_scan(broker, universe_path: str, discovery_watchlist: dict,
     logger.info("Stage A: scanning %d symbols from %s", len(symbols), universe_path)
     scanner = WeeklyDiscoveryScanner(broker)
     results = asyncio.run(scanner.scan_universe(symbols))
+    # Logged before the empty-results raise below: a scan that failed systemically
+    # is exactly when the memory number is most interesting.
+    _log_peak_rss(f"Stage A ({len(symbols)} symbols)")
 
     if not results:
         # scan_universe swallows per-symbol exceptions (return_exceptions=True)
@@ -688,15 +716,28 @@ def run_agent(config: dict):
 
     scanner_cfg = config.get("scanner", {})
     scanner_enabled = bool(scanner_cfg.get("enabled", True))
-    universe_path = scanner_cfg.get("universe_file", "agent/universe.txt")
+    universe_path = scanner_cfg.get("universe_file", "agent/universe_nifty500.txt")
     granular_interval_min = float(scanner_cfg.get("granular_scan_interval_minutes", 5))
     granular_every_n_ticks = max(1, int(granular_interval_min * 60 / poll_interval))
 
-    # Reuse the discovery universe as the breadth (advance/decline) sample for
-    # regime classification (S5-4). Loaded once at startup — a static file; the
-    # regime engine only needs a broad, liquid cross-section, not the exact
-    # NSE 500. Empty file → breadth degrades to a neutral placeholder.
-    regime_service = RegimeService(broker, breadth_universe=_load_universe(universe_path))
+    # Breadth (advance/decline) sample for regime classification (S5-4). Its own
+    # config key, deliberately: until 2026-07-16 this reused scanner.universe_file,
+    # so breadth was measured from whatever Stage A was hunting — a hand-curated
+    # Chartink momentum list, re-curated daily. That sample was non-stationary
+    # (regime moved when the file was edited, not when the market did) and biased
+    # (momentum-selected names aren't a market cross-section), which made regime
+    # readings incomparable across days. Falls back to scanner.universe_file so an
+    # older config.yaml keeps working; empty/missing file → breadth degrades to a
+    # neutral placeholder (see core/regime/fetcher.py MIN_BREADTH_SAMPLE).
+    #
+    # Size is not a concern: BrokerAdapter.get_quotes chunks at 50 symbols/call,
+    # so a 500-name sample is ~10 batched calls once per REGIME_CACHE_TTL.
+    regime_cfg = config.get("regime", {})
+    breadth_path = regime_cfg.get("breadth_universe_file", universe_path)
+    breadth_universe = _load_universe(breadth_path)
+    logger.info("Regime breadth universe: %d symbols from %s",
+                len(breadth_universe), breadth_path)
+    regime_service = RegimeService(broker, breadth_universe=breadth_universe)
     regime_every_n_ticks = max(1, int(REGIME_CACHE_TTL / poll_interval))
 
     # Portfolio kill switch (S4-2 / P0-2). Limits come from the agent's own

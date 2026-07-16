@@ -1,124 +1,167 @@
+# QuantOS — Daily Runbook
 
-agent/main.py blocks (it's a poll loop that runs until you Ctrl+C), so it and the cockpit need separate terminals, not sequential steps in one: 
+**The agent runs on the Oracle VM, not your laptop** (since 2026-07-14). It is a
+systemd service that survives reboots and crashes. The only thing that needs a
+human every day is the Fyers token refresh — it expires daily and is interactive.
 
-Terminal 1:
-python agent/auth/fyers_auth.py --config agent/config.yaml
-python agent/main.py
-
-Terminal 2 (while Terminal 1 keeps running):
-cd cockpit
-npm run dev
-
-Then open http://localhost:5173
-
-
-"update universe.txt" is optional, not a required daily step — only touch it if you want to add/remove symbols from the scan. Leave it alone otherwise.
-Also make sure you run python agent/main.py from the repo root (quantos/), not from inside agent/ — it resolves agent/config.yaml and agent/universe.txt as relative paths from wherever you launch it.
-
-
-Tomorrow's runbook
-QuantOS Runbook — Tomorrow (2026-07-08)
-
-⚠️ 0. ONE-TIME (do this FIRST, before the token refresh): rebuild the Fyers app — ISP IP changed
-The whitelisted IP on the current app can't be edited (Fyers enforces a 7-day
-lock-in on IP changes), so trade tomorrow on a NEW app. Only two config lines
-change; the auth flow is otherwise identical.
-
-  0a. Find your CURRENT public IP: run `curl ifconfig.me` (or open whatismyipaddress.com). Note it.
-  0b. Fyers API dashboard (https://myapi.fyers.in) → create a new app:
-        - Permissions: match the old app (needs order placement + market data).
-        - Redirect URI: reuse EXACTLY  https://trade.fyers.in/api-login/redirect-uri/index.html
-          (fyers_auth.py's manual auth-code paste flow depends on this exact URI — reusing it = zero code change).
-        - Whitelist IP: enter the public IP from 0a. (If the dashboard accepts a CIDR/range,
-          whitelist your ISP subnet so a DHCP change within it doesn't lock you out again — check the field.)
-  0c. Copy the new App ID + Secret. In agent/config.yaml (local, untracked) under `credentials:` replace
-        api_key: <new App ID>   and   api_secret: <new Secret>   — leave redirect_uri unchanged.
-  0d. Then do step 1a (token refresh) — it now authenticates against the new app and writes a fresh token.
-
-  ‼️ Durable fix (schedule this — do NOT keep recreating apps): your ISP IP is dynamic and each app
-  locks IP edits for 7 days, so if the IP changes again inside a week you're forced to make YET another
-  app. Fix the root cause: (1) ask your ISP for a STATIC IP (usually a small monthly add-on) — cleanest;
-  or (2) move the agent onto a small cloud VM with a fixed/Elastic IP (~₹400/mo) — since ADR-01 makes the
-  agent the only process holding the broker connection, a fixed-IP box solves this permanently AND frees
-  it from your laptop being on; or (3) a dedicated-IP VPN routing just Fyers traffic.
-
-1. Pre-market (before 9:15 AM IST)
-a. Refresh the Fyers token — it expires daily, this is the #1 thing that will silently break everything else if skipped:
-
-python agent/auth/fyers_auth.py --config agent/config.yaml
-This opens a browser OAuth flow and writes ~/.quantos/fyers_token. If you skip this and the old token expired overnight, agent/main.py will fail immediately on broker.connect().
-
-b. Verify Railway env vars match your local config — this is the one thing from today I flagged but never got you to confirm, and it fails silently (no error, signals just never get created):
-
-Railway → your project → Variables: check WEBHOOK_SECRET equals the cloud.webhook_secret value in your local agent/config.yaml.
-If WEBHOOK_SECRET is unset on Railway, the check is skipped entirely and Stage B signals sail through regardless — so this only bites you if it's set to something different than your local value, not if it's missing.
-CLOUD_API_SECRET (Railway) vs cloud.api_secret (local) — this one's already proven working today (watchlist synced fine), no action needed.
-c. Confirm today's Railway deploy is live — I pushed 4 commits today (6be6d1f→4f98e5d), each auto-deploys and restarts the dyno. The /discovery/watchlist store is in-memory on the cloud side, so it resets to empty on every deploy — not a problem, just means the cockpit will show nothing until the agent completes its first sync of the day.
-
-2. Start the agent
-python agent/main.py
-Expected sequence:
-
-Broker connects.
-Stage A runs (today's marker is already set from yesterday's successful run, but that's per-calendar day, so tomorrow it runs automatically — no manual marker-clearing needed).
-Full 247-symbol scan takes a few minutes (throttled to 2 concurrent + 429 retry). A handful of -300 Invalid symbol warnings are expected and harmless (delisted/bad tickers in universe.txt, not a bug).
-Stage A complete: N candidate(s) queued for Stage B timing: ... — N should now be much smaller than yesterday's 130 (APPROACHING HOT/WARM only). If it's still huge, something regressed — send me the log line.
-Agent settles into its normal 5-second poll loop.
-3. Start the cockpit UI
-cd cockpit
-npm run dev
-Open http://localhost:5173. The Discovery Watchlist panel polls /discovery/watchlist every 30s and will populate once the agent's Stage A sync lands (a minute or two after Stage A finishes, not instant). Every other panel on the cockpit still renders mock data — that's expected, not a bug, per README.md:96.
-
-4. During market hours (9:15–15:30 IST)
-Every 5 minutes (configurable via scanner.granular_scan_interval_minutes), Stage B re-scans the shortlist. Watch the agent terminal for [Stage B] Fired internal signal for <SYMBOL> — that means a signal was POSTed to /webhook/tradingview and you should get a Telegram confirm/skip prompt shortly after.
-If a signal fires, respond in Telegram — nothing else to do, the rest of the pipeline (Claude analysis, event filter, order placement, SL_M stop, trailing) runs automatically once you confirm.
-The cockpit's Discovery Watchlist panel should visibly update as tiers shift (WATCH → WARM → HOT) or symbols get removed after firing.
-5. Shutdown
-Ctrl+C the agent when you're done for the day (it manages open positions and trailing stops only while running — if you have open positions, don't stop it mid-session without a reason).
-Ctrl+C the cockpit dev server, or just leave it running — it's stateless.
+> Superseded: this used to document a laptop workflow (`python agent/main.py`,
+> Ctrl+C to stop) plus a procedure for rebuilding the Fyers app whenever your ISP
+> handed you a new IP. Both are gone. The VM's reserved static IP is whitelisted
+> with Fyers permanently, so the 7-day IP-edit lock-in can't strand you again.
 
 ---
 
-## One-time carryover verification — next market session (Sprint 5/6)
+## 1. Daily pre-market (before 9:15 IST) — the only human step
 
-Two things landed in code but were never confirmed against a live, market-hours
-agent. Do these once at the next open; after they pass, delete this section.
+```bash
+# 1. SSH in
+ssh -i "D:\Exodus_14_14\QuantOS\Oracle SSH\ssh-key-2026-07-14.key" ubuntu@161.118.189.29
 
-### A. Agent restart → S4-3 `timestamp` on Stage B signals  ⚠️ can silently zero out ALL signals
+# 2. Refresh the Fyers token (interactive: opens OAuth, you paste the auth code).
+#    Expires daily. Skip this and the day is dead — the agent fails on connect().
+cd ~/quantos && source .venv/bin/activate
+python agent/auth/fyers_auth.py --config agent/config.yaml
 
-The cloud now **rejects any webhook missing `timestamp` with HTTP 400**
-(`cloud/api/main.py` replay guard, MAX_ALERT_AGE_SECONDS=120). The agent's
-internal Stage B POST already sends it (`agent/main.py:461`, `"timestamp":
-time.time()`), so the code is correct — but **any agent process still running
-from before that commit landed will have every Stage B signal 400-rejected by
-the cloud.** Symptom: agent log says `[Stage B] Fired internal signal for X` but
-**no Telegram confirm prompt ever arrives** (the cloud dropped it).
+# 3. Restart so it picks up the new token
+sudo systemctl restart quantos-agent
 
-- **Fix:** just start the agent fresh today from repo root — it's the current
-  `main` code, so a normal daily start resolves it. No special step.
-- **Verify:** on the first Stage B fire of the day, a `[Stage B] Fired internal
-  signal…` log line **must** be followed by a Telegram confirm/skip prompt
-  within a few seconds. If the log line fires but no Telegram prompt comes,
-  the signal was rejected — capture the agent log + check Railway logs for
-  `Rejected webhook — missing timestamp` and send it to me.
-- If no signal fires all day (quiet market), this stays unverified — that's
-  fine, the code path is unit-tested; just re-check on the next firing day.
+# 4. Watch
+journalctl -u quantos-agent -f
+```
 
-### B. S5-4 live breadth — `broker.get_quotes()` returns real advance/decline
+**The restart *is* the pre-market scan.** Stage A runs at agent startup, gated by
+a per-calendar-day marker (`~/.quantos/last_discovery_scan.txt`) — not by market
+hours. So the morning token-refresh-and-restart triggers the day's discovery.
 
-S5-4 replaced the 250/250 neutral breadth placeholder with a live
-advance/decline sample over the discovery universe. It's only exercised when the
-market is open (quotes move), so it was never confirmed live.
+⚠️ `ssh`/`scp` are not on plain PowerShell's PATH — they ship with Git at
+`C:\Program Files\Git\usr\bin\`. Use the full path or Git Bash.
 
-- **When:** during market hours (9:15–15:30 IST), after the agent has run at
-  least one regime refresh (every ~15 min, REGIME_CACHE_TTL).
-- **Verify (cockpit):** the Market Regime panel should show a **Breadth** row
-  with non-zero counts, e.g. `312 ▲ / 168 ▼ · A/D 1.86 · STRONG` — NOT absent
-  and NOT 0/0.
-- **Verify (API, equivalent):** `GET <cloud>/regime/status` → `advance_count`
-  and `decline_count` are non-zero and their sum is ≥ 20 (MIN_BREADTH_SAMPLE).
-- **If it shows neutral/0-0:** `get_quotes()` likely threw and was caught into
-  the neutral fallback (by design — breadth is a signal, not a safety stop).
-  Grep the agent log for the regime refresh around that time and send me the
-  line; the usual suspects are a Fyers quote-endpoint field/paging mismatch or
-  an empty breadth universe.
+---
+
+## 2. What a healthy startup looks like
+
+| Log line | Meaning |
+|---|---|
+| `Fyers connected: <name>` | Broker up, token good |
+| `Regime breadth universe: 500 symbols from agent/universe_nifty500.txt` | Breadth wired to its own universe (see §5) |
+| `Stage A: scanning 500 symbols from ...` | Discovery started |
+| `Stage A complete: N candidate(s) queued for Stage B` | N should be small — a shortlist, not a haystack |
+| (then) 5-second poll loop | Steady state |
+
+**Stage A takes ~4–8 minutes.** 500 symbols throttled to 2 concurrent (`max_concurrent`
+in `core/darvas/weekly_discovery.py`) ≈ 250 sequential rounds. Not a hang.
+
+A few `-300 Invalid symbol` warnings are normal and harmless — a Nifty 500
+constituent may be suspended or renamed between rebalances.
+
+---
+
+## 3. During market hours (9:15–15:30 IST)
+
+Stage B re-scans Stage A's shortlist every 5 minutes
+(`scanner.granular_scan_interval_minutes`).
+
+On `[Stage B] Fired internal signal for <SYMBOL>`, a Telegram confirm/skip prompt
+should arrive within seconds. **Reply directly to that message** (swipe-to-reply,
+not a new message) with `execute` or `skip` — the signal ID is parsed out of the
+original alert's text, so a fresh message won't match.
+
+Everything after your confirmation is automatic: Claude analysis, event-risk
+filter, order placement, SL_M stop, trailing.
+
+**If the log line fires but no Telegram prompt arrives**, the cloud rejected it.
+Check Railway logs for `Rejected webhook — missing timestamp` (the replay guard,
+`MAX_ALERT_AGE_SECONDS=120`). Capture both logs.
+
+---
+
+## 4. Shutdown / intervention
+
+You don't normally stop it — it's a service. But:
+
+```bash
+sudo systemctl stop quantos-agent      # don't do this with open positions:
+                                       # trailing stops are managed in-process
+sudo systemctl status quantos-agent    # state, memory, restart count
+journalctl -u quantos-agent -n 200     # recent history
+```
+
+Self-healing already in place: `Restart=on-failure`, a daily 16:00 IST restart
+timer, and a 650 MB memory cap on the agent's cgroup.
+
+---
+
+## 5. Not-daily chores
+
+### Universe — twice a year, at NSE's rebalance
+`agent/universe_nifty500.txt` feeds **both** Stage A discovery
+(`scanner.universe_file`) and the regime advance/decline sample
+(`regime.breadth_universe_file`).
+
+```bash
+python scripts/build_universe.py "<path>/ind_nifty500list.csv" \
+    agent/universe_nifty500.txt --index-name "Nifty 500"
+.\scripts\push-universe.ps1
+```
+
+**Do not hand-edit it.** Two reasons, both learned the hard way:
+- A Darvas track record over a hand-picked list measures your curation as much as
+  the strategy, and can't be backtested against.
+- The same file is the breadth sample, so editing it moves the regime gate. Until
+  2026-07-16 these were one config key, which made breadth *non-stationary* —
+  regime flipped when a text file was edited, not when the market moved.
+
+They are now two keys pointing at one file, deliberately: tuning the hunting
+ground must never silently move the gate that governs it.
+
+### Config changes — remember the VM's config.yaml is gitignored
+`agent/config.yaml` is **not in git** (`.gitignore:17`). A `git pull` on the VM
+delivers code and universe files but **never** config. Any new config key must be
+added on the VM by hand, or the agent silently falls back to its old behaviour.
+
+---
+
+## 6. Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Agent fails immediately on start | Token expired — you skipped §1 step 2 |
+| Stage B fires, no Telegram prompt | Cloud rejected the webhook (see §3) |
+| Breadth counts sum to ~128, not ~500 | VM's `config.yaml` has no `regime:` block — it's falling back to the old universe (§5) |
+| Breadth shows 0/0 or neutral | `get_quotes()` threw and was caught into the neutral fallback (by design — breadth is a signal, not a safety stop) |
+| Cockpit Morning Shortlist empty | Railway restarted; the watchlist mirror is in-memory and isn't re-pushed until the next Stage A |
+| SSH dark + agent gone | Possible OOM (see §7) |
+
+### Verifying regime breadth is live
+`GET <cloud>/regime/status` → `advance_count` + `decline_count` non-zero, summing
+to roughly 500 (≥ 20 is the `MIN_BREADTH_SAMPLE` floor below which it degrades to
+neutral). Or the cockpit's Market Regime panel: `312 ▲ / 168 ▼ · A/D 1.86 · STRONG`.
+
+---
+
+## 7. Known-open: the OOM
+
+On 2026-07-15 the agent OOM-killed itself twice, and the kernel's *global* OOM
+killer took journald and snapd with it — SSH went dark both times. Three
+mitigations shipped (cgroup memory cap, daily restart, Fyers SDK log
+suppression), and both kills are confirmed to predate the cap going live.
+
+**But the root cause is genuinely unknown.** The originally documented hypothesis
+— Stage A firing hundreds of concurrent DataFrame builds — is *disproven*: the
+scanner is throttled to `max_concurrent=2`. And Stage A's load just went from 247
+to 500 symbols.
+
+So: after a Stage A scan, check the high-water mark.
+
+```bash
+# Peak RSS is logged after every Stage A — grep it
+journalctl -u quantos-agent | grep "peak RSS"
+
+# Has the cgroup cap ever actually fired?
+cat /sys/fs/cgroup/system.slice/quantos-agent.service/memory.events
+```
+
+`memory.events` all-zero means the cap is installed but has never been exercised —
+it is not yet battle-tested. If `high` goes non-zero while the service stays up,
+the cap is working as designed. If `oom_kill` goes non-zero and `NRestarts`
+climbs, the mitigation needs a second look.
