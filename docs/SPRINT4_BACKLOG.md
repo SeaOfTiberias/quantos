@@ -114,7 +114,145 @@ sprint is effectively complete. See `docs/CORP_ACTION_SPIKE.md`,
 
 ---
 
-## Sprint 6 — Expand (gated on Sprint 4 + 30–50 recorded Darvas trades)
+## Sprint 7 — Prove (≈20 pts)
+
+Derived from Fable's 2026-07-16 review of the trading rationale. The finding
+that reframes this sprint: "unproven" was being treated as a *waiting*
+problem (accumulate 30–50 live trades) when it is a *measurement-design*
+problem (make the trades interpretable, and bound the answer cheaply first).
+These stories insert **before** Sprint 6 rather than after it, because S7-3
+is the falsifier Sprint 6's old gate was standing in for — see the corrected
+gate below.
+
+**Do not batch.** The sequencing below is explicit dependency, not story
+order for convenience: S7-3 is a falsifier that can delete the need for
+S7-4 through S7-7. Building the veto instrumentation (the single biggest
+story here) before running the backtest risks 8 points of wasted work if
+the thesis doesn't survive contact with costs.
+
+### S7-1 · Deploy the breadth/universe fix to the VM + startup assertion — **2 pts**
+As an operator, I want proof at boot that both universes actually loaded,
+so a repeat of the Chartink-breadth bug (regime measured from a 128-name
+momentum list instead of a market cross-section) is caught immediately
+instead of discovered by hand weeks later.
+- Hand-set both `scanner.universe_file` and `regime.breadth_universe_file`
+  on the VM's `agent/config.yaml` — it's gitignored, so `git pull` delivers
+  `agent/universe_nifty500.txt` but not the config keys pointing at it; the
+  old `scanner.universe_file` value plus the backward-compat fallback would
+  otherwise silently keep routing breadth back to the stale 128-name list.
+- Add a startup log line per universe consumer (Stage A scanner, regime
+  breadth) showing resolved file path, symbol count, and a checksum —
+  nothing today detects deployed-config drift from repo intent.
+- **AC:** `/regime/status` advance+decline+unchanged sums to ~500, not ~128;
+  restart logs show two distinct universe loads with matching counts.
+- ✅ **DONE 2026-07-16** — VM config carried both keys since the prior day's
+  restart; verified live: `/regime/status` returns `advance_count: 250,
+  decline_count: 250` (sums to 500). Startup log confirms both consumers:
+  `Regime breadth universe: 500 symbols from agent/universe_nifty500.txt` and
+  `Stage A: scanning 500 symbols from agent/universe_nifty500.txt`. Note: the
+  first post-restart breadth fetch hit a Fyers 429 (500-symbol quote fetch
+  colliding with Stage A's own quote burst at market open) and fell back to
+  neutral (hence the exact 250/250 split) — a transient rate-limit collision,
+  not a config bug; next `REGIME_CACHE_TTL` refresh should pull real data.
+
+### S7-2 · Expectancy arithmetic: plausible edge vs plausible cost — **1 pt** (zero code)
+As the person whose capital is at risk, I want to know whether the
+strategy's plausible edge can even clear its own cost model before anyone
+spends engineering time on a return that's mathematically dead on arrival.
+- One page: sketch plausible win-rate/R distributions for the Darvas setup
+  (e.g., ~40% win rate, ~2R average winner ≈ 0.2R gross expectancy) against
+  the S5-1 cost model's round-trip range for NSE small/mid-cap (STT +
+  brokerage + breakout-entry impact + stop slippage, plausibly 0.3–0.8%).
+- State plainly whether the hypothesized edge sits inside or outside the
+  cost model's error bars.
+- **AC:** a one-page doc exists with an explicit verdict — "edge clears
+  costs" or "edge does not clear costs at plausible parameters" — and the
+  assumptions used to get there.
+- ✅ **DONE 2026-07-16** — `docs/EXPECTANCY_CHECK.md`. Verdict: inconclusive
+  by arithmetic alone (plausible net expectancy spans −0.26R to +0.13R
+  depending on box width and fill slippage) — not dead on arrival, not
+  clearly positive either. Hands off to S7-3.
+
+### S7-3 · Pine strategy + sample backtest over 30–50 names — **5 pts** — THE GATE (gated on S7-1, S7-2)
+As the person deciding whether to keep building on Darvas, I want an actual
+backtest result before investing in veto instrumentation, sizing, and exit
+rules that would be wasted work if the edge doesn't exist.
+- Convert `pine/darvas_breakout_alert.pine` from indicator to strategy,
+  matching `core/darvas/box.py`'s multi-timeframe confluence logic for
+  entry/stop/exit.
+- Run TradingView Strategy Tester across 30–50 names pre-sampled across the
+  cap spectrum (sampling method fixed in advance, not cherry-picked after
+  seeing results) — current Nifty 500 constituents, so results are a
+  survivorship-biased upper bound. That bias is acceptable here: it works
+  *for* the strategy, so if Darvas can't beat costs even with the bias
+  helping, the thesis is dead for a week's work instead of a year's capital.
+- Export CSVs into the existing `core/backtest/parser.py` + `analyst.py`
+  ingest path (built for exactly this in Sprint 4/US-11).
+- **AC:** a documented go/no-go verdict on whether net-of-cost expectancy is
+  positive across the sample. This verdict gates Sprint 6 and S7-4–S7-7.
+
+### S7-4 · Instrument the veto — **8 pts** (gated on S7-3 surviving)
+As the person whose discretion sits in the execution loop, I want to know
+whether my vetoes make the system better or worse — right now a skipped
+signal is persisted (`cloud/api/main.py:402`) but its counterfactual is not,
+so the record can't distinguish good judgment from bias toward skipping the
+uncomfortable (and disproportionately winning) signals.
+- Log every Stage-B signal fired — entry/stop/size — whether executed,
+  skipped, or rejected.
+- For every skip, paper-track a hypothetical exit under the same entry/stop
+  rules used for real trades.
+- Pre-commit written veto criteria (data errors, corporate events, known
+  news) — "feels toppy" is explicitly excluded as a logged reason.
+- Fold Claude's pre-trade opinion into the same log — it's a third,
+  unversioned author of the record.
+- **AC:** a report shows skip rate plus the P&L delta between the executed
+  curve and the hypothetical-all-signals curve; skip rate >15% is flagged.
+
+### S7-5 · Pre-committed kill criterion — **1 pt** (gated on S7-3 surviving)
+As the operator, I want a written stop-trading threshold in place before
+live data arrives, so a losing streak can't get rationalized in real time
+after the fact.
+- Document the specific expectancy/drawdown/win-rate threshold and sample
+  size at which Darvas trading pauses pending re-review.
+- **AC:** doc exists, dated, referenced from the daily runbook.
+
+### S7-6 · Sizing: fixed-fractional until ~100 trades — **2 pts** (gated on S7-3 surviving)
+As the risk owner, I want position size to come from a stable rule instead
+of Kelly noise on tiny samples, and the full stack of multipliers to
+resolve to one auditable rupee number.
+- Force fixed-fractional sizing (bypass `core/risk/kelly_calculator.py`'s
+  Kelly path) until real trade count reaches ~100 — Kelly on 10–50 trades is
+  noise, not signal.
+- Specify how `size_multiplier` × Kelly (once eligible) × kill-switch caps
+  compose — currently unspecified.
+- **AC:** one test walks a signal through every multiplier and asserts the
+  final rupee amount matches the documented formula.
+
+### S7-7 · Exit rule specification — **1–3 pts** (gated on S7-3 surviving)
+As the person who inherits P&L dominated by exits, I want the trail,
+time-stop, and regime-flip-mid-trade behavior written down properly, since
+exits — not entries — dominate breakout system P&L and today's spec is six
+words.
+- Document (and align code to) the trailing-stop rule, any time-based stop,
+  and explicit behavior when regime flips mid-trade (tighten stop? exit
+  immediately? hold to original rule?).
+- **AC:** doc exists with a scenario table covering a TRENDING→RANGING flip
+  mid-trade and a time-stop expiry.
+
+---
+
+## Sprint 6 — Expand (gated on Sprint 7's backtest surviving, not a live-trade count)
+
+**Gate corrected 2026-07-16** (was: "gated on Sprint 4 + 30–50 recorded
+Darvas trades"). That gate was statistically void: live trades validate
+*execution* (fills, slippage, infra) not *edge*, and at plausible win rates
+30 trades can't distinguish a good breakout system from a losing one (±18pt
+CI on win rate alone). Worse, until S7-4 lands, executed trades aren't even
+a clean sample — the human veto means what got recorded is a biased subset
+of what the system generated. Sprint 6 now waits on **S7-3's backtest
+verdict** instead: a go/no-go on whether net-of-cost expectancy is positive
+across a pre-sampled 30–50 name set, which is interpretable at that sample
+size in a way a live, veto-contaminated trade count is not.
 
 - **EMA 9/20 crossover strategy** (3 pts): sibling of Stage B scanner; hard-gated to TRENDING regimes via synced regime; tagged `strategy="ema_crossover"` for segmented expectancy.
 - **Mean-reversion strategy for RANGING** (5 pts): RSI(2)/Bollinger snap-back, Nifty-100 universe only; hard regime gate mandatory (counter-trend).
