@@ -18,6 +18,17 @@
 //      (S7-7 tracks that gap; this backtest deliberately does not invent
 //      an exit rule that doesn't exist in the live system).
 //
+// FIXED 2026-07-18: darvasBox() now snapshots box state as of the END of
+// the previous bar before computing breakoutNow, instead of computing it
+// after the current bar's isNewHigh reset had already zeroed boxReady.
+// The original ordering silently suppressed almost every real breakout
+// (a breakout candle nearly always also sets a fresh N-bar high, which
+// reset boxReady to false on that same bar before breakoutNow was ever
+// checked) — caught via a 3-year backtest producing zero entries despite
+// boxes visibly confirming. See core/darvas/box.py's detect_breakout(),
+// which was always immune to this because it scans historical candles
+// separately from the current one.
+//
 // Cost model: commission/slippage are left at 0 here on purpose.
 // core/backtest/parser.py applies the real NSE cost stack (core/risk/costs.py)
 // to the exported GROSS trades afterward, with a configurable slippage_bps
@@ -55,6 +66,26 @@ darvasBox() =>
     var int   consolCount  = 0
     var bool  boxReady     = false
 
+    // Snapshot the box as CONFIRMED as of the end of the previous bar,
+    // before today's high/low can touch it. A genuine breakout candle
+    // almost always also sets a fresh `lookback`-bar high, which resets
+    // boxReady below — checking breakoutNow against a box this same bar
+    // already reset silently suppressed the vast majority of real
+    // breakouts (found 2026-07-18: zero backtest entries despite boxes
+    // visibly confirming). Mirrors core/darvas/box.py's detect_breakout(),
+    // which scans boxes over candles[:-1] and only THEN compares the
+    // latest candle against them — never against a box the latest candle
+    // itself just reset.
+    prevBoxReady  = boxReady
+    prevBoxTop    = boxTop
+    prevBoxBottom = boxBottom
+
+    avgVol      = ta.sma(volume, 20)
+    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
+    breakoutNow = prevBoxReady and close > prevBoxTop and volRatio >= volMult
+    widthPctNow = (prevBoxReady and not na(prevBoxBottom) and prevBoxBottom != 0) ? (prevBoxTop - prevBoxBottom) / prevBoxBottom * 100 : 100.0
+    isTight     = widthPctNow < 4.0
+
     hh = ta.highest(high, lookback)
     isNewHigh = high >= hh and (na(candidateTop) or high > candidateTop)
 
@@ -77,13 +108,7 @@ darvasBox() =>
             consolCount := 0
             boxReady := false
 
-    avgVol      = ta.sma(volume, 20)
-    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
-    widthPctNow = (boxReady and not na(boxBottom) and boxBottom != 0) ? (boxTop - boxBottom) / boxBottom * 100 : 100.0
-    isTight     = widthPctNow < 4.0
-    breakoutNow = boxReady and close > boxTop and volRatio >= volMult
-
-    [breakoutNow, boxTop, boxBottom, volRatio, isTight, close, boxReady]
+    [breakoutNow, prevBoxTop, prevBoxBottom, volRatio, isTight, close, prevBoxReady]
 
 // ── Pull box state across all 3 confluence timeframes ────────────────────
 [brk15, top15, bot15, vr15, tight15, close15, ready15] = request.security(syminfo.tickerid, "15", darvasBox())

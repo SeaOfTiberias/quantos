@@ -42,12 +42,32 @@ webhookSecret = input.string("", "Webhook Secret (paste yours here — do not sh
 tol = tolPct / 100
 
 // ── Reusable Darvas Box detector — state persists per request.security context ──
+// FIXED 2026-07-18: breakoutNow now checks the box as CONFIRMED as of the
+// end of the previous bar, before today's high/low can touch it. A genuine
+// breakout candle almost always also sets a fresh `lookback`-bar high,
+// which resets boxReady below — checking breakoutNow against a box this
+// same bar already reset silently suppressed the vast majority of real
+// breakouts (caught via a 3-year Strategy Tester backtest producing zero
+// entries despite boxes visibly confirming). Mirrors core/darvas/box.py's
+// detect_breakout(), which scans boxes over candles[:-1] and only THEN
+// compares the latest candle against them — never against a box the
+// latest candle itself just reset.
 darvasBox() =>
     var float candidateTop = na
     var float boxTop       = na
     var float boxBottom    = na
     var int   consolCount  = 0
     var bool  boxReady     = false
+
+    prevBoxReady  = boxReady
+    prevBoxTop    = boxTop
+    prevBoxBottom = boxBottom
+
+    avgVol      = ta.sma(volume, 20)
+    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
+    breakoutNow = prevBoxReady and close > prevBoxTop and volRatio >= volMult
+    widthPctNow = (prevBoxReady and not na(prevBoxBottom) and prevBoxBottom != 0) ? (prevBoxTop - prevBoxBottom) / prevBoxBottom * 100 : 100.0
+    isTight     = widthPctNow < 4.0
 
     hh = ta.highest(high, lookback)
     isNewHigh = high >= hh and (na(candidateTop) or high > candidateTop)
@@ -71,13 +91,7 @@ darvasBox() =>
             consolCount := 0
             boxReady := false
 
-    avgVol      = ta.sma(volume, 20)
-    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
-    widthPctNow = (boxReady and not na(boxBottom) and boxBottom != 0) ? (boxTop - boxBottom) / boxBottom * 100 : 100.0
-    isTight     = widthPctNow < 4.0
-    breakoutNow = boxReady and close > boxTop and volRatio >= volMult
-
-    [breakoutNow, boxTop, boxBottom, volRatio, isTight, close]
+    [breakoutNow, prevBoxTop, prevBoxBottom, volRatio, isTight, close]
 
 // ── Pull box state across all 3 confluence timeframes ────────────────────
 [brk15, top15, bot15, vr15, tight15, close15] = request.security(syminfo.tickerid, "15", darvasBox())
