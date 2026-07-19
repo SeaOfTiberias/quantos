@@ -327,18 +327,33 @@ actually separates real forward outcomes before anything depends on it.
   TRENDING_BULL precede positive forward drift more than UNCERTAIN does,
   does RANGING precede lower realized vol — using the same go/no-go framing
   as `docs/S7_3_BACKTEST_RESULTS.md`.
-- ⏳ **HARNESS BUILT 2026-07-19, not yet run.** `scripts/validate_regime_classifier.py` —
-  smoke-tested clean against synthetic OHLCV (no crashes, correct table/verdict
-  shape, handles the empty-replay edge case). Breadth is reconstructed from a
-  real, fixed deterministic sample of the committed universe (every Nth
-  symbol, default 100) rather than the "accept UNCERTAIN" fallback originally
-  scoped above — a real historical A/D reading turned out to be affordable via
-  the same chunked/throttled fetch pattern `weekly_discovery.py` already uses,
-  so the story delivers more than originally scoped. **Blocked on a fresh
-  Fyers auth token** — the live loop's daily refresh was intentionally
-  stopped when it was mothballed 2026-07-19 (see VM ops note below), so this
-  one-off run needs the user to complete one interactive token refresh before
-  `python scripts/validate_regime_classifier.py` can fetch real data.
+- ✅ **DONE 2026-07-19 — VERDICT: classifier does NOT reliably separate forward
+  outcomes; several results run backwards from the label.** `docs/REGIME_VALIDATION.md`.
+  1254 trading days replayed (2021-06-28 to 2026-07-17), real breadth from 99
+  universe symbols (not a placeholder). Findings:
+  1. **TRENDING_BEAR precedes HIGHER forward returns than TRENDING_BULL**
+     (+1.43% vs +0.89% at 20d, n=106 vs n=334) — backwards from the label.
+     Most likely reading: this classifier's "bear" catches short pullbacks
+     inside the mostly-rising 2021-2026 sample, which bounced.
+  2. **RANGING does not precede calmer markets** — its realized vol (0.83) is
+     tied with UNCERTAIN/BEAR and higher than TRENDING_BULL's (0.63), despite
+     RANGING supposedly meaning "choppy, avoid breakouts."
+  3. **VOLATILE precedes the BEST forward returns of any regime** (+3.64% at
+     20d, ~4x TRENDING_BULL) while the live system's actual response to
+     VOLATILE is to cut position size 50% — the design pulls back exactly
+     when, historically, the best average outcomes followed. n=39 here is the
+     smallest bucket (likely a few sharp V-shaped recoveries dominating the
+     mean) — least confidence in this one, but not reassuring either way.
+  4. **UNCERTAIN fired on 603/1254 days (48%)** — even setting aside whether
+     the other four labels are predictive, a gate that abstains on half of
+     all trading days is a large standing cost by itself.
+  **Consequence for S8-3/S8-4 below: do not gate either on this classifier's
+  output as a headline result.** Report both regime-split and unfiltered
+  variants where the story already allows for that, but the unfiltered
+  number is the one to trust. This also weakens in advance the "Darvas would
+  have worked gated to TRENDING_BULL" argument Fable's review anticipated
+  someone would eventually make — TRENDING_BULL wasn't strongly better than
+  UNCERTAIN here either, so that rescue looks unlikely to have worked.
 
 ### S8-2 · Fyers automation trade-history retrospective — **zero code**
 As the person who already has real (not backtested) results for the NIFTY
@@ -354,7 +369,7 @@ distribution before designing any replacement exit rule.
   trade data instead of guessed parameters. Runs in parallel with S8-1/S8-3
   — needs the user's export, not more code.
 
-### S8-3 · 52-week-high RS momentum backtest — **5 pts** (gated on S8-1)
+### S8-3 · 52-week-high RS momentum backtest — **5 pts** (unblocked — S8-1 done, verdict negative)
 As the person deciding what to build next, I want the one candidate with an
 actual documented edge (unlike Darvas's borrowed citation) tested with the
 same rigor before any more infrastructure gets built around it.
@@ -371,11 +386,11 @@ same rigor before any more infrastructure gets built around it.
   and pass/fail bar to a doc BEFORE running — same discipline as S7-3's
   `docs/S7_3_BACKTEST_SAMPLE.md`.
 - **AC:** documented go/no-go verdict, matching `docs/S7_3_BACKTEST_RESULTS.md`'s
-  format. Optionally split by S8-1's validated regime (if S8-1 finds the
-  classifier predictive) vs unfiltered, as two separate reported variants —
-  not a single result with regime baked in unquestioned.
+  format. **S8-1 came back negative — report the UNFILTERED result as the
+  headline number.** A regime-split variant is optional/informational only,
+  not a basis for the go/no-go call.
 
-### S8-4 · NIFTY EMA9/21 options strategy backtest — **5 pts** (gated on S8-1, informed by S8-2)
+### S8-4 · NIFTY EMA9/21 options strategy backtest — **5 pts** (unblocked — S8-1 done, verdict negative; informed by S8-2)
 As the person who has been running this manually via Fyers' built-in
 automation (5-min EMA9/EMA21 crossover on NIFTY → buy ATM/near-ATM CE on
 bullish cross, PE on bearish cross; currently exits at ±₹2000 P&L or 3:10pm,
@@ -394,10 +409,14 @@ tested against history before any of them get automated.
      underlying-ATR-based) vs the fixed ±₹2000 baseline.
   2. Faster invalidation exit — exit when the crossover itself reverses
      within N candles, instead of riding to -₹2000 regardless.
-  3. Regime-filtered entries — bullish crosses only when S8-1's validated
-     regime read is TRENDING_BULL (symmetric for PE/TRENDING_BEAR) — only
-     if S8-1 found the classifier actually predictive; report unfiltered
-     otherwise rather than gating on a classifier proven not to help.
+  3. Regime-filtered entries — **S8-1 came back negative (TRENDING_BEAR
+     precedes HIGHER forward returns than TRENDING_BULL in-sample, RANGING
+     doesn't precede lower vol), so this is now a lower-priority,
+     informational-only variant, not an expected win.** Still worth
+     including in the comparison table (cheap, and it's a different sample
+     — daily NIFTY regime vs 5-min NIFTY crosses — so it's not strictly the
+     same test), but do not expect it to raise the win rate, and don't
+     gate the go/no-go verdict on it.
 - New cost model variant needed: options STT is 0.1% on sell premium (not
   equity's 0.025% sell-only), different exchange/SEBI rates — `core/risk/costs.py`'s
   own docstring already cites the right numbers; instantiate a second
