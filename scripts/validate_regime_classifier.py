@@ -309,12 +309,22 @@ def summarize(days: list[ReplayDay]) -> str:
 
 # ─── Fetch layer (I/O — needs a connected broker) ──────────────────────────────
 
+REQUEST_TIMEOUT_SECS = 30.0
+
+
 async def fetch_chunked_daily(
     broker: BrokerAdapter, symbol: str, from_date: datetime, to_date: datetime,
     sem: asyncio.Semaphore, delay: float = 0.5, max_retries: int = 3,
 ) -> list[OHLCV]:
     """Fetch daily candles across a date range, chunked to Fyers' <=366-day
-    limit per request, throttled + retried like weekly_discovery.py."""
+    limit per request, throttled + retried like weekly_discovery.py.
+
+    The Fyers SDK's underlying HTTP call has no built-in timeout, so a
+    request that never gets a response (not even a 429) hangs the executor
+    thread forever with no exception to retry on. asyncio.wait_for() forces
+    that case to surface as a TimeoutError, which is retried the same way
+    a 429 is.
+    """
     loop = asyncio.get_event_loop()
     all_candles: list[OHLCV] = []
     chunk_start = from_date
@@ -323,12 +333,25 @@ async def fetch_chunked_daily(
         for attempt in range(max_retries):
             async with sem:
                 try:
-                    candles = await loop.run_in_executor(
-                        None,
-                        lambda cs=chunk_start, ce=chunk_end: broker.get_historical_data(symbol, "1d", cs, ce),
+                    candles = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None,
+                            lambda cs=chunk_start, ce=chunk_end: broker.get_historical_data(symbol, "1d", cs, ce),
+                        ),
+                        timeout=REQUEST_TIMEOUT_SECS,
                     )
                     await asyncio.sleep(delay)
                     all_candles.extend(candles)
+                    break
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        wait = 3.0 * (attempt + 1)
+                        logger.warning("Timed out fetching %s..%s for %s, retrying in %.0fs",
+                                        chunk_start.date(), chunk_end.date(), symbol, wait)
+                        await asyncio.sleep(wait)
+                        continue
+                    logger.warning("Failed chunk %s..%s for %s: timed out after %d attempts",
+                                    chunk_start.date(), chunk_end.date(), symbol, max_retries)
                     break
                 except Exception as e:
                     if "429" in str(e) and attempt < max_retries - 1:
