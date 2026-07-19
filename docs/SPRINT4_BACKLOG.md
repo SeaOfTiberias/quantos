@@ -281,11 +281,134 @@ strategies to expand a system that doesn't clear its own costs isn't the
 next step — revisiting the Darvas specification (or the thesis itself) is.
 See Sprint 7 above for what's next.
 
-- **EMA 9/20 crossover strategy** (3 pts): sibling of Stage B scanner; hard-gated to TRENDING regimes via synced regime; tagged `strategy="ema_crossover"` for segmented expectancy.
-- **Mean-reversion strategy for RANGING** (5 pts): RSI(2)/Bollinger snap-back, Nifty-100 universe only; hard regime gate mandatory (counter-trend).
-- **52-week-high RS momentum** (3 pts): weekly cadence, reuses Stage A discovery pattern.
+- ❌ **EMA 9/20 crossover strategy (equity)** — **DROPPED 2026-07-19** per Fable's review: "Darvas in a different costume" — same single-name trend-following entries, same trail-dominated exits, same turnover profile that just failed S7-3, no distinct documented anomaly behind it beyond generic trend-following (which the literature supports at asset-class/futures level, not fast EMA crosses on individual equities net of retail costs). Not worth the manual backtest session it would cost to confirm what's already predictable.
+- **Mean-reversion strategy for RANGING** (5 pts): RSI(2)/Bollinger snap-back, Nifty-100 universe only; hard regime gate mandatory (counter-trend). Deprioritized behind Sprint 8 (below) — Fable's read: cheap to test via the existing Pine pipeline but expect a negative result (same high-turnover family as Darvas, and conditioned on the regime classifier's RANGING output, which is itself unvalidated per S8-1).
+- **52-week-high RS momentum** — promoted to **Sprint 8, S8-3** below (Fable's top-ranked candidate — the actual documented cross-sectional momentum anomaly, weekly cadence attacks the turnover-vs-cost problem that killed Darvas directly).
 - ✅ **Fill reconciliation** (2 pts) — **DONE 2026-07-08** (the one Sprint 6 item with no live-data gate; done early). `core/risk/fill_reconciliation.py` compares intended entry (`price`) vs actual fill (`execution_price`) per trade, direction-aware, signed bps (+ = adverse). `GET /reconciliation/slippage` surfaces per-trade deltas + aggregate; `suggested_slippage_bps` = `max(0, mean_bps)` feeds the S5-1 cost model's per-leg `slippage_bps` for backtests. Entry leg only (no intended-exit stored). 17 tests. Empty-but-valid until fills accrue.
 - **Options execution path** (L, separate epic): options order support in `BrokerAdapter`/Fyers adapter — prerequisite for the already-built condor/spread advisor to become tradeable.
+
+---
+
+## Sprint 8 — Shortlist (≈13 pts + 1 zero-code)
+
+Derived from Fable's 2026-07-19 post-S7-3 review (`docs/S7_3_BACKTEST_RESULTS.md`
+killed Darvas; the same review ranked what's left) plus a second, independently
+track-recorded candidate the user has been running manually. Same discipline
+as Sprint 7: pre-commit before running, sequence don't batch, a negative
+verdict is a valid and useful outcome.
+
+**Why regime validation goes first:** two later stories (S8-3's optional
+regime gate, S8-4's regime-filtered NIFTY entries) want to condition on
+`Regime.TRENDING_BULL`/`TRENDING_BEAR`, and Fable's review flagged that
+classifier as itself unvalidated — hand-picked thresholds with no test that
+they correlate with anything real. Wiring either strategy to an unvalidated
+gate would just be Darvas's mistake one level up. S8-1 removes that
+uncertainty for both stories at once instead of assuming the gate works.
+
+### S8-1 · Regime classifier validation harness — **3 pts**
+As the person about to gate two new strategies on this classifier's output,
+I want to know whether TRENDING_BULL/TRENDING_BEAR/RANGING/UNCERTAIN
+actually separates real forward outcomes before anything depends on it.
+- Replay `core/regime/classifier.py`'s `classify()` day-by-day over
+  historical NIFTY + VIX data (`core/regime/fetcher.py`'s `_fetch_nifty`/
+  `_fetch_vix` logic is fully reconstructable from historical daily OHLCV —
+  live-tick breadth is not, so the replay accepts breadth as UNCERTAIN and
+  notes that limitation rather than faking a breadth history).
+- Correlate the resulting regime time series against forward NIFTY returns
+  and realized volatility over the following N days.
+- **AC:** `docs/REGIME_VALIDATION.md` with an explicit verdict — does
+  TRENDING_BULL precede positive forward drift more than UNCERTAIN does,
+  does RANGING precede lower realized vol — using the same go/no-go framing
+  as `docs/S7_3_BACKTEST_RESULTS.md`.
+
+### S8-2 · Fyers automation trade-history retrospective — **zero code**
+As the person who already has real (not backtested) results for the NIFTY
+EMA9/21 options strategy below, I want a free analysis of the actual exit
+distribution before designing any replacement exit rule.
+- User exports whatever trade/execution log Fyers' built-in automation
+  provides for the strategy described in S8-4.
+- Analyse (no code, mirrors `docs/EXPECTANCY_CHECK.md`'s style): how often
+  would a trailing stop have captured more than the fixed ₹2000 cap did; how
+  often the position ran to -₹2000 after the crossover had already reversed
+  (i.e. a faster invalidation exit would have cut the loss earlier).
+- **AC:** short written analysis grounding S8-4's exit-rule design in real
+  trade data instead of guessed parameters. Runs in parallel with S8-1/S8-3
+  — needs the user's export, not more code.
+
+### S8-3 · 52-week-high RS momentum backtest — **5 pts** (gated on S8-1)
+As the person deciding what to build next, I want the one candidate with an
+actual documented edge (unlike Darvas's borrowed citation) tested with the
+same rigor before any more infrastructure gets built around it.
+- New harness (e.g. `scripts/backtest_rs_momentum.py`), modeled on
+  `core/darvas/weekly_discovery.py`'s fetch/throttle/gather structure over
+  `agent/universe_nifty500.txt`: 52-week-high-proximity/RS score per symbol,
+  weekly rebalance into a pre-committed top-N.
+- Constructs `BacktestTrade` objects directly (bypassing the TradingView CSV
+  parser entirely — no TradingView export exists for a cross-sectional
+  strategy; follow `tests/unit/test_backtest.py`'s `make_trades()` pattern)
+  and feeds the existing `_compute_metrics`. Cost model: `core/risk/costs.py`'s
+  `CostModel` with delivery-style STT/stamp rates (weekly hold, not intraday).
+- Pre-commit universe, ranking rule, holding-period rule, rebalance cadence,
+  and pass/fail bar to a doc BEFORE running — same discipline as S7-3's
+  `docs/S7_3_BACKTEST_SAMPLE.md`.
+- **AC:** documented go/no-go verdict, matching `docs/S7_3_BACKTEST_RESULTS.md`'s
+  format. Optionally split by S8-1's validated regime (if S8-1 finds the
+  classifier predictive) vs unfiltered, as two separate reported variants —
+  not a single result with regime baked in unquestioned.
+
+### S8-4 · NIFTY EMA9/21 options strategy backtest — **5 pts** (gated on S8-1, informed by S8-2)
+As the person who has been running this manually via Fyers' built-in
+automation (5-min EMA9/EMA21 crossover on NIFTY → buy ATM/near-ATM CE on
+bullish cross, PE on bearish cross; currently exits at ±₹2000 P&L or 3:10pm,
+"has worked ok"), I want the three specific improvements I asked about
+tested against history before any of them get automated.
+- New harness (e.g. `scripts/backtest_nifty_ema_options.py`): fetch NIFTY
+  5-min historical bars (`FyersBroker.get_historical_data(..., "5m", ...)` —
+  confirmed already supported by the broker adapter's `_TF_MAP`), detect
+  EMA9/EMA21 crossovers, approximate option P&L from the underlying's point
+  move (flagged simplification — full options pricing needs historical
+  IV/chain data this repo doesn't have yet; delta-approximated P&L is the
+  cheap first pass, sufficient to compare exit rules against each other even
+  if absolute P&L needs a pinch of salt).
+- Test three separable questions against the same historical crossover set:
+  1. Trailing stop (premium high-water-mark minus a buffer, or
+     underlying-ATR-based) vs the fixed ±₹2000 baseline.
+  2. Faster invalidation exit — exit when the crossover itself reverses
+     within N candles, instead of riding to -₹2000 regardless.
+  3. Regime-filtered entries — bullish crosses only when S8-1's validated
+     regime read is TRENDING_BULL (symmetric for PE/TRENDING_BEAR) — only
+     if S8-1 found the classifier actually predictive; report unfiltered
+     otherwise rather than gating on a classifier proven not to help.
+- New cost model variant needed: options STT is 0.1% on sell premium (not
+  equity's 0.025% sell-only), different exchange/SEBI rates — `core/risk/costs.py`'s
+  own docstring already cites the right numbers; instantiate a second
+  `CostModel` with those parameters rather than reusing `DEFAULT_COST_MODEL`.
+- **AC:** documented comparison of baseline vs each candidate exit rule vs
+  regime-filtered, net of the options cost model, using S8-2's retrospective
+  as a sanity check on the harness's realism.
+
+### Live execution engineering — deferred, not started
+Not scoped as a story yet — only begins if S8-3 or S8-4 validates. If/when
+it does, the blockers found 2026-07-19 become the task list: `fyers.py`'s
+`place_order`/`get_ltp`/`get_quotes` each independently hardcode `NSE:{symbol}-EQ`
+(3 separate call sites, not unified); no option-symbol constructor exists
+(strike+expiry+CE/PE → Fyers convention); no NIFTY lot-size/strike-interval
+constant exists anywhere (`core/options/strategy_builder.py:226`'s lot size
+75 is a generic placeholder, not NIFTY-specific); `get_option_chain()`
+(`fyers.py:358`) is a real, working, currently-unused pass-through — a
+starting point, not a finished path. Wiring in either validated strategy
+also inherits the still-unresolved human-veto contamination problem
+(Fable's original review) — that gets fixed once, not per-strategy.
+
+### Also fixed this sprint (no live-data gate, done immediately)
+- ✅ **Negative-Kelly floor bug** — **DONE 2026-07-19.** `core/risk/kelly_calculator.py`'s
+  negative-edge branch floored sizing at `MIN_SIZE_PCT` (0.5%) even when the
+  last `lookback` trades measured a losing system — guaranteeing continued
+  exposure to a measured negative edge rather than refusing to trade it.
+  Now sizes to 0 (`size_pct=0.0`, `risk_amount=0.0`), which flows through to
+  `qty=0` and `agent/main.py`'s existing `quantity <= 0` guard (raises
+  `BrokerError`) — a loud refusal, not a silent skip. The floor still
+  applies correctly for a small POSITIVE edge (that's what it's for).
 
 ## Explicitly deferred (with reasons)
 - Multi-tenancy (P2-7): single-user in practice; revisit as P0 the day a second user signs up.

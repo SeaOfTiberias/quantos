@@ -113,17 +113,24 @@ def calculate_position_size(
             notes=notes,
         )
 
-    # ── Negative edge → minimum size only ────────────────────────────────────
+    # ── Negative edge → refuse to size, don't floor into it ──────────────────
+    # A negative raw_kelly means the last `lookback` trades measured a losing
+    # system. Flooring at MIN_SIZE_PCT here would guarantee continued exposure
+    # to a measured negative edge — the floor exists to keep a POSITIVE edge
+    # from being sized to zero by an overly conservative cap, not to keep
+    # trading through a negative one. size_pct=0 flows through to qty=0 in
+    # `SizingResult.position_quantity`, which agent/main.py already treats as
+    # a hard refusal (raises BrokerError) rather than a silent skip.
     if not stats.is_positive_edge:
         notes.append(
             f"Negative Kelly edge ({stats.raw_kelly:.3f}) — "
             f"win_rate={stats.win_rate:.1%}, W/L ratio={stats.win_loss_ratio:.2f}. "
-            f"Using minimum size {MIN_SIZE_PCT:.1%} — consider reviewing strategy."
+            f"Refusing to size (0%) — review strategy before trading again."
         )
         return SizingResult(
             symbol=symbol, capital=capital,
-            size_pct=MIN_SIZE_PCT,
-            risk_amount=round(capital * MIN_SIZE_PCT, 2),
+            size_pct=0.0,
+            risk_amount=0.0,
             method="ZERO_EDGE",
             kelly_stats=stats,
             notes=notes,

@@ -215,11 +215,13 @@ class TestCalculatePositionSize:
         assert result.method == "FIXED_FALLBACK"
         assert result.size_pct == FALLBACK_SIZE_PCT
 
-    def test_zero_edge_uses_minimum_size(self):
+    def test_negative_edge_refuses_to_size(self):
         trades = make_mixed_trades(wins=5, losses=20, win_pct=0.01, loss_pct=0.05)
         result = calculate_position_size(trades, capital=500000, symbol="RELIANCE")
         assert result.method == "ZERO_EDGE"
-        assert result.size_pct == MIN_SIZE_PCT
+        assert result.size_pct == 0.0
+        assert result.risk_amount == 0.0
+        assert result.position_quantity(entry_price=100, stop_loss_price=95) == 0
 
     def test_positive_edge_uses_kelly(self):
         trades = make_mixed_trades(wins=18, losses=7, win_pct=0.08, loss_pct=0.03)
@@ -233,10 +235,18 @@ class TestCalculatePositionSize:
         result = calculate_position_size(trades, capital=500000, symbol="RELIANCE")
         assert result.size_pct <= MAX_SIZE_PCT
 
-    def test_size_never_below_min_floor(self):
-        trades = make_mixed_trades(wins=12, losses=13, win_pct=0.02, loss_pct=0.019)
+    def test_positive_but_tiny_edge_floors_at_min_size(self):
+        # A small POSITIVE edge (raw_kelly ~0.7%, half-Kelly ~0.37%) should
+        # still floor at MIN_SIZE_PCT — the floor exists to keep a real,
+        # positive edge from being sized to near-zero. This is distinct from
+        # the negative-edge case (test_negative_edge_refuses_to_size), which
+        # must NOT floor here — flooring into a measured negative edge would
+        # guarantee continued exposure to a losing system.
+        trades = make_mixed_trades(wins=15, losses=15, win_pct=0.0219, loss_pct=0.02)
         result = calculate_position_size(trades, capital=500000, symbol="RELIANCE")
-        assert result.size_pct >= MIN_SIZE_PCT
+        assert result.kelly_stats.is_positive_edge is True
+        assert result.method == "KELLY"
+        assert result.size_pct == MIN_SIZE_PCT
 
     def test_risk_amount_matches_capital_pct(self):
         trades = make_mixed_trades(wins=3, losses=2)  # fallback case
