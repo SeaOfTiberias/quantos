@@ -297,6 +297,13 @@ track-recorded candidate the user has been running manually. Same discipline
 as Sprint 7: pre-commit before running, sequence don't batch, a negative
 verdict is a valid and useful outcome.
 
+**VM ops note (2026-07-19):** the live Darvas loop was mothballed —
+`quantos-agent.service` and `quantos-agent-daily-restart.timer` both
+`systemctl stop`ped and `disable`d on the VM — since Sprint 6 stays blocked
+and zero validated strategies are running through it. No daily token-refresh
+ritual needed until something in this sprint validates. Restarting later is
+a one-line `systemctl enable --now quantos-agent`.
+
 **Why regime validation goes first:** two later stories (S8-3's optional
 regime gate, S8-4's regime-filtered NIFTY entries) want to condition on
 `Regime.TRENDING_BULL`/`TRENDING_BEAR`, and Fable's review flagged that
@@ -320,6 +327,18 @@ actually separates real forward outcomes before anything depends on it.
   TRENDING_BULL precede positive forward drift more than UNCERTAIN does,
   does RANGING precede lower realized vol — using the same go/no-go framing
   as `docs/S7_3_BACKTEST_RESULTS.md`.
+- ⏳ **HARNESS BUILT 2026-07-19, not yet run.** `scripts/validate_regime_classifier.py` —
+  smoke-tested clean against synthetic OHLCV (no crashes, correct table/verdict
+  shape, handles the empty-replay edge case). Breadth is reconstructed from a
+  real, fixed deterministic sample of the committed universe (every Nth
+  symbol, default 100) rather than the "accept UNCERTAIN" fallback originally
+  scoped above — a real historical A/D reading turned out to be affordable via
+  the same chunked/throttled fetch pattern `weekly_discovery.py` already uses,
+  so the story delivers more than originally scoped. **Blocked on a fresh
+  Fyers auth token** — the live loop's daily refresh was intentionally
+  stopped when it was mothballed 2026-07-19 (see VM ops note below), so this
+  one-off run needs the user to complete one interactive token refresh before
+  `python scripts/validate_regime_classifier.py` can fetch real data.
 
 ### S8-2 · Fyers automation trade-history retrospective — **zero code**
 As the person who already has real (not backtested) results for the NIFTY
