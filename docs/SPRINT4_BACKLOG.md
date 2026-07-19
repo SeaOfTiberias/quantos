@@ -355,7 +355,7 @@ actually separates real forward outcomes before anything depends on it.
   someone would eventually make — TRENDING_BULL wasn't strongly better than
   UNCERTAIN here either, so that rescue looks unlikely to have worked.
 
-### S8-2 · Fyers automation trade-history retrospective — **zero code**
+### S8-2 · Fyers automation trade-history retrospective — **zero code** (ended up small-code)
 As the person who already has real (not backtested) results for the NIFTY
 EMA9/21 options strategy below, I want a free analysis of the actual exit
 distribution before designing any replacement exit rule.
@@ -368,6 +368,39 @@ distribution before designing any replacement exit rule.
 - **AC:** short written analysis grounding S8-4's exit-rule design in real
   trade data instead of guessed parameters. Runs in parallel with S8-1/S8-3
   — needs the user's export, not more code.
+- ✅ **DONE 2026-07-19.** `docs/S8_2_TRADE_HISTORY_ANALYSIS.md` +
+  `scripts/analyze_s82_trade_history.py`. Scope grew slightly beyond "zero
+  code": answering the trailing-stop/invalidation questions properly needs
+  to know what the underlying was doing WHILE each trade was open, which the
+  raw tradebook doesn't carry (entry/exit fills only) — so the script fetches
+  real NIFTY 5-min candles for each trade's window (small, fast fetch, ~21
+  trades of a few hours each — unlike S8-1's multi-year pull) and computes
+  EMA9/21 on them, same as S8-1's "deliver more than scoped when the data
+  turns out to be cheap" pattern.
+  - Real tradebook: `backtest_results/nifty_ema_options_tradebook.csv`
+    (committed, matching S7-3's raw-data-as-audit-trail precedent — but with
+    Fyers' Client Name/Client ID/PAN header stripped before committing; this
+    repo pushes to a public-ish GitHub remote and that header is real PII,
+    not something to put in git history). 21 same-day round trips
+    reconstructed (46 fills, FIFO-paired per option contract) + 2 Overnight
+    trades reported separately as manual overrides.
+  - **Win rate 48% (10/21), total gross P&L +₹2,633 — roughly breakeven
+    before real costs**, over a small sample.
+  - **Confirms the user's stated concern directly: 18/21 trades (86%) exit
+    via the P&L cap, not the 3:10pm time-stop, and cap-exits cluster tightly
+    at ±₹2000-2200 on BOTH sides** — the cap is doing almost all the work,
+    consistent with "why stop at 2000."
+  - **Question 1 (faster invalidation):** 5/21 trades had the EMA9/21
+    crossover reverse against the position before the actual exit — one
+    case rode 335 minutes past invalidation to a small loss, several rode
+    150-210 minutes past invalidation into the ±₹2000 cap.
+  - **Question 2 (trailing stop):** 3/21 trades gave back >20% of the
+    underlying's peak favourable move by the actual exit (one gave back
+    105% — moved favourably, then reversed past entry before exiting).
+  - Caveats carried into S8-4: gross P&L only (no cost model applied here);
+    underlying-move analysis approximates option premium path from NIFTY's
+    own 5-min move, not real option tick data (none exists in this repo);
+    small sample — this grounds S8-4's design, it is not itself a verdict.
 
 ### S8-3 · 52-week-high RS momentum backtest — **5 pts** (unblocked — S8-1 done, verdict negative)
 As the person deciding what to build next, I want the one candidate with an
