@@ -457,6 +457,29 @@ tested against history before any of them get automated.
 - **AC:** documented comparison of baseline vs each candidate exit rule vs
   regime-filtered, net of the options cost model, using S8-2's retrospective
   as a sanity check on the harness's realism.
+- ✅ **DONE 2026-07-19.** `docs/S8_4_BACKTEST_RESULTS.md` + `scripts/backtest_nifty_ema_options.py`.
+  2 years of real NIFTY 5-min history (36,925 candles), 1390 crossover
+  signals. **Sanity check passed:** baseline variant's win rate (49%) lines
+  up almost exactly with S8-2's real 48% — real confidence the delta
+  approximation captures the strategy's essential character despite being a
+  simplification.
+  - **Trailing stop (ATR-based): NO.** Higher win rate (51% vs 49%) but
+    *worse* overall — profit factor 0.92 (down from 1.00), Sharpe -0.29 (down
+    from 0.03), net deeply negative. Cuts winners short more than it
+    protects from losers — a genuinely negative result for this
+    parameterization, not just "didn't help."
+  - **Faster invalidation exit: YES, meaningfully.** Lower win rate (35%) but
+    the BEST profit factor (1.05) and Sharpe (0.19) of the three — cut
+    losses fast, let the trades that don't invalidate run. Win rate alone
+    would have said this is the worst variant; profit factor/Sharpe say the
+    opposite, which is the point of not stopping at win rate as the metric.
+  - **Regime-filtered variant: not run this pass** — deprioritized per S8-1's
+    negative finding as agreed above; can be added later if there's reason
+    to revisit, not gating this result.
+  - All three variants still barely-to-moderately better than breakeven at
+    best (best case Sharpe 0.19) — informative for exit-rule design, not a
+    green light to automate as-is. Live execution engineering (below) has
+    not started and these results alone don't change that.
 
 ### Live execution engineering — deferred, not started
 Not scoped as a story yet — only begins if S8-3 or S8-4 validates. If/when
