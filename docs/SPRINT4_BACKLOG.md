@@ -190,19 +190,30 @@ rules that would be wasted work if the edge doesn't exist.
   ingest path (built for exactly this in Sprint 4/US-11).
 - **AC:** a documented go/no-go verdict on whether net-of-cost expectancy is
   positive across the sample. This verdict gates Sprint 6 and S7-4–S7-7.
-- ⏳ **IN PROGRESS 2026-07-16.** Sample pre-committed BEFORE any result exists:
-  `docs/S7_3_BACKTEST_SAMPLE.md` (40 symbols, seed `20260716`, stratified 20
-  large/mid + 20 small cap via NSE's actual Smallcap 250 membership — see
-  `scripts/sample_s73_backtest_universe.py`). Strategy converted:
-  `pine/darvas_breakout_strategy.pine` (entry/trailing-stop only, no
-  invented take-profit or time stop — matches what the live agent actually
-  does today; commission/slippage left at 0 in Pine so `core/risk/costs.py`
-  applies costs once, not twice). Ingestion tooling built + smoke-tested:
-  `scripts/ingest_s73_backtests.py` pools per-symbol CSV exports, refuses to
-  run on a set that doesn't exactly match the pre-commit (missing or extra),
-  and writes `docs/S7_3_BACKTEST_RESULTS.md` with the pooled + per-tier +
-  per-symbol verdict. **Blocked on:** the actual TradingView Strategy Tester
-  runs, which are manual (user's Premium account, one symbol at a time).
+- ✅ **DONE 2026-07-19 — VERDICT: NO demonstrated edge. `docs/S7_3_BACKTEST_RESULTS.md`.**
+  39 of 40 pre-committed symbols (DOMS excluded — exported in SEK, not INR;
+  effect on the pooled verdict is negligible at n=690), 690 pooled trades,
+  28.7% win rate, profit factor **0.75**, Sharpe **-1.25**, net **-241%** at
+  realistic cost (NSE stack + 20bps slippage/leg). Sensitivity-checked at
+  0bps slippage (most generous case possible, no real execution achieves
+  this): profit factor only reaches 1.11, Sharpe 0.22 — still fails
+  `has_positive_edge`'s 0.5 Sharpe bar. **No cost assumption in a defensible
+  range clears a genuine edge for this specification.** This is the S7-2
+  expectancy check's "inside the cost model's error bars" finding, now
+  confirmed empirically rather than sketched — and since the sample is
+  survivorship-biased (current Nifty 500 constituents, an upper bound), the
+  real answer is likely worse, not better.
+  **Consequence: Sprint 6 stays gated (verdict is negative). S7-4 through
+  S7-7 do NOT proceed** — instrumenting an 8-point veto-logging system for a
+  strategy that doesn't clear its own costs is exactly the wasted work the
+  sequencing was designed to avoid. Also found+fixed en route: a real Pine
+  bug (`darvasBox()` reset `boxReady` before checking `breakoutNow`,
+  suppressing nearly every real breakout — commit `a74521a`; live Python
+  trading engine was never affected, verified structurally immune) and a
+  TradingView export-format mismatch in `core/backtest/parser.py` (actual
+  columns are `Date and time`/`Price <CCY>`/`Size (qty)`/`Net PnL <CCY>`
+  etc., not what US-11 assumed; also handles the per-chart currency-suffix
+  variance TradingView leaks into the export).
 
 ### S7-4 · Instrument the veto — **8 pts** (gated on S7-3 surviving)
 As the person whose discretion sits in the execution loop, I want to know
@@ -254,7 +265,7 @@ words.
 
 ---
 
-## Sprint 6 — Expand (gated on Sprint 7's backtest surviving, not a live-trade count)
+## Sprint 6 — Expand (BLOCKED 2026-07-19 — S7-3's verdict came back negative)
 
 **Gate corrected 2026-07-16** (was: "gated on Sprint 4 + 30–50 recorded
 Darvas trades"). That gate was statistically void: live trades validate
@@ -262,10 +273,13 @@ Darvas trades"). That gate was statistically void: live trades validate
 30 trades can't distinguish a good breakout system from a losing one (±18pt
 CI on win rate alone). Worse, until S7-4 lands, executed trades aren't even
 a clean sample — the human veto means what got recorded is a biased subset
-of what the system generated. Sprint 6 now waits on **S7-3's backtest
-verdict** instead: a go/no-go on whether net-of-cost expectancy is positive
-across a pre-sampled 30–50 name set, which is interpretable at that sample
-size in a way a live, veto-contaminated trade count is not.
+of what the system generated. Sprint 6 waited on **S7-3's backtest verdict**
+instead — and that verdict is **NO demonstrated edge** (`docs/S7_3_BACKTEST_RESULTS.md`:
+profit factor 0.75 at realistic cost, still fails the Sharpe bar even at an
+unrealistic zero-slippage best case). Sprint 6 stays blocked: building
+strategies to expand a system that doesn't clear its own costs isn't the
+next step — revisiting the Darvas specification (or the thesis itself) is.
+See Sprint 7 above for what's next.
 
 - **EMA 9/20 crossover strategy** (3 pts): sibling of Stage B scanner; hard-gated to TRENDING regimes via synced regime; tagged `strategy="ema_crossover"` for segmented expectancy.
 - **Mean-reversion strategy for RANGING** (5 pts): RSI(2)/Bollinger snap-back, Nifty-100 universe only; hard regime gate mandatory (counter-trend).

@@ -211,6 +211,28 @@ def _parse_trades(csv_content: str, cost_model: CostModel = DEFAULT_COST_MODEL) 
     return trades
 
 
+def _field(row: dict, *candidates: str) -> str:
+    """Look up a column by trying each candidate name exactly, then falling
+    back to any column that STARTS WITH one of the candidates.
+
+    TradingView's actual trade-list export doesn't match its own docs: it
+    ships "Date and time" / "Price INR" / "Size (qty)" / "Net PnL INR" /
+    "Return %" / "Cumulative PnL INR" rather than "Date/Time" / "Price" /
+    "Contracts" / "Profit" / "Profit %" / "Cum. Profit" — and the currency
+    suffix on Price/PnL columns varies per chart (observed both "INR" and
+    "SEK" across the same batch of exports), so an exact match on those
+    columns silently returns nothing. Prefix matching absorbs both the
+    naming and the currency-suffix variance.
+    """
+    for c in candidates:
+        if c in row:
+            return row[c]
+    for key, value in row.items():
+        if any(key.startswith(c) for c in candidates):
+            return value
+    return ""
+
+
 def _parse_trade_pair(
     num: int, entry: dict, exit_: dict, cost_model: CostModel = DEFAULT_COST_MODEL,
 ) -> Optional[BacktestTrade]:
@@ -227,17 +249,22 @@ def _parse_trade_pair(
         def clean_float(s: str) -> float:
             return float(s.strip().replace(",", "").replace("%", "").replace("₹", "") or "0")
 
-        entry_date  = parse_dt(entry.get("Date/Time", entry.get("date", "")))
-        exit_date   = parse_dt(exit_.get("Date/Time", exit_.get("date", "")))
-        entry_price = clean_float(entry.get("Price", "0"))
-        exit_price  = clean_float(exit_.get("Price", "0"))
-        profit      = clean_float(exit_.get("Profit", exit_.get("profit", "0")))
-        profit_pct  = clean_float(exit_.get("Profit %", exit_.get("profit_pct", "0")))
-        cum_profit  = clean_float(exit_.get("Cum. Profit", exit_.get("cum_profit", "0")))
-        contracts   = clean_float(entry.get("Contracts", "1"))
+        entry_date  = parse_dt(_field(entry, "Date/Time", "date", "Date and time"))
+        exit_date   = parse_dt(_field(exit_, "Date/Time", "date", "Date and time"))
+        entry_price = clean_float(_field(entry, "Price") or "0")
+        exit_price  = clean_float(_field(exit_, "Price") or "0")
+        profit      = clean_float(_field(exit_, "Profit", "profit", "Net PnL") or "0")
+        profit_pct  = clean_float(_field(exit_, "Profit %", "profit_pct", "Return %") or "0")
+        cum_profit  = clean_float(_field(exit_, "Cum. Profit", "cum_profit", "Cumulative PnL") or "0")
+        contracts   = clean_float(_field(entry, "Contracts", "Size (qty)") or "1")
         direction   = "Long" if "long" in entry.get("Type", "").lower() else "Short"
 
-        bars_held = max(1, (exit_date - entry_date).days)
+        duration_bars = _field(exit_, "Duration (bars)")
+        bars_held = (
+            max(1, int(clean_float(duration_bars)))
+            if duration_bars
+            else max(1, (exit_date - entry_date).days)
+        )
 
         # "Long" → BUY-side entry, anything else treated as a short.
         cost_direction = "BUY" if direction == "Long" else "SELL"

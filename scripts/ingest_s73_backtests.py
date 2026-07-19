@@ -31,6 +31,27 @@ import re
 import sys
 from pathlib import Path
 
+PRICE_CURRENCY_RE = re.compile(r"Price\s+([A-Z]{3})")
+
+
+def check_currency(csv_dir: Path, symbols: dict[str, Path], expected_currency: str = "INR") -> list[str]:
+    """Return symbols whose export's "Price <CCY>" column isn't expected_currency.
+
+    TradingView's per-chart currency-conversion setting leaks into the
+    export header (observed "Price INR" on 39 of 40 files, "Price SEK" on
+    one) and silently rescales every absolute number in that file. The cost
+    model's brokerage cap and rupee-rounded statutory charges are absolute
+    INR amounts, so pooling a mismatched-currency file would quietly
+    distort both that symbol's and the pooled cost figures.
+    """
+    bad = []
+    for symbol, path in symbols.items():
+        header = path.read_text(encoding="utf-8-sig").splitlines()[0]
+        m = PRICE_CURRENCY_RE.search(header)
+        if m and m.group(1) != expected_currency:
+            bad.append(f"{symbol} ({m.group(1)})")
+    return bad
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.backtest.parser import parse_tradingview_csv, _compute_metrics, BacktestTrade  # noqa: E402
@@ -76,17 +97,34 @@ def main() -> int:
 
     found = {p.stem.upper(): p for p in args.csv_dir.glob("*.csv")}
 
-    missing = expected - found.keys()
     extra = found.keys() - expected
     if extra:
         print(f"ERROR: {len(extra)} CSV(s) not in the pre-committed sample: {sorted(extra)}")
         print("The analyzed set can't include symbols outside the pre-commit - remove them.")
         return 1
+
+    # Currency-mismatched exports are excluded like a missing symbol rather
+    # than hard-blocking the whole run - lets --allow-partial still produce
+    # a preliminary read on everything else while the bad file gets
+    # re-exported.
+    wrong_currency = check_currency(args.csv_dir, {s: found[s] for s in found.keys() & expected})
+    wrong_currency_symbols = [w.split(" (")[0] for w in wrong_currency]
+    for symbol in wrong_currency_symbols:
+        del found[symbol]
+
+    missing = expected - found.keys()
     if missing and not args.allow_partial:
-        print(f"ERROR: {len(missing)} pre-committed symbol(s) have no CSV yet: {sorted(missing)}")
+        print(f"ERROR: {len(missing)} pre-committed symbol(s) have no usable CSV yet: {sorted(missing)}")
+        if wrong_currency:
+            print(f"  Of those, {len(wrong_currency)} exist but are in the wrong currency: {wrong_currency} "
+                  "- re-export with the chart's currency conversion set to INR (or unset); a mismatched "
+                  "currency silently rescales every absolute price/PnL number and would distort the cost model.")
         print("Either supply all 40, or re-run with --allow-partial to report on what's in so far "
               "(the output will say so loudly - this is not a substitute for the full sample).")
         return 1
+    if wrong_currency:
+        print(f"WARNING: excluding {len(wrong_currency)} wrong-currency export(s) from this partial run: "
+              f"{wrong_currency}")
 
     cost_model = CostModel(slippage_bps=args.slippage_bps)
     all_trades: list[BacktestTrade] = []
@@ -124,7 +162,8 @@ def main() -> int:
         "",
         f"**Sample:** {len(found.keys() & expected)} "
         f"of {len(expected)} pre-committed symbols analyzed"
-        + (f" ({len(missing)} missing: {sorted(missing)} — PARTIAL, not a full verdict)" if missing else ""),
+        + (f" ({len(missing)} missing: {sorted(missing)} — PARTIAL, not a full verdict)" if missing else "")
+        + (f" [excluded for wrong currency: {wrong_currency}]" if wrong_currency else ""),
         f"**Cost model:** NSE stack + {args.slippage_bps:.0f}bps slippage/leg (core/risk/costs.py)",
         f"**No-trade symbols (box never fired in the tested window):** "
         f"{', '.join(no_trade_symbols) if no_trade_symbols else 'none'}",
