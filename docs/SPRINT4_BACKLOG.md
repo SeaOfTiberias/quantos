@@ -402,7 +402,7 @@ distribution before designing any replacement exit rule.
     own 5-min move, not real option tick data (none exists in this repo);
     small sample — this grounds S8-4's design, it is not itself a verdict.
 
-### S8-3 · 52-week-high RS momentum backtest — **5 pts** (unblocked — S8-1 done, verdict negative)
+### S8-3 · 52-week-high RS momentum backtest — **5 pts** — ✅ **DONE 2026-07-20, verdict POSITIVE**
 As the person deciding what to build next, I want the one candidate with an
 actual documented edge (unlike Darvas's borrowed citation) tested with the
 same rigor before any more infrastructure gets built around it.
@@ -422,6 +422,19 @@ same rigor before any more infrastructure gets built around it.
   format. **S8-1 came back negative — report the UNFILTERED result as the
   headline number.** A regime-split variant is optional/informational only,
   not a basis for the go/no-go call.
+- ✅ **DONE 2026-07-20.** `docs/S8_3_BACKTEST_RESULTS.md` + `scripts/backtest_rs_momentum.py`.
+  3 years of real Fyers history, 480/500 universe symbols had enough warmup to
+  ever be ranked, 162 weekly rebalances, 2104 pooled rotation trades.
+  **Verdict: POSITIVE net-of-cost edge on the unfiltered result** — profit
+  factor 1.18 and Sharpe 0.63, both clearing the pre-committed bar (PF > 1.0
+  AND Sharpe > 0.5). Win rate 43.1%, net profit (sum of per-trade net %)
+  745.4%, ~57 trades/month, no overfit-risk flag. This is the first S8 story
+  to come back positive — S8-1 (regime), S8-2, and S8-4's regime variant were
+  all negative or informational-only. Live execution engineering below is now
+  unblocked by this result (see caveats in `docs/S8_3_BACKTEST_RESULTS.md`:
+  approximated delivery STT rate, no anti-chattering buffer by design, and
+  the survivorship-bias caveat that a positive result here is an upper bound,
+  not yet a lower-bound guarantee).
 
 ### S8-4 · NIFTY EMA9/21 options strategy backtest — **5 pts** (unblocked — S8-1 done, verdict negative; informed by S8-2)
 As the person who has been running this manually via Fyers' built-in
@@ -482,17 +495,24 @@ tested against history before any of them get automated.
     not started and these results alone don't change that.
 
 ### Live execution engineering — deferred, not started
-Not scoped as a story yet — only begins if S8-3 or S8-4 validates. If/when
-it does, the blockers found 2026-07-19 become the task list: `fyers.py`'s
-`place_order`/`get_ltp`/`get_quotes` each independently hardcode `NSE:{symbol}-EQ`
-(3 separate call sites, not unified); no option-symbol constructor exists
-(strike+expiry+CE/PE → Fyers convention); no NIFTY lot-size/strike-interval
-constant exists anywhere (`core/options/strategy_builder.py:226`'s lot size
-75 is a generic placeholder, not NIFTY-specific); `get_option_chain()`
-(`fyers.py:358`) is a real, working, currently-unused pass-through — a
-starting point, not a finished path. Wiring in either validated strategy
-also inherits the still-unresolved human-veto contamination problem
-(Fable's original review) — that gets fixed once, not per-strategy.
+Not scoped as a story yet. **S8-3 validated 2026-07-20 (PF 1.18, Sharpe 0.63,
+unfiltered) — this is now unblocked and should be scoped as the next story.**
+S8-3 is equity-only (weekly rotation into Nifty 500 names), so the relevant
+blocker from the 2026-07-19 audit is just `fyers.py`'s `place_order`/`get_ltp`/
+`get_quotes` each independently hardcoding `NSE:{symbol}-EQ` (3 separate call
+sites, not unified) — the option-symbol-constructor and NIFTY lot-size
+blockers below are S8-4/options-specific and stay deferred since S8-4's
+options variants were all negative-to-marginal. Wiring in S8-3 also inherits
+the still-unresolved human-veto contamination problem (Fable's original
+review) — that gets fixed once, not per-strategy.
+
+Options-specific blockers (deferred, only relevant if an options strategy
+validates later): no option-symbol constructor exists (strike+expiry+CE/PE →
+Fyers convention); no NIFTY lot-size/strike-interval constant exists anywhere
+(`core/options/strategy_builder.py:226`'s lot size 75 is a generic
+placeholder, not NIFTY-specific); `get_option_chain()` (`fyers.py:358`) is a
+real, working, currently-unused pass-through — a starting point, not a
+finished path.
 
 ### Also fixed this sprint (no live-data gate, done immediately)
 - ✅ **Negative-Kelly floor bug** — **DONE 2026-07-19.** `core/risk/kelly_calculator.py`'s
