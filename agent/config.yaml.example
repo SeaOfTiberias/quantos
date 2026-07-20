@@ -114,6 +114,15 @@ rotation:
                                      # least 1-2 real dry-run cycles before setting this to false.
   top_n: 20                         # Pre-committed in docs/S8_3_MOMENTUM_METHODOLOGY.md — not
                                      # meant to be casually tuned after seeing a result.
-  position_size: 100000             # Flat ₹ per new position (equal-weight, not Kelly — this is
-                                     # a systematic rotation, not a discretionary single signal).
+  position_size: 5000               # Target ₹ per new position (rank-order sizing, not Kelly —
+                                     # this is a systematic rotation, not a discretionary single
+                                     # signal). Scaled to a ~₹1L total account (₹1L / top_n 20).
+                                     # core/rotation/executor.py's _size_new_entrants funds
+                                     # higher-ranked names first and never lets aggregate spend
+                                     # exceed live available capital, so this is a target/cap per
+                                     # name, not a guarantee every name gets exactly this much.
+                                     # DO NOT scale this back toward ₹100000 (the original ₹20L/
+                                     # 20-position design) without explicit user confirmation —
+                                     # agreed 2026-07-20 after the first live dry-run showed the
+                                     # account's real capital was far below that design's premise.
   universe_file: agent/universe_nifty500.txt

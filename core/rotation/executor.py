@@ -92,38 +92,45 @@ def _latest_price(symbol_series: dict, symbol: str, as_of: datetime):
 
 def _size_new_entrants(buys: list[str], price_lookup: dict, available_capital: float,
                         position_size: float) -> tuple[dict, list]:
-    """Equal-weight sizing: flat `position_size` per new entrant. If
-    available capital can't cover all of them at full size, scale every
-    entrant down proportionally rather than fully funding the first few
-    (by fetch order) and silently dropping the rest. Returns
+    """Sequential, rank-order sizing that can never exceed available capital
+    in aggregate. `buys` is already rank-ordered best-first (diff_target_basket
+    preserves target_basket's order), so each name gets up to `position_size`,
+    capped by whatever capital remains after funding higher-ranked names
+    first — a name whose share price exceeds the REMAINING budget is skipped
+    rather than force-bought.
+
+    An earlier version computed one global scale factor and floored every
+    position to >=1 share, which could overshoot the total budget once a
+    scaled-down target fell below share price (e.g. 20 names sharing a small
+    account, several priced above their fair share — flooring each to 1
+    share summed to more than what was actually available). This can't:
+    remaining capital is tracked and checked before every buy. Returns
     (symbol -> quantity, list of {symbol, reason} for anything skipped)."""
     if not buys:
         return {}, []
 
-    total_needed = position_size * len(buys)
-    scale = available_capital / total_needed if total_needed > 0 else 0.0
-    if scale <= 0:
-        logger.warning(
-            "Rotation: available capital %.2f cannot fund any of the %d new "
-            "entrants (%.2f each) — skipping all buys this cycle.",
-            available_capital, len(buys), position_size)
-        return {}, [{"symbol": s, "reason": "insufficient available capital"} for s in buys]
-
-    scale = min(1.0, scale)
-    if scale < 1.0:
-        logger.warning(
-            "Rotation: available capital %.2f covers only %.0f%% of the %d new "
-            "entrants' target size (%.2f each) — sizing down proportionally.",
-            available_capital, scale * 100, len(buys), position_size)
-
+    remaining = available_capital
     sized, skipped = {}, []
     for symbol in buys:
         price = price_lookup.get(symbol)
         if not price or price <= 0:
             skipped.append({"symbol": symbol, "reason": "no live price available"})
             continue
-        qty = max(1, round(position_size * scale / price))
+        if price > remaining:
+            skipped.append({"symbol": symbol, "reason": "insufficient remaining capital"})
+            continue
+        qty = max(1, int(min(position_size, remaining) // price))
+        cost = qty * price
         sized[symbol] = qty
+        remaining -= cost
+
+    if skipped:
+        logger.warning(
+            "Rotation: available capital %.2f could not fund all %d new entrants "
+            "at target size %.2f each — %d skipped for insufficient remaining "
+            "capital (higher-ranked names funded first, rank order preserved).",
+            available_capital, len(buys), position_size,
+            sum(1 for s in skipped if s["reason"] == "insufficient remaining capital"))
     return sized, skipped
 
 

@@ -40,14 +40,35 @@ class TestSizeNewEntrants:
         assert sized == {"A": 1000, "B": 2000}
         assert skipped == []
 
-    def test_constrained_capital_scales_down_proportionally(self):
-        # Needs 200,000 total for 2 entrants at 100,000 each; only 100,000 available -> 50%.
+    def test_constrained_capital_funds_higher_ranked_names_first(self):
+        # Only enough for one full-size position; A ranks ahead of B in the
+        # buys list, so A gets fully funded and B is skipped rather than
+        # both being sized down to a fraction (rank order preserved).
         sized, skipped = executor._size_new_entrants(
             ["A", "B"], {"A": 100.0, "B": 100.0},
             available_capital=100_000.0, position_size=100_000.0,
         )
-        assert sized == {"A": 500, "B": 500}
-        assert skipped == []
+        assert sized == {"A": 1000}
+        assert skipped == [{"symbol": "B", "reason": "insufficient remaining capital"}]
+
+    def test_aggregate_spend_never_exceeds_available_capital(self):
+        """Regression: the old proportional-scale-then-floor-to-1-share
+        algorithm could overshoot the total budget once a scaled-down
+        per-name target fell below share price. A mix of cheap and
+        expensive names on a small account is exactly the case that broke
+        it — this must never spend more than what's available."""
+        buys = ["CHEAP1", "CHEAP2", "EXPENSIVE1", "EXPENSIVE2", "EXPENSIVE3"]
+        prices = {
+            "CHEAP1": 50.0, "CHEAP2": 75.0,
+            "EXPENSIVE1": 18_000.0, "EXPENSIVE2": 15_000.0, "EXPENSIVE3": 12_000.0,
+        }
+        available_capital = 40_000.0
+        sized, skipped = executor._size_new_entrants(
+            buys, prices, available_capital=available_capital, position_size=8_000.0)
+
+        total_spent = sum(qty * prices[s] for s, qty in sized.items())
+        assert total_spent <= available_capital
+        assert set(sized) | {s["symbol"] for s in skipped} == set(buys)
 
     def test_zero_capital_skips_all_with_reason(self):
         sized, skipped = executor._size_new_entrants(
