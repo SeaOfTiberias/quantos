@@ -109,3 +109,34 @@ class TestLivePersistence:
     async def test_no_buys_or_sells_still_returns_200(self):
         r = await _post(_payload(buys=[], sells=[], skipped_buys=[]))
         assert r.status_code == 200
+
+
+class TestReportRotationFailure:
+    """POST /rotation/failed — the unattended systemd timer's only way to
+    surface a failure (most likely a stale Fyers auth token) to the user,
+    since the interactive OAuth refresh can't run unattended and a failed
+    weekly run would otherwise just sit silently in a systemd log."""
+
+    async def _post_failure(self, error: str, headers=None):
+        if headers is None:
+            headers = {"X-Cloud-Secret": SECRET}
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            return await client.post("/rotation/failed", json={"error": error}, headers=headers)
+
+    @pytest.mark.asyncio
+    async def test_rejects_missing_secret(self):
+        r = await self._post_failure("Fyers connect error: token expired", headers={})
+        assert r.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_sends_telegram_alert_with_the_error(self, _isolated_env):
+        r = await self._post_failure("Fyers connect error: token expired")
+        assert r.status_code == 200
+        assert len(_isolated_env) == 1
+        assert "token expired" in _isolated_env[0]
+
+    @pytest.mark.asyncio
+    async def test_does_not_persist_any_signal(self):
+        await self._post_failure("boom")
+        db = await db_module.get_db()
+        assert await db.fetch_recent_signals(limit=20) == []

@@ -1,0 +1,18 @@
+[Unit]
+Description=QuantOS S8-3 Weekly Rotation (standalone -- does not run agent/main.py or Darvas)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_rotation_rebalance.py
+Environment=HOME=/home/ubuntu
+
+# No Restart= here deliberately: the most likely failure (stale Fyers auth
+# token) can't self-heal by retrying immediately -- the interactive OAuth
+# refresh still needs a human. scripts/run_rotation_rebalance.py POSTs a
+# Telegram alert (POST /rotation/failed) on any failure before exiting
+# non-zero, so a missed weekly refresh surfaces instead of sitting silently
+# in `journalctl -u quantos-rotation`.

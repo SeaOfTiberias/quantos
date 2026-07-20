@@ -1,0 +1,16 @@
+[Unit]
+Description=Weekly trigger for QuantOS S8-3 rotation (Monday pre-market IST)
+
+[Timer]
+# Monday 07:30 IST = 02:00 UTC -- late enough for a same-day Fyers auth
+# refresh (interactive, still needs a human every week this fires -- see
+# quantos-rotation.service), early enough to rank/trade off Friday's close
+# before market open (09:15 IST). Deliberately independent of
+# quantos-agent(-daily-restart), which stays stopped+disabled (Darvas
+# mothballed since 2026-07-19) -- this timer only ever triggers
+# quantos-rotation.service, never agent/main.py's full loop.
+OnCalendar=Mon *-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

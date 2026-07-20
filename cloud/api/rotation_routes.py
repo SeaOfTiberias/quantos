@@ -37,7 +37,7 @@ from pydantic import BaseModel
 
 from cloud.api.auth import require_cloud_secret
 from cloud.api.db import Signal, get_db
-from cloud.api.notifier import send_rotation_summary
+from cloud.api.notifier import send_error_alert, send_rotation_summary
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rotation", tags=["rotation"])
@@ -71,6 +71,10 @@ class RotationReportRequest(BaseModel):
     sells:        list[RotationTrade] = []
     skipped_buys: list[SkippedBuy] = []
     timestamp:    float
+
+
+class RotationFailureRequest(BaseModel):
+    error: str
 
 
 def _new_signal_id() -> str:
@@ -122,4 +126,16 @@ async def report_rotation(payload: RotationReportRequest, _auth=Depends(require_
 
     logger.info("Rotation report received: %d buys, %d sells, %d skipped (dry_run=%s)",
                 len(payload.buys), len(payload.sells), len(payload.skipped_buys), payload.dry_run)
+    return {"received": True}
+
+
+@router.post("/failed")
+async def report_rotation_failure(payload: RotationFailureRequest, _auth=Depends(require_cloud_secret)):
+    """Called by scripts/run_rotation_rebalance.py when a scheduled weekly
+    run raises (most likely a stale Fyers auth token, since this runs
+    unattended via systemd timer — no interactive OAuth refresh possible).
+    Without this, a missed weekly refresh would fail silently: the timer
+    just logs a systemd failure nobody's watching."""
+    logger.error("Rotation run failed: %s", payload.error)
+    await send_error_alert("S8-3 weekly rotation", payload.error)
     return {"received": True}
