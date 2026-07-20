@@ -98,3 +98,22 @@ regime:
                                     # Keep them separate: tuning the Darvas
                                     # hunting ground must never silently move
                                     # the regime gate that governs it.
+
+rotation:
+  # S8-3: weekly 52-week-high RS momentum rotation (core/rotation/executor.py).
+  # A completely different strategy from Darvas above — systematic, 20-name
+  # portfolio, runs fully automatically with NO per-trade Telegram confirm
+  # (a deliberate, narrowly-scoped carve-out from this project's default
+  # human-in-loop constraint; see docs/SPRINT4_BACKLOG.md's S8-3 "Live
+  # execution engineering" section). Both flags below default to the safest
+  # setting — you must explicitly opt in twice (enabled, then dry_run) before
+  # any real order gets placed.
+  enabled: false                    # Master switch. false = rotation never runs at all.
+  dry_run: true                     # true = compute and log the weekly plan (and still send the
+                                     # Telegram summary) without placing real orders. Watch at
+                                     # least 1-2 real dry-run cycles before setting this to false.
+  top_n: 20                         # Pre-committed in docs/S8_3_MOMENTUM_METHODOLOGY.md — not
+                                     # meant to be casually tuned after seeing a result.
+  position_size: 100000             # Flat ₹ per new position (equal-weight, not Kelly — this is
+                                     # a systematic rotation, not a discretionary single signal).
+  universe_file: agent/universe_nifty500.txt

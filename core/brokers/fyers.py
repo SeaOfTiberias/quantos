@@ -152,7 +152,7 @@ class FyersBroker(BrokerAdapter):
         self._assert_connected()
         try:
             data = {
-                "symbol": f"NSE:{order.symbol}-EQ",
+                "symbol": _fyers_symbol(order.symbol),
                 "qty": order.quantity,
                 "type": self._map_order_type(order.order_type),
                 "side": 1 if order.direction == OrderDirection.BUY else -1,
@@ -316,7 +316,7 @@ class FyersBroker(BrokerAdapter):
 
     def get_ltp(self, symbols: list[str]) -> dict[str, float]:
         self._assert_connected()
-        fyers_symbols = [f"NSE:{s}-EQ" for s in symbols]
+        fyers_symbols = [_fyers_symbol(s) for s in symbols]
         response = self._client.quotes(data={"symbols": ",".join(fyers_symbols)})
         if response.get("code") != 200:
             raise BrokerError(f"LTP fetch failed: {response}")
@@ -339,7 +339,7 @@ class FyersBroker(BrokerAdapter):
         out: dict[str, Quote] = {}
         for i in range(0, len(symbols), _QUOTES_CHUNK):
             chunk = symbols[i:i + _QUOTES_CHUNK]
-            fyers_symbols = [f"NSE:{s}-EQ" for s in chunk]
+            fyers_symbols = [_fyers_symbol(s) for s in chunk]
             response = self._client.quotes(data={"symbols": ",".join(fyers_symbols)})
             if response.get("code") != 200:
                 raise BrokerError(f"Quotes fetch failed: {response}")

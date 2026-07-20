@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 import cloud.api.notifier as notifier
-from cloud.api.notifier import send_telegram, _sanitized
+from cloud.api.notifier import send_telegram, send_rotation_summary, _sanitized
 
 TOKEN = "123456:ABC-FakeTokenForTests"
 OK = SimpleNamespace(status_code=200, text="ok")
@@ -106,6 +106,51 @@ def test_sanitized_scrubs_token_and_bot_url():
     assert TOKEN not in clean
     assert "/bot" not in clean
     assert "sendMessage" in clean  # the rest of the context survives
+
+
+@pytest.fixture
+def captured_telegram_message(monkeypatch):
+    """S8-3 rotation summary tests only care about the composed message text,
+    not the send/retry mechanics already covered above — swap send_telegram
+    itself for a capturing double."""
+    captured = {}
+
+    async def _fake_send(message: str) -> bool:
+        captured["message"] = message
+        return True
+
+    monkeypatch.setattr(notifier, "send_telegram", _fake_send)
+    return captured
+
+
+class TestSendRotationSummary:
+    """S8-3 weekly rotation: one consolidated after-the-fact summary, not a
+    per-trade confirm prompt (this strategy runs with no human veto)."""
+
+    @pytest.mark.asyncio
+    async def test_message_lists_buys_sells_and_skipped(self, captured_telegram_message):
+        await send_rotation_summary(
+            buys=[{"symbol": "RELIANCE", "quantity": 40, "price": 2500.0}],
+            sells=[{"symbol": "TCS", "quantity": 10, "entry_price": 3400.0}],
+            skipped_buys=[{"symbol": "INFY", "reason": "insufficient available capital"}],
+            dry_run=False,
+        )
+
+        message = captured_telegram_message["message"]
+        assert "RELIANCE" in message and "x40" in message
+        assert "TCS" in message and "x10" in message
+        assert "INFY" in message and "insufficient available capital" in message
+        assert "DRY RUN" not in message
+
+    @pytest.mark.asyncio
+    async def test_dry_run_tags_header(self, captured_telegram_message):
+        await send_rotation_summary(buys=[], sells=[], skipped_buys=[], dry_run=True)
+        assert "DRY RUN" in captured_telegram_message["message"]
+
+    @pytest.mark.asyncio
+    async def test_no_changes_message_when_everything_empty(self, captured_telegram_message):
+        await send_rotation_summary(buys=[], sells=[], skipped_buys=[], dry_run=False)
+        assert "No changes" in captured_telegram_message["message"]
 
 
 def test_sanitized_handles_exception_objects():

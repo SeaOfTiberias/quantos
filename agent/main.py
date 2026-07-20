@@ -72,6 +72,13 @@ PROCESSED_SIGNALS_PATH = Path.home() / ".quantos" / "processed_signals.json"
 # once per calendar day — this file just records the date of the last run.
 LAST_DISCOVERY_PATH = Path.home() / ".quantos" / "last_discovery_scan.txt"
 
+# S8-3 weekly RS-momentum rotation (core/rotation/executor.py) runs at most
+# once per ISO calendar week — this file records "{iso_year}-W{iso_week}" of
+# the last run. Checked once at startup, same marker-file pattern as
+# discovery above, so it survives the daily restart timer (the agent isn't
+# guaranteed to stay alive continuously for a week).
+LAST_ROTATION_PATH = Path.home() / ".quantos" / "last_rotation_run.txt"
+
 # Closed-trade history feeding Kelly sizing (core/risk/trade_history.py) —
 # persisted because the agent restarts daily (Fyers token expiry) and the
 # Kelly 20-trade minimum would otherwise never be reached.
@@ -295,6 +302,25 @@ def _mark_discovery_ran_today() -> None:
     LAST_DISCOVERY_PATH.write_text(date.today().isoformat())
 
 
+def _iso_week_marker() -> str:
+    iso_year, iso_week, _ = date.today().isocalendar()
+    return f"{iso_year}-W{iso_week:02d}"
+
+
+def _should_run_rotation_this_week() -> bool:
+    if not LAST_ROTATION_PATH.exists():
+        return True
+    try:
+        return LAST_ROTATION_PATH.read_text().strip() != _iso_week_marker()
+    except OSError:
+        return True
+
+
+def _mark_rotation_ran_this_week() -> None:
+    LAST_ROTATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LAST_ROTATION_PATH.write_text(_iso_week_marker())
+
+
 def _load_universe(path: str) -> list:
     """Parse the discovery universe file — comma/newline separated NSE
     symbols, '#' comment lines and inline comments ignored."""
@@ -466,6 +492,68 @@ def _run_discovery_scan(broker, universe_path: str, discovery_watchlist: dict,
         )
 
     _sync_watchlist_to_cloud(cloud_url, headers, discovery_watchlist)
+
+
+def _report_rotation_to_cloud(cloud_url: str, headers: dict, result) -> None:
+    """Best-effort POST of one weekly rotation rebalance's outcome to the
+    cloud (cloud/api/main.py POST /rotation/report), which persists each
+    trade as an EXECUTED signal row (strategy="weekly_rotation") for
+    cockpit visibility and sends one consolidated Telegram summary. A
+    failed sync just means a stale dashboard/missing summary, not a
+    functional problem — logged and swallowed, same reasoning as
+    _sync_watchlist_to_cloud."""
+    payload = {
+        "dry_run": result.dry_run,
+        "buys": result.buys,
+        "sells": result.sells,
+        "skipped_buys": result.skipped_buys,
+        "timestamp": time.time(),
+    }
+    try:
+        resp = requests.post(f"{cloud_url}/rotation/report", json=payload,
+                             headers=headers, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("Failed to report rotation rebalance to cloud: %s", e)
+
+
+def _run_rotation_rebalance(broker, config: dict, cloud_url: str, headers: dict) -> None:
+    """
+    S8-3: once-per-ISO-week weekly RS-momentum rotation rebalance
+    (core/rotation/executor.py). Fully automatic — no per-trade human
+    confirm, a deliberate carve-out from the project's default
+    human-in-loop constraint scoped narrowly to this one systematic
+    strategy (see docs/SPRINT4_BACKLOG.md's S8-3 "Live execution
+    engineering" section for the rationale).
+
+    rotation.dry_run defaults to True in config — logs the full plan
+    without placing real orders until explicitly flipped off.
+    """
+    from core.rotation.executor import run_weekly_rebalance
+
+    rotation_cfg = config.get("rotation", {})
+    universe_path = rotation_cfg.get("universe_file", "agent/universe_nifty500.txt")
+    top_n = int(rotation_cfg.get("top_n", 20))
+    position_size = float(rotation_cfg.get("position_size", 100_000))
+    dry_run = bool(rotation_cfg.get("dry_run", True))
+
+    universe = _load_universe(universe_path)
+    if not universe:
+        logger.warning("Rotation universe is empty (%s) — skipping this week's rebalance.",
+                       universe_path)
+        return
+
+    logger.info(
+        "Rotation: starting weekly rebalance (top_n=%d, position_size=%.0f, "
+        "dry_run=%s) over %d symbols", top_n, position_size, dry_run, len(universe))
+
+    result = asyncio.run(run_weekly_rebalance(
+        broker, universe, top_n=top_n, position_size=position_size, dry_run=dry_run))
+
+    logger.info("Rotation: %d buys, %d sells, %d skipped (dry_run=%s)",
+                len(result.buys), len(result.sells), len(result.skipped_buys), result.dry_run)
+
+    _report_rotation_to_cloud(cloud_url, headers, result)
 
 
 def _run_granular_scan(broker, cloud_url: str, headers: dict, webhook_secret: str,
@@ -810,6 +898,19 @@ def run_agent(config: dict):
                 logger.error("Stage A discovery scan failed: %s", e)
         else:
             logger.info("Stage A discovery already ran today — skipping.")
+
+    # S8-3 weekly rotation — off by default (rotation.enabled: false), and
+    # even when enabled defaults to dry_run: true. See docs/SPRINT4_BACKLOG.md's
+    # S8-3 "Live execution engineering" section.
+    if bool(config.get("rotation", {}).get("enabled", False)):
+        if _should_run_rotation_this_week():
+            try:
+                _run_rotation_rebalance(broker, config, cloud_url, headers)
+                _mark_rotation_ran_this_week()
+            except Exception as e:
+                logger.error("Weekly rotation rebalance failed: %s", e)
+        else:
+            logger.info("Rotation already ran this ISO week — skipping.")
 
     try:
         _run_regime_sync(regime_service, cloud_url, headers)

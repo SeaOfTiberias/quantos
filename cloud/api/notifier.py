@@ -132,6 +132,36 @@ async def send_exit_notification(
     return await send_telegram(message)
 
 
+async def send_rotation_summary(
+    buys: list[dict],
+    sells: list[dict],
+    skipped_buys: list[dict],
+    dry_run: bool,
+) -> bool:
+    """Send ONE consolidated summary for a whole S8-3 weekly rotation
+    rebalance — not a per-trade confirm prompt (unlike send_trade_confirmation,
+    used by the discretionary Darvas flow). This strategy runs fully
+    automatically with no per-trade human veto, so this message is
+    after-the-fact visibility, not an approval request."""
+    header = "🔄 Weekly Rotation Rebalance (DRY RUN)" if dry_run else "🔄 Weekly Rotation Rebalance"
+    lines = [header, "--------------------"]
+
+    if buys:
+        lines.append(f"Bought {len(buys)}:")
+        lines += [f"  {b['symbol']} x{b['quantity']} @ INR {b['price']:,.2f}" for b in buys]
+    if sells:
+        lines.append(f"Sold {len(sells)}:")
+        lines += [f"  {s['symbol']} x{s['quantity']} (entry INR {s['entry_price']:,.2f})" for s in sells]
+    if skipped_buys:
+        lines.append(f"Skipped {len(skipped_buys)}:")
+        lines += [f"  {s['symbol']}: {s['reason']}" for s in skipped_buys]
+    if not (buys or sells or skipped_buys):
+        lines.append("No changes this week — current basket already matches target.")
+
+    lines += ["--------------------", "QuantOS · S8-3 rotation"]
+    return await send_telegram("\n".join(lines))
+
+
 async def send_halt_alert(reason: str) -> bool:
     """Send a portfolio kill-switch alert (S4-2 / P0-2).
 

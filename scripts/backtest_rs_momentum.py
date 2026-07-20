@@ -24,12 +24,9 @@ Usage:
 
 import argparse
 import asyncio
-import bisect
 import sys
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -38,10 +35,11 @@ from core.backtest.parser import BacktestTrade, _compute_metrics  # noqa: E402
 from core.brokers.base import BrokerAdapter, OHLCV  # noqa: E402
 from core.regime.fetcher import NIFTY_SYMBOL  # noqa: E402
 from core.risk.costs import CostModel  # noqa: E402
+from core.rotation.ranker import (  # noqa: E402
+    SymbolSeries, TOP_N, LOOKBACK_DAYS, build_symbol_series, rank_universe, value_as_of,
+)
 from scripts.validate_regime_classifier import fetch_chunked_daily  # noqa: E402
 
-TOP_N = 20                       # pre-committed, docs/S8_3_MOMENTUM_METHODOLOGY.md
-LOOKBACK_DAYS = 252               # trading days for the 52-week-high window
 NOTIONAL_PER_TRADE = 100_000.0    # representative position size, for realistic absolute cost figures
 
 # Pre-committed delivery-style cost model — see docs/S8_3_MOMENTUM_METHODOLOGY.md
@@ -57,43 +55,8 @@ DELIVERY_COST_MODEL = CostModel(
 )
 
 
-# ─── Pure ranking/rotation logic (no I/O — unit-testable) ──────────────────────
-
-@dataclass
-class SymbolSeries:
-    dates:  list[datetime]
-    closes: list[float]
-    highs:  list[Optional[float]]   # rolling LOOKBACK_DAYS-day high, None until warmed up
-
-
-def rolling_high_series(daily: list[OHLCV], window: int = LOOKBACK_DAYS) -> list[Optional[float]]:
-    highs = [c.high for c in daily]
-    result: list[Optional[float]] = []
-    for i in range(len(highs)):
-        if i + 1 < window:
-            result.append(None)
-        else:
-            result.append(max(highs[i - window + 1: i + 1]))
-    return result
-
-
-def build_symbol_series(daily: list[OHLCV]) -> SymbolSeries:
-    return SymbolSeries(
-        dates=[c.timestamp for c in daily],
-        closes=[c.close for c in daily],
-        highs=rolling_high_series(daily),
-    )
-
-
-def value_as_of(series: SymbolSeries, target_date: datetime) -> Optional[tuple[float, float]]:
-    """Most recent (close, rolling_52w_high) at or before target_date, or
-    None if the symbol has no data yet or isn't warmed up. Handles
-    individual listing gaps/halts by using the last available bar."""
-    idx = bisect.bisect_right(series.dates, target_date) - 1
-    if idx < 0 or series.highs[idx] is None:
-        return None
-    return series.closes[idx], series.highs[idx]
-
+# ─── Backtest-specific logic (ranking itself lives in core/rotation/ranker.py,
+# shared with live execution — see that module's docstring) ────────────────────
 
 def rebalance_dates(nifty_candles: list[OHLCV], warmup_days: int = LOOKBACK_DAYS) -> list[datetime]:
     """Last NIFTY trading day of each ISO calendar week, after enough
@@ -123,19 +86,15 @@ def run_rotation(
     last_known_price: dict[str, float] = {}
 
     for rebal_date in rebal_dates:
-        scores = []
         price_lookup = {}
         for symbol, series in symbol_series.items():
             v = value_as_of(series, rebal_date)
             if v is None:
                 continue
-            close, high = v
-            if high > 0:
-                scores.append((symbol, close / high))
-                price_lookup[symbol] = close
-                last_known_price[symbol] = close
-        scores.sort(key=lambda x: -x[1])
-        top_set = {s for s, _ in scores[:top_n]}
+            close, _high = v
+            price_lookup[symbol] = close
+            last_known_price[symbol] = close
+        top_set = set(rank_universe(symbol_series, rebal_date, top_n))
 
         # Exits: held but no longer in the top set.
         for symbol in list(open_positions.keys()):

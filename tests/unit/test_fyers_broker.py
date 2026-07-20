@@ -13,6 +13,7 @@ never actually wired into production.
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from core.brokers.base import Order, OrderDirection, OrderType, ProductType
 from core.brokers.fyers import FyersBroker
 
 
@@ -115,3 +116,65 @@ class TestIndexSymbolFormatting:
         )
         sent = broker._client.history.call_args.kwargs["data"]
         assert sent["symbol"] == "NSE:RELIANCE-EQ"
+
+
+class TestOrderAndQuoteSymbolFormatting:
+    """
+    place_order/get_ltp/get_quotes used to build "NSE:{symbol}-EQ" inline
+    instead of going through _fyers_symbol() (unlike get_historical_data,
+    which already used the shared helper) — 3 independently-hardcoded call
+    sites, no index-symbol safety, found while scoping S8-3 live execution.
+    Fixed to call the shared helper; these lock in equity behaviour is
+    unchanged and index symbols are now handled correctly too.
+    """
+
+    def test_place_order_formats_equity_symbol(self):
+        broker = _connected_broker()
+        broker._client.place_order.return_value = {
+            "code": 200, "id": "ORD1", "message": "ok",
+        }
+        order = Order(
+            symbol="RELIANCE", direction=OrderDirection.BUY, quantity=1,
+            order_type=OrderType.MARKET, product_type=ProductType.CNC,
+        )
+
+        broker.place_order(order)
+
+        sent = broker._client.place_order.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:RELIANCE-EQ"
+
+    def test_get_ltp_formats_equity_symbols(self):
+        broker = _connected_broker()
+        broker._client.quotes.return_value = {"code": 200, "d": []}
+
+        broker.get_ltp(["RELIANCE", "TCS"])
+
+        sent = broker._client.quotes.call_args.kwargs["data"]
+        assert sent["symbols"] == "NSE:RELIANCE-EQ,NSE:TCS-EQ"
+
+    def test_get_ltp_formats_index_symbol(self):
+        broker = _connected_broker()
+        broker._client.quotes.return_value = {"code": 200, "d": []}
+
+        broker.get_ltp(["NIFTY 50"])
+
+        sent = broker._client.quotes.call_args.kwargs["data"]
+        assert sent["symbols"] == "NSE:NIFTY50-INDEX"
+
+    def test_get_quotes_formats_equity_symbols(self):
+        broker = _connected_broker()
+        broker._client.quotes.return_value = {"code": 200, "d": []}
+
+        broker.get_quotes(["RELIANCE", "TCS"])
+
+        sent = broker._client.quotes.call_args.kwargs["data"]
+        assert sent["symbols"] == "NSE:RELIANCE-EQ,NSE:TCS-EQ"
+
+    def test_get_quotes_formats_index_symbol(self):
+        broker = _connected_broker()
+        broker._client.quotes.return_value = {"code": 200, "d": []}
+
+        broker.get_quotes(["INDIA VIX"])
+
+        sent = broker._client.quotes.call_args.kwargs["data"]
+        assert sent["symbols"] == "NSE:INDIAVIX-INDEX"
