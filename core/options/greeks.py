@@ -2,9 +2,11 @@
 QuantOS — Black-Scholes Greeks Calculator
 ─────────────────────────────────────────────
 US-05b: Computes option Greeks (delta, gamma, theta, vega) using the
-Black-Scholes model. Used as a fallback when the broker doesn't supply
-live Greeks directly (Fyers option chain does include some Greeks,
-but this provides a consistent, broker-independent calculation).
+Black-Scholes model. Fyers' optionchain API supplies OI/LTP/bid/ask per
+strike but no Greeks and no IV (confirmed against Fyers' own API docs/
+community threads 2026-07-21) — this module is the only source of both,
+via forward Greeks computation and (see implied_volatility()) inversion
+from a leg's traded price.
 
 Standard Black-Scholes assumptions apply (European-style, no dividends
 adjustment built in — acceptable approximation for NSE index/stock options
@@ -116,6 +118,55 @@ def compute_greeks(
         vega=round(vega, 4),
         theoretical_price=round(max(0.0, theoretical_price), 2),
     )
+
+
+def implied_volatility(
+    market_price:   float,
+    spot:           float,
+    strike:         float,
+    days_to_expiry: int,
+    option_type:    OptionType,
+    risk_free_rate: float = DEFAULT_RISK_FREE_RATE,
+    tolerance:      float = 0.001,
+    max_iterations: int = 100,
+) -> float:
+    """
+    Invert Black-Scholes to solve for implied volatility given a traded
+    option price — needed because Fyers' option chain doesn't supply IV
+    directly. Uses bisection rather than Newton's method: vega collapses
+    near expiry/deep ITM-OTM, which makes Newton's derivative step
+    unstable exactly where this will be called most (near-dated NIFTY
+    weeklies).
+
+    Returns a decimal (e.g. 0.18 = 18%), floored/capped to [0.01, 5.0].
+    Falls back to 0.18 (a reasonable NIFTY-ish default) if the price is
+    below intrinsic value or otherwise un-invertible.
+    """
+    if days_to_expiry <= 0 or market_price <= 0:
+        return 0.18
+
+    intrinsic = (max(0.0, spot - strike) if option_type == OptionType.CALL
+                 else max(0.0, strike - spot))
+    if market_price <= intrinsic:
+        return 0.18  # no time value left to invert — floor rather than guess
+
+    lo, hi = 0.01, 5.0
+    for _ in range(max_iterations):
+        mid = (lo + hi) / 2.0
+        price = compute_greeks(
+            spot=spot, strike=strike, days_to_expiry=days_to_expiry,
+            implied_vol=mid, option_type=option_type,
+            risk_free_rate=risk_free_rate,
+        ).theoretical_price
+
+        if abs(price - market_price) < tolerance:
+            return round(mid, 4)
+        if price < market_price:
+            lo = mid
+        else:
+            hi = mid
+
+    return round((lo + hi) / 2.0, 4)
 
 
 def estimate_probability_of_profit(

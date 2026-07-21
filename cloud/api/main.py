@@ -52,7 +52,9 @@ from cloud.api.reconciliation_routes import router as reconciliation_router
 from cloud.api.rotation_routes import router as rotation_router
 from cloud.api import metrics
 from core import prompts
-from cloud.api.notifier import send_telegram, register_telegram_webhook, send_exit_notification
+from cloud.api.notifier import (
+    send_telegram, register_telegram_webhook, send_exit_notification, deliver_confirmation,
+)
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
 
@@ -591,31 +593,12 @@ def _confirmation_message(signal_id, symbol, action, price, stop_loss, strategy,
     )
 
 
-async def _deliver_confirmation(signal_id: str, message: str) -> bool:
-    """Send a confirmation message; stamp notified_at only on success so
-    the sweep below knows which PENDING_CONFIRMATION signals never reached
-    the human (P1-4: an unnotified signal used to strand silently)."""
-    try:
-        sent = await send_telegram(message)
-    except Exception as e:
-        sent = False
-        logger.error("[%s] Telegram notification raised: %s", signal_id, type(e).__name__)
-    if sent:
-        db = await get_db()
-        await db.mark_notified(signal_id)
-        logger.info("[%s] Telegram confirmation sent", signal_id)
-    else:
-        logger.error("[%s] Telegram confirmation NOT delivered — signal stays "
-                     "PENDING_CONFIRMATION, re-notify sweep will retry", signal_id)
-    return sent
-
-
 async def _send_confirmation_request(signal_id, alert, confidence_score):
     message = _confirmation_message(
         signal_id, alert.symbol, alert.action, alert.price, alert.stop_loss,
         alert.strategy, alert.timeframe, alert.confluence_score, confidence_score,
     )
-    await _deliver_confirmation(signal_id, message)
+    await deliver_confirmation(signal_id, message)
 
 
 # Re-notify sweep (P1-4): a PENDING_CONFIRMATION signal older than this
@@ -643,7 +626,7 @@ async def _renotify_stranded_signals() -> int:
             s["signal_id"], s["symbol"], s["action"], s["price"], s["stop_loss"],
             s["strategy"], s["timeframe"], s["confluence_score"], s["confidence_score"],
         )
-        await _deliver_confirmation(s["signal_id"], message)
+        await deliver_confirmation(s["signal_id"], message)
         attempted += 1
     return attempted
 

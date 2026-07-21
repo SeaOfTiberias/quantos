@@ -86,6 +86,30 @@ async def send_telegram(message: str) -> bool:
     return False
 
 
+async def deliver_confirmation(signal_id: str, message: str) -> bool:
+    """Send a pending-confirmation message; stamp notified_at only on
+    success so the re-notify sweep (cloud/api/main.py) knows which
+    PENDING_CONFIRMATION signals never reached the human (P1-4: an
+    unnotified signal used to strand silently). Shared by the Darvas flow
+    (main.py) and the options execution flow (options_routes.py) — lives
+    here rather than in main.py to avoid a circular import between them."""
+    from cloud.api.db import get_db
+
+    try:
+        sent = await send_telegram(message)
+    except Exception as e:
+        sent = False
+        logger.error("[%s] Telegram notification raised: %s", signal_id, type(e).__name__)
+    if sent:
+        db = await get_db()
+        await db.mark_notified(signal_id)
+        logger.info("[%s] Telegram confirmation sent", signal_id)
+    else:
+        logger.error("[%s] Telegram confirmation NOT delivered — signal stays "
+                     "PENDING_CONFIRMATION, re-notify sweep will retry", signal_id)
+    return sent
+
+
 async def send_trade_confirmation(
     signal_id: str,
     symbol: str,
@@ -159,6 +183,128 @@ async def send_rotation_summary(
         lines.append("No changes this week — current basket already matches target.")
 
     lines += ["--------------------", "QuantOS · S8-3 rotation"]
+    return await send_telegram("\n".join(lines))
+
+
+def format_options_confirmation_message(
+    signal_id: str,
+    underlying: str,
+    strategy: str,
+    expiry: str,
+    legs: list[dict],
+    max_profit: float,
+    max_loss: float,
+    net_premium: float,
+    probability_of_profit: float,
+    rationale: str,
+    regime_context: str,
+) -> str:
+    """
+    Pending-confirmation message for a multi-leg options signal (regime/
+    strategy advisor -> real execution). Ends with the exact same "Reply
+    execute/skip" convention as _confirmation_message() in cloud/api/main.py
+    so the existing Telegram webhook's reply-parsing needs no changes at
+    all -- it already extracts the signal ID out of ANY replied-to message
+    by regex, regardless of the body above it.
+    """
+    leg_lines = [
+        f"  {leg['action']} {leg['option_type']} {leg['strike']:g} @ INR {leg['premium']:,.2f} "
+        f"x{leg['quantity']} lot(s)"
+        for leg in legs
+    ]
+    max_loss_str = "Unlimited" if max_loss == float("-inf") else f"INR {max_loss:,.2f}"
+    return (
+        f"🧠 QuantOS Options Suggestion\n"
+        f"ID: {signal_id}\n"
+        f"--------------------\n"
+        f"{underlying} · {strategy.replace('_', ' ').title()} · expiry {expiry}\n"
+        + "\n".join(leg_lines) + "\n"
+        f"--------------------\n"
+        f"Net premium: INR {net_premium:+,.2f}\n"
+        f"Max profit: INR {max_profit:,.2f}\n"
+        f"Max loss: {max_loss_str}\n"
+        f"Est. probability of profit: {probability_of_profit:.0f}%\n"
+        f"Regime: {regime_context}\n"
+        f"Rationale: {rationale}\n"
+        f"--------------------\n"
+        f"Exit rule: hold to expiry (no active management)\n"
+        f"Reply (to this message) execute to trade\n"
+        f"Reply (to this message) skip to ignore"
+    )
+
+
+async def send_options_execution_report(
+    signal_id: str, underlying: str, legs: list[dict],
+) -> bool:
+    """All legs filled successfully — after-the-fact confirmation, mirrors
+    send_trade_confirmation() but for a multi-leg fill."""
+    leg_lines = [
+        f"  {'🟢' if leg['action'] == 'BUY' else '🔴'} {leg['action']} {leg['option_type']} "
+        f"{leg['strike']:g} @ INR {(leg.get('fill_price') or 0.0):,.2f} "
+        f"x{leg['quantity']} lot(s) (order {leg.get('order_id', '?')})"
+        for leg in legs
+    ]
+    message = (
+        f"✅ Options Spread Executed\n"
+        f"ID: {signal_id}\n"
+        f"--------------------\n"
+        f"{underlying}\n"
+        + "\n".join(leg_lines) + "\n"
+        f"--------------------\n"
+        f"QuantOS · {signal_id}"
+    )
+    return await send_telegram(message)
+
+
+async def send_options_partial_failure_alert(
+    signal_id: str,
+    underlying: str,
+    failed_leg: dict,
+    error: str,
+    flatten_results: list[dict],
+) -> bool:
+    """
+    URGENT: a multi-leg spread partially filled before a later leg was
+    rejected, leaving one or more legs with undefined/naked risk until
+    the auto-flatten below either closes them or itself fails. This is
+    the loudest alert this project sends — a naked option position is
+    exactly the unbounded-risk scenario the spread structure exists to
+    prevent, and if the flatten attempt ALSO failed there is no further
+    automatic recourse: the user must act in the Fyers app immediately.
+    """
+    all_flattened = all(f.get("flattened") for f in flatten_results)
+    header = (
+        "🆘 OPTIONS LEG FAILURE — auto-flattened, please verify"
+        if (flatten_results and all_flattened)
+        else "🆘🆘 OPTIONS LEG FAILURE — FLATTEN ALSO FAILED, ACT NOW"
+    )
+    lines = [
+        header, "--------------------",
+        f"ID: {signal_id}  |  {underlying}",
+        f"Failed leg: {failed_leg['action']} {failed_leg['option_type']} "
+        f"{failed_leg['strike']:g}",
+        f"Reason: {error[:200]}",
+        "--------------------",
+    ]
+    if flatten_results:
+        lines.append("Flatten attempts on already-filled legs:")
+        for f in flatten_results:
+            leg = f["leg"]
+            if f.get("flattened"):
+                lines.append(
+                    f"  OK: closed {leg['action']} {leg['option_type']} "
+                    f"{leg['strike']:g} (order {f.get('order_id', '?')})"
+                )
+            else:
+                lines.append(
+                    f"  FAILED: {leg['action']} {leg['option_type']} "
+                    f"{leg['strike']:g} is STILL OPEN, naked — "
+                    f"close it manually in the Fyers app NOW "
+                    f"({f.get('error', 'unknown error')[:150]})"
+                )
+    else:
+        lines.append("No prior legs had filled — nothing to flatten.")
+    lines += ["--------------------", f"QuantOS · {signal_id}"]
     return await send_telegram("\n".join(lines))
 
 

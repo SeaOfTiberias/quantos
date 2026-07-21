@@ -273,7 +273,7 @@ async def test_sweep_renotifies_stranded_signal_and_marks_it():
     re-notified and stamped so it isn't sent a third time."""
     signal_id = await _seed_stranded(f"ST{uuid.uuid4().hex[:6].upper()}", age_seconds=600)
 
-    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+    with patch("cloud.api.notifier.send_telegram", new_callable=AsyncMock,
                return_value=True) as mock_send:
         attempted = await _renotify_stranded_signals()
     assert attempted == 1
@@ -283,7 +283,7 @@ async def test_sweep_renotifies_stranded_signal_and_marks_it():
     assert (await db.get_signal(signal_id)).notified_at is not None
 
     # Second sweep: nothing left to do
-    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+    with patch("cloud.api.notifier.send_telegram", new_callable=AsyncMock,
                return_value=True) as mock_send:
         assert await _renotify_stranded_signals() == 0
 
@@ -292,7 +292,7 @@ async def test_sweep_renotifies_stranded_signal_and_marks_it():
 async def test_sweep_failure_leaves_signal_unmarked_for_next_pass():
     signal_id = await _seed_stranded(f"FL{uuid.uuid4().hex[:6].upper()}", age_seconds=600)
 
-    with patch("cloud.api.main.send_telegram", new_callable=AsyncMock,
+    with patch("cloud.api.notifier.send_telegram", new_callable=AsyncMock,
                return_value=False):
         attempted = await _renotify_stranded_signals()
     assert attempted == 1

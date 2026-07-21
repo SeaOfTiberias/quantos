@@ -221,6 +221,12 @@ class BrokerAdapter(ABC):
         Get full option chain for an underlying.
         Default raises NotImplementedError — brokers that support
         options should override this.
+
+        `expiry` is broker-specific, NOT guaranteed to be an ISO date
+        string — Fyers' implementation wants the epoch-seconds string it
+        publishes per expiry (core/options/fyers_symbol_master.py's
+        get_expiry_epoch()), confirmed live 2026-07-21 after an ISO date
+        string was rejected outright.
         """
         raise NotImplementedError(
             f"{self.__class__.__name__} does not support option chain data."

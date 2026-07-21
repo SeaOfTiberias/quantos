@@ -44,6 +44,15 @@ class Signal:
     closed_at:        Optional[datetime] = None
     exit_price:       Optional[float] = None
     pnl:              Optional[float] = None
+    # Multi-leg options signals only (cloud/api/options_routes.py execution
+    # endpoints) — JSON-encoded {"expiry", "legs", "rationale", "max_profit",
+    # "max_loss", "net_premium", "probability_of_profit", "regime_context"}.
+    # NULL for every equity signal (Darvas/rotation). `symbol` holds the
+    # underlying (e.g. "NIFTY"), `action`/`price` hold the strategy template
+    # name and abs(net_premium) as the closest single-value stand-ins so
+    # every other existing consumer of the signals table keeps working
+    # unmodified — the real per-leg detail lives here.
+    options_detail:   Optional[str] = None
 
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
@@ -67,9 +76,14 @@ CREATE TABLE IF NOT EXISTS signals (
     execution_price   DOUBLE PRECISION,
     closed_at         TIMESTAMPTZ,
     exit_price        DOUBLE PRECISION,
-    pnl               DOUBLE PRECISION
+    pnl               DOUBLE PRECISION,
+    options_detail    TEXT
 );
 """
+
+_ADD_OPTIONS_DETAIL_COLUMN_SQL = (
+    "ALTER TABLE signals ADD COLUMN IF NOT EXISTS options_detail TEXT;"
+)
 
 # Indexes the same-day dedup guard (cloud/api/main.py) relies on: it filters
 # by symbol + status over a one-day created_at range, so a (symbol, created_at)
@@ -84,7 +98,8 @@ _CREATE_INDEX_SQL = [
 _COLUMNS = (
     "signal_id, user_id, symbol, action, price, timeframe, strategy, "
     "confluence_score, confidence_score, stop_loss, status, created_at, "
-    "notified_at, executed_at, execution_price, closed_at, exit_price, pnl"
+    "notified_at, executed_at, execution_price, closed_at, exit_price, pnl, "
+    "options_detail"
 )
 
 
@@ -130,6 +145,7 @@ def _row_to_dict(row) -> dict:
         "closed_at":        _iso(m["closed_at"]),
         "exit_price":       m["exit_price"],
         "pnl":              m["pnl"],
+        "options_detail":   m["options_detail"],
     }
 
 
@@ -154,6 +170,7 @@ def _row_to_signal(row) -> Signal:
         closed_at=m["closed_at"],
         exit_price=m["exit_price"],
         pnl=m["pnl"],
+        options_detail=m["options_detail"],
     )
 
 
@@ -177,6 +194,7 @@ def _signal_to_dict(s: Signal) -> dict:
         "closed_at":        s.closed_at.isoformat() if s.closed_at else None,
         "exit_price":       s.exit_price,
         "pnl":              s.pnl,
+        "options_detail":   s.options_detail,
     }
 
 
@@ -219,6 +237,10 @@ class SignalDB:
             # Connectivity check + schema bootstrap in one round trip.
             async with engine.begin() as conn:
                 await conn.execute(text(_CREATE_TABLE_SQL))
+                # Migration for tables created before options_detail existed
+                # (CREATE TABLE IF NOT EXISTS is a no-op on an already-live
+                # table) — safe to run every boot, IF NOT EXISTS makes it idempotent.
+                await conn.execute(text(_ADD_OPTIONS_DETAIL_COLUMN_SQL))
                 for idx_sql in _CREATE_INDEX_SQL:
                     await conn.execute(text(idx_sql))
             self._engine = engine
@@ -346,7 +368,7 @@ class SignalDB:
             ":signal_id, :user_id, :symbol, :action, :price, :timeframe, "
             ":strategy, :confluence_score, :confidence_score, :stop_loss, "
             ":status, :created_at, :notified_at, :executed_at, "
-            ":execution_price, :closed_at, :exit_price, :pnl) "
+            ":execution_price, :closed_at, :exit_price, :pnl, :options_detail) "
             "ON CONFLICT (signal_id) DO NOTHING"
         )
         async with self._engine.begin() as conn:
@@ -369,6 +391,7 @@ class SignalDB:
                 "closed_at":        signal.closed_at,
                 "exit_price":       signal.exit_price,
                 "pnl":              signal.pnl,
+                "options_detail":   signal.options_detail,
             })
 
     async def _pg_fetch(self, limit: int, status: Optional[str] = None) -> list[dict]:

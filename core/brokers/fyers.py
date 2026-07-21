@@ -37,9 +37,21 @@ _TF_MAP = {
 # the first caller to ever request an index symbol here (NIFTY_SYMBOL,
 # VIX_SYMBOL) — every existing caller (core/darvas/*.py) only ever deals
 # in individual equities, so this gap was never exercised before.
+#
+# Two naming conventions for the same instruments coexist in this codebase
+# and both need to resolve to the same Fyers symbol: the quote/historical-
+# data layer uses "NIFTY 50"/"NIFTY BANK" (core/regime/fetcher.py's
+# NIFTY_SYMBOL/BANK_NIFTY conventions), while the options domain
+# (core/options/fyers_symbol_master.py, keyed off Fyers' own F&O symbol
+# master's underlying_symbol column) uses the bare "NIFTY"/"BANKNIFTY" —
+# confirmed live 2026-07-21 when get_option_chain("NIFTY", ...) hit this
+# gap and Fyers rejected "NSE:NIFTY" outright ("Please provide a valid
+# symbol") before this alias existed.
 _INDEX_SYMBOL_MAP = {
     "NIFTY 50":   "NIFTY50",
+    "NIFTY":      "NIFTY50",
     "NIFTY BANK": "NIFTYBANK",
+    "BANKNIFTY":  "NIFTYBANK",
     "INDIA VIX":  "INDIAVIX",
 }
 
@@ -316,14 +328,20 @@ class FyersBroker(BrokerAdapter):
 
     def get_ltp(self, symbols: list[str]) -> dict[str, float]:
         self._assert_connected()
-        fyers_symbols = [_fyers_symbol(s) for s in symbols]
-        response = self._client.quotes(data={"symbols": ",".join(fyers_symbols)})
+        # Map back to whatever the caller originally asked for, keyed by the
+        # exact Fyers symbol requested, rather than heuristically stripping
+        # "-EQ" — confirmed live 2026-07-21 that heuristic silently dropped
+        # every index request (e.g. requesting "NIFTY 50" builds
+        # "NSE:NIFTY50-INDEX"; stripping only "-EQ" left "NIFTY50-INDEX",
+        # which never matches the caller's original "NIFTY 50" key).
+        fyers_to_original = {_fyers_symbol(s): s for s in symbols}
+        response = self._client.quotes(data={"symbols": ",".join(fyers_to_original.keys())})
         if response.get("code") != 200:
             raise BrokerError(f"LTP fetch failed: {response}")
         result = {}
         for q in response.get("d", []):
-            clean = q["n"].replace("NSE:", "").replace("-EQ", "")
-            result[clean] = q["v"]["lp"]
+            original = fyers_to_original.get(q["n"], q["n"].replace("NSE:", "").replace("-EQ", ""))
+            result[original] = q["v"]["lp"]
         return result
 
     def get_quotes(self, symbols: list[str]) -> dict[str, Quote]:
@@ -339,15 +357,19 @@ class FyersBroker(BrokerAdapter):
         out: dict[str, Quote] = {}
         for i in range(0, len(symbols), _QUOTES_CHUNK):
             chunk = symbols[i:i + _QUOTES_CHUNK]
-            fyers_symbols = [_fyers_symbol(s) for s in chunk]
-            response = self._client.quotes(data={"symbols": ",".join(fyers_symbols)})
+            # Map back to the caller's original symbol rather than
+            # heuristically stripping "-EQ" — see get_ltp()'s identical fix
+            # (confirmed live 2026-07-21) for why that silently drops indices.
+            fyers_to_original = {_fyers_symbol(s): s for s in chunk}
+            response = self._client.quotes(data={"symbols": ",".join(fyers_to_original.keys())})
             if response.get("code") != 200:
                 raise BrokerError(f"Quotes fetch failed: {response}")
             for q in response.get("d", []):
                 v = q.get("v", {}) or {}
-                clean = q["n"].replace("NSE:", "").replace("-EQ", "")
-                out[clean] = Quote(
-                    symbol=clean,
+                original = fyers_to_original.get(
+                    q["n"], q["n"].replace("NSE:", "").replace("-EQ", ""))
+                out[original] = Quote(
+                    symbol=original,
                     ltp=v.get("lp", 0.0) or 0.0,
                     prev_close=v.get("prev_close_price", 0.0) or 0.0,
                     change=v.get("ch", 0.0) or 0.0,
@@ -357,7 +379,11 @@ class FyersBroker(BrokerAdapter):
 
     def get_option_chain(self, underlying: str, expiry: str) -> dict:
         self._assert_connected()
-        data = {"symbol": f"NSE:{underlying}", "strikecount": 10,
+        # Confirmed live 2026-07-21: this previously hardcoded f"NSE:{underlying}"
+        # (e.g. "NSE:NIFTY"), which Fyers rejected outright — the option chain
+        # endpoint wants the same "-INDEX" convention as quotes/historical data
+        # (_fyers_symbol handles equities and both index-naming conventions).
+        data = {"symbol": _fyers_symbol(underlying), "strikecount": 10,
                 "timestamp": expiry}
         response = self._client.optionchain(data=data)
         if response.get("code") != 200:

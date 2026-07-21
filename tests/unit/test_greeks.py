@@ -3,7 +3,7 @@ US-05b Options Intelligence — Greeks Calculator Tests
 """
 
 import pytest
-from core.options.greeks import compute_greeks, estimate_probability_of_profit
+from core.options.greeks import compute_greeks, estimate_probability_of_profit, implied_volatility
 from core.options.models import OptionType
 
 
@@ -166,3 +166,52 @@ class TestProbabilityOfProfit:
             implied_vol=0.15, is_above_breakeven_profitable=True,
         )
         assert pop == 50.0
+
+
+class TestImpliedVolatility:
+
+    def test_recovers_known_iv_roundtrip(self):
+        """Price a call at a known IV, then invert — should recover it."""
+        priced = compute_greeks(
+            spot=22000, strike=22000, days_to_expiry=30,
+            implied_vol=0.20, option_type=OptionType.CALL,
+        )
+        recovered = implied_volatility(
+            market_price=priced.theoretical_price, spot=22000, strike=22000,
+            days_to_expiry=30, option_type=OptionType.CALL,
+        )
+        assert recovered == pytest.approx(0.20, abs=0.01)
+
+    def test_recovers_known_iv_for_put(self):
+        priced = compute_greeks(
+            spot=22000, strike=22000, days_to_expiry=30,
+            implied_vol=0.25, option_type=OptionType.PUT,
+        )
+        recovered = implied_volatility(
+            market_price=priced.theoretical_price, spot=22000, strike=22000,
+            days_to_expiry=30, option_type=OptionType.PUT,
+        )
+        assert recovered == pytest.approx(0.25, abs=0.01)
+
+    def test_higher_price_gives_higher_iv(self):
+        low = implied_volatility(market_price=100, spot=22000, strike=22000,
+                                  days_to_expiry=30, option_type=OptionType.CALL)
+        high = implied_volatility(market_price=300, spot=22000, strike=22000,
+                                   days_to_expiry=30, option_type=OptionType.CALL)
+        assert high > low
+
+    def test_zero_days_returns_fallback(self):
+        iv = implied_volatility(market_price=100, spot=22000, strike=22000,
+                                 days_to_expiry=0, option_type=OptionType.CALL)
+        assert iv == 0.18
+
+    def test_price_below_intrinsic_returns_fallback(self):
+        """A quoted price below intrinsic value can't be inverted meaningfully."""
+        iv = implied_volatility(market_price=50, spot=22500, strike=22000,
+                                 days_to_expiry=30, option_type=OptionType.CALL)
+        assert iv == 0.18
+
+    def test_result_bounded(self):
+        iv = implied_volatility(market_price=5000, spot=22000, strike=22000,
+                                 days_to_expiry=30, option_type=OptionType.CALL)
+        assert 0.01 <= iv <= 5.0

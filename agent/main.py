@@ -51,6 +51,9 @@ from core.darvas.weekly_discovery import WeeklyDiscoveryScanner, DEFAULT_CONFIG 
 from core.regime.service import RegimeService, CACHE_TTL as REGIME_CACHE_TTL
 from core.risk.correlation_service import CorrelationPortfolioService
 from core.risk.correlation import CORRELATION_THRESHOLD
+from core.options import executor as options_executor
+from core.options import regime_trigger as options_regime_trigger
+from core.options.positions import load_positions as load_options_positions, add_position as add_options_position
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
 # Kept slower than the 5s signal poll to avoid hammering the broker with
@@ -612,7 +615,7 @@ def _run_granular_scan(broker, cloud_url: str, headers: dict, webhook_secret: st
         _sync_watchlist_to_cloud(cloud_url, headers, discovery_watchlist)
 
 
-def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dict) -> None:
+def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dict):
     """
     Refresh the market regime classification (core/regime/service.py — a
     cheap no-op call if still within its own 15-min cache, ADR-04) and
@@ -625,6 +628,10 @@ def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dic
     Runs regardless of scanner.enabled — regime informs every signal's
     pre-trade analysis (Pine Script or internal Stage B), not just the
     Darvas discovery pipeline.
+
+    Returns the RegimeResult so the caller can also feed it to the
+    options regime-change trigger (_run_options_trigger) without a
+    second, redundant classification call.
     """
     result = asyncio.run(regime_service.get_regime())
     payload = {
@@ -644,6 +651,136 @@ def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dic
     resp = requests.post(f"{cloud_url}/regime/sync", json=payload, headers=headers, timeout=10)
     resp.raise_for_status()
     logger.info("Regime synced: %s (confidence=%.0f)", result.regime.value, result.confidence)
+    return result
+
+
+def _run_options_trigger(broker, config: dict, cloud_url: str, headers: dict,
+                          regime_result, options_positions: dict) -> None:
+    """
+    Regime/strategy advisor -> real execution (Phase 2). Confirm-before-
+    execute, matching the Darvas flow — NOT S8-3 rotation's no-veto
+    carve-out. Both `options.enabled` and `options.dry_run` default to the
+    safest setting, same two-gate pattern as rotation.
+
+    dry_run here means something different from rotation's: rotation has
+    no confirm step, so dry_run gates real ORDERS. Options entry already
+    has a human confirm gate baked in (that's the point of this feature) —
+    dry_run instead gates whether a suggestion is even sent to the user
+    for confirmation, so the chain-fetch/recommend/symbol-resolution
+    pipeline can be observed for a few real regime changes before ever
+    pinging Telegram with something to confirm.
+    """
+    options_cfg = config.get("options", {})
+    if not bool(options_cfg.get("enabled", False)):
+        return
+    if regime_result is None:
+        return
+
+    lots = int(options_cfg.get("lots_per_trade", 1))
+    dry_run = bool(options_cfg.get("dry_run", True))
+
+    try:
+        suggestion = options_regime_trigger.check_and_build_suggestion(
+            broker, regime_result, options_positions, cloud_url, headers, lots=lots)
+    except Exception as e:
+        logger.error("Options regime trigger failed to build a suggestion: %s", e)
+        return
+    if suggestion is None:
+        return
+
+    if dry_run:
+        logger.info(
+            "Options suggestion (DRY RUN, not sent for confirmation): %s %s "
+            "legs=%s max_profit=%.2f max_loss=%.2f",
+            suggestion["underlying"], suggestion["strategy"], suggestion["legs"],
+            suggestion["max_profit"], suggestion["max_loss"],
+        )
+        return
+
+    try:
+        resp = requests.post(f"{cloud_url}/options/signal", json=suggestion,
+                             headers=headers, timeout=15)
+        resp.raise_for_status()
+        signal_id = resp.json().get("signal_id", "?")
+        logger.info("[%s] Options suggestion sent for confirmation: %s %s",
+                    signal_id, suggestion["underlying"], suggestion["strategy"])
+    except Exception as e:
+        logger.error("Failed to POST options suggestion to cloud: %s", e)
+
+
+def _execute_options_signal(broker, cloud_url: str, headers: dict,
+                             options_positions: dict, signal: dict) -> None:
+    """Places every leg of a CONFIRMED multi-leg options signal
+    (core/options/executor.py) and reports the outcome. Branches to one
+    of three cloud reports depending on how far execution got — see
+    executor.ExecutionOutcome's module docstring for why the "any leg
+    actually filled" distinction (not just "did it fail") decides which
+    alert severity to send."""
+    signal_id = signal["signal_id"]
+    detail = json.loads(signal["options_detail"])
+    underlying = signal["symbol"]
+
+    outcome = options_executor.execute_confirmed_signal(broker, signal_id, detail["legs"])
+
+    if outcome.success:
+        filled_legs = [
+            {**lf.leg, "order_id": lf.order_id, "fill_price": lf.fill_price}
+            for lf in outcome.filled_legs
+        ]
+        try:
+            resp = requests.post(
+                f"{cloud_url}/options/signal/{signal_id}/executed",
+                json={"underlying": underlying, "legs": filled_legs},
+                headers=headers, timeout=15)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error("[%s] Failed to report options execution to cloud: %s", signal_id, e)
+
+        from core.options.positions import OptionsPosition
+        add_options_position(options_positions, OptionsPosition(
+            signal_id=signal_id, underlying=underlying, strategy=signal["strategy"],
+            expiry=detail["expiry"], legs=filled_legs,
+            entry_date=datetime.now(timezone.utc).isoformat(),
+        ))
+        logger.info("[%s] Options spread executed: %d legs", signal_id, len(filled_legs))
+
+    elif outcome.filled_legs:
+        # One or more legs filled before a later leg was rejected — the
+        # naked-leg scenario. The executor already attempted an auto-
+        # flatten; report exactly what happened so the loudest alert this
+        # project sends goes out if the flatten itself also failed.
+        try:
+            resp = requests.post(
+                f"{cloud_url}/options/signal/{signal_id}/partial_failure",
+                json={
+                    "underlying": underlying,
+                    "failed_leg": outcome.failed_leg,
+                    "error": outcome.error or "",
+                    "flatten_results": [
+                        {"leg": fr.leg, "flattened": fr.flattened,
+                         "order_id": fr.order_id, "error": fr.error}
+                        for fr in outcome.flatten_results
+                    ],
+                },
+                headers=headers, timeout=15)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.critical(
+                "[%s] Failed to report options PARTIAL FAILURE to cloud (%s) — "
+                "the naked-leg alert may not have reached Telegram. Check the "
+                "Fyers app manually.", signal_id, e)
+
+    else:
+        # Nothing was ever placed (capital refusal or the very first leg
+        # rejected) — no naked-leg risk, the generic failed report is enough.
+        try:
+            resp = requests.post(
+                f"{cloud_url}/signals/{signal_id}/failed",
+                json={"reason": outcome.error or "Unknown execution failure"},
+                headers=headers, timeout=15)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error("[%s] Failed to report options failure to cloud: %s", signal_id, e)
 
 
 def _sync_positions_to_cloud(broker, cloud_url: str, headers: dict, positions: dict) -> None:
@@ -869,6 +1006,7 @@ def run_agent(config: dict):
         logger.info("Correlation gate ON (threshold r=%.2f).", correlation_threshold)
     processed = _load_processed_ids()
     open_positions = load_open_positions()
+    opts_positions = load_options_positions()
     discovery_watchlist = load_watchlist()
     tick = 0
 
@@ -957,6 +1095,34 @@ def run_agent(config: dict):
             for signal in signals:
                 signal_id = signal["signal_id"]
                 if signal_id in processed:
+                    continue
+
+                if signal.get("options_detail"):
+                    # Multi-leg options signal (regime/strategy advisor ->
+                    # execution) — a structurally different shape from every
+                    # equity signal (legs, not a single symbol/action/price),
+                    # so it's fully diverted here rather than falling through
+                    # to _size_and_place_order below, which would misparse it.
+                    # Only the system-wide kill switch applies — NOT
+                    # max_open_positions (that cap counts Darvas positions
+                    # only) and NOT the correlation gate (S5-5, untested for
+                    # an options spread's risk profile — same reasoning
+                    # rotation used to deliberately skip it).
+                    if risk_guard.is_halted():
+                        logger.warning("[%s] REFUSED options entry (%s): trading halted (%s)",
+                                       signal_id, signal["symbol"], risk_guard.read_halt_reason())
+                        _mark_processed(signal_id, processed)
+                        _report_outcome(cloud_url, headers, signal_id, "failed",
+                                        {"reason": f"REFUSED by kill switch: halted "
+                                                   f"({risk_guard.read_halt_reason()})"})
+                        continue
+                    _mark_processed(signal_id, processed)
+                    try:
+                        _execute_options_signal(broker, cloud_url, headers,
+                                                opts_positions, signal)
+                    except Exception as e:
+                        logger.error("[%s] Options execution raised unexpectedly: %s",
+                                    signal_id, e)
                     continue
 
                 # Kill switch gate (S4-2): refuse the entry if halted or the
@@ -1060,10 +1226,17 @@ def run_agent(config: dict):
                     logger.error("Stage B granular scan failed: %s", e)
 
             if tick % regime_every_n_ticks == 0:
+                regime_result = None
                 try:
-                    _run_regime_sync(regime_service, cloud_url, headers)
+                    regime_result = _run_regime_sync(regime_service, cloud_url, headers)
                 except Exception as e:
                     logger.error("Regime sync failed: %s", e)
+
+                try:
+                    _run_options_trigger(broker, config, cloud_url, headers,
+                                         regime_result, opts_positions)
+                except Exception as e:
+                    logger.error("Options regime trigger failed: %s", e)
 
             time.sleep(poll_interval)
 

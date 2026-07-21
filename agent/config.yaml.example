@@ -127,3 +127,35 @@ rotation:
                                      # confirmation each time — a clean dry-run is not itself
                                      # authorization to deploy more capital.
   universe_file: agent/universe_nifty500.txt
+
+options:
+  # Phase 2 (2026-07-21): regime/strategy advisor -> real options execution
+  # (core/options/regime_trigger.py, executor.py). Confirm-before-execute,
+  # matching the Darvas Telegram flow above — NOT rotation's no-veto
+  # carve-out. Fires when the market regime changes (core/regime/service.py),
+  # scoped to NIFTY only (the regime engine classifies the market, not
+  # individual stocks — see regime_trigger.py's module docstring for why
+  # applying it to a single stock would be an extra unvalidated assumption).
+  #
+  # Two independent risk factors accepted as-is when this was built, not
+  # blockers: (1) S8-1 found the regime classifier doesn't reliably separate
+  # forward outcomes (docs/REGIME_VALIDATION.md); (2) the strategy
+  # recommender itself has never been backtested, unlike every other live
+  # strategy in this project. The Telegram confirm step is the accepted
+  # safety net for both — you are expected to personally veto bad-looking
+  # suggestions, this is not a validated-edge automated strategy like S8-3.
+  enabled: false                    # Master switch. false = this never runs at all.
+  dry_run: true                     # true = build the suggestion and log it, but do NOT send it
+                                     # for Telegram confirmation yet — lets you watch a few real
+                                     # regime changes produce sane-looking suggestions before ever
+                                     # pinging your phone with something to confirm. Different
+                                     # meaning from rotation.dry_run: options entry already has a
+                                     # human confirm gate, so this gates reaching that gate at all,
+                                     # not the order placement itself.
+  lots_per_trade: 1                 # Lots per leg. Capital-at-risk decision — do not raise without
+                                     # explicit confirmation each time, same rule as rotation's
+                                     # position_size above.
+  exit_rule: hold_to_expiry          # No active management (no stop-loss/profit-target monitoring)
+                                     # — informational only, not read by any code yet. Documents the
+                                     # deliberate scope decision so a future session doesn't assume
+                                     # exits are being managed when they aren't.
