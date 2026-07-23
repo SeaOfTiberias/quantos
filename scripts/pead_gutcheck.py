@@ -119,8 +119,11 @@ def main() -> int:
             if s.n == 0:
                 print("  no matched rows (insufficient price coverage)\n")
                 continue
-            corr_str = f"{s.correlation:+.4f}" if s.correlation is not None else "n/a"
-            print(f"  correlation(yoy_surprise_pct, forward_return_pct): {corr_str}")
+            spearman_str = f"{s.correlation_spearman:+.4f}" if s.correlation_spearman is not None else "n/a"
+            pearson_str = f"{s.correlation_pearson:+.4f}" if s.correlation_pearson is not None else "n/a"
+            print(f"  correlation (Spearman rank, primary -- outlier-robust): {spearman_str}")
+            print(f"  correlation (Pearson, for comparison -- outlier-SENSITIVE, "
+                  f"yoy_surprise_pct is fat-tailed): {pearson_str}")
             if s.market_return_pct is not None:
                 print(f"  sample cross-sectional mean return (subtracted): {s.market_return_pct:+.2f}%")
             print(f"  positive surprise (n={s.positive_surprise_n}): "

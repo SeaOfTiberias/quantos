@@ -107,11 +107,45 @@ def _pearson(xs: list[float], ys: list[float]) -> Optional[float]:
     return cov / denom if denom > 0 else None
 
 
+def _rank(values: list[float]) -> list[float]:
+    """1-based ranks, ties get the average rank of the tied block."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        avg_rank = (i + j) / 2 + 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg_rank
+        i = j + 1
+    return ranks
+
+
+def _spearman(xs: list[float], ys: list[float]) -> Optional[float]:
+    """Rank correlation -- Pearson computed on ranks instead of raw
+    values. Real gotcha found by a Fable review 2026-07-23: yoy_surprise_pct
+    is severely fat-tailed in the actual live data (near-zero prior-year
+    PAT denominators produce blowups up to +18,153%/-5,667% on the real
+    850-row sample), which can let a handful of extreme rows dominate an
+    unwinsorized Pearson covariance sum. Spearman is outlier-robust by
+    construction (rank position, not magnitude) and is the primary
+    correlation stat this module reports for exactly that reason --
+    Pearson is kept alongside it for transparency/comparison, not as the
+    headline number."""
+    n = len(xs)
+    if n < 2:
+        return None
+    return _pearson(_rank(xs), _rank(ys))
+
+
 @dataclass(frozen=True)
 class HorizonSummary:
     horizon_trading_days: int
     n: int
-    correlation: Optional[float]  # Pearson(yoy_surprise_pct, forward_return_pct)
+    correlation_spearman: Optional[float]  # rank correlation -- see _spearman's docstring for why this is primary
+    correlation_pearson: Optional[float]  # raw Pearson(yoy_surprise_pct, forward_return_pct) -- outlier-sensitive, kept for comparison
     positive_surprise_n: int
     positive_surprise_mean_return_pct: Optional[float]
     positive_surprise_win_rate: Optional[float]
@@ -154,12 +188,15 @@ def summarize(
         if market_adjusted and market_return is not None:
             pairs = [(surprise, ret - market_return) for surprise, ret in pairs]
 
+        xs = [p[0] for p in pairs]
+        ys = [p[1] for p in pairs]
         pos_returns = [ret for surprise, ret in pairs if surprise > 0]
         neg_returns = [ret for surprise, ret in pairs if surprise < 0]
         out.append(HorizonSummary(
             horizon_trading_days=h,
             n=len(pairs),
-            correlation=_pearson([p[0] for p in pairs], [p[1] for p in pairs]) if pairs else None,
+            correlation_spearman=_spearman(xs, ys) if pairs else None,
+            correlation_pearson=_pearson(xs, ys) if pairs else None,
             positive_surprise_n=len(pos_returns),
             positive_surprise_mean_return_pct=statistics.mean(pos_returns) if pos_returns else None,
             positive_surprise_win_rate=(sum(1 for r in pos_returns if r > 0) / len(pos_returns)) if pos_returns else None,

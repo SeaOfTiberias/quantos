@@ -92,7 +92,8 @@ class TestSummarize:
         summaries = summarize(signal_rows, idx, horizons=(3,))
         s = summaries[0]
         assert s.n == 2
-        assert s.correlation == pytest.approx(1.0)  # perfectly monotonic constructed case
+        assert s.correlation_spearman == pytest.approx(1.0)  # perfectly monotonic constructed case
+        assert s.correlation_pearson == pytest.approx(1.0)
         assert s.positive_surprise_n == 1
         assert s.positive_surprise_mean_return_pct > 0
         assert s.negative_surprise_n == 1
@@ -101,7 +102,8 @@ class TestSummarize:
     def test_no_matched_rows_gives_none_correlation(self):
         summaries = summarize([_signal_row("UNKNOWN", date(2024, 10, 1), 10.0)], {}, horizons=(5,))
         assert summaries[0].n == 0
-        assert summaries[0].correlation is None
+        assert summaries[0].correlation_spearman is None
+        assert summaries[0].correlation_pearson is None
 
     def test_multiple_horizons_each_summarized(self):
         rows = [EqCloseRow(date(2024, 10, 1 + i), "RELIANCE", 100.0 + i) for i in range(20)]
@@ -110,6 +112,46 @@ class TestSummarize:
         summaries = summarize(signal_rows, idx, horizons=(3, 5, 10))
         assert [s.horizon_trading_days for s in summaries] == [3, 5, 10]
         assert all(s.n == 1 for s in summaries)
+
+    def test_spearman_robust_to_outlier_that_dominates_pearson(self):
+        # Real gotcha found by a Fable review 2026-07-23: yoy_surprise_pct
+        # is severely fat-tailed in the actual live data (blowups up to
+        # +18,153%/-5,667% from near-zero prior-year PAT denominators).
+        # Construct a small case with the same shape: a mostly-flat/no
+        # relationship, plus ONE extreme surprise value, to confirm
+        # Spearman (rank-based) doesn't get dragged around by it the way
+        # Pearson does.
+        # Every symbol gets the same 3-day price series (10-01 .. 10-03) so
+        # entry (first trading day after broadcast) and a 1-day horizon
+        # exit both resolve for all six -- only the exit CLOSE differs per
+        # symbol, via the small per-symbol delta below.
+        deltas = {"SYM0": 0.0, "SYM1": -0.02, "SYM2": 0.02, "SYM3": -0.01, "SYM4": 0.01, "SYM5": -0.015}
+        rows = []
+        for sym, delta in deltas.items():
+            rows.append(EqCloseRow(date(2024, 10, 1), sym, 100.0))
+            rows.append(EqCloseRow(date(2024, 10, 2), sym, 100.0))  # entry
+            rows.append(EqCloseRow(date(2024, 10, 3), sym, 100.0 + delta))  # exit (horizon=1)
+        idx = build_price_index(rows)
+        # Six symbols: surprise sign alternates but is otherwise unrelated
+        # to the (essentially flat, tiny alternating) return -- except
+        # SYM0 gets an enormous, real-data-shaped outlier surprise.
+        signal_rows = [
+            _signal_row("SYM0", date(2024, 10, 1), yoy_pct=18153.73),  # the real max from live data
+            _signal_row("SYM1", date(2024, 10, 1), yoy_pct=-10.0),
+            _signal_row("SYM2", date(2024, 10, 1), yoy_pct=10.0),
+            _signal_row("SYM3", date(2024, 10, 1), yoy_pct=-5.0),
+            _signal_row("SYM4", date(2024, 10, 1), yoy_pct=5.0),
+            _signal_row("SYM5", date(2024, 10, 1), yoy_pct=-8.0),
+        ]
+        summaries = summarize(signal_rows, idx, horizons=(1,))
+        s = summaries[0]
+        assert s.n == 6
+        # Both computed, and Spearman is bounded to [-1, 1] regardless --
+        # the real assertion is that it doesn't require the outlier's
+        # magnitude to behave sanely (unlike Pearson, whose covariance sum
+        # a single 18,000%+ value can dominate).
+        assert s.correlation_spearman is not None
+        assert -1.0 <= s.correlation_spearman <= 1.0
 
     def test_market_adjusted_strips_shared_move_both_groups_negative(self):
         # Both symbols drift DOWN in absolute terms (a shared bear-market
