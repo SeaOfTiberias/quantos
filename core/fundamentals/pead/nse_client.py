@@ -74,6 +74,15 @@ class NseSessionError(Exception):
     network failure) after retries -- distinct from a normal empty result."""
 
 
+class NseNotFoundError(NseSessionError):
+    """A clean 404 -- e.g. a non-trading day's bhavcopy, or a filing whose
+    link has genuinely moved/broken. Distinguished from other failures by
+    exception TYPE (not by string-matching the message), since callers
+    that treat "not found" as an expected, non-retryable case (see
+    core.fundamentals.pead.eq_bhavcopy) need to tell it apart from a real
+    transient failure reliably."""
+
+
 class NseSession:
     """A bootstrapped requests.Session against nseindia.com, with
     proactive self-refresh. Callers should hold one instance across a
@@ -178,28 +187,45 @@ def fetch_financial_results_metadata(
     return result if isinstance(result, list) else []
 
 
+def fetch_bytes(nse: NseSession, url: str, *, max_retries: int = 3) -> bytes:
+    """Generic authenticated GET against an nseindia.com-family URL,
+    returning raw bytes -- the shared implementation behind fetch_xbrl()
+    and core.fundamentals.pead.eq_bhavcopy's daily bhavcopy fetch (both are
+    "hit a static file URL with the session cookie" in the end, XBRL XML
+    vs a bhavcopy zip is just a different content type).
+
+    A 404 raises NseNotFoundError (a NseSessionError subclass) immediately,
+    WITHOUT retrying or sleeping -- a non-trading day or a genuinely broken
+    link won't become a 200 on attempt 2, so retrying it only wastes time
+    and, worse, risks looking like abusive traffic to Akamai. Every other
+    failure (network error, 401/403, 5xx) retries as before."""
+    last_exc: Optional[Exception] = None
+    for attempt in range(max_retries):
+        sess = nse.get()
+        try:
+            resp = sess.get(url, headers=_API_HEADERS, timeout=30)
+        except requests.RequestException as e:
+            last_exc = e
+            time.sleep(1.5 * (attempt + 1))
+            continue
+        if resp.status_code == 404:
+            raise NseNotFoundError(f"{url} -> HTTP 404")
+        if resp.status_code in (401, 403):
+            nse.force_refresh()
+            last_exc = RuntimeError(f"{url} -> HTTP {resp.status_code} (session refreshed, retrying)")
+            time.sleep(1.5 * (attempt + 1))
+            continue
+        if resp.status_code != 200:
+            last_exc = RuntimeError(f"{url} -> HTTP {resp.status_code}")
+            time.sleep(1.5 * (attempt + 1))
+            continue
+        return resp.content
+    raise NseSessionError(f"failed to fetch {url} after {max_retries} attempts: {last_exc}")
+
+
 def fetch_xbrl(nse: NseSession, xbrl_url: str, *, max_retries: int = 3) -> bytes:
     """Fetch one filing's raw XBRL XML. Raises NseSessionError if the URL
     is unreachable after retries -- callers should treat a bad/placeholder
     URL (see core.fundamentals.pead.xbrl) as a separate, expected case,
     not something that should reach this function at all."""
-    last_exc: Optional[Exception] = None
-    for attempt in range(max_retries):
-        sess = nse.get()
-        try:
-            resp = sess.get(xbrl_url, headers=_API_HEADERS, timeout=30)
-        except requests.RequestException as e:
-            last_exc = e
-            time.sleep(1.5 * (attempt + 1))
-            continue
-        if resp.status_code in (401, 403):
-            nse.force_refresh()
-            last_exc = RuntimeError(f"{xbrl_url} -> HTTP {resp.status_code} (session refreshed, retrying)")
-            time.sleep(1.5 * (attempt + 1))
-            continue
-        if resp.status_code != 200:
-            last_exc = RuntimeError(f"{xbrl_url} -> HTTP {resp.status_code}")
-            time.sleep(1.5 * (attempt + 1))
-            continue
-        return resp.content
-    raise NseSessionError(f"failed to fetch {xbrl_url} after {max_retries} attempts: {last_exc}")
+    return fetch_bytes(nse, xbrl_url, max_retries=max_retries)
