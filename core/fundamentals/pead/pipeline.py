@@ -25,6 +25,26 @@ guarantee a usable `xbrl` link -- confirmed live on a real RELIANCE filing
 **No same-file YoY comparative** (see xbrl.py's docstring) -- YoY surprise
 is computed here by joining two independently-fetched filings for the same
 symbol, same quarter-of-year, one calendar year apart.
+
+**Point-in-time universe coverage gap, found by a Fable review 2026-07-23
+and confirmed against the real code/output, not just proposed**:
+`core/rotation/nifty500_reconstitution.py`'s `EVENTS` list only has real
+reconstitution events back to 2023-09-29 (it was built for S8-3's ~3-year
+backtest window). Before that date, `build_point_in_time_universe()`
+collapses to a single frozen snapshot -- reusing it naively for PEAD's
+full ~2018-2026 XBRL-coverage window would silently misclassify Nifty 500
+membership for over 5 years of data, the same bug shape `a5af257` fixed
+for S8-3, one layer down in a new consumer. The first live validation run
+(432 rows) never caught this because every row happened to fall after
+2023-09-29 by chance of the date range tested.
+
+User's decision 2026-07-23: truncate rather than extend -- PEAD's usable
+window is `EARLIEST_RELIABLE_START` below (the later of XBRL-format
+coverage and reconstitution-event coverage), not the full XBRL-coverage
+window. Extending EVENTS back to 2018 would need user-supplied NSE/BSE
+press-release PDFs (niftyindices.com itself isn't fetchable by this
+project's tools -- see how the existing EVENTS entries were sourced), so
+truncating was the pragmatic call, not a shortcut taken silently.
 """
 
 from __future__ import annotations
@@ -32,7 +52,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, asdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -46,6 +66,11 @@ from core.fundamentals.pead.xbrl import (
     extract_quarterly_pat,
     is_xbrl_available,
 )
+from core.rotation.nifty500_reconstitution import (
+    EVENTS,
+    UniverseSnapshot,
+    eligible_symbols_asof,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +81,17 @@ DEFAULT_XBRL_CACHE_DIR = Path("data_cache/pead_nse/xbrl_raw")
 # FY2017-18 (broadcast May-Jun 2018) uniformly across large/mid/small caps
 # tested. Nothing before this is usable for PAT extraction.
 EARLIEST_USABLE_QUARTER_END = date(2018, 3, 31)
+
+# The earliest date core.rotation.nifty500_reconstitution's EVENTS list
+# actually covers -- derived from EVENTS itself (never hardcoded a second
+# time) so this can never silently drift out of sync with that module.
+# Dates before this fall back to one frozen snapshot, not real point-in-time
+# membership (see module docstring).
+RECONSTITUTION_COVERAGE_START = min(e.effective_date.date() for e in EVENTS)
+
+# PEAD's actual usable start: the later of "XBRL data exists" and
+# "point-in-time universe membership is real, not a frozen guess."
+EARLIEST_RELIABLE_START = max(EARLIEST_USABLE_QUARTER_END, RECONSTITUTION_COVERAGE_START)
 
 _NSE_DATE_FMT = "%d-%b-%Y"
 _NSE_BROADCAST_FMT = "%d-%b-%Y %H:%M:%S"
@@ -149,13 +185,29 @@ def dedupe_consolidated_preferred(rows: list[dict[str, Any]]) -> list[dict[str, 
 
 
 def restrict_to_universe(
-    rows: list[dict[str, Any]], eligible_symbols: frozenset,
+    rows: list[dict[str, Any]], snapshots: list[UniverseSnapshot],
 ) -> list[dict[str, Any]]:
-    """Keep only rows whose symbol was in the given universe (e.g. that
-    quarter's point-in-time Nifty 500 membership, per
-    core.rotation.nifty500_reconstitution). Caller decides how to compute
-    membership per-row date -- this is a pure filter."""
-    return [r for r in rows if r["symbol"] in eligible_symbols]
+    """Keep only rows whose symbol was a Nifty 500 constituent AS OF THAT
+    ROW'S OWN broadcast date -- point-in-time, not one fixed universe
+    applied to every row (that was the S8-3 bug this project already
+    fixed once). Rows with a broadcast_date before
+    RECONSTITUTION_COVERAGE_START are dropped outright rather than
+    silently evaluated against `eligible_symbols_asof`'s clamped fallback
+    snapshot (see module docstring) -- callers should be filtering their
+    date range to EARLIEST_RELIABLE_START before this runs at all, but
+    this is a second, load-bearing guard, not just documentation."""
+    kept = []
+    for r in rows:
+        broadcast_date = _parse_broadcast(r["broadCastDate"]).date()
+        if broadcast_date < RECONSTITUTION_COVERAGE_START:
+            continue
+        eligible = eligible_symbols_asof(
+            snapshots,
+            datetime(broadcast_date.year, broadcast_date.month, broadcast_date.day, tzinfo=timezone.utc),
+        )
+        if r["symbol"] in eligible:
+            kept.append(r)
+    return kept
 
 
 # ─── XBRL fetch + PAT extraction ─────────────────────────────────────────────
@@ -224,7 +276,15 @@ def compute_yoy_surprise(filings: list[PointInTimeFiling]) -> list[PeadSignalRow
     not broadcast_date -- the disclosure date drifts year to year but the
     reporting quarter doesn't). Filings with no prior-year match (the
     first usable year of a symbol's history) are dropped, not zero-filled
-    -- there is no real "no surprise" case here, just missing data."""
+    -- there is no real "no surprise" case here, just missing data.
+
+    Also requires both filings to share the same `consolidated` flag.
+    `dedupe_consolidated_preferred` picks Consolidated-over-Standalone
+    PER QUARTER INDEPENDENTLY, so a company that only filed Standalone the
+    prior year but starts filing Consolidated this year (common right
+    after an acquisition) would otherwise show a "surprise" driven by
+    consolidation-scope change, not organic earnings -- a real confound
+    for an earnings-surprise signal, found by a Fable review 2026-07-23."""
     by_key = {(f.symbol, f.quarter_start): f for f in filings}
     out: list[PeadSignalRow] = []
     for f in filings:
@@ -234,6 +294,8 @@ def compute_yoy_surprise(filings: list[PointInTimeFiling]) -> list[PeadSignalRow
             continue  # Feb 29 quarter boundary, not a real case for calendar quarters
         prior = by_key.get((f.symbol, prior_start))
         if prior is None or prior.pat == 0:
+            continue
+        if prior.consolidated != f.consolidated:
             continue
         surprise_pct = (f.pat - prior.pat) / abs(prior.pat) * 100
         out.append(PeadSignalRow(

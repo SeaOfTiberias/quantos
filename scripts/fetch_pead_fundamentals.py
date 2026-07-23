@@ -15,9 +15,17 @@ here. That's explicitly out of scope for Phase 1 (see the module
 docstrings), same split VRP used between its bhavcopy pipeline and its
 later strikes/simulator phases.
 
+**Window truncated 2026-07-23, user's explicit decision**: default
+`--start` is `EARLIEST_RELIABLE_START` (2023-09-29, not the earlier
+2018-03-31 XBRL-coverage date) -- see pipeline.py's module docstring for
+why. Passing an earlier `--start` is allowed but warned about loudly: this
+project already shipped one point-in-time universe bug (S8-3) from
+silently trusting a frozen-snapshot fallback, and isn't repeating that
+silently here.
+
 Usage:
     python scripts/fetch_pead_fundamentals.py
-    python scripts/fetch_pead_fundamentals.py --start 2018-04-01 --end 2026-07-23
+    python scripts/fetch_pead_fundamentals.py --start 2023-09-29 --end 2026-07-23
     python scripts/fetch_pead_fundamentals.py --delay 0.5
 """
 
@@ -25,7 +33,7 @@ import argparse
 import csv
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -34,16 +42,16 @@ from core.fundamentals.pead.nse_client import NseSession, NseSessionError  # noq
 from core.fundamentals.pead.pipeline import (  # noqa: E402
     DEFAULT_METADATA_CACHE_DIR,
     DEFAULT_XBRL_CACHE_DIR,
-    EARLIEST_USABLE_QUARTER_END,
+    EARLIEST_RELIABLE_START,
+    RECONSTITUTION_COVERAGE_START,
     compute_yoy_surprise,
     dedupe_consolidated_preferred,
     discover_filings,
     fetch_and_extract_pat,
     filter_usable,
+    restrict_to_universe,
 )
-from core.rotation.nifty500_reconstitution import (  # noqa: E402
-    build_point_in_time_universe, eligible_symbols_asof,
-)
+from core.rotation.nifty500_reconstitution import build_point_in_time_universe  # noqa: E402
 
 
 def _load_current_universe(path: Path) -> frozenset:
@@ -53,12 +61,19 @@ def _load_current_universe(path: Path) -> frozenset:
     )
 
 
-def _to_utc_datetime(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-
-
 def run(args) -> dict:
     nse = NseSession()
+
+    if args.start < RECONSTITUTION_COVERAGE_START:
+        print(
+            f"WARNING: --start {args.start} is before {RECONSTITUTION_COVERAGE_START}, the "
+            f"earliest date core/rotation/nifty500_reconstitution.py has real point-in-time "
+            f"membership events for. Filings broadcast before {RECONSTITUTION_COVERAGE_START} "
+            f"will be DROPPED (see restrict_to_universe's docstring), not silently "
+            f"misclassified -- but this means your effective start is still "
+            f"{RECONSTITUTION_COVERAGE_START}, not {args.start}.",
+            file=sys.stderr,
+        )
 
     print(f"Discovering filings {args.start} .. {args.end} (bulk, monthly chunks, all NSE companies) ...")
     all_rows = list(discover_filings(nse, args.start, args.end, args.metadata_cache_dir))
@@ -72,12 +87,7 @@ def run(args) -> dict:
 
     current_universe = _load_current_universe(args.universe)
     snapshots = build_point_in_time_universe(current_universe)
-    universe_rows = []
-    for r in deduped_rows:
-        broadcast = datetime.strptime(r["broadCastDate"], "%d-%b-%Y %H:%M:%S")
-        eligible = eligible_symbols_asof(snapshots, _to_utc_datetime(broadcast.date()))
-        if r["symbol"] in eligible:
-            universe_rows.append(r)
+    universe_rows = restrict_to_universe(deduped_rows, snapshots)
     print(f"  {len(universe_rows)} in the Nifty 500 point-in-time universe as of their own disclosure date")
 
     print("Fetching + parsing XBRL for each retained filing ...")
@@ -131,7 +141,7 @@ def run(args) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--start", type=date.fromisoformat, default=EARLIEST_USABLE_QUARTER_END)
+    ap.add_argument("--start", type=date.fromisoformat, default=EARLIEST_RELIABLE_START)
     ap.add_argument("--end", type=date.fromisoformat, default=date.today())
     ap.add_argument("--universe", type=Path, default=Path("agent/universe_nifty500.txt"))
     ap.add_argument("--metadata-cache-dir", type=Path, default=DEFAULT_METADATA_CACHE_DIR)

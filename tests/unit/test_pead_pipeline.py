@@ -9,11 +9,12 @@ filings), field-for-field -- including the real quirk that a
 URL itself rather than trusting `format`.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 import pytest
 
 from core.fundamentals.pead.pipeline import (
+    RECONSTITUTION_COVERAGE_START,
     PointInTimeFiling,
     _month_chunks,
     compute_yoy_surprise,
@@ -21,6 +22,7 @@ from core.fundamentals.pead.pipeline import (
     filter_usable,
     restrict_to_universe,
 )
+from core.rotation.nifty500_reconstitution import UniverseSnapshot
 
 # Real rows (trimmed to the fields this module reads), RELIANCE FY2018-19,
 # fetched live 2026-07-23.
@@ -90,10 +92,66 @@ class TestDedupeConsolidatedPreferred:
 
 
 class TestRestrictToUniverse:
-    def test_filters_by_symbol_membership(self):
-        rows = [RELIANCE_Q3FY19_CONSOL, DIXON_Q1FY19_OLD_FORMAT]
-        result = restrict_to_universe(rows, frozenset({"RELIANCE"}))
-        assert result == [RELIANCE_Q3FY19_CONSOL]
+    """restrict_to_universe evaluates each row against the universe AS OF
+    THAT ROW'S OWN broadcast date (point-in-time), not one fixed universe
+    for every row -- the S8-3-shaped bug a Fable review found in the first
+    version of this function. All fixture broadcast dates below are placed
+    AFTER RECONSTITUTION_COVERAGE_START (2023-09-29) specifically so they
+    exercise the real per-row snapshot lookup, not the pre-coverage drop
+    guard (see test_drops_rows_before_reconstitution_coverage for that)."""
+
+    def _row(self, symbol, broadcast_date):
+        return {
+            "symbol": symbol, "broadCastDate": broadcast_date,
+            "consolidated": "Consolidated", "fromDate": "01-Jul-2024", "toDate": "30-Sep-2024",
+        }
+
+    def test_keeps_symbol_in_universe_as_of_its_own_broadcast_date(self):
+        # A single always-eligible snapshot spanning the whole test window.
+        snapshots = [UniverseSnapshot(
+            valid_from=datetime(2023, 9, 29, tzinfo=timezone.utc), valid_until=None,
+            symbols=frozenset({"RELIANCE"}),
+        )]
+        rows = [self._row("RELIANCE", "17-Jan-2025 19:52:25"), self._row("DIXON", "01-Feb-2025 16:35:37")]
+        result = restrict_to_universe(rows, snapshots)
+        assert result == [rows[0]]
+
+    def test_membership_change_respected_at_the_boundary(self):
+        # DIXON joins Nifty 500 partway through -- a filing broadcast
+        # before the join date must be excluded even though DIXON is
+        # eligible later; this is the actual point of point-in-time
+        # filtering, not just "is the symbol ever eligible."
+        snapshots = [
+            UniverseSnapshot(
+                valid_from=datetime(2023, 9, 29, tzinfo=timezone.utc),
+                valid_until=datetime(2024, 6, 1, tzinfo=timezone.utc),
+                symbols=frozenset(),
+            ),
+            UniverseSnapshot(
+                valid_from=datetime(2024, 6, 1, tzinfo=timezone.utc), valid_until=None,
+                symbols=frozenset({"DIXON"}),
+            ),
+        ]
+        before = self._row("DIXON", "01-Feb-2024 16:35:37")
+        after = self._row("DIXON", "01-Feb-2025 16:35:37")
+        result = restrict_to_universe([before, after], snapshots)
+        assert result == [after]
+
+    def test_drops_rows_before_reconstitution_coverage(self):
+        # Real gotcha found by a Fable review 2026-07-23: EVENTS only goes
+        # back to 2023-09-29 -- a naive frozenset check would silently
+        # evaluate an earlier row against a frozen fallback snapshot
+        # instead of real point-in-time membership. This must be dropped
+        # outright, not silently kept/misclassified, EVEN IF the snapshot
+        # list technically has the symbol.
+        snapshots = [UniverseSnapshot(
+            valid_from=datetime(2015, 1, 1, tzinfo=timezone.utc), valid_until=None,
+            symbols=frozenset({"RELIANCE"}),
+        )]
+        assert RECONSTITUTION_COVERAGE_START == date(2023, 9, 29)
+        pre_coverage_row = self._row("RELIANCE", "17-Jan-2019 19:52:25")
+        result = restrict_to_universe([pre_coverage_row], snapshots)
+        assert result == []
 
 
 class TestMonthChunks:
@@ -111,11 +169,11 @@ class TestMonthChunks:
 
 
 class TestComputeYoySurprise:
-    def _filing(self, symbol, q_start, q_end, pat, broadcast):
+    def _filing(self, symbol, q_start, q_end, pat, broadcast, consolidated=True):
         return PointInTimeFiling(
             symbol=symbol, broadcast_date=broadcast,
             quarter_start=q_start, quarter_end=q_end,
-            consolidated=True, pat=pat, seq_number="x",
+            consolidated=consolidated, pat=pat, seq_number="x",
         )
 
     def test_joins_same_quarter_one_year_apart(self):
@@ -157,3 +215,32 @@ class TestComputeYoySurprise:
         current = self._filing("RELIANCE", date(2018, 10, 1), date(2018, 12, 31), 700.0, datetime(2019, 1, 17))
         rows = compute_yoy_surprise([prior, current])
         assert rows[0].yoy_surprise_pct == pytest.approx(-30.0)
+
+    def test_consolidated_scope_mismatch_dropped_not_joined(self):
+        # Real confound found by a Fable review 2026-07-23:
+        # dedupe_consolidated_preferred picks Consolidated-over-Standalone
+        # PER QUARTER INDEPENDENTLY, so a company that only filed
+        # Standalone the prior year but Consolidated this year (e.g. right
+        # after an acquisition) would otherwise show a "surprise" driven
+        # by consolidation-scope change, not organic earnings.
+        prior_standalone_only = self._filing(
+            "RELIANCE", date(2017, 10, 1), date(2017, 12, 31), 1000.0,
+            datetime(2018, 1, 17), consolidated=False,
+        )
+        current_now_consolidated = self._filing(
+            "RELIANCE", date(2018, 10, 1), date(2018, 12, 31), 5000.0,
+            datetime(2019, 1, 17), consolidated=True,
+        )
+        assert compute_yoy_surprise([prior_standalone_only, current_now_consolidated]) == []
+
+    def test_matching_consolidated_flags_still_join(self):
+        prior = self._filing(
+            "RELIANCE", date(2017, 10, 1), date(2017, 12, 31), 1000.0,
+            datetime(2018, 1, 17), consolidated=False,
+        )
+        current = self._filing(
+            "RELIANCE", date(2018, 10, 1), date(2018, 12, 31), 1200.0,
+            datetime(2019, 1, 17), consolidated=False,
+        )
+        rows = compute_yoy_surprise([prior, current])
+        assert len(rows) == 1
