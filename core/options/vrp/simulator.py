@@ -144,12 +144,13 @@ class BacktestStats:
     max_drawdown_pct:     float
 
 
-def compute_stats(trades: list[StrangleTrade]) -> BacktestStats:
-    missing = sum(1 for t in trades if t.pnl_pct_of_credit is None)
-    pnls = [t.pnl_pct_of_credit for t in trades if t.pnl_pct_of_credit is not None]
-
+def stats_from_pcts(pnls: list[float], n_missing: int) -> BacktestStats:
+    """Pooled per-trade stats from a plain list of %-of-credit P&L values.
+    Factored out of compute_stats() so Phase 4's NET stats (see
+    core/options/vrp/costs.py) reuse the exact same math instead of a
+    parallel, driftable copy of it."""
     if not pnls:
-        return BacktestStats(0, missing, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return BacktestStats(0, n_missing, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p <= 0]
@@ -172,8 +173,14 @@ def compute_stats(trades: list[StrangleTrade]) -> BacktestStats:
         max_dd = max(max_dd, peak - cum)
 
     return BacktestStats(
-        n_trades=len(pnls), n_missing_settlement=missing,
+        n_trades=len(pnls), n_missing_settlement=n_missing,
         win_rate=round(win_rate, 4), avg_pnl_pct=round(avg_pnl, 2),
         profit_factor=round(profit_factor, 3), sharpe=round(sharpe, 3),
         max_drawdown_pct=round(max_dd, 2),
     )
+
+
+def compute_stats(trades: list[StrangleTrade]) -> BacktestStats:
+    missing = sum(1 for t in trades if t.pnl_pct_of_credit is None)
+    pnls = [t.pnl_pct_of_credit for t in trades if t.pnl_pct_of_credit is not None]
+    return stats_from_pcts(pnls, missing)
