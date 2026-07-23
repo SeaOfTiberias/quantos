@@ -62,13 +62,23 @@ def value_as_of(series: SymbolSeries, target_date: datetime) -> Optional[tuple[f
 
 def rank_universe(
     symbol_series: dict[str, SymbolSeries], as_of_date: datetime, top_n: int = TOP_N,
+    eligible: Optional[frozenset] = None,
 ) -> list[str]:
     """Top-N symbols by nearness-to-52-week-high (close / rolling_high) as of
     the most recent bar at or before as_of_date, highest score first.
     Symbols with no warmed-up data as of that date are excluded — this is
-    the exact same scoring rule used throughout S8-3's backtest."""
+    the exact same scoring rule used throughout S8-3's backtest.
+
+    `eligible`, if given, restricts scoring to symbols in that set (e.g. the
+    true point-in-time Nifty 500 membership for as_of_date, so a backtest
+    doesn't rank against constituents that hadn't joined yet or had already
+    been dropped — see core/rotation/nifty500_reconstitution.py). Omitting it
+    reproduces the original behavior exactly: every symbol in symbol_series
+    is eligible every week."""
     scores = []
     for symbol, series in symbol_series.items():
+        if eligible is not None and symbol not in eligible:
+            continue
         v = value_as_of(series, as_of_date)
         if v is None:
             continue

@@ -27,6 +27,14 @@ NIFTY_SYMBOL  = "NIFTY 50"
 VIX_SYMBOL    = "INDIA VIX"
 BANK_NIFTY    = "NIFTY BANK"
 
+# Not a regime-classification input -- lives here purely so it shares this
+# module's established "friendly index name -> broker symbol" convention
+# (core/brokers/fyers.py's _INDEX_SYMBOL_MAP). Used by
+# scripts/backtest_equity_curve.py as its second benchmark (Nifty 500's
+# replacement for S8-3's rotation strategy is itself a momentum/alpha
+# selection, so Alpha 50 is a sharper peer bar than the broad index).
+ALPHA50_SYMBOL = "NIFTY ALPHA 50"
+
 # Minimum number of symbols whose quote must resolve for a breadth reading
 # to be trusted. A universe scan that returns only a handful of names (auth
 # blip, most symbols rejected) would otherwise yield a wildly skewed A/D

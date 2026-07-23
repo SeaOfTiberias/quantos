@@ -48,11 +48,12 @@ _TF_MAP = {
 # gap and Fyers rejected "NSE:NIFTY" outright ("Please provide a valid
 # symbol") before this alias existed.
 _INDEX_SYMBOL_MAP = {
-    "NIFTY 50":   "NIFTY50",
-    "NIFTY":      "NIFTY50",
-    "NIFTY BANK": "NIFTYBANK",
-    "BANKNIFTY":  "NIFTYBANK",
-    "INDIA VIX":  "INDIAVIX",
+    "NIFTY 50":        "NIFTY50",
+    "NIFTY":           "NIFTY50",
+    "NIFTY BANK":      "NIFTYBANK",
+    "BANKNIFTY":       "NIFTYBANK",
+    "INDIA VIX":       "INDIAVIX",
+    "NIFTY ALPHA 50":  "NIFTYALPHA50",
 }
 
 
