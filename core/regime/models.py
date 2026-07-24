@@ -147,6 +147,12 @@ class RegimeResult:
     decline_count:     int = 0
     unchanged_count:   int = 0
 
+    # Raw index levels behind trend_signal/vix_signal (2026-07-24) — the
+    # cockpit's Market Regime panel previously only showed category labels
+    # ("BULL"/"LOW"); a discretionary trader needs the actual numbers too.
+    nifty_ltp:         Optional[float] = None
+    vix_current:       Optional[float] = None
+
     @property
     def ad_ratio(self) -> float:
         """Advance/decline ratio behind the breadth signal."""

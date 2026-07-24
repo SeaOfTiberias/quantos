@@ -36,6 +36,7 @@
 // frictionless; live fills already embed slippage) — baking a second,
 // TradingView-side slippage model in here would double-count it.
 //
+
 // Usage: paste into TradingView Pine Editor, run on 15m chart timeframe
 // (the 1h/1D confluence legs are pulled via request.security regardless of
 // chart timeframe, same as the alert indicator), open Strategy Tester,

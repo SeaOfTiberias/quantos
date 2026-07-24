@@ -55,6 +55,8 @@ class RegimeSyncRequest(BaseModel):
     decline_count:      int = 0
     unchanged_count:    int = 0
     notes:              list[str] = []
+    nifty_ltp:          Optional[float] = None   # raw index levels (2026-07-24)
+    vix_current:        Optional[float] = None
 
 
 @router.post("/sync")
@@ -74,6 +76,8 @@ async def sync_regime(payload: RegimeSyncRequest, _auth=Depends(require_cloud_se
         decline_count=payload.decline_count,
         unchanged_count=payload.unchanged_count,
         notes=payload.notes,
+        nifty_ltp=payload.nifty_ltp,
+        vix_current=payload.vix_current,
     )
     _synced_at = datetime.now(timezone.utc)
     logger.info(
@@ -109,6 +113,8 @@ async def regime_status():
         "decline_count":      r.decline_count,
         "unchanged_count":    r.unchanged_count,
         "ad_ratio":           round(r.ad_ratio, 2),
+        "nifty_ltp":          r.nifty_ltp,
+        "vix_current":        r.vix_current,
         "notes":              r.notes,
         "timestamp":          r.timestamp.isoformat(),
         "updated_at":         _synced_at.isoformat(),

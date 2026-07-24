@@ -647,6 +647,8 @@ def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dic
         "decline_count": result.decline_count,
         "unchanged_count": result.unchanged_count,
         "notes": result.notes,
+        "nifty_ltp": result.nifty_ltp,
+        "vix_current": result.vix_current,
     }
     resp = requests.post(f"{cloud_url}/regime/sync", json=payload, headers=headers, timeout=10)
     resp.raise_for_status()

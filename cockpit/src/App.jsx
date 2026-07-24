@@ -1,8 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
-} from "recharts";
 
 // ─── Design tokens (Bloomberg dark terminal aesthetic) ─────────────────────
 const C = {
@@ -23,39 +19,34 @@ const C = {
 // ─── Cloud API ──────────────────────────────────────────────────────────────
 // Must match agent/config.yaml's cloud.api_url (the same Railway instance the
 // local agent talks to). Override via cockpit/.env's VITE_CLOUD_API_URL — see
-// .env.example. System Health (S5-6), Discovery Watchlist, and Signal Feed are
-// wired to real cloud data; Positions/Greeks/Alpha Curve/Screener are still
-// mock (need agent→cloud sync plumbing that doesn't exist yet).
+// .env.example. As of 2026-07-24: System Health, Regime, Discovery Watchlist,
+// Signal Feed, Positions, Morning Shortlist, and Claude Chat are all wired to
+// real cloud data (see per-panel comments below for each route). Greeks and
+// Alpha-vs-Nifty are the two panels still without a real feed — both have a
+// real backend (POST /options/greeks/panel, POST /options/alpha) but no data
+// pipeline yet syncs live options positions or realized trade history to the
+// cloud for them to consume, so they render an honest empty state instead of
+// fabricated numbers.
 const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
   || "https://web-production-b5527.up.railway.app";
 
-// ─── Mock data (real app fetches from cloud API) ───────────────────────────
+// Fallback shown only until the agent's first regime sync lands (or after a
+// Railway redeploy wipes the in-memory mirror) — not fabricated trading data,
+// just a neutral placeholder so the panel isn't blank on first paint.
 const MOCK_REGIME = {
-  regime: "TRENDING_BULL",
-  confidence: 83,
-  trend_signal: "BULL",
-  vix_signal: "LOW",
-  breadth_signal: "STRONG",
-  advance_count: 312,
-  decline_count: 168,
-  unchanged_count: 8,
-  ad_ratio: 1.86,
-  darvas_enabled: true,
-  allowed_strategies: ["darvas_breakout", "bull_call_spread", "covered_call"],
-};
-
-const MOCK_ALPHA_CURVE = Array.from({ length: 30 }, (_, i) => ({
-  day: `D${i + 1}`,
-  quantos: +(Math.random() * 2 + i * 0.25).toFixed(2),
-  nifty: +(Math.random() * 1.5 + i * 0.15).toFixed(2),
-}));
-
-const MOCK_GREEKS = {
-  net_delta: -0.08,
-  net_gamma: 0.0012,
-  net_theta: 48.50,
-  net_vega: -6.20,
-  is_theta_positive: true,
+  regime: "UNCERTAIN",
+  confidence: 0,
+  trend_signal: "UNKNOWN",
+  vix_signal: "UNKNOWN",
+  breadth_signal: "UNKNOWN",
+  advance_count: 0,
+  decline_count: 0,
+  unchanged_count: 0,
+  ad_ratio: 1,
+  nifty_ltp: null,
+  vix_current: null,
+  darvas_enabled: false,
+  allowed_strategies: [],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -160,13 +151,21 @@ function RegimePanel({ regime }) {
       <Divider />
       <div style={{ display: "flex", gap: 24 }}>
         {[
-          { label: "Trend", val: regime.trend_signal },
-          { label: "VIX", val: regime.vix_signal },
+          {
+            label: "Nifty 50", val: regime.trend_signal,
+            sub: regime.nifty_ltp != null ? fmt(regime.nifty_ltp, 1) : null,
+          },
+          {
+            label: "India VIX", val: regime.vix_signal,
+            sub: regime.vix_current != null ? regime.vix_current.toFixed(2) : null,
+          },
           { label: "Darvas", val: regime.darvas_enabled ? "✅ Active" : "❌ Gated" },
-        ].map(({ label, val }) => (
+        ].map(({ label, val, sub }) => (
           <div key={label}>
             <Label>{label}</Label>
-            <div style={{ fontSize: 13, color: C.mid, marginTop: 2 }}>{val}</div>
+            <div style={{ fontSize: 13, color: C.mid, marginTop: 2 }}>
+              {val}{sub && <span style={{ color: C.white, fontWeight: 600 }}> · {sub}</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -208,86 +207,46 @@ function RegimePanel({ regime }) {
   );
 }
 
-function GreeksPanel({ greeks }) {
-  const items = [
-    { label: "Δ Delta", val: greeks.net_delta, fmt: v => `${v > 0 ? "+" : ""}${v.toFixed(3)}` },
-    { label: "Γ Gamma", val: greeks.net_gamma, fmt: v => `${v > 0 ? "+" : ""}${v.toFixed(5)}` },
-    { label: "Θ Theta", val: greeks.net_theta, fmt: v => `₹${v > 0 ? "+" : ""}${v.toFixed(0)}/d` },
-    { label: "Vega", val: greeks.net_vega, fmt: v => `${v > 0 ? "+" : ""}${v.toFixed(2)}` },
-  ];
+// No options-position sync pipeline exists yet (nothing pushes live options
+// holdings to the cloud the way /positions/sync does for equities), so there
+// is no real data this panel could show. core/options/greeks.py's Black-
+// Scholes math and POST /options/greeks/panel are real and tested — this
+// panel just has no positions to feed them. Honest empty state rather than
+// fabricated numbers.
+function GreeksPanel() {
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <Label color={C.purple}>Portfolio Greeks</Label>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 4 }}>
-        {items.map(({ label, val, fmt: f }) => (
-          <div key={label} style={{
-            background: C.bg, borderRadius: 6, padding: "10px 12px",
-            border: `1px solid ${C.border}`,
-          }}>
-            <Label color={C.muted}>{label}</Label>
-            <div style={{
-              fontSize: 16, fontWeight: 700, marginTop: 4,
-              color: val > 0 ? C.green : val < 0 ? C.red : C.mid,
-            }}>{f(val)}</div>
-          </div>
-        ))}
-      </div>
       <div style={{
-        marginTop: 4, padding: "8px 10px", borderRadius: 6,
-        background: greeks.is_theta_positive ? `${C.green}20` : `${C.red}20`,
-        border: `1px solid ${greeks.is_theta_positive ? C.green : C.red}40`,
-        fontSize: 12, color: greeks.is_theta_positive ? C.green : C.red,
-        fontWeight: 600,
+        marginTop: 4, padding: "14px 12px", borderRadius: 6,
+        background: C.bg, border: `1px solid ${C.border}`,
+        fontSize: 12, color: C.muted, textAlign: "center",
       }}>
-        {greeks.is_theta_positive ? "✅ Collecting theta" : "⚠️ Paying theta"}
+        No options positions tracked yet — live options execution isn't wired
+        to the cloud sync path.
       </div>
     </Card>
   );
 }
 
-function AlphaCurve({ data }) {
-  const latest = data[data.length - 1] || {};
-  const alpha = ((latest.quantos || 0) - (latest.nifty || 0)).toFixed(2);
+// No real trade-history feed reaches the cloud yet: the backend for this
+// (GET /risk/stats, core/options/alpha_attribution.py's POST /options/alpha)
+// is real, but it's wired to a TradeHistoryService instance that nothing
+// ever populates — the agent keeps its own separate local instance and never
+// syncs it (agent/main.py). No validated strategy is live-trading right now
+// either (see project memory), so there is no real curve to plot. Honest
+// empty state rather than a fabricated/random one.
+function AlphaCurve() {
   return (
     <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <Label color={C.accent}>Alpha vs Nifty</Label>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: alpha >= 0 ? C.green : C.red }}>
-            {alpha >= 0 ? "+" : ""}{alpha}%
-          </div>
-          <div style={{ fontSize: 10, color: C.muted }}>cumulative alpha</div>
-        </div>
-      </div>
-      <div style={{ height: 140, marginTop: 12 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-            <XAxis dataKey="day" hide />
-            <YAxis tickFormatter={v => `${v}%`} tick={{ fill: C.muted, fontSize: 10 }}
-                   width={40} />
-            <Tooltip
-              contentStyle={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6 }}
-              labelStyle={{ color: C.muted, fontSize: 11 }}
-              formatter={(v, name) => [`${v}%`, name === "quantos" ? "QuantOS" : "Nifty"]}
-            />
-            <ReferenceLine y={0} stroke={C.border} />
-            <Line type="monotone" dataKey="quantos" stroke={C.accent} strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="nifty" stroke={C.muted} strokeWidth={1.5}
-                  strokeDasharray="4 2" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-        {[
-          { color: C.accent, label: "QuantOS" },
-          { color: C.muted, label: "Nifty 50" },
-        ].map(({ color, label }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 14, height: 2, background: color }} />
-            <span style={{ fontSize: 10, color: C.muted }}>{label}</span>
-          </div>
-        ))}
+      <Label color={C.accent}>Alpha vs Nifty</Label>
+      <div style={{
+        marginTop: 12, padding: "14px 12px", borderRadius: 6,
+        background: C.bg, border: `1px solid ${C.border}`,
+        fontSize: 12, color: C.muted, textAlign: "center",
+      }}>
+        No realized trade history synced yet — no strategy is currently live
+        with a validated edge to attribute alpha against.
       </div>
     </Card>
   );
@@ -761,8 +720,6 @@ export default function QuantOSCockpit() {
   const [regime, setRegime] = useState(MOCK_REGIME);
   const [signals, setSignals] = useState({ list: [], error: false });
   const [positions, setPositions] = useState({ list: [], error: false });
-  const [alphaCurve] = useState(MOCK_ALPHA_CURVE);
-  const [greeks] = useState(MOCK_GREEKS);
   const [discovery, setDiscovery] = useState({ entries: [], updatedAt: null, error: false });
   const screener = useMemo(() => buildMorningShortlist(discovery.entries), [discovery.entries]);
   const [obs, setObs] = useState(null);
@@ -908,8 +865,8 @@ export default function QuantOSCockpit() {
           gap: 16, marginBottom: 16,
         }}>
           <RegimePanel regime={regime} />
-          <GreeksPanel greeks={greeks} />
-          <AlphaCurve data={alphaCurve} />
+          <GreeksPanel />
+          <AlphaCurve />
         </div>
 
         {/* Row 2: Signals · Positions */}

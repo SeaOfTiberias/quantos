@@ -94,12 +94,15 @@ cp .env.example .env   # set VITE_CLOUD_API_URL if it differs from the default
 npm run dev            # http://localhost:5173
 ```
 
-Only the **Discovery Watchlist** panel reads real data (from
-`GET /discovery/watchlist`, populated by the local agent's Stage A/B sync —
-see Step 2 above); everything else is still mock data. `npm run build`
-produces a static `dist/` bundle you can host anywhere (Railway static site,
-Netlify, Vercel, etc.) — it isn't currently part of the Railway deploy in
-Step 1.
+As of 2026-07-24: System Health, Market Regime (now including raw Nifty/VIX
+levels), Discovery Watchlist, Signal Feed, Open Positions, Morning Shortlist,
+and Claude Chat all read real cloud data. Portfolio Greeks and Alpha-vs-Nifty
+render an honest empty state — both have a real backend
+(`POST /options/greeks/panel`, `POST /options/alpha`) but no pipeline yet
+syncs live options positions or realized trade history to the cloud for them
+to consume. `npm run build` produces a static `dist/` bundle you can host
+anywhere (Railway static site, Netlify, Vercel, etc.); it's currently
+deployed to the Oracle VM behind nginx + basic-auth, not to Railway.
 
 Keep `cockpit/` dependencies current — `npm audit` periodically, since Vite's
 dev server has had several real CVEs (arbitrary-origin requests to the dev

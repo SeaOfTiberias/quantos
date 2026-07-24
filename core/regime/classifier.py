@@ -265,4 +265,6 @@ def _build_result(
         advance_count=inputs.breadth.advance_count,
         decline_count=inputs.breadth.decline_count,
         unchanged_count=inputs.breadth.unchanged_count,
+        nifty_ltp=inputs.nifty.ltp,
+        vix_current=inputs.vix.current,
     )
