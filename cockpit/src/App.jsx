@@ -376,6 +376,10 @@ function ScreenerPanel({ candidates }) {
   return (
     <Card>
       <Label color={C.gold}>Morning Shortlist</Label>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+        Same weekly pre-screen as Discovery Watchlist below — worth a look,
+        not a confirmed daily breakout box.
+      </div>
       {candidates.length === 0 ? (
         <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
           Nothing approaching a breakout right now.
@@ -427,8 +431,15 @@ function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Label color={C.gold}>Discovery Watchlist</Label>
-        <span style={{ fontSize: 10, color: C.muted }}>
+        <div>
+          <Label color={C.gold}>Discovery Watchlist</Label>
+          <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+            Weekly pre-screen (Stage A) — a coarser, different box than the
+            daily breakout box your TradingView alert watches. Use this to
+            spot names worth a closer look, not as a standalone entry signal.
+          </div>
+        </div>
+        <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", marginLeft: 12 }}>
           {error ? "offline"
             : updatedAt ? `synced ${new Date(updatedAt).toLocaleTimeString("en-IN", { hour12: false })}`
             : "waiting for agent…"}
