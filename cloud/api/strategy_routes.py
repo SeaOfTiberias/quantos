@@ -1,9 +1,12 @@
 """
-QuantOS — Strategy Recommendation API Routes
+QuantOS — Strategy Chain Analysis API Routes
 ─────────────────────────────────────────────────
-US-05b: Endpoint to request an AI strategy recommendation for an underlying.
-Pulls the current regime (cached, ADR-04) and a supplied option chain,
-then asks Claude to pick and explain the optimal strategy.
+Deterministic chain analysis for a strategy template the human has already
+chosen: build its legs from the real option chain, compute real Greeks and
+risk/reward. No Claude call, no regime dependency, no algorithmic pick —
+see core/options/recommender.py's module docstring for why (disabled
+2026-07-25 after Fable's review found the regime-gated Claude recommendation
+was worse than no signal, not just unvalidated).
 """
 
 import logging
@@ -12,11 +15,10 @@ from datetime import date
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.options.models import OptionChainSnapshot, OptionLeg, OptionType
-from core.options.recommender import recommend_strategy
+from core.options.models import OptionChainSnapshot, OptionLeg, OptionType, StrategyTemplate
+from core.options.recommender import analyse_chain
 from core.options.alerts import format_strategy_whatsapp
 from core.options.strategy_builder import StrategyBuildError
-from cloud.api.regime_routes import get_synced_regime
 
 logger = logging.getLogger(__name__)
 
@@ -41,24 +43,20 @@ class StrategyRequest(BaseModel):
     iv_percentile:  float
     pcr:            float
     max_pain:       float
+    template:       str   # StrategyTemplate value — human-chosen, not gated by regime
 
 
 @router.post("/recommend")
 async def recommend(request: StrategyRequest):
     """
-    Get an AI strategy recommendation for an underlying given its
-    current option chain and market context.
-
-    Uses the cached regime (US-05) to determine which strategies are
-    allowed, then asks Claude to pick the best fit and explain why.
+    Analyse a human-chosen strategy template against the current option
+    chain: real legs, real Greeks, real max profit/loss/PoP. No regime
+    gating, no AI pick — the template is the caller's choice.
     """
-    regime = get_synced_regime()
-    if regime is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Regime not available yet — waiting for the local agent's next sync "
-                   "(agent/main.py runs RegimeService and POSTs to /regime/sync)",
-        )
+    try:
+        template = StrategyTemplate(request.template)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Unknown strategy template: {request.template}")
 
     chain = OptionChainSnapshot(
         underlying=request.underlying,
@@ -83,9 +81,7 @@ async def recommend(request: StrategyRequest):
     )
 
     try:
-        rec = await recommend_strategy(chain, regime)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        rec = analyse_chain(chain, template)
     except StrategyBuildError as e:
         raise HTTPException(status_code=422, detail=f"Could not build strategy: {e}")
 
@@ -111,8 +107,5 @@ async def recommend(request: StrategyRequest):
         "max_profit":  rec.max_profit,
         "max_loss":    rec.max_loss if rec.max_loss != float("-inf") else None,
         "probability_of_profit": rec.probability_of_profit,
-        "rationale":   rec.rationale,
-        "regime_context": rec.regime_context,
-        "confidence_score": rec.confidence_score,
         "whatsapp_preview": format_strategy_whatsapp(rec),
     }

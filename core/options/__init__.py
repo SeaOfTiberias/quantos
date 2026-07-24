@@ -5,7 +5,7 @@ from core.options.models import (
 )
 from core.options.greeks import compute_greeks, estimate_probability_of_profit, GreeksResult
 from core.options.strategy_builder import build_strategy, StrategyBuildError
-from core.options.recommender import recommend_strategy
+from core.options.recommender import analyse_chain
 from core.options.alerts import format_strategy_whatsapp
 
 __all__ = [
@@ -13,5 +13,5 @@ __all__ = [
     "StrategyLeg", "StrategyRecommendation",
     "compute_greeks", "estimate_probability_of_profit", "GreeksResult",
     "build_strategy", "StrategyBuildError",
-    "recommend_strategy", "format_strategy_whatsapp",
+    "analyse_chain", "format_strategy_whatsapp",
 ]

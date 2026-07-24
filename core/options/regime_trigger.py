@@ -1,5 +1,13 @@
 """
 QuantOS — Regime-Change Options Trigger
+
+**DISABLED 2026-07-25** (Fable review) — agent/main.py's `_run_options_trigger`
+no longer calls into this module; it's a structural no-op regardless of
+`options.enabled`. Kept for reference only. This module's `build_suggestion`
+also calls the old `/strategy/recommend` contract (Claude pick + rationale +
+confidence), which no longer exists — `cloud/api/strategy_routes.py` now
+expects a human-chosen `template` and returns no rationale/confidence. Do
+not re-wire this without redesigning both ends together.
 ────────────────────────────────────────
 Fires a new options strategy suggestion when the market regime changes —
 the user's explicit decision (2026-07-21): event-driven, like Darvas's

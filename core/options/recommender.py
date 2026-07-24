@@ -1,108 +1,47 @@
 """
-QuantOS — AI Strategy Recommender
-─────────────────────────────────────
-US-05b: The core of Epic 7. Claude reads regime classification, IV rank,
-PCR, max pain, and the option chain, then recommends the optimal strategy
-from 8 templates with full Greeks rationale.
+QuantOS — Option Strategy Chain Analysis
+─────────────────────────────────────────
+US-05b was originally "Claude reads regime + chain and recommends a
+strategy." Disabled 2026-07-25 after Fable's review: the regime classifier
+this recommendation was gated on has failed validation twice (S8-1's
+VIX-threshold version, then the IV-minus-RV-spread replacement), and a
+fluent Claude-written rationale + numeric confidence score wrapped around
+that unvalidated label reads as grounded analysis when it isn't — a
+stronger over-trust trigger than a bare unlabeled number, not a weaker one.
 
-ADR-04: Single batched Claude call per recommendation request — not
-per-strategy. Claude picks ONE template, we build it, Claude explains it.
+This module now does ONLY deterministic chain analysis: given a strategy
+TEMPLATE the human has already chosen, build its legs from the real chain
+and compute real Greeks/max-profit/max-loss/probability-of-profit. No
+Claude call, no regime dependency, no algorithmic "pick", no narrative.
 """
 
-import json
 import logging
-import os
 from datetime import date
-
-import anthropic
 
 from core.options.models import (
     OptionChainSnapshot, StrategyTemplate, StrategyRecommendation, StrategyLeg, OptionType,
 )
 from core.options.strategy_builder import build_strategy, StrategyBuildError
 from core.options.greeks import compute_greeks, estimate_probability_of_profit
-from core.regime.models import RegimeResult
-from core import prompts
 
 logger = logging.getLogger(__name__)
 
-# timeout bounds /strategy/recommend latency — this call runs inside the
-# HTTP request; the SDK default waits far longer than the route should (P2-3).
-_claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-                                   timeout=30.0)
-MODEL = "claude-sonnet-4-6"
 
-# Maps regime strategy gating (from core/regime) to our StrategyTemplate enum
-_STRATEGY_NAME_MAP = {
-    "bull_call_spread":  StrategyTemplate.BULL_CALL_SPREAD,
-    "bear_put_spread":   StrategyTemplate.BEAR_PUT_SPREAD,
-    "iron_condor":       StrategyTemplate.IRON_CONDOR,
-    "covered_call":      StrategyTemplate.COVERED_CALL,
-    "cash_secured_put":  StrategyTemplate.CASH_SECURED_PUT,
-    "short_strangle":    StrategyTemplate.SHORT_STRANGLE,
-}
-
-
-async def recommend_strategy(
+def analyse_chain(
     chain: OptionChainSnapshot,
-    regime: RegimeResult,
+    template: StrategyTemplate,
 ) -> StrategyRecommendation:
     """
-    Main entry point — ask Claude to pick the optimal strategy given
-    current market context, then build it and compute full Greeks.
+    Build the given strategy template's legs from the real option chain and
+    compute its actual Greeks, max profit/loss, and probability of profit.
+    The template is a human choice, passed in — this function makes no
+    strategy pick of its own.
 
-    Args:
-        chain: option chain snapshot (spot, IVR, PCR, max pain, all legs)
-        regime: current regime classification (from core/regime)
-
-    Returns:
-        StrategyRecommendation with legs, Greeks, max profit/loss, rationale
+    Raises StrategyBuildError if the requested template can't be built from
+    the supplied chain (e.g. missing strikes).
     """
-    # Only recommend from strategies the regime allows (gating from US-05)
-    allowed = [
-        s for s in regime.allowed_strategies
-        if s in _STRATEGY_NAME_MAP
-    ]
-    if not allowed:
-        raise ValueError(
-            f"No options strategies allowed in current regime: {regime.regime.value}"
-        )
+    legs, metrics = build_strategy(template, chain)
 
-    prompt = _build_recommendation_prompt(chain, regime, allowed)
-
-    response = await _claude.messages.create(
-        model=MODEL,
-        max_tokens=1200,
-        system=prompts.load("options_recommender_system"),
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = response.content[0].text.strip()
-    choice = _parse_strategy_choice(raw, allowed)
-
-    template = _STRATEGY_NAME_MAP[choice["strategy"]]
-    logger.info("Claude recommends: %s for %s (regime=%s)",
-                template.value, chain.underlying, regime.regime.value)
-
-    # Build the actual legs from the option chain
-    try:
-        legs, metrics = build_strategy(template, chain)
-    except StrategyBuildError as e:
-        logger.error("Failed to build %s: %s — falling back to first allowed strategy",
-                     template.value, e)
-        # Try the next allowed strategy as fallback
-        for fallback_name in allowed:
-            fallback_template = _STRATEGY_NAME_MAP[fallback_name]
-            try:
-                legs, metrics = build_strategy(fallback_template, chain)
-                template = fallback_template
-                break
-            except StrategyBuildError:
-                continue
-        else:
-            raise StrategyBuildError("No strategy could be built from available chain data")
-
-    # Compute aggregate Greeks across all legs
     net_delta, net_gamma, net_theta, net_vega = _aggregate_greeks(legs, chain)
 
     days_to_expiry = (chain.expiry - date.today()).days
@@ -119,54 +58,7 @@ async def recommend_strategy(
         max_profit=metrics.get("max_profit", 0.0),
         max_loss=metrics.get("max_loss", 0.0),
         probability_of_profit=pop,
-        rationale=choice.get("rationale", ""),
-        regime_context=f"{regime.regime.value} (confidence {regime.confidence:.0f})",
-        confidence_score=choice.get("confidence", 70.0),
     )
-
-
-def _build_recommendation_prompt(
-    chain: OptionChainSnapshot,
-    regime: RegimeResult,
-    allowed_strategies: list[str],
-) -> str:
-    days_to_expiry = (chain.expiry - date.today()).days
-    return prompts.render(
-        "options_recommender_user",
-        underlying=chain.underlying,
-        regime_value=regime.regime.value,
-        confidence=regime.confidence,
-        trend_signal=regime.trend_signal,
-        vix_signal=regime.vix_signal,
-        spot_price=chain.spot_price,
-        days_to_expiry=days_to_expiry,
-        iv_rank=chain.iv_rank,
-        iv_percentile=chain.iv_percentile,
-        pcr=chain.pcr,
-        max_pain=chain.max_pain,
-        allowed_strategies=", ".join(allowed_strategies),
-    )
-
-
-def _parse_strategy_choice(raw: str, allowed: list[str]) -> dict:
-    """Parse Claude's strategy choice, with safe fallback."""
-    try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        data = json.loads(clean)
-        if data.get("strategy") not in allowed:
-            logger.warning(
-                "Claude chose '%s' which is not in allowed list %s — using first allowed",
-                data.get("strategy"), allowed,
-            )
-            data["strategy"] = allowed[0]
-        return data
-    except Exception as e:
-        logger.error("Failed to parse Claude strategy choice: %s | raw: %s", e, raw[:300])
-        return {
-            "strategy": allowed[0],
-            "confidence": 50.0,
-            "rationale": "Fallback selection — Claude response could not be parsed",
-        }
 
 
 def _aggregate_greeks(

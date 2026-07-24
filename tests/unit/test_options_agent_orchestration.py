@@ -1,8 +1,10 @@
 """
-agent/main.py — Phase 2 options orchestration glue: _run_options_trigger
-(regime-change -> Telegram confirm prompt) and _execute_options_signal
-(CONFIRMED multi-leg signal -> real orders + cloud report). Confirm-
-before-execute, matching Darvas — NOT rotation's no-veto carve-out.
+agent/main.py — Phase 2 options orchestration glue. _run_options_trigger
+(regime-change -> Telegram confirm prompt) is DISABLED 2026-07-25 (Fable
+review) — see its docstring in agent/main.py. _execute_options_signal
+(CONFIRMED multi-leg signal -> real orders + cloud report) is untouched and
+still real — a human can still confirm and execute a manually-built
+multi-leg signal, only the auto-suggestion trigger was killed.
 """
 
 import json
@@ -15,98 +17,48 @@ from agent import risk_guard
 from core.options.executor import ExecutionOutcome, LegFill, FlattenResult
 
 
-def _suggestion(**overrides):
-    payload = {
-        "underlying": "NIFTY", "expiry": "2026-07-28", "strategy": "bull_call_spread",
-        "legs": [{"action": "BUY", "option_type": "CE", "strike": 24800.0, "premium": 120.0,
-                  "quantity": 1, "symbol": "NSE:NIFTY2672824800CE", "lot_size": 65}],
-        "rationale": "r", "regime_context": "TRENDING_BULL", "max_profit": 100.0,
-        "max_loss": 50.0, "net_premium": -50.0, "probability_of_profit": 55.0,
-    }
-    payload.update(overrides)
-    return payload
-
-
 @pytest.fixture(autouse=True)
 def _isolated_halt(tmp_path, monkeypatch):
     monkeypatch.setattr(risk_guard, "HALT_FLAG_PATH", tmp_path / "halt")
 
 
 class TestRunOptionsTrigger:
+    """
+    DISABLED 2026-07-25 (Fable review): this used to auto-fire a Claude-
+    generated, regime-gated multi-leg options suggestion to Telegram on
+    every regime change. It's now a structural no-op regardless of config —
+    `agent/main.py` no longer even imports `core.options.regime_trigger`,
+    so there's nothing left to monkeypatch. These tests lock in "does
+    nothing, ever, no matter what's passed" rather than the old
+    enabled/dry_run/lots-per-trade branching.
+    """
 
-    def test_disabled_by_default_does_nothing(self, monkeypatch):
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion",
-                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not be called")))
+    def test_never_posts_to_cloud_regardless_of_config(self, monkeypatch):
+        posted = {}
+        monkeypatch.setattr(main.requests, "post",
+                            lambda *a, **k: posted.setdefault("called", True))
+        main._run_options_trigger(
+            MagicMock(), {"options": {"enabled": True, "dry_run": False, "lots_per_trade": 3}},
+            "http://cloud", {}, MagicMock(), {})
+        assert "called" not in posted
+
+    def test_does_nothing_with_empty_config(self, monkeypatch):
+        posted = {}
+        monkeypatch.setattr(main.requests, "post",
+                            lambda *a, **k: posted.setdefault("called", True))
         main._run_options_trigger(MagicMock(), {}, "http://cloud", {}, MagicMock(), {})
-        # no exception means the disabled gate short-circuited before the trigger ran
+        assert "called" not in posted
 
-    def test_no_regime_result_does_nothing(self, monkeypatch):
-        called = {}
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion",
-                            lambda *a, **k: called.setdefault("ran", True))
+    def test_does_nothing_with_no_regime_result(self, monkeypatch):
+        posted = {}
+        monkeypatch.setattr(main.requests, "post",
+                            lambda *a, **k: posted.setdefault("called", True))
         main._run_options_trigger(MagicMock(), {"options": {"enabled": True}},
                                   "http://cloud", {}, None, {})
-        assert "ran" not in called
-
-    def test_no_suggestion_posts_nothing(self, monkeypatch):
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion",
-                            lambda *a, **k: None)
-        posted = {}
-        monkeypatch.setattr(main.requests, "post",
-                            lambda *a, **k: posted.setdefault("called", True))
-        main._run_options_trigger(MagicMock(), {"options": {"enabled": True, "dry_run": False}},
-                                  "http://cloud", {}, MagicMock(), {})
         assert "called" not in posted
 
-    def test_dry_run_does_not_post_to_cloud(self, monkeypatch):
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion",
-                            lambda *a, **k: _suggestion())
-        posted = {}
-        monkeypatch.setattr(main.requests, "post",
-                            lambda *a, **k: posted.setdefault("called", True))
-        main._run_options_trigger(
-            MagicMock(), {"options": {"enabled": True, "dry_run": True}},
-            "http://cloud", {}, MagicMock(), {})
-        assert "called" not in posted
-
-    def test_live_run_posts_suggestion_to_cloud(self, monkeypatch):
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion",
-                            lambda *a, **k: _suggestion())
-        captured = {}
-
-        def _fake_post(url, json, headers, timeout):
-            captured["url"] = url
-            captured["json"] = json
-            return MagicMock(raise_for_status=lambda: None,
-                             json=lambda: {"signal_id": "SIG-OPT-X"})
-
-        monkeypatch.setattr(main.requests, "post", _fake_post)
-        main._run_options_trigger(
-            MagicMock(), {"options": {"enabled": True, "dry_run": False}},
-            "http://cloud", {}, MagicMock(), {})
-
-        assert captured["url"] == "http://cloud/options/signal"
-        assert captured["json"]["underlying"] == "NIFTY"
-
-    def test_lots_per_trade_passed_through(self, monkeypatch):
-        captured_kwargs = {}
-
-        def _fake_check(broker, regime_result, positions, cloud_url, headers,
-                       lots=1, underlying="NIFTY"):
-            captured_kwargs["lots"] = lots
-            return None
-
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion", _fake_check)
-        main._run_options_trigger(
-            MagicMock(), {"options": {"enabled": True, "lots_per_trade": 3}},
-            "http://cloud", {}, MagicMock(), {})
-        assert captured_kwargs["lots"] == 3
-
-    def test_trigger_build_exception_is_swallowed(self, monkeypatch):
-        def _boom(*a, **k):
-            raise RuntimeError("chain fetch failed")
-        monkeypatch.setattr(main.options_regime_trigger, "check_and_build_suggestion", _boom)
-        # Must not raise.
+    def test_does_not_raise(self):
+        # Must not raise regardless of inputs — it's a pure no-op now.
         main._run_options_trigger(MagicMock(), {"options": {"enabled": True}},
                                   "http://cloud", {}, MagicMock(), {})
 

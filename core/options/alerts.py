@@ -1,15 +1,18 @@
 """
-QuantOS — Strategy Recommendation Alerts
+QuantOS — Strategy Chain Analysis Formatting
 ─────────────────────────────────────────────
-US-05b: Formats StrategyRecommendation as a WhatsApp morning brief
-delivered by 9:15 AM IST.
+Formats a deterministic StrategyRecommendation (legs/Greeks/risk-reward for
+a human-chosen template) as a WhatsApp/Telegram message. No "AI
+recommendation" framing, no confidence score, no regime label — those were
+removed 2026-07-25 (see core/options/recommender.py). This just reports
+what the chosen strategy's numbers actually are.
 """
 
 from core.options.models import StrategyRecommendation
 
 
 def format_strategy_whatsapp(rec: StrategyRecommendation) -> str:
-    """Format a strategy recommendation for WhatsApp delivery."""
+    """Format a strategy's computed legs/Greeks/risk-reward for delivery."""
 
     legs_str = "\n".join(
         f"  {leg.action} {leg.strike:.0f} {leg.option_type.value} @ ₹{leg.premium:.2f}"
@@ -22,10 +25,9 @@ def format_strategy_whatsapp(rec: StrategyRecommendation) -> str:
     )
 
     lines = [
-        "🎯 *AI Strategy Recommendation*",
+        "📊 *Strategy Chain Analysis*",
         "━━━━━━━━━━━━━━",
         f"*{rec.underlying}* · {rec.strategy.value.replace('_', ' ').title()}",
-        f"Regime: {rec.regime_context}",
         "",
         "*Legs:*",
         legs_str,
@@ -41,9 +43,7 @@ def format_strategy_whatsapp(rec: StrategyRecommendation) -> str:
         f"  Max loss:    {max_loss_str}",
         f"  PoP:         {rec.probability_of_profit:.0f}%",
         "━━━━━━━━━━━━━━",
-        f"_{rec.rationale}_",
-        "━━━━━━━━━━━━━━",
-        f"Confidence: {rec.confidence_score:.0f}/100",
+        "No algorithmic recommendation attached — you chose this template.",
         "Reply *execute* to place this trade",
         "Reply *skip* to pass",
     ]

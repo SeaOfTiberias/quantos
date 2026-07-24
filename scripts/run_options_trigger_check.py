@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
 QuantOS — Options Regime Trigger: standalone manual check
+
+**DISABLED 2026-07-25** — `agent.main._run_options_trigger` is now a
+structural no-op (see its docstring), so this script will run without
+error but produce no suggestion, regardless of config.yaml's options.*
+block. Kept for reference; not useful until the trigger is redesigned.
 ────────────────────────────────────────────────────────────
 Manually runs ONE regime-fetch + options-trigger check
 (core/options/regime_trigger.py via agent.main._run_options_trigger)

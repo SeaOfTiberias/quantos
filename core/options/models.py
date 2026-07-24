@@ -119,8 +119,12 @@ class StrategyLeg:
 @dataclass
 class StrategyRecommendation:
     """
-    Full strategy recommendation — Claude's output after analyzing
-    regime, IV, PCR, max pain, and the option chain.
+    Deterministic analysis of a human-chosen strategy template against a
+    real option chain — legs, Greeks, and risk/reward. No rationale,
+    regime context, or confidence score: those were Claude-generated
+    narrative wrapped around a regime signal that failed validation twice
+    (see core/options/recommender.py's module docstring). Disabled
+    2026-07-25, not just left empty, so nothing can silently repopulate them.
     """
     underlying:        str
     strategy:          StrategyTemplate
@@ -135,10 +139,6 @@ class StrategyRecommendation:
     max_profit:        float
     max_loss:           float
     probability_of_profit: float   # 0-100
-
-    rationale:          str
-    regime_context:      str
-    confidence_score:    float       # 0-100
 
     @property
     def net_premium(self) -> float:

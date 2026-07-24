@@ -52,7 +52,6 @@ from core.regime.service import RegimeService, CACHE_TTL as REGIME_CACHE_TTL
 from core.risk.correlation_service import CorrelationPortfolioService
 from core.risk.correlation import CORRELATION_THRESHOLD
 from core.options import executor as options_executor
-from core.options import regime_trigger as options_regime_trigger
 from core.options.positions import load_positions as load_options_positions, add_position as add_options_position
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
@@ -659,55 +658,23 @@ def _run_regime_sync(regime_service: RegimeService, cloud_url: str, headers: dic
 def _run_options_trigger(broker, config: dict, cloud_url: str, headers: dict,
                           regime_result, options_positions: dict) -> None:
     """
-    Regime/strategy advisor -> real execution (Phase 2). Confirm-before-
-    execute, matching the Darvas flow — NOT S8-3 rotation's no-veto
-    carve-out. Both `options.enabled` and `options.dry_run` default to the
-    safest setting, same two-gate pattern as rotation.
+    DISABLED 2026-07-25 (Fable review): this auto-fired a Claude-generated,
+    regime-gated multi-leg options suggestion to Telegram on every regime
+    change. The regime classifier it gated on has failed validation twice
+    (S8-1's VIX-threshold version, then the IV-minus-RV-spread replacement)
+    — a fluent narrative + confidence score wrapped around that unvalidated
+    label reads as grounded analysis when it isn't, which is a stronger
+    over-trust trigger than a bare number, not a weaker one. See
+    core/options/recommender.py's module docstring for the full reasoning.
 
-    dry_run here means something different from rotation's: rotation has
-    no confirm step, so dry_run gates real ORDERS. Options entry already
-    has a human confirm gate baked in (that's the point of this feature) —
-    dry_run instead gates whether a suggestion is even sent to the user
-    for confirmation, so the chain-fetch/recommend/symbol-resolution
-    pipeline can be observed for a few real regime changes before ever
-    pinging Telegram with something to confirm.
+    This is a structural no-op, not just a config gate — `options.enabled`
+    in agent/config.yaml is intentionally NOT checked here, so flipping that
+    flag back on does not silently resume this behaviour. Re-enabling this
+    needs a deliberate redesign (e.g. human-chosen template, no Claude pick,
+    no regime gating — see core/options/recommender.analyse_chain), not a
+    one-line flip.
     """
-    options_cfg = config.get("options", {})
-    if not bool(options_cfg.get("enabled", False)):
-        return
-    if regime_result is None:
-        return
-
-    lots = int(options_cfg.get("lots_per_trade", 1))
-    dry_run = bool(options_cfg.get("dry_run", True))
-
-    try:
-        suggestion = options_regime_trigger.check_and_build_suggestion(
-            broker, regime_result, options_positions, cloud_url, headers, lots=lots)
-    except Exception as e:
-        logger.error("Options regime trigger failed to build a suggestion: %s", e)
-        return
-    if suggestion is None:
-        return
-
-    if dry_run:
-        logger.info(
-            "Options suggestion (DRY RUN, not sent for confirmation): %s %s "
-            "legs=%s max_profit=%.2f max_loss=%.2f",
-            suggestion["underlying"], suggestion["strategy"], suggestion["legs"],
-            suggestion["max_profit"], suggestion["max_loss"],
-        )
-        return
-
-    try:
-        resp = requests.post(f"{cloud_url}/options/signal", json=suggestion,
-                             headers=headers, timeout=15)
-        resp.raise_for_status()
-        signal_id = resp.json().get("signal_id", "?")
-        logger.info("[%s] Options suggestion sent for confirmation: %s %s",
-                    signal_id, suggestion["underlying"], suggestion["strategy"])
-    except Exception as e:
-        logger.error("Failed to POST options suggestion to cloud: %s", e)
+    return
 
 
 def _execute_options_signal(broker, cloud_url: str, headers: dict,
