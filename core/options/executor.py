@@ -132,6 +132,23 @@ def _flatten_all(broker, filled_legs: list[LegFill]) -> list[FlattenResult]:
     return results
 
 
+def flatten_position(broker, legs: list[dict]) -> list[FlattenResult]:
+    """
+    Closes every leg of an ALREADY-OPEN position — the trailing-stop-exit
+    path (2026-07-25): a TradingView alert fires the exit condition (easier
+    to express there than against Fyers directly), the agent looks up the
+    matching OptionsPosition and calls this with its stored legs. Reuses
+    the exact same "opposite-direction market order per leg" logic
+    _flatten_all uses for the partial-fill safety net, just triggered
+    intentionally on a full position instead of reactively on a failure —
+    fires immediately, no confirm gate, same precedent as the equity
+    auto_exit stop order.
+    """
+    filled = [LegFill(leg=leg, order_id=leg.get("order_id", ""),
+                       fill_price=leg.get("fill_price")) for leg in legs]
+    return _flatten_all(broker, filled)
+
+
 def execute_confirmed_signal(broker, signal_id: str, legs: list[dict]) -> ExecutionOutcome:
     """
     Places every leg sequentially. On the first rejection, flattens every

@@ -196,16 +196,18 @@ def format_options_confirmation_message(
     max_loss: float,
     net_premium: float,
     probability_of_profit: float,
-    rationale: str,
-    regime_context: str,
+    trigger_source: str = "manual",
 ) -> str:
     """
-    Pending-confirmation message for a multi-leg options signal (regime/
-    strategy advisor -> real execution). Ends with the exact same "Reply
-    execute/skip" convention as _confirmation_message() in cloud/api/main.py
-    so the existing Telegram webhook's reply-parsing needs no changes at
-    all -- it already extracts the signal ID out of ANY replied-to message
-    by regex, regardless of the body above it.
+    Pending-confirmation message for a multi-leg options signal. As of
+    2026-07-25 this is always a deterministic chain analysis of a template
+    YOU (or your TradingView alert) chose — no AI pick, no regime label,
+    no narrative (see core/options/recommender.py's module docstring for
+    why those were removed). Ends with the exact same "Reply execute/skip"
+    convention as _confirmation_message() in cloud/api/main.py so the
+    existing Telegram webhook's reply-parsing needs no changes at all -- it
+    already extracts the signal ID out of ANY replied-to message by regex,
+    regardless of the body above it.
     """
     leg_lines = [
         f"  {leg['action']} {leg['option_type']} {leg['strike']:g} @ INR {leg['premium']:,.2f} "
@@ -214,7 +216,7 @@ def format_options_confirmation_message(
     ]
     max_loss_str = "Unlimited" if max_loss == float("-inf") else f"INR {max_loss:,.2f}"
     return (
-        f"🧠 QuantOS Options Suggestion\n"
+        f"📊 QuantOS Options Signal ({trigger_source})\n"
         f"ID: {signal_id}\n"
         f"--------------------\n"
         f"{underlying} · {strategy.replace('_', ' ').title()} · expiry {expiry}\n"
@@ -224,8 +226,7 @@ def format_options_confirmation_message(
         f"Max profit: INR {max_profit:,.2f}\n"
         f"Max loss: {max_loss_str}\n"
         f"Est. probability of profit: {probability_of_profit:.0f}%\n"
-        f"Regime: {regime_context}\n"
-        f"Rationale: {rationale}\n"
+        f"No algorithmic recommendation attached — you chose this template.\n"
         f"--------------------\n"
         f"Exit rule: hold to expiry (no active management)\n"
         f"Reply (to this message) execute to trade\n"

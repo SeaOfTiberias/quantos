@@ -250,8 +250,7 @@ class OptionsSignalRequest(BaseModel):
     expiry:                 str    # ISO date
     strategy:               str    # StrategyTemplate value, e.g. "bull_call_spread"
     legs:                   list[OptionLegInput]
-    rationale:              str = ""
-    regime_context:         str = ""
+    trigger_source:         str = "manual"   # e.g. "tradingview_webhook" — human-chosen, not AI
     max_profit:             float = 0.0
     max_loss:               float = 0.0
     net_premium:            float = 0.0
@@ -294,17 +293,18 @@ def _new_options_signal_id() -> str:
 @router.post("/signal")
 async def create_options_signal(payload: OptionsSignalRequest,
                                  _auth=Depends(require_cloud_secret)):
-    """Called by the local agent when the regime/strategy advisor produces
-    a new suggestion (core/options/regime_trigger.py, fired on a regime
-    change). Persists PENDING_CONFIRMATION and sends the Telegram confirm
-    prompt -- mirrors the TradingView webhook's step 7/8, but for a
-    multi-leg options signal instead of a single equity order."""
+    """Called by the local agent once it's built real legs/Greeks for a
+    human-triggered options request (POST /webhook/options -> agent polls
+    -> fetches the real chain -> POST /strategy/recommend -> here). Persists
+    PENDING_CONFIRMATION and sends the Telegram confirm prompt -- mirrors
+    the TradingView webhook's step 7/8, but for a multi-leg options signal
+    instead of a single equity order. No AI pick and no regime gating —
+    see core/options/recommender.py's module docstring (2026-07-25)."""
     signal_id = _new_options_signal_id()
     detail = {
         "expiry":                 payload.expiry,
         "legs":                   [leg.model_dump() for leg in payload.legs],
-        "rationale":              payload.rationale,
-        "regime_context":         payload.regime_context,
+        "trigger_source":         payload.trigger_source,
         "max_profit":             payload.max_profit,
         "max_loss":               payload.max_loss,
         "net_premium":            payload.net_premium,
@@ -331,7 +331,7 @@ async def create_options_signal(payload: OptionsSignalRequest,
         expiry=payload.expiry, legs=detail["legs"], max_profit=payload.max_profit,
         max_loss=payload.max_loss, net_premium=payload.net_premium,
         probability_of_profit=payload.probability_of_profit,
-        rationale=payload.rationale, regime_context=payload.regime_context,
+        trigger_source=payload.trigger_source,
     )
     await deliver_confirmation(signal_id, message)
 

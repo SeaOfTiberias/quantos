@@ -43,6 +43,7 @@ from cloud.api.versioning_routes import router as versioning_router
 from cloud.api.backtest_routes import router as backtest_router
 from cloud.api.morning_routes import router as morning_router
 from cloud.api.options_routes import router as options_router
+from cloud.api.options_webhook_routes import router as options_webhook_router
 from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.regime_routes import router as regime_router
 from cloud.api.positions_routes import router as positions_router
@@ -76,6 +77,7 @@ app.include_router(versioning_router)
 app.include_router(backtest_router)
 app.include_router(morning_router)
 app.include_router(options_router)
+app.include_router(options_webhook_router)
 app.include_router(discovery_router)
 app.include_router(regime_router)
 app.include_router(positions_router)

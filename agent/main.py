@@ -52,7 +52,13 @@ from core.regime.service import RegimeService, CACHE_TTL as REGIME_CACHE_TTL
 from core.risk.correlation_service import CorrelationPortfolioService
 from core.risk.correlation import CORRELATION_THRESHOLD
 from core.options import executor as options_executor
-from core.options.positions import load_positions as load_options_positions, add_position as add_options_position
+from core.options.positions import (
+    load_positions as load_options_positions, add_position as add_options_position,
+    has_open_position as has_options_position, remove_position as remove_options_position,
+)
+from core.options import chain_builder as options_chain_builder
+from core.options import fyers_symbol_master as options_symbol_master
+from core.options.models import OptionType, StrategyTemplate
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
 # Kept slower than the 5s signal poll to avoid hammering the broker with
@@ -673,8 +679,192 @@ def _run_options_trigger(broker, config: dict, cloud_url: str, headers: dict,
     needs a deliberate redesign (e.g. human-chosen template, no Claude pick,
     no regime gating — see core/options/recommender.analyse_chain), not a
     one-line flip.
+
+    The replacement is _run_options_webhook_check below, driven by a
+    TradingView alert (your own choice of direction/timing/template), not
+    an internal signal.
     """
     return
+
+
+def _run_options_webhook_check(broker, cloud_url: str, headers: dict,
+                                options_positions: dict, lots: int) -> None:
+    """
+    Human-driven options entry/exit, added 2026-07-25 to replace the killed
+    regime trigger above. Polls POST /webhook/options/claim every tick for
+    a request queued by cloud/api/options_webhook_routes.py (fired from a
+    TradingView alert — see docs/OPTIONS_WEBHOOK_SETUP.md). "open" builds a
+    real chain analysis and sends a Telegram confirm, same gate as every
+    other order this codebase places. "close" flattens the matching open
+    position immediately, no confirm — trailing-stop exits are a risk-
+    management action, same precedent as the equity auto_exit stop order.
+    """
+    try:
+        resp = requests.post(f"{cloud_url}/webhook/options/claim", headers=headers, timeout=10)
+        resp.raise_for_status()
+        item = resp.json().get("request")
+    except Exception as e:
+        logger.error("Failed to poll options webhook queue: %s", e)
+        return
+    if item is None:
+        return
+
+    underlying, template, action = item["underlying"], item["template"], item["action"]
+    logger.info("[%s] Claimed options webhook: %s %s %s",
+                item["request_id"], action, underlying, template)
+
+    if action == "open":
+        _handle_options_webhook_open(broker, cloud_url, headers, options_positions,
+                                      underlying, template, lots)
+    elif action == "close":
+        _handle_options_webhook_close(broker, cloud_url, headers, options_positions,
+                                       underlying, template)
+    else:
+        logger.error("Options webhook: unknown action %r for %s", action, underlying)
+
+
+def _handle_options_webhook_open(broker, cloud_url: str, headers: dict,
+                                  options_positions: dict, underlying: str,
+                                  template_value: str, lots: int) -> None:
+    if has_options_position(options_positions, underlying):
+        logger.info("Options webhook 'open' for %s ignored — already has an open position",
+                    underlying)
+        return
+    try:
+        StrategyTemplate(template_value)   # validate before doing any real work
+    except ValueError:
+        logger.error("Options webhook 'open' for %s: unknown template %r", underlying, template_value)
+        return
+
+    try:
+        expiries = options_symbol_master.list_expiries(underlying)
+        if not expiries:
+            raise ValueError(f"No expiries available for {underlying}")
+        expiry = next((e for e in expiries if (e - date.today()).days >= 2), expiries[-1])
+        days_to_expiry = max(1, (expiry - date.today()).days)
+
+        spot_symbol = "NIFTY 50" if underlying == "NIFTY" else underlying
+        spot_prices = broker.get_ltp([spot_symbol])
+        spot = spot_prices.get(spot_symbol) or spot_prices.get(underlying)
+        if not spot:
+            raise ValueError(f"Could not fetch spot price for {underlying}")
+
+        expiry_epoch = options_symbol_master.get_expiry_epoch(underlying, expiry)
+        raw_chain = broker.get_option_chain(underlying, expiry_epoch)
+        snapshot = options_chain_builder.build_chain_snapshot(
+            underlying=underlying, expiry=expiry, spot_price=spot,
+            raw_chain=raw_chain, days_to_expiry=days_to_expiry,
+        )
+    except Exception as e:
+        logger.error("Options webhook 'open' for %s: failed to build chain snapshot: %s",
+                     underlying, e)
+        return
+
+    payload = {
+        "underlying": snapshot.underlying,
+        "spot_price": snapshot.spot_price,
+        "expiry": snapshot.expiry.isoformat(),
+        "legs": [
+            {"strike": leg.strike, "option_type": leg.option_type.value, "premium": leg.premium,
+             "open_interest": leg.open_interest, "volume": leg.volume, "implied_vol": leg.implied_vol}
+            for leg in snapshot.legs
+        ],
+        "iv_rank": snapshot.iv_rank, "iv_percentile": snapshot.iv_percentile,
+        "pcr": snapshot.pcr, "max_pain": snapshot.max_pain,
+        "template": template_value,
+    }
+    try:
+        resp = requests.post(f"{cloud_url}/strategy/recommend", json=payload, timeout=30)
+        resp.raise_for_status()
+        rec = resp.json()
+    except Exception as e:
+        logger.error("Options webhook 'open' for %s: /strategy/recommend failed: %s", underlying, e)
+        return
+
+    legs = []
+    for leg in rec["legs"]:
+        opt_type = OptionType.CALL if leg["option_type"] == "CE" else OptionType.PUT
+        try:
+            resolved = options_symbol_master.resolve_option_symbol(
+                underlying, expiry, leg["strike"], opt_type)
+        except Exception as e:
+            logger.error("Options webhook 'open' for %s: symbol resolution failed for "
+                         "strike %s: %s", underlying, leg["strike"], e)
+            return
+        legs.append({
+            "action": leg["action"], "option_type": leg["option_type"], "strike": leg["strike"],
+            "premium": leg["premium"], "quantity": lots,
+            "symbol": resolved.symbol, "lot_size": resolved.lot_size,
+        })
+
+    net_premium = sum(
+        (leg["premium"] if leg["action"] == "SELL" else -leg["premium"]) for leg in legs
+    ) * lots
+    max_loss = rec["max_loss"]
+    suggestion = {
+        "underlying": underlying, "expiry": expiry.isoformat(), "strategy": rec["strategy"],
+        "legs": legs, "trigger_source": "tradingview_webhook",
+        "max_profit": (rec["max_profit"] or 0.0) * lots,
+        "max_loss": (max_loss * lots) if max_loss is not None else float("-inf"),
+        "probability_of_profit": rec["probability_of_profit"],
+        "net_premium": net_premium,
+    }
+    try:
+        resp = requests.post(f"{cloud_url}/options/signal", json=suggestion,
+                             headers=headers, timeout=15)
+        resp.raise_for_status()
+        signal_id = resp.json().get("signal_id", "?")
+        logger.info("[%s] Options entry sent for confirmation: %s %s",
+                    signal_id, underlying, rec["strategy"])
+    except Exception as e:
+        logger.error("Failed to POST options entry to cloud: %s", e)
+
+
+def _handle_options_webhook_close(broker, cloud_url: str, headers: dict,
+                                   options_positions: dict, underlying: str,
+                                   template_value: str) -> None:
+    position = options_positions.get(underlying)
+    if position is None:
+        logger.info("Options webhook 'close' for %s ignored — no open position tracked",
+                    underlying)
+        return
+    if position.strategy != template_value:
+        logger.warning(
+            "Options webhook 'close' for %s: template %r doesn't match open position's "
+            "strategy %r — closing anyway (at most one open position per underlying is "
+            "tracked), but double-check this is the alert you meant to fire",
+            underlying, template_value, position.strategy)
+
+    try:
+        flatten_results = options_executor.flatten_position(broker, position.legs)
+    except Exception as e:
+        logger.critical("Options webhook 'close' for %s FAILED to flatten: %s — position "
+                        "may still be open, check Fyers manually", underlying, e)
+        return
+
+    remove_options_position(options_positions, underlying)
+    failed = [r for r in flatten_results if not r.flattened]
+    if failed:
+        logger.critical(
+            "Options webhook 'close' for %s: %d/%d leg(s) failed to flatten — manual "
+            "intervention required NOW", underlying, len(failed), len(flatten_results))
+
+    try:
+        resp = requests.post(
+            f"{cloud_url}/webhook/options/closed",
+            json={
+                "underlying": underlying,
+                "legs": [
+                    {"action": r.leg["action"], "option_type": r.leg["option_type"],
+                     "strike": r.leg["strike"]}
+                    for r in flatten_results
+                ],
+                "reason": "trailing_stop_webhook",
+            },
+            headers=headers, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("Failed to report options close to cloud: %s", e)
 
 
 def _execute_options_signal(broker, cloud_url: str, headers: dict,
@@ -1163,6 +1353,20 @@ def run_agent(config: dict):
                     logger.error("[%s] Execution failed: %s", signal_id, e)
                     _report_outcome(cloud_url, headers, signal_id, "failed",
                                     {"reason": str(e)})
+
+            # Options webhook check (2026-07-25): every tick, same cadence as
+            # CONFIRMED-signal polling above, since a trailing-stop close
+            # needs to be picked up promptly. `options.enabled` still gates
+            # this — reused as a plain on/off switch, NOT the old dry_run/
+            # regime-gating semantics (see _run_options_trigger's docstring).
+            options_cfg = config.get("options", {})
+            if bool(options_cfg.get("enabled", False)):
+                try:
+                    _run_options_webhook_check(
+                        broker, cloud_url, headers, opts_positions,
+                        lots=int(options_cfg.get("lots_per_trade", 1)))
+                except Exception as e:
+                    logger.error("Options webhook check failed: %s", e)
 
             tick += 1
             if tick % TRAIL_EVERY_N_TICKS == 0:
