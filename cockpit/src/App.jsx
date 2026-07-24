@@ -382,7 +382,8 @@ function ScreenerPanel({ candidates }) {
       </div>
       {candidates.length === 0 ? (
         <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
-          Nothing approaching a breakout right now.
+          Darvas scanner disabled 2026-07-25 — no evidenced edge (see S7-3).
+          No replacement filter live yet.
         </div>
       ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
@@ -434,21 +435,21 @@ function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
         <div>
           <Label color={C.gold}>Discovery Watchlist</Label>
           <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
-            Weekly pre-screen (Stage A) — a coarser, different box than the
-            daily breakout box your TradingView alert watches. Use this to
-            spot names worth a closer look, not as a standalone entry signal.
+            Darvas weekly pre-screen — disabled 2026-07-25, zero evidenced
+            edge (fails even at zero slippage, see S7-3). Kept visible as a
+            placeholder for a validated replacement, not currently populated.
           </div>
         </div>
         <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", marginLeft: 12 }}>
           {error ? "offline"
-            : updatedAt ? `synced ${new Date(updatedAt).toLocaleTimeString("en-IN", { hour12: false })}`
+            : updatedAt ? `last data ${new Date(updatedAt).toLocaleTimeString("en-IN", { hour12: false })} (scanner disabled)`
             : "waiting for agent…"}
         </span>
       </div>
 
       {entries.length === 0 ? (
         <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
-          {error ? "Could not reach cloud API." : "No candidates yet — Stage A runs once/day."}
+          {error ? "Could not reach cloud API." : "Scanner disabled — no replacement filter live yet."}
         </div>
       ) : (
         <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
