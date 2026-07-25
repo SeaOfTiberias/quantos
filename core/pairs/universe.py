@@ -25,6 +25,7 @@ import csv
 import io
 import zipfile
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -104,6 +105,42 @@ def parse_stf_symbols(raw_zip: bytes) -> set[str]:
         for r in csv.DictReader(io.StringIO(raw_csv))
         if r["FinInstrmTp"] == "STF"
     }
+
+
+@dataclass(frozen=True)
+class NearMonthRow:
+    close:     float
+    lot_size:  int
+    expiry:    date
+
+
+def parse_stf_near_month(raw_zip: bytes, trade_date: date) -> dict[str, NearMonthRow]:
+    """One NEAR-MONTH row per STF symbol present in the day's raw bhavcopy
+    -- the contract with the smallest expiry that has not yet passed as of
+    `trade_date` (there are normally 3 listed expiries per symbol; this
+    always resolves to the current front month, never a synthetic/rolled
+    series -- see docs/PAIRS_TRADING_METHODOLOGY.md's "no-continuous-contract
+    rule"). A symbol with every listed expiry already <= trade_date (should
+    not happen in a same-day bhavcopy, but not assumed) is skipped."""
+    with zipfile.ZipFile(io.BytesIO(raw_zip)) as zf:
+        raw_csv = zf.read(zf.namelist()[0]).decode("utf-8")
+
+    by_symbol: dict[str, list[tuple[date, float, int]]] = defaultdict(list)
+    for r in csv.DictReader(io.StringIO(raw_csv)):
+        if r["FinInstrmTp"] != "STF":
+            continue
+        symbol = r["TckrSymb"].strip().upper()
+        expiry = date.fromisoformat(r["XpryDt"])
+        by_symbol[symbol].append((expiry, float(r["ClsPric"]), int(float(r["NewBrdLotQty"]))))
+
+    out: dict[str, NearMonthRow] = {}
+    for symbol, rows in by_symbol.items():
+        future_rows = [row for row in rows if row[0] >= trade_date]
+        if not future_rows:
+            continue
+        expiry, close, lot_size = min(future_rows, key=lambda row: row[0])
+        out[symbol] = NearMonthRow(close=close, lot_size=lot_size, expiry=expiry)
+    return out
 
 
 def latest_stf_symbols(

@@ -161,3 +161,36 @@ def test_run_walk_forward_smoke():
         for t in fold.trades:
             assert t.symbol_a == "A"
             assert t.symbol_b == "B"
+
+
+def test_run_walk_forward_shared_symbol_across_pairs_with_different_coverage():
+    """Regression test: a real bug had run_walk_forward cache each pair's
+    date-aligned closes in a dict keyed by SYMBOL, so when symbol "A"
+    appeared in two candidate pairs (A/B and A/C) with different date
+    coverage, the second pair's alignment silently clobbered the first's,
+    feeding cointegration.test_pair mismatched-length series and crashing
+    with "unaligned series" on real bhavcopy data. A has full coverage; B
+    has full coverage; C only has data for HALF the window (simulating a
+    stock that started trading futures partway through) -- A/C's alignment
+    must not corrupt A/B's."""
+    import numpy as np
+    rng = np.random.default_rng(7)
+    n = 300  # >= ~9 months of calendar days -- enough for one formation+trading fold
+    log_base = np.cumsum(rng.normal(0, 0.01, n)) + 5.0
+    log_a = log_base + rng.normal(0, 0.005, n)
+    log_b = log_base + rng.normal(0, 0.005, n)
+    log_c = log_base + rng.normal(0, 0.005, n)
+    dates_ = [date(2024, 1, 1) + timedelta(days=i) for i in range(n)]
+
+    price_data = {
+        "A": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY) for d, c in zip(dates_, log_a)],
+        "B": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY) for d, c in zip(dates_, log_b)],
+        # C only has the SECOND HALF of the window -- deliberately different
+        # coverage from A/B's full-window alignment.
+        "C": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY)
+              for d, c in zip(dates_[n // 2:], log_c[n // 2:])],
+    }
+    candidates = [("A", "B", "s"), ("A", "C", "s")]
+    # Must not raise -- this is the exact crash the bug produced.
+    folds = run_walk_forward(candidates, price_data, dates_[0], dates_[-1])
+    assert len(folds) >= 1

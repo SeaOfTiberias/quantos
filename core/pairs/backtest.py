@@ -21,7 +21,7 @@ from typing import Optional
 
 import numpy as np
 
-from core.pairs.cointegration import CointegrationResult, form_pairs
+from core.pairs.cointegration import CointegrationResult, test_pair
 from core.pairs.costs import position_cost
 
 FORMATION_MONTHS = 6
@@ -57,6 +57,8 @@ class PairTrade:
     exit_price_b:  float
     lots_a:        int
     lots_b:         int
+    lot_size_a:     int
+    lot_size_b:     int
     gross_pnl:      float
     cost:           float
 
@@ -184,6 +186,7 @@ def _close_trade(open_trade: dict, exit_date: date, exit_price_a: float, exit_pr
         entry_price_a=open_trade["entry_price_a"], exit_price_a=exit_price_a,
         entry_price_b=open_trade["entry_price_b"], exit_price_b=exit_price_b,
         lots_a=open_trade["lots_a"], lots_b=open_trade["lots_b"],
+        lot_size_a=open_trade["lot_size_a"], lot_size_b=open_trade["lot_size_b"],
         gross_pnl=pnl_a + pnl_b, cost=cost_a + cost_b,
     )
 
@@ -218,21 +221,26 @@ def run_walk_forward(
             if window:
                 close_by_date[symbol] = {d.trade_date: d.close for d in window}
 
-        # Only test pairs whose two legs actually share >=20 formation-window
-        # dates (see cointegration.test_pair's own alignment requirement).
+        # Each pair gets its OWN date-intersection alignment -- a symbol can
+        # appear in many candidate pairs with different counterparts, each
+        # sharing a different subset of dates, so this cannot be cached
+        # per-symbol (a real bug this fixed: two pairs sharing symbol "A"
+        # were clobbering a single dict[symbol] -> aligned_closes entry,
+        # feeding test_pair mismatched-length series from unrelated pairs).
         alignable_pairs = []
-        aligned_closes: dict[str, list[float]] = {}
+        passing: list[CointegrationResult] = []
         for a, b, sector in candidate_pairs:
             if a not in close_by_date or b not in close_by_date:
                 continue
             common = sorted(set(close_by_date[a]) & set(close_by_date[b]))
             if len(common) < 20:
                 continue
-            aligned_closes[a] = [close_by_date[a][d] for d in common]
-            aligned_closes[b] = [close_by_date[b][d] for d in common]
             alignable_pairs.append((a, b, sector))
-
-        passing = form_pairs(alignable_pairs, aligned_closes)
+            closes_a = [close_by_date[a][d] for d in common]
+            closes_b = [close_by_date[b][d] for d in common]
+            result = test_pair(a, b, closes_a, closes_b)
+            if result is not None and result.passes:
+                passing.append(result)
 
         fold_trades: list[PairTrade] = []
         for pair in passing:

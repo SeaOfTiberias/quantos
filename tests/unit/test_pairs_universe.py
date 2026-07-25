@@ -8,12 +8,14 @@ docs/PAIRS_TRADING_METHODOLOGY.md's "Universe" section.
 import io
 import sys
 import zipfile
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from core.pairs.universe import (  # noqa: E402
-    build_pairs_universe, candidate_pairs, parse_stf_symbols, symbol_sector_counts,
+    build_pairs_universe, candidate_pairs, parse_stf_near_month, parse_stf_symbols,
+    symbol_sector_counts,
 )
 
 
@@ -82,6 +84,36 @@ def test_candidate_pairs_multi_sector_symbol_contributes_to_each():
     pairs = candidate_pairs(universe)
     assert ("HDFCBANK", "ICICIBANK", "bank") in pairs
     assert ("HDFCBANK", "BAJFINANCE", "financials") in pairs
+
+
+def test_parse_stf_near_month_picks_smallest_future_expiry():
+    raw = _make_raw_zip([
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-07-28", "ClsPric": "4000.0", "NewBrdLotQty": "150"},
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-08-25", "ClsPric": "4010.0", "NewBrdLotQty": "150"},
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-09-29", "ClsPric": "4020.0", "NewBrdLotQty": "150"},
+    ])
+    result = parse_stf_near_month(raw, date(2026, 7, 1))
+    assert result["TCS"].expiry == date(2026, 7, 28)
+    assert result["TCS"].close == 4000.0
+    assert result["TCS"].lot_size == 150
+
+
+def test_parse_stf_near_month_skips_expired_contracts():
+    raw = _make_raw_zip([
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-07-01", "ClsPric": "4000.0", "NewBrdLotQty": "150"},
+    ])
+    # trade_date AFTER the only listed expiry -- a stale/already-expired
+    # contract, should be skipped rather than treated as tradeable.
+    result = parse_stf_near_month(raw, date(2026, 7, 2))
+    assert "TCS" not in result
+
+
+def test_parse_stf_near_month_ignores_non_stf_rows():
+    raw = _make_raw_zip([
+        {"FinInstrmTp": "STO", "TckrSymb": "TCS", "XpryDt": "2026-07-28", "ClsPric": "50.0", "NewBrdLotQty": "150"},
+    ])
+    result = parse_stf_near_month(raw, date(2026, 7, 1))
+    assert result == {}
 
 
 def test_symbol_sector_counts():
