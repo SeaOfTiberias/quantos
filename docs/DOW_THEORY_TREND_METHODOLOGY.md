@@ -137,6 +137,23 @@ For a long trade (short is the exact mirror):
 
 One open position at a time — no pyramiding into an existing trade.
 
+## Position sizing — 2 lots per trade, NOT the fixed-notional convention
+
+Every prior futures candidate in this project (S8-3, pairs trading) sized
+off a fixed representative notional (~₹100,000) rounded to the nearest
+lot. That doesn't transfer here: one NIFTY futures lot is 65 units at a
+~₹24,000 spot, i.e. ~₹1.56M notional — a ₹100,000 target would round DOWN
+to zero lots and silently produce no trades at all, and a 1-lot position
+can't literally implement the source strategy's "book profits in stages
+(scaling out)," since a single F&O lot has no fractional unit to sell
+half of. **This backtest sizes every trade at exactly 2 lots** (~₹3.1M
+representative notional) — the minimum size that can make the scale-out
+mechanic literal rather than approximated: the 1R scale-out closes exactly
+1 lot, the remaining 1 lot is the trailing runner. No further optimization
+of the lot count is performed; 2 is the minimum whole-lot size the
+strategy's own described mechanic requires, not a tuned parameter.
+Disclosed now, before any result exists — not a finding to react to.
+
 ## Cost model — reused, not rebuilt
 
 `core/pairs/costs.py`'s `position_cost()` (STT/exchange-charge/stamp-duty/
