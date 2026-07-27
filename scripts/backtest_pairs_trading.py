@@ -63,7 +63,10 @@ def load_stf_price_data(start: date, end: date, raw_cache_dir: Path) -> dict[str
             continue
         n_days += 1
         for symbol, row in near_month.items():
-            price_data[symbol].append(FuturesDay(d, row.close, row.lot_size, row.expiry))
+            price_data[symbol].append(FuturesDay(
+                d, row.close, row.lot_size, row.expiry,
+                next_month_close=row.next_month_close,
+            ))
     print(f"  loaded {n_days} trading days with STF data, {len(price_data)} distinct symbols")
     return dict(price_data)
 

@@ -109,9 +109,17 @@ def parse_stf_symbols(raw_zip: bytes) -> set[str]:
 
 @dataclass(frozen=True)
 class NearMonthRow:
-    close:     float
-    lot_size:  int
-    expiry:    date
+    close:              float
+    lot_size:           int
+    expiry:             date
+    next_month_close:   Optional[float] = None
+    # ^ Same day's close for the NEXT-nearest listed expiry (the contract
+    # that becomes near-month once this one expires) -- None if a second
+    # expiry isn't listed that day. Added for docs/PAIRS_TRADING_V2_METHODOLOGY.md's
+    # roll-adjustment (core/pairs/roll_adjust.py): the ratio between a
+    # contract's own last near-month price and its successor's SAME-DAY
+    # price is what lets a roll seam be spliced out without ever needing a
+    # future day's data.
 
 
 def parse_stf_near_month(raw_zip: bytes, trade_date: date) -> dict[str, NearMonthRow]:
@@ -120,8 +128,11 @@ def parse_stf_near_month(raw_zip: bytes, trade_date: date) -> dict[str, NearMont
     `trade_date` (there are normally 3 listed expiries per symbol; this
     always resolves to the current front month, never a synthetic/rolled
     series -- see docs/PAIRS_TRADING_METHODOLOGY.md's "no-continuous-contract
-    rule"). A symbol with every listed expiry already <= trade_date (should
-    not happen in a same-day bhavcopy, but not assumed) is skipped."""
+    rule", superseded for signal/formation purposes by
+    docs/PAIRS_TRADING_V2_METHODOLOGY.md's roll-adjustment, which is built
+    from the near_month/next_month pair returned here, not a third parse).
+    A symbol with every listed expiry already <= trade_date (should not
+    happen in a same-day bhavcopy, but not assumed) is skipped."""
     with zipfile.ZipFile(io.BytesIO(raw_zip)) as zf:
         raw_csv = zf.read(zf.namelist()[0]).decode("utf-8")
 
@@ -135,11 +146,13 @@ def parse_stf_near_month(raw_zip: bytes, trade_date: date) -> dict[str, NearMont
 
     out: dict[str, NearMonthRow] = {}
     for symbol, rows in by_symbol.items():
-        future_rows = [row for row in rows if row[0] >= trade_date]
+        future_rows = sorted((row for row in rows if row[0] >= trade_date), key=lambda row: row[0])
         if not future_rows:
             continue
-        expiry, close, lot_size = min(future_rows, key=lambda row: row[0])
-        out[symbol] = NearMonthRow(close=close, lot_size=lot_size, expiry=expiry)
+        expiry, close, lot_size = future_rows[0]
+        next_month_close = future_rows[1][1] if len(future_rows) > 1 else None
+        out[symbol] = NearMonthRow(close=close, lot_size=lot_size, expiry=expiry,
+                                    next_month_close=next_month_close)
     return out
 
 

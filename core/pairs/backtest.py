@@ -39,6 +39,19 @@ class FuturesDay:
     close:      float
     lot_size:   int
     expiry:     date  # the near-month contract's own expiry
+    next_month_close: Optional[float] = None
+    # ^ Same-day close of the contract that becomes near-month once this
+    # one expires -- raw input to core/pairs/roll_adjust.py, not consumed
+    # anywhere else. None if a second expiry wasn't listed that day.
+    adj_close: Optional[float] = None
+    # ^ Roll-adjusted close (core/pairs/roll_adjust.py's
+    # build_adjusted_series), used ONLY for cointegration/hedge-ratio
+    # estimation and trading-window z-score computation -- see
+    # docs/PAIRS_TRADING_V2_METHODOLOGY.md's "what adj_close is NOT used
+    # for" section. `close` (raw) remains the ONLY price ever used for
+    # actual fills, P&L, and costs. None until build_adjusted_series has
+    # run; simulate_pair falls back to `close` if still None (candidate
+    # 12's original, unadjusted behavior).
 
 
 @dataclass(frozen=True)
@@ -130,7 +143,14 @@ def simulate_pair(
         da, db = by_a[d], by_b[d]
         if da.close <= 0 or db.close <= 0:
             continue
-        z = (np.log(da.close) - pair.hedge_ratio * np.log(db.close) - pair.spread_mean) / pair.spread_std
+        # z-score signal uses the roll-adjusted close (falls back to raw
+        # `close` if no adjusted series was built) -- see
+        # docs/PAIRS_TRADING_V2_METHODOLOGY.md: a roll seam mid-trading-window
+        # must not manufacture a false z-spike. Fills/P&L below always use
+        # da.close/db.close (raw), never the adjusted price.
+        signal_a = da.adj_close if da.adj_close is not None else da.close
+        signal_b = db.adj_close if db.adj_close is not None else db.close
+        z = (np.log(signal_a) - pair.hedge_ratio * np.log(signal_b) - pair.spread_mean) / pair.spread_std
 
         if open_trade is None:
             if z > ENTRY_Z or z < -ENTRY_Z:
@@ -202,6 +222,30 @@ class FoldResult:
     n_pairs_tested:   int
     n_pairs_passed:   int
     trades:           list[PairTrade]
+    n_pairs_excluded_corp_action: int = 0
+    # ^ docs/PAIRS_TRADING_V2_METHODOLOGY.md Fix 1 -- pairs dropped this
+    # fold because either leg's RAW close series had a suspected
+    # unadjusted corporate-action jump in the formation or trading window.
+    # Defaults to 0 so any caller building a FoldResult directly (existing
+    # tests) is unaffected.
+
+
+def _has_symbol_corp_action_jump(series: list[FuturesDay]) -> bool:
+    """docs/PAIRS_TRADING_V2_METHODOLOGY.md Fix 1 -- reuses
+    core/rotation/reconstitution_gutcheck.py's ratio-band check exactly
+    (deferred import: core/pairs has no other dependency on core/rotation,
+    same "import, don't reimplement" precedent core/rotation/equity_curve.py
+    set importing _size_new_entrants from executor.py). Checks RAW close
+    (never adj_close) -- a genuine roll-day move averages ~1.8%, nowhere
+    near this check's [0.5, 2.0] ratio band, so this and the roll-adjustment
+    fix catch structurally different magnitudes, never double-counting the
+    same event."""
+    from core.rotation.reconstitution_gutcheck import _has_corporate_action_jump
+
+    if len(series) < 2:
+        return False
+    as_tuples = [(d.trade_date, d.close) for d in series]
+    return _has_corporate_action_jump(as_tuples, 0, len(as_tuples) - 1)
 
 
 def run_walk_forward(
@@ -212,14 +256,31 @@ def run_walk_forward(
     """One fold per (formation_window, trading_window) step. Pairs are
     re-tested for cointegration fresh in EVERY formation window -- a pair
     that passed in one fold and fails in the next is simply not traded
-    that fold, no carry-forward."""
+    that fold, no carry-forward.
+
+    Cointegration/hedge-ratio estimation uses each FuturesDay's adj_close
+    if present (falls back to raw close otherwise, so callers that never
+    built a roll-adjusted series -- e.g. existing tests -- are unaffected)
+    -- see docs/PAIRS_TRADING_V2_METHODOLOGY.md Fix 2. A pair is dropped
+    from a fold entirely (before cointegration is even tested) if either
+    leg's RAW close series shows a suspected corporate-action jump in
+    either window -- Fix 1."""
     folds = []
     for formation_start, formation_end, trading_start, trading_end in formation_trading_windows(start, end):
         close_by_date: dict[str, dict[date, float]] = {}
+        formation_window: dict[str, list[FuturesDay]] = {}
+        trading_window: dict[str, list[FuturesDay]] = {}
         for symbol, series in price_data.items():
-            window = _slice(series, formation_start, formation_end)
-            if window:
-                close_by_date[symbol] = {d.trade_date: d.close for d in window}
+            f_window = _slice(series, formation_start, formation_end)
+            t_window = _slice(series, trading_start, trading_end)
+            if f_window:
+                formation_window[symbol] = f_window
+                close_by_date[symbol] = {
+                    d.trade_date: (d.adj_close if d.adj_close is not None else d.close)
+                    for d in f_window
+                }
+            if t_window:
+                trading_window[symbol] = t_window
 
         # Each pair gets its OWN date-intersection alignment -- a symbol can
         # appear in many candidate pairs with different counterparts, each
@@ -229,8 +290,15 @@ def run_walk_forward(
         # feeding test_pair mismatched-length series from unrelated pairs).
         alignable_pairs = []
         passing: list[CointegrationResult] = []
+        n_corp_action_excluded = 0
         for a, b, sector in candidate_pairs:
             if a not in close_by_date or b not in close_by_date:
+                continue
+            if (_has_symbol_corp_action_jump(formation_window.get(a, [])) or
+                    _has_symbol_corp_action_jump(formation_window.get(b, [])) or
+                    _has_symbol_corp_action_jump(trading_window.get(a, [])) or
+                    _has_symbol_corp_action_jump(trading_window.get(b, []))):
+                n_corp_action_excluded += 1
                 continue
             common = sorted(set(close_by_date[a]) & set(close_by_date[b]))
             if len(common) < 20:
@@ -244,8 +312,8 @@ def run_walk_forward(
 
         fold_trades: list[PairTrade] = []
         for pair in passing:
-            trading_a = _slice(price_data[pair.symbol_a], trading_start, trading_end)
-            trading_b = _slice(price_data[pair.symbol_b], trading_start, trading_end)
+            trading_a = trading_window.get(pair.symbol_a, [])
+            trading_b = trading_window.get(pair.symbol_b, [])
             for t in simulate_pair(pair, trading_a, trading_b):
                 fold_trades.append(_tag_symbols(t, pair.symbol_a, pair.symbol_b))
 
@@ -253,6 +321,7 @@ def run_walk_forward(
             formation_start=formation_start, formation_end=formation_end,
             trading_start=trading_start, trading_end=trading_end,
             n_pairs_tested=len(alignable_pairs), n_pairs_passed=len(passing),
+            n_pairs_excluded_corp_action=n_corp_action_excluded,
             trades=fold_trades,
         ))
     return folds

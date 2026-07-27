@@ -108,6 +108,24 @@ def test_parse_stf_near_month_skips_expired_contracts():
     assert "TCS" not in result
 
 
+def test_parse_stf_near_month_captures_next_month_close():
+    raw = _make_raw_zip([
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-07-28", "ClsPric": "4000.0", "NewBrdLotQty": "150"},
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-08-25", "ClsPric": "4010.0", "NewBrdLotQty": "150"},
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-09-29", "ClsPric": "4020.0", "NewBrdLotQty": "150"},
+    ])
+    result = parse_stf_near_month(raw, date(2026, 7, 1))
+    assert result["TCS"].next_month_close == 4010.0  # second-nearest expiry, not the third
+
+
+def test_parse_stf_near_month_next_month_close_none_when_only_one_expiry_listed():
+    raw = _make_raw_zip([
+        {"FinInstrmTp": "STF", "TckrSymb": "TCS", "XpryDt": "2026-07-28", "ClsPric": "4000.0", "NewBrdLotQty": "150"},
+    ])
+    result = parse_stf_near_month(raw, date(2026, 7, 1))
+    assert result["TCS"].next_month_close is None
+
+
 def test_parse_stf_near_month_ignores_non_stf_rows():
     raw = _make_raw_zip([
         {"FinInstrmTp": "STO", "TckrSymb": "TCS", "XpryDt": "2026-07-28", "ClsPric": "50.0", "NewBrdLotQty": "150"},

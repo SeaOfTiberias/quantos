@@ -55,6 +55,40 @@ def test_formation_trading_windows_empty_if_too_short():
 
 # ─── simulate_pair: entry/exit rules ────────────────────────────────────────
 
+def test_simulate_pair_uses_adj_close_for_z_when_present():
+    """docs/PAIRS_TRADING_V2_METHODOLOGY.md Fix 2: the z-score signal must
+    use adj_close, never raw close, when an adjusted series was built --
+    even if raw close would have crossed the entry threshold, a flat
+    adj_close must produce no trade."""
+    pair = _pair()
+    raw_start = date(2026, 1, 1)
+    a_series = [
+        FuturesDay(raw_start, math.exp(0.0), 1, FAR_EXPIRY, adj_close=math.exp(0.0)),
+        FuturesDay(raw_start + timedelta(days=1), math.exp(9.0), 1, FAR_EXPIRY, adj_close=math.exp(0.1)),
+        FuturesDay(raw_start + timedelta(days=2), math.exp(9.0), 1, FAR_EXPIRY, adj_close=math.exp(0.0)),
+    ]
+    b_series = _series([1.0, 1.0, 1.0])
+    trades = simulate_pair(pair, a_series, b_series)
+    assert trades == []  # raw close's log=9.0 would have entered; adj_close never left [-2,2]
+
+
+def test_simulate_pair_fills_at_raw_close_never_adjusted_close():
+    """Even with an adjusted series driving the signal, actual fill prices
+    (used for P&L/cost) must always be the raw close."""
+    pair = _pair()
+    raw_start = date(2026, 1, 1)
+    a_series = [
+        FuturesDay(raw_start, math.exp(0.0), 1, FAR_EXPIRY, adj_close=math.exp(0.0)),
+        FuturesDay(raw_start + timedelta(days=1), 55.0, 1, FAR_EXPIRY, adj_close=math.exp(2.5)),
+        FuturesDay(raw_start + timedelta(days=2), 60.0, 1, FAR_EXPIRY, adj_close=math.exp(0.0)),
+    ]
+    b_series = _series([1.0, 1.0, 1.0])
+    trades = simulate_pair(pair, a_series, b_series)
+    assert len(trades) == 1
+    assert trades[0].entry_price_a == 55.0  # raw, not exp(2.5)
+    assert trades[0].exit_price_a == 60.0
+
+
 def test_no_trade_when_z_never_crosses_threshold():
     pair = _pair()
     closes = [0.0, 0.5, -0.5, 1.0, -1.0]  # log(close_a) stays within [-2, 2]
@@ -161,6 +195,81 @@ def test_run_walk_forward_smoke():
         for t in fold.trades:
             assert t.symbol_a == "A"
             assert t.symbol_b == "B"
+
+
+def test_run_walk_forward_excludes_pair_with_corporate_action_jump():
+    """docs/PAIRS_TRADING_V2_METHODOLOGY.md Fix 1: a symbol with a >2x (or
+    <0.5x) day-to-day RAW close jump in the formation window must exclude
+    the whole pair from that fold, reflected in n_pairs_excluded_corp_action,
+    never silently feeding a corrupted hedge-ratio estimate."""
+    import numpy as np
+    rng = np.random.default_rng(3)
+    n = 300
+    log_base = np.cumsum(rng.normal(0, 0.01, n)) + 5.0
+    log_a = log_base + rng.normal(0, 0.005, n)
+    log_b = log_base + rng.normal(0, 0.005, n)
+    dates_ = [date(2024, 1, 1) + timedelta(days=i) for i in range(n)]
+
+    closes_a = [float(math.exp(c)) for c in log_a]
+    closes_a[50] = closes_a[49] * 5.0   # unadjusted 5x jump -- suspected corp action
+
+    price_data = {
+        "A": [FuturesDay(d, c, 1, FAR_EXPIRY) for d, c in zip(dates_, closes_a)],
+        "B": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY) for d, c in zip(dates_, log_b)],
+    }
+    candidates = [("A", "B", "s")]
+    folds = run_walk_forward(candidates, price_data, dates_[0], dates_[-1])
+    assert folds[0].n_pairs_excluded_corp_action == 1
+    assert folds[0].n_pairs_tested == 0
+    assert folds[0].trades == []
+
+
+def test_run_walk_forward_clean_pair_not_excluded():
+    import numpy as np
+    rng = np.random.default_rng(3)
+    n = 300
+    log_base = np.cumsum(rng.normal(0, 0.01, n)) + 5.0
+    log_a = log_base + rng.normal(0, 0.005, n)
+    log_b = log_base + rng.normal(0, 0.005, n)
+    dates_ = [date(2024, 1, 1) + timedelta(days=i) for i in range(n)]
+
+    price_data = {
+        "A": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY) for d, c in zip(dates_, log_a)],
+        "B": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY) for d, c in zip(dates_, log_b)],
+    }
+    candidates = [("A", "B", "s")]
+    folds = run_walk_forward(candidates, price_data, dates_[0], dates_[-1])
+    assert folds[0].n_pairs_excluded_corp_action == 0
+
+
+def test_run_walk_forward_uses_adj_close_for_cointegration():
+    """A pair whose RAW close has an artificial roll-style seam mid-formation
+    but whose adj_close is smooth/cointegrated must still pass -- proves the
+    cointegration extraction reads adj_close, not raw close."""
+    import numpy as np
+    rng = np.random.default_rng(11)
+    n = 300
+    log_base = np.cumsum(rng.normal(0, 0.005, n)) + 5.0
+    log_a = log_base + rng.normal(0, 0.002, n)
+    log_b = log_base + rng.normal(0, 0.002, n)
+    dates_ = [date(2024, 1, 1) + timedelta(days=i) for i in range(n)]
+
+    raw_a = [float(math.exp(c)) for c in log_a]
+    adj_a = list(raw_a)
+    raw_a[80] *= 1.3   # a seam distortion in RAW only -- moderate, won't trip the corp-action guard
+
+    price_data = {
+        "A": [FuturesDay(d, raw_a[i], 1, FAR_EXPIRY, adj_close=adj_a[i])
+              for i, d in enumerate(dates_)],
+        "B": [FuturesDay(d, float(math.exp(c)), 1, FAR_EXPIRY, adj_close=float(math.exp(c)))
+              for d, c in zip(dates_, log_b)],
+    }
+    candidates = [("A", "B", "s")]
+    folds = run_walk_forward(candidates, price_data, dates_[0], dates_[-1])
+    # With clean adj_close feeding cointegration, A/B (built from the same
+    # log_base) should test/pass same as the clean-series smoke test.
+    assert folds[0].n_pairs_tested == 1
+    assert folds[0].n_pairs_passed == 1
 
 
 def test_run_walk_forward_shared_symbol_across_pairs_with_different_coverage():
