@@ -16,20 +16,22 @@ a finding for a NEXT pre-registered run, not a retroactive edit here.
 
 ## The bar this candidate must clear — stricter than any prior one
 
-Every prior candidate's bar was `core/backtest/parser.py`'s
-`has_positive_edge` (PF > 1.0, Sharpe > 0.5) in isolation. That bar is
-necessary but **not sufficient** here: the live S8-3 rotation strategy
-already trades a single-factor (52-week momentum) version of this exact
-idea, and its own survivorship-bias-corrected verdict
-([[quantos_s8_3_survivorship_fix_status]]) was a REAL LOSS to both
-benchmarks (-15.6pts to Nifty500, -64.6pts to Nifty Alpha 50). A model that
-clears `has_positive_edge` but doesn't beat that single-factor baseline
-over the same held-out period isn't an improvement — it's noise that
-happened to clear a low bar. **This candidate must beat, on the held-out
-test period only: (1) `has_positive_edge`, (2) Nifty 500 buy-and-hold, (3)
-Nifty Alpha 50 buy-and-hold, AND (4) the single-factor-momentum baseline
-(`core/rotation/ranker.py`'s `rank_universe`, S8-3's own live logic) run
-over the identical universe/dates/costs.** Failing to beat (4) specifically
+This is a capital-tracked rotation strategy, evaluated the way S1 Dual
+Momentum and S8-3 actually were — CAGR/Sharpe/max-drawdown on a real
+simulated account (`core/rotation/equity_curve.py`), not the pooled-per-
+trade `has_positive_edge` (PF>1.0, Sharpe>0.5) bar candidates 1-15 used.
+That bar (CAGR>0%, Sharpe>0.5) is necessary but **not sufficient** here:
+the live S8-3 rotation strategy already trades a single-factor (52-week
+momentum) version of this exact idea, and its own survivorship-bias-
+corrected verdict ([[quantos_s8_3_survivorship_fix_status]]) was a REAL
+LOSS to both benchmarks (-15.6pts to Nifty500, -64.6pts to Nifty Alpha
+50). A model that clears CAGR>0%/Sharpe>0.5 but doesn't beat that single-
+factor baseline over the same held-out period isn't an improvement — it's
+noise that happened to clear a low bar. **This candidate must beat, on the
+held-out test period only: (1) CAGR>0% and Sharpe>0.5, (2) Nifty 500 buy-
+and-hold, (3) Nifty Alpha 50 buy-and-hold, AND (4) the single-factor-
+momentum baseline (`core/rotation/ranker.py`'s `rank_universe`, S8-3's own
+live logic) run over the identical universe/dates/costs.** Failing to beat (4) specifically
 is disqualifying regardless of (1)-(3), since (4) is what's actually
 running today.
 
@@ -162,16 +164,31 @@ methodology, for direct comparability.
 
 ## Validation criterion / pass-fail bar
 
-On the TEST period (final 12 months) only:
-1. `core/backtest/parser.py`'s `has_positive_edge` (PF > 1.0, Sharpe > 0.5)
-   on the capital-tracked equity curve (`core/rotation/equity_curve.py`'s
-   own CAGR/Sharpe/max-drawdown methodology, same as S1/S8-3).
+On the TEST period (final 12 months) only, using a FRESH capital-tracked
+`simulate_portfolio` run starting at the test period's own first date (not
+a slice of the full-window curve, so the comparison is a clean "what does
+this look like starting from here," same semantics as candidate 15's
+per-year breakdown):
+
+1. **CAGR > 0% and Sharpe > 0.5 on the capital-tracked equity curve**
+   (`core/rotation/equity_curve.py`'s own CAGR/Sharpe/max-drawdown
+   methodology). Correction, caught before implementation began:
+   `EquityCurveResult` has no `profit_factor` field — `has_positive_edge`
+   (PF>1.0, Sharpe>0.5) is the POOLED PER-TRADE convention this project
+   uses for point-count-driven backtests (candidates 1-15), a different
+   metric family from the CAPITAL-TRACKED equity-curve convention S1 Dual
+   Momentum and S8-3 actually established (see
+   `quantos_three_strategy_proposals_review`: Strategy 1 failed its "own
+   equity-curve Sharpe bar (0.45<0.5)" — that IS this project's real
+   precedent bar for an equity-curve verdict, not a PF threshold). This
+   candidate follows the equity-curve convention throughout, since it's
+   evaluated the same way S1/S8-3 were.
 2. Beats Nifty 500 buy-and-hold (`simulate_index_buy_and_hold`) over the
    same test period.
 3. Beats Nifty Alpha 50 buy-and-hold over the same test period.
 4. Beats the single-factor-momentum baseline (`rank_universe` run through
-   the identical `simulate_portfolio` harness, same universe/dates/costs)
-   over the same test period.
+   the identical `simulate_portfolio` harness, same universe/dates/costs,
+   its own fresh test-period-only run) over the same test period.
 
 **All four required.** Reported alongside: TRAIN-period metrics (for
 overfitting comparison — a test period that's dramatically worse than
@@ -187,7 +204,7 @@ train is itself a finding), and the model's feature coefficients/importances
 - Changing the label definition (top-quintile threshold, forward-return
   horizon), the feature set, or the train/test split boundary after seeing
   a weak result.
-- Reporting only `has_positive_edge` while omitting the three benchmark
+- Reporting only CAGR/Sharpe while omitting the three benchmark
   comparisons — the whole point of this candidate is "better than what's
   already running," not "better than nothing."
 - Treating a pass here as sufficient to swap into live S8-3 without a
