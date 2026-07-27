@@ -54,10 +54,34 @@ _INDEX_SYMBOL_MAP = {
     "BANKNIFTY":       "NIFTYBANK",
     "INDIA VIX":       "INDIAVIX",
     "NIFTY ALPHA 50":  "NIFTYALPHA50",
+    # Sectoral indices — confirmed live 2026-07-24 against real Fyers
+    # historical-data calls (core/meanreversion/gutcheck.py's sector-trend
+    # filter is the first caller to need these).
+    "NIFTY IT":        "NIFTYIT",
+    "NIFTY AUTO":      "NIFTYAUTO",
+    "NIFTY PHARMA":    "NIFTYPHARMA",
+    "NIFTY FMCG":      "NIFTYFMCG",
+    "NIFTY METAL":     "NIFTYMETAL",
+    "NIFTY REALTY":    "NIFTYREALTY",
+    "NIFTY ENERGY":    "NIFTYENERGY",
+    "NIFTY MEDIA":     "NIFTYMEDIA",
+    "NIFTY PSU BANK":  "NIFTYPSUBANK",
+    "NIFTY INFRA":     "NIFTYINFRA",
 }
 
 
 def _fyers_symbol(symbol: str) -> str:
+    # An already-fully-qualified Fyers symbol (e.g. an F&O contract resolved
+    # via core/options/fyers_symbol_master.py's resolve_option_symbol(), like
+    # "NSE:BANKNIFTY26JUL56700PE") must pass through unchanged — every prior
+    # caller only ever passed bare tickers ("RELIANCE") or index names
+    # ("NIFTY 50"), so this function unconditionally assumed non-index input
+    # was a bare equity ticker and appended "-EQ", mangling any already-
+    # prefixed option/futures symbol into garbage (confirmed live 2026-07-26:
+    # Fyers' own history endpoint rejected the mangled symbol with -300
+    # "Invalid symbol", while the exact same unmangled symbol succeeded).
+    if symbol.startswith("NSE:"):
+        return symbol
     if symbol in _INDEX_SYMBOL_MAP:
         return f"NSE:{_INDEX_SYMBOL_MAP[symbol]}-INDEX"
     return f"NSE:{symbol}-EQ"

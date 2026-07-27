@@ -178,3 +178,56 @@ class TestOrderAndQuoteSymbolFormatting:
 
         sent = broker._client.quotes.call_args.kwargs["data"]
         assert sent["symbols"] == "NSE:INDIAVIX-INDEX"
+
+
+class TestAlreadyQualifiedSymbolPassthrough:
+    """
+    Regression: _fyers_symbol() unconditionally treated any non-index input
+    as a bare equity ticker and appended "-EQ", mangling an already-fully-
+    qualified Fyers symbol (e.g. an F&O option/futures contract resolved via
+    core/options/fyers_symbol_master.py's resolve_option_symbol(), like
+    "NSE:BANKNIFTY26JUL56700PE") into garbage such as
+    "NSE:NSE:BANKNIFTY26JUL56700PE-EQ". Confirmed live 2026-07-26: Fyers'
+    history endpoint rejected the mangled symbol with -300 "Invalid symbol",
+    while the exact same unmangled symbol succeeded. Also fixed get_ltp()'s
+    KeyError: 'lp' on the same mangled-symbol path for free.
+    """
+
+    def test_get_historical_data_passes_through_qualified_option_symbol(self):
+        broker = _connected_broker()
+        broker.get_historical_data(
+            "NSE:BANKNIFTY26JUL56700PE", "5m",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 8, tzinfo=timezone.utc),
+        )
+        sent = broker._client.history.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:BANKNIFTY26JUL56700PE"
+
+    def test_get_ltp_passes_through_qualified_option_symbol(self):
+        broker = _connected_broker()
+        broker._client.quotes.return_value = {
+            "code": 200,
+            "d": [{"n": "NSE:BANKNIFTY26JUL56700PE", "v": {"lp": 123.45}}],
+        }
+
+        result = broker.get_ltp(["NSE:BANKNIFTY26JUL56700PE"])
+
+        sent = broker._client.quotes.call_args.kwargs["data"]
+        assert sent["symbols"] == "NSE:BANKNIFTY26JUL56700PE"
+        assert result["NSE:BANKNIFTY26JUL56700PE"] == 123.45
+
+    def test_place_order_passes_through_qualified_futures_symbol(self):
+        broker = _connected_broker()
+        broker._client.place_order.return_value = {
+            "code": 200, "id": "ORD1", "message": "ok",
+        }
+        order = Order(
+            symbol="NSE:BANKNIFTY26JULFUT", direction=OrderDirection.BUY,
+            quantity=1, order_type=OrderType.MARKET,
+            product_type=ProductType.INTRADAY,
+        )
+
+        broker.place_order(order)
+
+        sent = broker._client.place_order.call_args.kwargs["data"]
+        assert sent["symbol"] == "NSE:BANKNIFTY26JULFUT"
