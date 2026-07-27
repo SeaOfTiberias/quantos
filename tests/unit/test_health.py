@@ -67,8 +67,13 @@ async def test_status_reports_real_db_connection_state():
     data = r.json()
     assert "database_connected" in data
     assert "any_signal_ever" in data
+    assert "database_connect_error" in data
     assert isinstance(data["database_connected"], bool)
     assert isinstance(data["any_signal_ever"], bool)
+    # None (never failed) or an exception class name — never the raw
+    # exception message, which could echo DATABASE_URL's credentials back
+    # through this public, unauthenticated endpoint.
+    assert data["database_connect_error"] is None or isinstance(data["database_connect_error"], str)
 
 
 @pytest.mark.asyncio

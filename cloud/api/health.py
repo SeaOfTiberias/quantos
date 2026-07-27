@@ -117,6 +117,7 @@ async def operational_status():
         "timestamp_utc":  now_utc.isoformat(),
         "database_connected": db.is_postgres,
         "any_signal_ever":    any_signal_ever,
+        "database_connect_error": db.last_connect_error,
         "config": {
             "claude_configured":    bool(os.getenv("ANTHROPIC_API_KEY")),
             "whatsapp_configured":  bool(os.getenv("CALLMEBOT_PHONE")),

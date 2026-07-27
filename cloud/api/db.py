@@ -212,6 +212,12 @@ class SignalDB:
         # module docstring), so the flag flips only on a real connectivity
         # check — never on env-var presence.
         self._use_postgres = False
+        # Exception TYPE only (e.g. "TimeoutError", "InvalidPasswordError") —
+        # deliberately not str(e), which can echo the DSN (including
+        # credentials) back for some asyncpg/sqlalchemy failures, and this is
+        # read by a public, unauthenticated /status endpoint. Full detail
+        # stays in the server-side warning log below (Railway dashboard).
+        self._last_connect_error: Optional[str] = None
 
     @property
     def is_postgres(self) -> bool:
@@ -220,6 +226,13 @@ class SignalDB:
         (see module docstring). False means every signal since this boot is
         in-memory only and will vanish on the next redeploy."""
         return self._use_postgres
+
+    @property
+    def last_connect_error(self) -> Optional[str]:
+        """Exception class name from the most recent failed connect(), or
+        None if it hasn't failed (either never tried, or currently connected).
+        See _last_connect_error's comment for why this isn't the full message."""
+        return self._last_connect_error
 
     async def connect(self) -> bool:
         """Attempt to bring up Postgres persistence. Runs a real connectivity
@@ -253,6 +266,7 @@ class SignalDB:
                     await conn.execute(text(idx_sql))
             self._engine = engine
             self._use_postgres = True
+            self._last_connect_error = None
             logger.info("SignalDB connected to Postgres — signals will persist "
                         "across redeploys")
             return True
@@ -265,6 +279,7 @@ class SignalDB:
             )
             self._engine = None
             self._use_postgres = False
+            self._last_connect_error = type(e).__name__
             return False
 
     async def insert_signal(self, signal: Signal) -> None:
