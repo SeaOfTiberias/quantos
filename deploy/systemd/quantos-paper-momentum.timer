@@ -1,0 +1,17 @@
+[Unit]
+Description=Daily trigger for QuantOS Momentum Turnover Walk-Forward (paper, quarterly-acting)
+
+[Timer]
+# Fires DAILY, not quarterly -- core/rotation/paper_executor.py's own
+# quarter-boundary gate is what makes this only actually act once per
+# calendar quarter (see is_eligible_to_rebalance). Daily firing is what
+# gives the walk-forward its self-healing property: if the quarter-end
+# day's run fails (stale token), tomorrow's run catches it instead of the
+# whole quarter being silently lost. 07:35 IST = 02:05 UTC -- five minutes
+# after quantos-rotation.timer's own 02:00 UTC fire, so a shared daily
+# Fyers token refresh already covers both.
+OnCalendar=*-*-* 02:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

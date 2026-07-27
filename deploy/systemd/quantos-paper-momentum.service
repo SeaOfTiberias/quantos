@@ -1,0 +1,22 @@
+[Unit]
+Description=QuantOS Momentum Turnover Walk-Forward (candidate 11 OOS confirmation -- paper only, no real capital)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_paper_momentum_walkforward.py
+Environment=HOME=/home/ubuntu
+
+# No Restart= here deliberately, same reasoning as quantos-rotation.service:
+# the most likely failure is a stale Fyers auth token, which needs a human
+# to refresh interactively, not an immediate retry. This unit is safe to
+# fail silently more often than quantos-rotation.service, though, since
+# core/rotation/paper_executor.py's quarter-boundary gate makes today's
+# failure recoverable by tomorrow's run without losing the quarter (see
+# docs/MOMENTUM_TURNOVER_WALKFORWARD_METHODOLOGY.md's "self-healing daily
+# gate"). No Telegram alert wired up in this first version -- check
+# `journalctl -u quantos-paper-momentum` during the existing daily VM
+# check-in.
