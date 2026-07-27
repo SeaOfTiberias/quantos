@@ -65,6 +65,22 @@ def test_time_based_split_is_strictly_chronological():
     assert len(train) + len(test) == len(rows)
 
 
+def test_time_based_split_excludes_a_train_row_whose_label_peeks_past_the_split():
+    """Regression: Fable's review of candidate 16's first cut found a row
+    dated just before split_date whose LABEL came from a price on/after
+    split_date still counted as train -- a real, if tiny, test-period leak."""
+    split_date = START + timedelta(days=20)
+    leaking_row = _synthetic_row(19, "LEAK", signal=0.5, label=1)
+    leaking_row.label_date = split_date + timedelta(days=2)   # label price is IN the test period
+    clean_row = _synthetic_row(19, "CLEAN", signal=0.5, label=1)
+    clean_row.label_date = split_date - timedelta(days=1)     # label price is still pre-test
+
+    train, test = time_based_split([leaking_row, clean_row], split_date)
+
+    assert leaking_row not in train
+    assert clean_row in train
+
+
 def test_time_based_split_no_overlap():
     rows = _synthetic_dataset(n_days=30)
     split_date = START + timedelta(days=15)

@@ -65,6 +65,7 @@ class FeatureRow:
     recon_recently_added:  bool
     recon_data_known:      bool
     label:                 Optional[int] = None   # set once the next rebalance date's forward return is known
+    label_date:            Optional[datetime] = None   # the NEXT rebalance date the label's price comes from
 
 
 FEATURE_NAMES = [
@@ -154,6 +155,7 @@ def build_dataset(
         threshold = sorted_returns[cutoff_idx]
         for row, fwd_return in zip(date_rows, fwd_returns):
             row.label = 1 if fwd_return >= threshold else 0
+            row.label_date = next_date
             rows.append(row)
 
     return rows

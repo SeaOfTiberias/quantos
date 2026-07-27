@@ -31,11 +31,19 @@ CV_FOLDS = 5
 
 
 def time_based_split(rows: list[FeatureRow], split_date: datetime) -> tuple[list[FeatureRow], list[FeatureRow]]:
-    """Everything strictly before `split_date` is TRAIN; everything from
-    `split_date` onward is TEST. The test set is touched only once, by the
-    caller's final evaluation -- never inside this module."""
-    train = [r for r in rows if r.date < split_date]
+    """TEST = every row whose OWN rebalance date is on/after split_date.
+    TRAIN = every remaining row whose LABEL price (drawn from the row's
+    label_date, the next rebalance date) is also strictly before
+    split_date -- gating on `r.date` alone would leak one rebalance week's
+    worth of test-period closing prices into the last training row(s)'
+    labels (confirmed live 2026-07-27, Fable's review of the first cut of
+    this candidate: ~1% of train rows, immaterial to the fit, but a real,
+    avoidable violation of "never touch the test period more than once").
+    The test set itself is touched only once, by the caller's final
+    evaluation -- never inside this module."""
     test = [r for r in rows if r.date >= split_date]
+    train = [r for r in rows if r.date < split_date
+             and (r.label_date is None or r.label_date < split_date)]
     return train, test
 
 
