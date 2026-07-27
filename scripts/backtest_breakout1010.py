@@ -24,6 +24,7 @@ Usage
 
 import argparse
 import asyncio
+import csv
 import logging
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -100,6 +101,28 @@ def _metrics_row(label: str, m: BacktestMetrics) -> str:
             f"{m.sharpe_ratio:.2f} | {m.net_profit_pct:+.1f}% | {m.max_drawdown_pct:.1f}% |")
 
 
+def _real_rupee_summary(trades: list[BacktestTrade]) -> str:
+    """Real absolute-INR aggregates, bypassing core/backtest/parser.py's
+    net_profit_pct (a raw SUM of each trade's own-notional % return, not
+    capital-weighted or compounded) — the same measurement trap Fable
+    identified for candidate 14 (Dow theory), where a huge summed-%
+    headline sat right next to a confirmed real rupee LOSS. profit_factor
+    (below) is unaffected — it's already a ratio of real INR sums."""
+    wins = [t for t in trades if t.is_win]
+    losses = [t for t in trades if not t.is_win]
+    gross_profit = sum(t.net_profit for t in wins)
+    gross_loss = abs(sum(t.net_profit for t in losses))
+    total_costs = sum(t.costs for t in trades)
+    net_inr = sum(t.net_profit for t in trades)
+    return (
+        f"Real INR aggregates (1 lot/trade, per docs/BREAKOUT_1010_METHODOLOGY.md's "
+        f"position sizing — NOT a claim about a specific capital base): gross profit "
+        f"₹{gross_profit:,.0f}, gross loss ₹{gross_loss:,.0f}, total transaction costs "
+        f"₹{total_costs:,.0f}, **net ₹{net_inr:,.0f}** across {len(trades)} trades "
+        f"(₹{net_inr / len(trades):,.0f}/trade average)."
+    )
+
+
 def summarize(trades: list[BacktestTrade], window_start: date, window_end: date) -> str:
     overall = _compute_metrics(trades)
     by_year: dict[int, list[BacktestTrade]] = {}
@@ -113,6 +136,18 @@ def summarize(trades: list[BacktestTrade], window_start: date, window_end: date)
         f"option premium (real BankNifty spot + India VIX proxy, NOT real traded "
         f"premium — see docs/CANDIDATE15_OPTION_DATA_FEASIBILITY.md), "
         f"{window_start} to {window_end}. {len(trades)} trades total (one per day, at most).",
+        "",
+        _real_rupee_summary(trades),
+        "",
+        "**Read `net_profit_pct` and `max_drawdown_pct` below with caution**: both are "
+        "computed by `core/backtest/parser.py` as a raw SUM of each trade's own-entry-"
+        "notional %% return, not capital-weighted or compounded — the exact measurement "
+        "trap Fable identified in candidate 14 (Dow theory), where a large summed-%% "
+        "headline sat next to a confirmed real rupee loss. A `max_drawdown_pct` over "
+        "100%% here is a symptom of that same artifact (a real account cannot lose more "
+        "than 100%% of its capital), not a literal claim. `profit_factor` (real INR "
+        "gross-profit/gross-loss ratio) and the real-INR line above are the only figures "
+        "trusted at face value in this report, same precedent as candidate 14.",
         "",
         "## Pooled result",
         "",
@@ -181,6 +216,19 @@ async def main_async(args) -> int:
     out_path = Path(args.out)
     out_path.write_text(report + "\n", encoding="utf-8")
     print(f"Wrote {out_path}")
+
+    csv_path = out_path.with_suffix(".csv")
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["trade_num", "entry_date", "entry_premium", "exit_date",
+                          "exit_premium", "profit_inr", "costs_inr", "net_profit_inr",
+                          "net_profit_pct", "bars_held"])
+        for t in all_trades:
+            writer.writerow([t.trade_num, t.entry_date.isoformat(), t.entry_price,
+                              t.exit_date.isoformat(), t.exit_price, round(t.profit, 2),
+                              round(t.costs, 2), round(t.net_profit, 2),
+                              round(t.net_profit_pct, 3), t.bars_held])
+    print(f"Wrote {csv_path} ({len(all_trades)} trade rows, for independent verification)")
     return 0
 
 
