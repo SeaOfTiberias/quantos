@@ -1,14 +1,14 @@
 # S8-2 Fyers Automation Trade-History Retrospective
 
-**21 same-day round trips analysed** (Intraday/Intraday BO NIFTY options only; 2 Overnight-product trades excluded from these stats -- they're manual overrides of the stated same-day exit rule, reported separately below).
+**26 same-day round trips analysed** (Intraday/Intraday BO NIFTY options only; 2 Overnight-product trades excluded from these stats -- they're manual overrides of the stated same-day exit rule, reported separately below).
 
 ## Overall
 
-- Win rate: 10/21 = 48%
-- Total gross P&L: Rs2,633
-- Average win: Rs1,676
-- Average loss: Rs-1,284
-- Time-stop exits (>=3:09pm): 3/21
+- Win rate: 14/26 = 54%
+- Total gross P&L: Rs8,782
+- Average win: Rs1,781
+- Average loss: Rs-1,346
+- Time-stop exits (>=3:09pm): 3/26
 
 ## Per-trade P&L (checking whether losses actually ride to the -Rs2000 cap)
 
@@ -35,22 +35,29 @@
 | 2026-07-15 | NIFTY2672124150CE | CE (bullish) | 11 | 2,028 | P&L cap |
 | 2026-07-16 | NIFTY2672124150CE | CE (bullish) | 219 | -1,999 | P&L cap |
 | 2026-07-17 | NIFTY2672124200CE | CE (bullish) | 58 | 2,207 | P&L cap |
+| 2026-07-20 | NIFTY2672124200PE | PE (bearish) | 203 | 2,103 | P&L cap |
+| 2026-07-21 | NIFTY2672124250PE | PE (bearish) | 59 | 1,995 | P&L cap |
+| 2026-07-22 | NIFTY26JUL24100PE | PE (bearish) | 15 | 2,041 | P&L cap |
+| 2026-07-23 | NIFTY26JUL23900PE | PE (bearish) | 79 | -2,025 | P&L cap |
+| 2026-07-24 | NIFTY26JUL23750PE | PE (bearish) | 17 | 2,034 | P&L cap |
 
 ## Question 1: would a faster invalidation exit have helped?
 
-Of 21 trades with usable NIFTY 5-min data, **5 had the EMA9/EMA21 crossover reverse AGAINST the position before the actual exit** (i.e. the signal that triggered entry had already failed, but the position was held anyway until the P&L cap or 3:10pm) — averaging 155 minutes of extra hold time after invalidation.
+Of 26 trades with usable NIFTY 5-min data, **6 had the EMA9/EMA21 crossover reverse AGAINST the position before the actual exit** (i.e. the signal that triggered entry had already failed, but the position was held anyway until the P&L cap or 3:10pm) — averaging 158 minutes of extra hold time after invalidation.
   - 2026-06-29 NIFTY26JUN24100CE: crossover reversed at 11:20 IST, actual exit at 11:35 IST (16 min later, trade P&L was Rs-2,022)
   - 2026-07-07 NIFTY2670724450PE: crossover reversed at 14:40 IST, actual exit at 15:10 IST (30 min later, trade P&L was Rs1,375)
   - 2026-07-10 NIFTY2671424200CE: crossover reversed at 09:35 IST, actual exit at 15:10 IST (335 min later, trade P&L was Rs-224)
   - 2026-07-14 NIFTY2671424150CE: crossover reversed at 12:05 IST, actual exit at 15:10 IST (185 min later, trade P&L was Rs-2,002)
   - 2026-07-16 NIFTY2672124150CE: crossover reversed at 09:30 IST, actual exit at 12:58 IST (209 min later, trade P&L was Rs-1,999)
+  - 2026-07-20 NIFTY2672124200PE: crossover reversed at 09:55 IST, actual exit at 12:48 IST (173 min later, trade P&L was Rs2,103)
 
 ## Question 2: would a trailing stop have captured more?
 
-Of 21 trades, **3 gave back more than 20% of the underlying's peak favourable move** between entry and the actual exit — a trailing stop on the underlying (approximating the option's premium path) would plausibly have locked in more on these:
+Of 26 trades, **4 gave back more than 20% of the underlying's peak favourable move** between entry and the actual exit — a trailing stop on the underlying (approximating the option's premium path) would plausibly have locked in more on these:
   - 2026-05-29 NIFTY2660224100PE: underlying moved 26.3 pts favourably at best, gave back 53% of that by exit (trade P&L Rs-1,459)
   - 2026-07-10 NIFTY2671424200CE: underlying moved 34.0 pts favourably at best, gave back 47% of that by exit (trade P&L Rs-224)
   - 2026-07-16 NIFTY2672124150CE: underlying moved 46.0 pts favourably at best, gave back 105% of that by exit (trade P&L Rs-1,999)
+  - 2026-07-20 NIFTY2672124200PE: underlying moved 37.0 pts favourably at best, gave back 58% of that by exit (trade P&L Rs2,103)
 
 ## Overnight (manual override) trades — excluded above, reported separately
 
