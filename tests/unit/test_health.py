@@ -56,6 +56,22 @@ async def test_status_endpoint_structure():
 
 
 @pytest.mark.asyncio
+async def test_status_reports_real_db_connection_state():
+    """database_connected must reflect SignalDB's actual post-connect()
+    state, not DATABASE_URL's mere presence (config.database_configured) —
+    that distinction is the whole point of this field (2026-07-27 root
+    cause: /signals came back empty and database_configured alone couldn't
+    say whether that was expected or a silent in-memory fallback)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        r = await client.get("/status")
+    data = r.json()
+    assert "database_connected" in data
+    assert "any_signal_ever" in data
+    assert isinstance(data["database_connected"], bool)
+    assert isinstance(data["any_signal_ever"], bool)
+
+
+@pytest.mark.asyncio
 async def test_status_config_reflects_env(monkeypatch):
     monkeypatch.setenv("MIN_CONFLUENCE_SCORE", "75")
     monkeypatch.setenv("REGIME_CACHE_TTL", "600")

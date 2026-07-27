@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
+from cloud.api.db import get_db
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
@@ -90,6 +92,21 @@ async def operational_status():
     market_open  = (ist_hour == 9 and ist_min >= 15) or (10 <= ist_hour <= 14) or (ist_hour == 15 and ist_min <= 30)
     market_status = "OPEN" if market_open else "CLOSED"
 
+    # Root-causing 2026-07-27: GET /signals came back empty across every
+    # status filter despite database_configured=true. database_configured
+    # only reflects whether DATABASE_URL is SET, not whether SignalDB's
+    # startup connectivity check (cloud/api/db.py) actually succeeded this
+    # boot — connect() silently falls back to an in-memory store (which
+    # loses everything on the next redeploy) on any Postgres error. This
+    # field reports the real post-connect state instead of the env var's
+    # mere presence, so an empty signals table can be told apart from "no
+    # real signals happened yet" (S8-3 is still dry_run, Darvas mothballed
+    # since S7-3 — both legitimately produce zero rows) vs. "persistence
+    # is silently broken."
+    db = await get_db()
+    await db.connect()   # idempotent — no-op if already connected/attempted
+    any_signal_ever = bool(await db.fetch_recent_signals(limit=1))
+
     return {
         "service":        "QuantOS Cloud API",
         "version":        "1.0.0",
@@ -98,6 +115,8 @@ async def operational_status():
         "uptime_seconds": uptime_secs,
         "market":         market_status,
         "timestamp_utc":  now_utc.isoformat(),
+        "database_connected": db.is_postgres,
+        "any_signal_ever":    any_signal_ever,
         "config": {
             "claude_configured":    bool(os.getenv("ANTHROPIC_API_KEY")),
             "whatsapp_configured":  bool(os.getenv("CALLMEBOT_PHONE")),

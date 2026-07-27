@@ -213,6 +213,14 @@ class SignalDB:
         # check — never on env-var presence.
         self._use_postgres = False
 
+    @property
+    def is_postgres(self) -> bool:
+        """True iff connect() has proven Postgres reachable this boot — the
+        real persistence state, distinct from DATABASE_URL merely being set
+        (see module docstring). False means every signal since this boot is
+        in-memory only and will vanish on the next redeploy."""
+        return self._use_postgres
+
     async def connect(self) -> bool:
         """Attempt to bring up Postgres persistence. Runs a real connectivity
         check + CREATE TABLE IF NOT EXISTS; on any failure it logs a loud
