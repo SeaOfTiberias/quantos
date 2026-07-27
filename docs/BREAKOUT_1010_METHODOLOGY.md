@@ -50,12 +50,19 @@ deferred silently.
 - **India VIX, 5m**: `get_historical_data("INDIA VIX", "5m", ...)`. Confirmed
   clean back to at least 2021-05-03 (same depth as BankNifty, checked
   directly — not assumed to match).
-- **BankNifty option contract identity** (expiry date, ATM strike, lot size):
-  from NSE's own F&O bhavcopy (`core/options/vrp/bhavcopy.py`'s
-  `fetch_raw`), filtered to `TckrSymb == "BANKNIFTY"`, `FinInstrmTp == "IDO"`
-  — same ground-truth source the feasibility probe used, not hand-guessed
-  expiry-day math. Lot size confirmed **30** (current symbol master), strike
-  interval confirmed **100** near the money.
+- **BankNifty monthly expiry dates**: `scripts/gutcheck_expiry_day_effect.py`'s
+  `calendar_expiry_date()`/`adjust_for_holiday()` (last-Thursday-of-month
+  through 2025-08-31, last-Tuesday from 2025-09-01 per SEBI/HO/MRD/
+  TPD-1/P/CIR/2025/76), reused not reimplemented — holiday-adjusted against
+  this backtest's own fetched BankNifty trading-day set, no separate
+  calendar dependency. **Cross-verified against real NSE bhavcopy ground
+  truth** (`core/options/vrp/bhavcopy.py`, the same source the feasibility
+  probe used): 5/5 real BankNifty monthly expiries found by the probe
+  (2026-06-30, 2026-04-28, 2026-02-24, 2025-08-28, 2025-02-27) match this
+  calendar construction exactly. Avoids a bhavcopy download per trading day
+  (~1,200+ over the full window) for a value that only changes once per
+  month. Lot size confirmed **30** (current symbol master), strike interval
+  confirmed **100** near the money.
 - **Black-Scholes pricer**: `core/options/greeks.py`'s `compute_greeks()` —
   reused as-is, no new pricer written. `DEFAULT_RISK_FREE_RATE = 0.065`
   (module default) applies unchanged.
