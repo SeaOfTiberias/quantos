@@ -34,12 +34,21 @@ Pre-committed BEFORE running (2026-07-21): exactly two variants get
 tested against the baseline (5% fixed stop-loss, EMA9-below-EMA21
 cross) — not a parameter sweep, to avoid exactly the overfitting risk
 S8-4 was careful about with its own trailing-stop test.
+
+`target_basket_fn` (added 2026-07-27 for candidate 16, see
+docs/ML_FACTOR_COMBINATION_METHODOLOGY.md): optional, defaults to
+`rank_universe` so every EXISTING caller (S8-3, S1 Dual Momentum) is
+byte-for-byte unaffected. A caller can pass any signature-compatible
+callable instead — e.g. core/mlfactors/model.py's
+`make_target_basket_fn`'s closure — to rank each rebalance off a different
+scoring function without touching this module's own mark-to-market/exit/
+cost logic.
 """
 
 import bisect
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from core.risk.costs import CostModel
 from core.rotation.executor import _size_new_entrants
@@ -142,6 +151,7 @@ def simulate_portfolio(
     ema_fast: int = EMA_FAST_DEFAULT,
     ema_slow: int = EMA_SLOW_DEFAULT,
     universe_snapshots=None,
+    target_basket_fn: Optional[Callable] = None,
 ) -> EquityCurveResult:
     """
     Simulates ONE account (starting at initial_capital) trading the S8-3
@@ -156,7 +166,14 @@ def simulate_portfolio(
     true point-in-time Nifty 500 membership instead of every symbol in
     symbol_series — see nifty500_reconstitution.py for why. Omitting it
     reproduces the original survivorship-biased behavior exactly.
+
+    `target_basket_fn`, if given, replaces `rank_universe` as the function
+    that turns (symbol_series, as_of_date, top_n, eligible) into this
+    rebalance's target basket — same signature, so a caller can rank off
+    an entirely different scoring function (e.g. an ML model) without any
+    other change to this simulation. Defaults to `rank_universe` itself.
     """
+    basket_fn = target_basket_fn if target_basket_fn is not None else rank_universe
     if exit_rule not in ("rank_only", "stop_loss", "ema_cross"):
         raise ValueError(f"Unknown exit_rule: {exit_rule!r}")
 
@@ -178,7 +195,7 @@ def simulate_portfolio(
         if is_rebal:
             eligible = (eligible_symbols_asof(universe_snapshots, today)
                         if universe_snapshots is not None else None)
-            target_basket = rank_universe(symbol_series, today, top_n, eligible=eligible)
+            target_basket = basket_fn(symbol_series, today, top_n, eligible=eligible)
 
         # ── Exits (every day) ──────────────────────────────────────────
         for symbol in list(holdings.keys()):

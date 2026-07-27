@@ -17,6 +17,7 @@ pandas>=2.2.0
 numpy>=1.26.0
 ta>=0.11.0           # Technical analysis indicators
 statsmodels>=0.14.0  # Engle-Granger/ADF cointegration test (pairs trading)
+scikit-learn>=1.5.0  # ML multi-factor stock ranking (candidate 16)
 
 # Database (cloud — Postgres)
 sqlalchemy>=2.0.0

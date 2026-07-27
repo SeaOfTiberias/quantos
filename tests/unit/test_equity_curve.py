@@ -30,6 +30,54 @@ def _series(dates: list[datetime], closes: list[float], highs: list[float] = Non
     return SymbolSeries(dates=dates, closes=closes, highs=highs)
 
 
+class TestTargetBasketFn:
+    """Added 2026-07-27 for candidate 16 (see
+    docs/ML_FACTOR_COMBINATION_METHODOLOGY.md) -- target_basket_fn must
+    default to rank_universe's own behavior unchanged, and a caller-supplied
+    override must actually drive which symbols get bought."""
+
+    def test_default_matches_omitting_the_parameter(self):
+        dates = _dates(15)
+        series = {"A": _series(dates, closes=[100.0 + i for i in range(15)]),
+                   "B": _series(dates, closes=[50.0] * 15)}
+        rebal = {dates[0], dates[7]}
+
+        baseline = simulate_portfolio(
+            dates, rebal, series, top_n=1, initial_capital=100_000.0,
+            position_size=100_000.0, cost_model=ZERO_COST, exit_rule="rank_only",
+        )
+        explicit_default = simulate_portfolio(
+            dates, rebal, series, top_n=1, initial_capital=100_000.0,
+            position_size=100_000.0, cost_model=ZERO_COST, exit_rule="rank_only",
+            target_basket_fn=None,
+        )
+        assert baseline.final_equity == explicit_default.final_equity
+
+    def test_custom_target_basket_fn_overrides_ranking(self):
+        dates = _dates(10)
+        # "A" is the stronger momentum symbol (rank_universe would pick it),
+        # but the override always picks "B" instead -- proves the override
+        # actually drives entries, not just gets called and ignored.
+        series = {
+            "A": _series(dates, closes=[100.0 + i * 5 for i in range(10)]),
+            "B": _series(dates, closes=[50.0 + i for i in range(10)]),
+        }
+        rebal = {dates[0]}
+
+        def always_b(symbol_series, as_of_date, top_n, eligible=None):
+            return ["B"]
+
+        result = simulate_portfolio(
+            dates, rebal, series, top_n=1, initial_capital=100_000.0,
+            position_size=100_000.0, cost_model=ZERO_COST, exit_rule="rank_only",
+            target_basket_fn=always_b,
+        )
+        # "B" appreciates from 50->59 (+18%) over the window; "A" (which
+        # rank_universe would have picked instead) goes 100->145 (+45%) --
+        # if the override worked, equity tracks B's smaller path.
+        assert 0 < result.total_return_pct < 30
+
+
 class TestBasicEquityTracking:
 
     def test_single_symbol_always_top_ranked_tracks_price(self):
