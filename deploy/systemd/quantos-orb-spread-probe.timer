@@ -1,0 +1,19 @@
+[Unit]
+Description=Fires the candidate 18 spread sampler 3x during NSE market hours
+
+[Timer]
+# 09:35 IST (shortly after the opening range the strategy actually enters
+# on), 12:00 IST (midday), 15:15 IST (near the 15:20 IST session flatten)
+# -- the same three points a real intraday trade could be sitting at.
+# Sampling only once (the 2026-07-28 post-close snapshot) isn't enough to
+# trust over the pre-registered backtest's assumed rates -- see
+# docs/ORB_SCALPING_RESULTS.md and the quantos_orb_options_scalping_status
+# memory. Fires daily regardless of NSE holidays; a holiday fire just logs
+# a stale/no-quote row (harmless, see the .service file).
+OnCalendar=*-*-* 04:05:00
+OnCalendar=*-*-* 06:30:00
+OnCalendar=*-*-* 09:45:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

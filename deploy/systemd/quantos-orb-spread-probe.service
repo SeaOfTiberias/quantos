@@ -1,0 +1,20 @@
+[Unit]
+Description=QuantOS Candidate 18 Real Option Bid-Ask Spread Sampler (read-only, no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/probe_orb_scalping_real_spreads.py
+Environment=HOME=/home/ubuntu
+
+# Read-only market-data fetch only -- no broker orders, no capital at risk.
+# Appends one row per leg to data_cache/orb_scalping_spread_samples.csv on
+# every fire; a failed run (stale token, holiday, market closed with no
+# two-sided quote) is harmless and self-healing on the next fire, same
+# reasoning as quantos-paper-momentum.service -- no Restart= here either.
+# Relies on the SAME daily Fyers token refresh the user already does each
+# morning for quantos-rotation.timer/quantos-paper-momentum.timer -- no new
+# auth step needed, this just needs to fire AFTER that refresh.
