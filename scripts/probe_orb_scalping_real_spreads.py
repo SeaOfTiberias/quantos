@@ -3,26 +3,36 @@
 QuantOS — Candidate 18 Real Option Bid-Ask Spread Feasibility Check
 ──────────────────────────────────────────────────────────────────────
 Read-only, no orders. Fetches a LIVE (or last-close, outside market hours)
-option chain for NIFTY and BankNifty and compares the REAL bid-ask spread
-at the near-the-money strike against what this candidate's Harsh cost
-model (core/orb_scalping/costs.py) assumes via slippage_bps — the same
-follow-up check candidate 15's methodology doc named and never got to
-exercise (it failed the backtest first). Every premium in the backtest is
-Black-Scholes-theoretical; this is the first time this candidate's numbers
-are compared against a real, currently-quoted market price.
+option chain for NIFTY and BankNifty and logs the REAL bid-ask spread at
+the near-the-money strike to a persistent CSV — the same follow-up check
+candidate 15's methodology doc named and never got to exercise (it failed
+the backtest first). Every premium in the backtest is Black-Scholes-
+theoretical; this is the first time this candidate's numbers are compared
+against a real, currently-quoted market price.
 
-Skips the expiry expiring TODAY (if any) for NIFTY, since a same-day
-expiry is nearly worthless/illiquid by definition and not representative
-of what the strategy actually trades (entries happen at 09:15-09:30, with
-the DTE floor already excluding <2-day contracts) — uses the same DTE
-floor the live strategy would apply.
+The first run (2026-07-28, one post-close snapshot) found NIFTY FAILS its
+own bar under this cost and BankNifty barely survives -- but that was ONE
+sample. This script is meant to be run repeatedly (ideally at a few times
+of day, across several real trading days) to build up a real distribution
+instead of trusting a single point. Each run APPENDS a row per leg to
+`data_cache/orb_scalping_spread_samples.csv` (gitignored, like every other
+data_cache/ path in this repo) rather than overwriting it.
+
+Skips the expiry expiring TODAY (if any) for NIFTY/BankNifty, since a
+same-day expiry is nearly worthless/illiquid by definition and not
+representative of what the strategy actually trades (entries happen at
+09:15-09:30, with the DTE floor already excluding <2-day contracts) —
+uses the same DTE floor the live strategy would apply.
 
 Usage:
     python scripts/probe_orb_scalping_real_spreads.py
+    python scripts/probe_orb_scalping_real_spreads.py --summarize   # just print stats from the log so far
 """
 
+import argparse
+import csv
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -37,6 +47,9 @@ from core.orb_scalping.costs import (  # noqa: E402
 )
 
 DTE_FLOOR_DAYS = 2  # same floor core/orb_scalping/backtest.py applies to NIFTY
+LOG_PATH = Path("data_cache/orb_scalping_spread_samples.csv")
+LOG_FIELDS = ["sampled_at_utc", "underlying", "option_type", "strike", "dte",
+              "spot", "bid", "ask", "ltp", "spread_pct_of_mid"]
 
 
 def _atm_rows(raw_chain: dict, spot: float):
@@ -50,24 +63,31 @@ def _atm_rows(raw_chain: dict, spot: float):
     return ce, pe
 
 
-def _report_leg(label: str, row: dict):
-    if not row:
-        print(f"  {label}: not found in chain")
-        return
+def _leg_record(underlying: str, spot: float, dte: int, row: dict) -> dict:
     bid, ask, ltp = row.get("bid", 0), row.get("ask", 0), row.get("ltp", 0)
     mid = (bid + ask) / 2 if (bid and ask) else None
-    spread = (ask - bid) if (bid and ask) else None
-    print(f"  {label}: strike={row.get('strike_price')} bid={bid} ask={ask} ltp={ltp}")
-    if mid and spread is not None:
-        print(f"    mid={mid:.2f} spread={spread:.2f} spread_pct_of_mid={spread / mid * 100:.1f}%")
-    elif ask and not bid:
+    spread_pct = (ask - bid) / mid * 100 if mid else None
+    return {
+        "sampled_at_utc": datetime.now(timezone.utc).isoformat(),
+        "underlying": underlying, "option_type": row.get("option_type"),
+        "strike": row.get("strike_price"), "dte": dte, "spot": spot,
+        "bid": bid, "ask": ask, "ltp": ltp,
+        "spread_pct_of_mid": round(spread_pct, 3) if spread_pct is not None else "",
+    }
+
+
+def _report_leg(label: str, record: dict):
+    print(f"  {label}: strike={record['strike']} bid={record['bid']} ask={record['ask']} ltp={record['ltp']}")
+    if record["spread_pct_of_mid"] != "":
+        print(f"    spread_pct_of_mid={record['spread_pct_of_mid']}%")
+    elif record["ask"] and not record["bid"]:
         print(f"    bid is 0 (no real buyer quoted) -- spread is effectively the whole ask "
-              f"({ask:.2f}, i.e. undefined/very wide in %% terms)")
+              f"({record['ask']}, i.e. undefined/very wide in %% terms)")
     else:
         print("    bid/ask both 0 -- no live two-sided quote available right now")
 
 
-def probe(broker, underlying: str, spot_symbol: str, skip_today: bool):
+def probe(broker, underlying: str, spot_symbol: str, writer) -> list:
     print(f"\n=== {underlying} ===")
     spot = broker.get_ltp([spot_symbol]).get(spot_symbol)
     print(f"Spot LTP: {spot}")
@@ -76,23 +96,58 @@ def probe(broker, underlying: str, spot_symbol: str, skip_today: bool):
     today = date.today()
     chosen = None
     for e in expiries:
-        if skip_today and (e - today).days < DTE_FLOOR_DAYS:
+        if (e - today).days < DTE_FLOOR_DAYS:
             continue
         chosen = e
         break
     if chosen is None:
         print("No suitable expiry found.")
-        return
-    print(f"Using expiry: {chosen} (DTE={(chosen - today).days})")
+        return []
+    dte = (chosen - today).days
+    print(f"Using expiry: {chosen} (DTE={dte})")
 
     expiry_epoch = sm.get_expiry_epoch(underlying, chosen)
     raw_chain = broker.get_option_chain(underlying, expiry_epoch)
     ce, pe = _atm_rows(raw_chain, spot)
-    _report_leg("ATM CALL", ce)
-    _report_leg("ATM PUT", pe)
+    records = []
+    for label, row in (("ATM CALL", ce), ("ATM PUT", pe)):
+        if not row:
+            print(f"  {label}: not found in chain")
+            continue
+        record = _leg_record(underlying, spot, dte, row)
+        _report_leg(label, record)
+        records.append(record)
+        writer.writerow(record)
+    return records
+
+
+def summarize_log() -> int:
+    if not LOG_PATH.exists():
+        print(f"No log yet at {LOG_PATH} -- run without --summarize first.")
+        return 1
+    rows = list(csv.DictReader(LOG_PATH.open(newline="", encoding="utf-8")))
+    by_key: dict[tuple, list] = {}
+    for r in rows:
+        pct = r["spread_pct_of_mid"]
+        if pct == "":
+            continue
+        by_key.setdefault((r["underlying"], r["option_type"]), []).append(float(pct))
+    print(f"{len(rows)} total logged rows ({len({r['sampled_at_utc'][:10] for r in rows})} distinct days) from {LOG_PATH}\n")
+    for (underlying, opt), pcts in sorted(by_key.items()):
+        avg = sum(pcts) / len(pcts)
+        print(f"{underlying} {opt}: n={len(pcts)}  mean spread_pct_of_mid={avg:.2f}%  "
+              f"min={min(pcts):.2f}%  max={max(pcts):.2f}%")
+    return 0
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--summarize", action="store_true", help="Print stats from the log so far, no live fetch.")
+    args = parser.parse_args()
+
+    if args.summarize:
+        return summarize_log()
+
     config = load_config("agent/config.yaml")
     broker = get_broker(config)
     if not broker.connect():
@@ -107,8 +162,15 @@ def main() -> int:
           f"(~{HARSH_FRONT_WEEK_SLIPPAGE_BPS / 100 * 2:.2f}% / "
           f"~{HARSH_NEXT_WEEK_SLIPPAGE_BPS / 100 * 2:.2f}% round-trip).")
 
-    probe(broker, "NIFTY", "NIFTY 50", skip_today=True)
-    probe(broker, "BANKNIFTY", "NIFTY BANK", skip_today=True)
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    is_new = not LOG_PATH.exists()
+    with LOG_PATH.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=LOG_FIELDS)
+        if is_new:
+            writer.writeheader()
+        probe(broker, "NIFTY", "NIFTY 50", writer)
+        probe(broker, "BANKNIFTY", "NIFTY BANK", writer)
+    print(f"\nAppended to {LOG_PATH}")
     return 0
 
 
