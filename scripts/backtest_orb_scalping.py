@@ -56,7 +56,7 @@ def _metrics_row(label: str, m: BacktestMetrics) -> str:
             f"{m.sharpe_ratio:.2f} | {m.net_profit_pct:+.1f}% | {m.max_drawdown_pct:.1f}% |")
 
 
-def _section(underlying: str, clean: list, stressed: list) -> str:
+def _section(underlying: str, clean: list, stressed: list, harsh: list) -> str:
     lines = [f"## {underlying}", ""]
     if not clean:
         lines += ["*(zero trades generated)*", ""]
@@ -67,14 +67,15 @@ def _section(underlying: str, clean: list, stressed: list) -> str:
         "|---|---|---|---|---|---|---|",
         _metrics_row("Clean", _compute_metrics(clean)),
         _metrics_row("Stressed (+15bps/leg)", _compute_metrics(stressed)),
+        _metrics_row("Harsh (post-hoc, see below)", _compute_metrics(harsh)),
         "",
-        "### Per-year breakdown (Stressed)",
+        "### Per-year breakdown (Harsh)",
         "",
         "| Year | Trades | Win rate | Profit factor | Sharpe | Net P&L % | Max DD % |",
         "|---|---|---|---|---|---|---|",
     ]
     by_year: dict[int, list[BacktestTrade]] = {}
-    for t in stressed:
+    for t in harsh:
         by_year.setdefault(t.exit_date.year, []).append(t)
     for year in sorted(by_year):
         year_trades = by_year[year]
@@ -84,19 +85,26 @@ def _section(underlying: str, clean: list, stressed: list) -> str:
         lines.append(_metrics_row(str(year), _compute_metrics(year_trades)))
 
     stressed_metrics = _compute_metrics(stressed)
+    harsh_metrics = _compute_metrics(harsh)
     lines += [
         "",
-        f"**Verdict ({underlying}, gates on Stressed per methodology doc)**: "
+        f"**Verdict ({underlying}, gates on Stressed per the pre-registered methodology doc)**: "
         f"{'PASS' if stressed_metrics.has_positive_edge else 'FAIL'} "
         f"(PF {stressed_metrics.profit_factor:.2f}, Sharpe {stressed_metrics.sharpe_ratio:.2f}, "
         f"bar is PF > 1.0 AND Sharpe > 0.5).",
+        "",
+        f"**Harsh read (post-hoc, NOT part of the pre-registered pass/fail bar)**: "
+        f"{'still clears' if harsh_metrics.has_positive_edge else 'FAILS'} the same bar under a flat "
+        f"Rs20/leg brokerage + liquidity-tiered slippage on the DTE-floor-rolled subset "
+        f"(PF {harsh_metrics.profit_factor:.2f}, Sharpe {harsh_metrics.sharpe_ratio:.2f}).",
         "",
     ]
     return "\n".join(lines)
 
 
 def summarize(
-    nifty_clean, nifty_stressed, banknifty_clean, banknifty_stressed,
+    nifty_clean, nifty_stressed, nifty_harsh,
+    banknifty_clean, banknifty_stressed, banknifty_harsh,
     nifty_window: tuple, banknifty_window: tuple,
 ) -> str:
     lines = [
@@ -105,19 +113,27 @@ def summarize(
         "Methodology: docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md. NIFTY and "
         "BankNifty reported independently below -- never pooled.",
         "",
+        "**Harsh is a POST-HOC additional stress test** (added 2026-07-28 "
+        "after an adversarial review of the original Clean/Stressed PASS, "
+        "core/orb_scalping/costs.py's `harsh_trade_cost`) — it is NOT part "
+        "of the pre-registered methodology doc's pass/fail bar, which gates "
+        "on Stressed alone. Reported for transparency, not to move the "
+        "goalposts after the fact.",
+        "",
         f"NIFTY window: {nifty_window[0]} to {nifty_window[1]} "
         f"({len(nifty_clean)} trades). BankNifty window: {banknifty_window[0]} to "
         f"{banknifty_window[1]} ({len(banknifty_clean)} trades).",
         "",
-        _section("NIFTY", nifty_clean, nifty_stressed),
-        _section("BankNifty", banknifty_clean, banknifty_stressed),
+        _section("NIFTY", nifty_clean, nifty_stressed, nifty_harsh),
+        _section("BankNifty", banknifty_clean, banknifty_stressed, banknifty_harsh),
         "## Overall read",
         "",
         "Read each index's own per-year table before trusting the pooled row "
         "-- same discipline every prior candidate's per-fold/per-year "
-        "breakdown has used. A pass on Clean that fails on Stressed is a "
-        "real finding (the edge is an artifact of synthetic pricing with no "
-        "real spread), not something to average away.",
+        "breakdown has used. A pass on Clean/Stressed that fails under Harsh "
+        "is a real finding (the pre-registered Stressed cost model still "
+        "understates real F&O brokerage/liquidity friction at this trade "
+        "size), not something to average away.",
     ]
     return "\n".join(lines)
 
@@ -157,11 +173,11 @@ async def main_async(args) -> int:
         return 1
 
     print("Running NIFTY backtest ...")
-    nifty_clean, nifty_stressed = run_index_backtest(nifty_candles, vix_candles, underlying="NIFTY")
+    nifty_clean, nifty_stressed, nifty_harsh = run_index_backtest(nifty_candles, vix_candles, underlying="NIFTY")
     print(f"  {len(nifty_clean)} NIFTY trades")
 
     print("Running BankNifty backtest ...")
-    banknifty_clean, banknifty_stressed = run_index_backtest(
+    banknifty_clean, banknifty_stressed, banknifty_harsh = run_index_backtest(
         banknifty_candles, vix_candles, underlying="BANKNIFTY",
     )
     print(f"  {len(banknifty_clean)} BankNifty trades")
@@ -176,7 +192,8 @@ async def main_async(args) -> int:
     banknifty_window = (min(banknifty_by_day), max(banknifty_by_day))
 
     report = summarize(
-        nifty_clean, nifty_stressed, banknifty_clean, banknifty_stressed,
+        nifty_clean, nifty_stressed, nifty_harsh,
+        banknifty_clean, banknifty_stressed, banknifty_harsh,
         nifty_window, banknifty_window,
     )
     out_path = Path(args.out)

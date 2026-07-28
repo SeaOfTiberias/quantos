@@ -41,8 +41,9 @@ def test_group_by_day_splits_and_sorts():
 
 def test_resolve_banknifty_expiry_matches_monthly_calendar():
     trading_days = {date(2026, 7, 1), date(2026, 7, 28)}
-    got = resolve_banknifty_expiry(date(2026, 7, 1), trading_days)
-    assert got == date(2026, 7, 28)  # last Tuesday of July 2026
+    expiry, tier = resolve_banknifty_expiry(date(2026, 7, 1), trading_days)
+    assert expiry == date(2026, 7, 28)  # last Tuesday of July 2026
+    assert tier == "front_week"
 
 
 def test_resolve_nifty_expiry_applies_dte_floor():
@@ -50,19 +51,25 @@ def test_resolve_nifty_expiry_applies_dte_floor():
     # 2026-07-28 (Tuesday) -- only 1 day away, so the DTE floor (<2 days)
     # must roll to the FOLLOWING weekly (2026-08-04) instead.
     trading_days = {date(2026, 7, 27), date(2026, 7, 28), date(2026, 8, 4)}
-    got = resolve_nifty_expiry(date(2026, 7, 27), trading_days)
-    assert got == date(2026, 8, 4)
+    expiry, tier = resolve_nifty_expiry(date(2026, 7, 27), trading_days)
+    assert expiry == date(2026, 8, 4)
+    assert tier == "next_week"
 
 
 def test_resolve_nifty_expiry_no_floor_needed_when_dte_is_healthy():
-    trading_days = {date(2026, 7, 21), date(2026, 7, 28)}
-    got = resolve_nifty_expiry(date(2026, 7, 21), trading_days)
-    assert got == date(2026, 7, 28)  # 7 days out, well clear of the 2-day floor
+    # 2026-07-22 is a Wednesday -- the nearest Tuesday expiry on/after it is
+    # 2026-07-28, 6 days out, clear of the 2-day floor. (An entry date that
+    # IS itself an expiry Tuesday would resolve to 0 DTE and correctly
+    # trigger the floor -- not what this test is checking.)
+    trading_days = {date(2026, 7, 22), date(2026, 7, 28)}
+    expiry, tier = resolve_nifty_expiry(date(2026, 7, 22), trading_days)
+    assert expiry == date(2026, 7, 28)
+    assert tier == "front_week"
 
 
 # ─── run_index_backtest ────────────────────────────────────────────────────
 
-def test_run_index_backtest_produces_one_clean_and_one_stressed_trade_per_signal_day():
+def test_run_index_backtest_produces_one_trade_per_variant_per_signal_day():
     day1 = date(2024, 1, 2)   # Tuesday
     candles = flat_day(day1, OPENING_RANGE_CANDLES, price=24000.0)
     breakout_i = OPENING_RANGE_CANDLES
@@ -74,14 +81,16 @@ def test_run_index_backtest_produces_one_clean_and_one_stressed_trade_per_signal
 
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
 
-    clean, stressed = run_index_backtest(candles, vix_candles, underlying="NIFTY")
+    clean, stressed, harsh = run_index_backtest(candles, vix_candles, underlying="NIFTY")
 
     assert len(clean) == 1
     assert len(stressed) == 1
+    assert len(harsh) == 1
     assert clean[0].qty == NIFTY_LOT_SIZE
-    # Same gross profit, different (higher) cost under Stressed.
-    assert clean[0].profit == stressed[0].profit
+    # Same gross profit, different (higher) cost under Stressed/Harsh.
+    assert clean[0].profit == stressed[0].profit == harsh[0].profit
     assert stressed[0].costs > clean[0].costs
+    assert harsh[0].costs > clean[0].costs
 
 
 def test_run_index_backtest_uses_banknifty_lot_size():
@@ -93,7 +102,7 @@ def test_run_index_backtest_uses_banknifty_lot_size():
         candles.append(bar(day1, i, 50100.0))
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
 
-    clean, _ = run_index_backtest(candles, vix_candles, underlying="BANKNIFTY")
+    clean, _, _ = run_index_backtest(candles, vix_candles, underlying="BANKNIFTY")
     assert len(clean) == 1
     assert clean[0].qty == BANKNIFTY_LOT_SIZE
 
@@ -105,18 +114,20 @@ def test_run_index_backtest_skips_days_missing_vix():
     for i in range(OPENING_RANGE_CANDLES + 1, OPENING_RANGE_CANDLES + 60):
         candles.append(bar(day1, i, 24030.0))
 
-    clean, stressed = run_index_backtest(candles, [], underlying="NIFTY")
+    clean, stressed, harsh = run_index_backtest(candles, [], underlying="NIFTY")
     assert clean == []
     assert stressed == []
+    assert harsh == []
 
 
 def test_run_index_backtest_no_breakout_produces_no_trades():
     day1 = date(2024, 1, 2)
     candles = flat_day(day1, 80, price=24000.0)  # never breaks out
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
-    clean, stressed = run_index_backtest(candles, vix_candles, underlying="NIFTY")
+    clean, stressed, harsh = run_index_backtest(candles, vix_candles, underlying="NIFTY")
     assert clean == []
     assert stressed == []
+    assert harsh == []
 
 
 def test_run_index_backtest_rejects_unknown_underlying():

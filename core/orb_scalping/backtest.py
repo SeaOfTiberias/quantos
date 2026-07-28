@@ -4,9 +4,9 @@ QuantOS — ORB Options Scalping Backtest Orchestration (candidate 18)
 Wires core/orb_scalping/{signal,premium,costs,expiry}.py together into
 BacktestTrade rows core/backtest/parser.py's metrics machinery can
 consume. Runs NIFTY and BankNifty independently (never pooled — see
-docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md) and produces BOTH a Clean and a
-Stressed (+15bps/leg slippage) trade list per index, per the doc's Cost
-model section — same day's IndexTrade/PremiumTrade, costed twice.
+docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md) and produces a Clean, a
+Stressed (+15bps/leg slippage), and a Harsh (post-hoc, see costs.py) trade
+list per index — same day's IndexTrade/PremiumTrade, costed three ways.
 
 Pure except for `resolve_*_expiry`'s reliance on an already-fetched
 trading-day set (no I/O of its own — callers, e.g.
@@ -20,7 +20,7 @@ from datetime import date, datetime
 
 from core.backtest.parser import BacktestTrade
 from core.brokers.base import OHLCV
-from core.orb_scalping.costs import clean_trade_cost, stressed_trade_cost
+from core.orb_scalping.costs import clean_trade_cost, harsh_trade_cost, stressed_trade_cost
 from core.orb_scalping.expiry import next_nifty_weekly_expiry, nifty_weekly_expiry
 from core.orb_scalping.premium import reconstruct_premium
 from core.orb_scalping.signal import simulate_day
@@ -45,41 +45,56 @@ def group_by_day(candles: list[OHLCV]) -> dict[date, list[OHLCV]]:
     return by_day
 
 
-def resolve_banknifty_expiry(entry_date: date, trading_days: set) -> date:
+def resolve_banknifty_expiry(entry_date: date, trading_days: set) -> tuple:
     """Nearest calendar-month BankNifty monthly expiry on/after
     entry_date — identical rule to candidate 15, no DTE floor (BankNifty's
-    monthly contracts are never within 2 days of expiry at entry)."""
+    monthly contracts are never within 2 days of expiry at entry). Returns
+    (expiry, liquidity_tier) — BankNifty is always "front_week" (never
+    rolled), matching resolve_nifty_expiry's shape so run_index_backtest
+    can call either uniformly."""
     year, month = entry_date.year, entry_date.month
     this_month_expiry = adjust_for_holiday(calendar_expiry_date(year, month), trading_days)
     if this_month_expiry >= entry_date:
-        return this_month_expiry
+        return this_month_expiry, "front_week"
     year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return adjust_for_holiday(calendar_expiry_date(year, month), trading_days)
+    return adjust_for_holiday(calendar_expiry_date(year, month), trading_days), "front_week"
 
 
-def resolve_nifty_expiry(entry_date: date, trading_days: set) -> date:
+def resolve_nifty_expiry(entry_date: date, trading_days: set) -> tuple:
     """Nearest NIFTY weekly expiry on/after entry_date, with the
     methodology doc's DTE floor applied: if the nearest weekly's own
     days-to-expiry from entry_date is <2, roll to the NEXT weekly
-    instead."""
+    instead. Returns (expiry, liquidity_tier) — "next_week" when the DTE
+    floor actually rolled the contract (Fable's flagged ~40%-of-NIFTY-
+    trades subset, used by costs.py's post-hoc Harsh variant), else
+    "front_week"."""
     expiry = nifty_weekly_expiry(entry_date, trading_days)
     if (expiry - entry_date).days < DTE_FLOOR_DAYS:
         expiry = next_nifty_weekly_expiry(expiry, trading_days)
-    return expiry
+        return expiry, "next_week"
+    return expiry, "front_week"
 
 
 def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: float,
                         exit_premium: float, lot_size: int, trade_num: int,
-                        bars_held: int, stressed: bool) -> BacktestTrade:
+                        bars_held: int, variant: str, liquidity_tier: str = "front_week") -> BacktestTrade:
     """Every trade here is a BUY-to-open (long option, CALL or PUT alike —
     both are a long premium position), so profit = (exit - entry) *
-    lot_size, same as candidate 15."""
+    lot_size, same as candidate 15. `variant`: "clean" | "stressed" |
+    "harsh" (post-hoc — see costs.py); `liquidity_tier` only matters for
+    "harsh"."""
     profit = (exit_premium - entry_premium) * lot_size
     notional = entry_premium * lot_size
     profit_pct = (profit / notional * 100) if notional else 0.0
-    cost_fn = stressed_trade_cost if stressed else clean_trade_cost
-    costs = cost_fn(entry_premium=entry_premium, exit_premium=exit_premium,
-                     lot_size=lot_size, entry_date=entry_dt.date()).total
+
+    if variant == "clean":
+        costs = clean_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date()).total
+    elif variant == "stressed":
+        costs = stressed_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date()).total
+    elif variant == "harsh":
+        costs = harsh_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date(), liquidity_tier).total
+    else:
+        raise ValueError(f"unsupported variant: {variant!r}")
 
     return BacktestTrade(
         trade_num=trade_num, direction="Long", qty=lot_size,
@@ -92,11 +107,11 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
 
 def run_index_backtest(
     index_candles: list[OHLCV], vix_candles: list[OHLCV], *, underlying: str,
-) -> tuple[list[BacktestTrade], list[BacktestTrade]]:
+) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade]]:
     """Full per-day simulation for ONE index (underlying: "NIFTY" |
     "BANKNIFTY") across an already-fetched index + India VIX 5m candle
-    set. Returns (clean_trades, stressed_trades) — the same day's
-    IndexTrade/PremiumTrade, costed twice per the Clean/Stressed split."""
+    set. Returns (clean_trades, stressed_trades, harsh_trades) — the same
+    day's IndexTrade/PremiumTrade, costed three ways."""
     if underlying == "NIFTY":
         lot_size, strike_interval = NIFTY_LOT_SIZE, NIFTY_STRIKE_INTERVAL
         resolve_expiry = resolve_nifty_expiry
@@ -112,6 +127,7 @@ def run_index_backtest(
 
     clean_trades: list[BacktestTrade] = []
     stressed_trades: list[BacktestTrade] = []
+    harsh_trades: list[BacktestTrade] = []
     trade_num = 0
 
     for day in sorted(idx_by_day):
@@ -124,7 +140,7 @@ def run_index_backtest(
         if index_trade is None:
             continue
 
-        expiry = resolve_expiry(day, trading_days)
+        expiry, liquidity_tier = resolve_expiry(day, trading_days)
         premium_trade = reconstruct_premium(
             index_trade, day_candles, vix_day_candles, expiry, strike_interval,
         )
@@ -136,7 +152,8 @@ def run_index_backtest(
             entry_premium=premium_trade.entry_premium, exit_premium=premium_trade.exit_premium,
             lot_size=lot_size, trade_num=trade_num, bars_held=bars_held,
         )
-        clean_trades.append(_to_backtest_trade(**common, stressed=False))
-        stressed_trades.append(_to_backtest_trade(**common, stressed=True))
+        clean_trades.append(_to_backtest_trade(**common, variant="clean"))
+        stressed_trades.append(_to_backtest_trade(**common, variant="stressed"))
+        harsh_trades.append(_to_backtest_trade(**common, variant="harsh", liquidity_tier=liquidity_tier))
 
-    return clean_trades, stressed_trades
+    return clean_trades, stressed_trades, harsh_trades
