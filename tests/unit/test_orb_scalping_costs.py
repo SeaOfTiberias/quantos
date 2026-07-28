@@ -6,9 +6,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core.orb_scalping.costs import (  # noqa: E402
     HARSH_NEXT_WEEK_SLIPPAGE_BPS,
+    REAL_SPREAD_SLIPPAGE_BPS,
     STRESSED_SLIPPAGE_BPS,
     clean_trade_cost,
     harsh_trade_cost,
+    real_spread_trade_cost,
     stressed_trade_cost,
 )
 
@@ -78,3 +80,31 @@ def test_harsh_rejects_unknown_liquidity_tier():
     import pytest
     with pytest.raises(ValueError):
         harsh_trade_cost(100.0, 120.0, 65, date(2026, 1, 15), liquidity_tier="mid_week")
+
+
+# ─── Real-spread (post-hoc, live-measured single snapshot) ───────────────
+
+def test_real_spread_charges_more_than_harsh_front_week():
+    # Both measured rates (107.5 NIFTY, 65.0 BankNifty) exceed Harsh's flat
+    # front-week 15bps, per the live spread probe's finding.
+    entry_date = date(2026, 1, 15)
+    harsh = harsh_trade_cost(100.0, 120.0, 65, entry_date, liquidity_tier="front_week")
+    nifty_real = real_spread_trade_cost(100.0, 120.0, 65, entry_date, underlying="NIFTY")
+    banknifty_real = real_spread_trade_cost(100.0, 120.0, 30, entry_date, underlying="BANKNIFTY")
+    assert nifty_real.total > harsh.total
+    assert banknifty_real.total > harsh.total
+
+
+def test_real_spread_nifty_costs_more_than_banknifty():
+    # Measured NIFTY spread (blended 2.15%) is wider than BankNifty's (1.3%).
+    entry_date = date(2026, 1, 15)
+    nifty_real = real_spread_trade_cost(100.0, 120.0, 65, entry_date, underlying="NIFTY")
+    banknifty_real = real_spread_trade_cost(100.0, 120.0, 65, entry_date, underlying="BANKNIFTY")
+    assert REAL_SPREAD_SLIPPAGE_BPS["NIFTY"] > REAL_SPREAD_SLIPPAGE_BPS["BANKNIFTY"]
+    assert nifty_real.slippage > banknifty_real.slippage
+
+
+def test_real_spread_rejects_unknown_underlying():
+    import pytest
+    with pytest.raises(ValueError):
+        real_spread_trade_cost(100.0, 120.0, 65, date(2026, 1, 15), underlying="SENSEX")

@@ -27,6 +27,20 @@ backtest.py) routes ~40% of NIFTY trades into a next-week contract that's
 typically less liquid than the front week — harsh mode charges that
 subset a higher slippage rate instead of the same flat 15bps as
 everything else.
+
+`real_spread_trade_cost()` (added 2026-07-28, same day) goes one step
+further: `scripts/probe_orb_scalping_real_spreads.py` fetched a REAL, live
+bid-ask option chain (NIFTY next-weekly, BankNifty next-monthly, both
+skipping any 0-DTE-today contract) and found round-trip bid-ask-crossing
+cost of 1.1-3.2% of premium (NIFTY) and 0.6-2.0% (BankNifty) — 2-10x
+LARGER than even Harsh's 0.3-0.6% assumption. This is a SINGLE post-
+market-close snapshot on one day, not a sampled average across sessions —
+disclosed as a rough, directional estimate, not a rigorously sampled rate
+the way Stressed/Harsh's bps were chosen. Uses a blended (CALL+PUT
+averaged) round-trip rate per index, converted to an equivalent
+per-leg slippage_bps (round-trip spread %% = 2 * slippage_bps / 100, i.e.
+slippage_bps = 50 * spread_pct), plus the same forced flat-brokerage
+harsh mode already applies.
 """
 
 from __future__ import annotations
@@ -45,6 +59,15 @@ STRESSED_SLIPPAGE_BPS = 15.0   # methodology doc: midpoint of the reviewed 10-20
 HARSH_BROKERAGE_PCT = 1.0
 HARSH_FRONT_WEEK_SLIPPAGE_BPS = 15.0   # same as Stressed for the more-liquid subset
 HARSH_NEXT_WEEK_SLIPPAGE_BPS = 30.0    # double, for the DTE-floor-rolled (less liquid) subset
+
+# ── Real-spread (post-hoc, one live snapshot 2026-07-28 18:03 IST) ─────────
+# Measured ATM CALL/PUT round-trip bid-ask spread as %% of mid, blended:
+#   NIFTY:     CALL 1.1%, PUT 3.2%  -> blended 2.15%  -> slippage_bps = 50*2.15 = 107.5
+#   BANKNIFTY: CALL 0.6%, PUT 2.0%  -> blended 1.3%   -> slippage_bps = 50*1.3  = 65.0
+# (round-trip spread_pct = 2 * slippage_bps / 100, since CostModel charges
+# slippage_bps on BOTH the buy and sell leg's own turnover -- see
+# core/risk/costs.py's _slippage()/round_trip().)
+REAL_SPREAD_SLIPPAGE_BPS = {"NIFTY": 107.5, "BANKNIFTY": 65.0}
 
 
 def _model(entry_date: date, slippage_bps: float, brokerage_pct: float = 0.0003) -> CostModel:
@@ -92,3 +115,17 @@ def harsh_trade_cost(entry_premium: float, exit_premium: float, lot_size: float,
     return _model(entry_date, slippage_bps, brokerage_pct=HARSH_BROKERAGE_PCT).round_trip(
         buy_price=entry_premium, sell_price=exit_premium, quantity=lot_size,
     )
+
+
+def real_spread_trade_cost(entry_premium: float, exit_premium: float, lot_size: float,
+                            entry_date: date, underlying: str) -> CostBreakdown:
+    """POST-HOC, rough directional estimate (2026-07-28) — uses a real,
+    live-measured option bid-ask spread instead of an assumed slippage
+    rate. See module docstring: this is ONE snapshot, not a sampled
+    average, so treat this as a sanity check on Harsh's assumption, not a
+    fourth rigorously pre-registered tier."""
+    if underlying not in REAL_SPREAD_SLIPPAGE_BPS:
+        raise ValueError(f"unsupported underlying: {underlying!r}")
+    return _model(
+        entry_date, REAL_SPREAD_SLIPPAGE_BPS[underlying], brokerage_pct=HARSH_BROKERAGE_PCT,
+    ).round_trip(buy_price=entry_premium, sell_price=exit_premium, quantity=lot_size)

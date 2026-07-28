@@ -20,7 +20,12 @@ from datetime import date, datetime
 
 from core.backtest.parser import BacktestTrade
 from core.brokers.base import OHLCV
-from core.orb_scalping.costs import clean_trade_cost, harsh_trade_cost, stressed_trade_cost
+from core.orb_scalping.costs import (
+    clean_trade_cost,
+    harsh_trade_cost,
+    real_spread_trade_cost,
+    stressed_trade_cost,
+)
 from core.orb_scalping.expiry import next_nifty_weekly_expiry, nifty_weekly_expiry
 from core.orb_scalping.premium import reconstruct_premium
 from core.orb_scalping.signal import simulate_day
@@ -77,12 +82,14 @@ def resolve_nifty_expiry(entry_date: date, trading_days: set) -> tuple:
 
 def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: float,
                         exit_premium: float, lot_size: int, trade_num: int,
-                        bars_held: int, variant: str, liquidity_tier: str = "front_week") -> BacktestTrade:
+                        bars_held: int, variant: str, liquidity_tier: str = "front_week",
+                        underlying: str = "") -> BacktestTrade:
     """Every trade here is a BUY-to-open (long option, CALL or PUT alike —
     both are a long premium position), so profit = (exit - entry) *
     lot_size, same as candidate 15. `variant`: "clean" | "stressed" |
-    "harsh" (post-hoc — see costs.py); `liquidity_tier` only matters for
-    "harsh"."""
+    "harsh" | "real_spread" (all but "clean" post-hoc — see costs.py);
+    `liquidity_tier` only matters for "harsh", `underlying` only for
+    "real_spread"."""
     profit = (exit_premium - entry_premium) * lot_size
     notional = entry_premium * lot_size
     profit_pct = (profit / notional * 100) if notional else 0.0
@@ -93,6 +100,8 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
         costs = stressed_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date()).total
     elif variant == "harsh":
         costs = harsh_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date(), liquidity_tier).total
+    elif variant == "real_spread":
+        costs = real_spread_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date(), underlying).total
     else:
         raise ValueError(f"unsupported variant: {variant!r}")
 
@@ -107,11 +116,12 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
 
 def run_index_backtest(
     index_candles: list[OHLCV], vix_candles: list[OHLCV], *, underlying: str,
-) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade]]:
+) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade], list[BacktestTrade]]:
     """Full per-day simulation for ONE index (underlying: "NIFTY" |
     "BANKNIFTY") across an already-fetched index + India VIX 5m candle
-    set. Returns (clean_trades, stressed_trades, harsh_trades) — the same
-    day's IndexTrade/PremiumTrade, costed three ways."""
+    set. Returns (clean_trades, stressed_trades, harsh_trades,
+    real_spread_trades) — the same day's IndexTrade/PremiumTrade, costed
+    four ways."""
     if underlying == "NIFTY":
         lot_size, strike_interval = NIFTY_LOT_SIZE, NIFTY_STRIKE_INTERVAL
         resolve_expiry = resolve_nifty_expiry
@@ -128,6 +138,7 @@ def run_index_backtest(
     clean_trades: list[BacktestTrade] = []
     stressed_trades: list[BacktestTrade] = []
     harsh_trades: list[BacktestTrade] = []
+    real_spread_trades: list[BacktestTrade] = []
     trade_num = 0
 
     for day in sorted(idx_by_day):
@@ -155,5 +166,6 @@ def run_index_backtest(
         clean_trades.append(_to_backtest_trade(**common, variant="clean"))
         stressed_trades.append(_to_backtest_trade(**common, variant="stressed"))
         harsh_trades.append(_to_backtest_trade(**common, variant="harsh", liquidity_tier=liquidity_tier))
+        real_spread_trades.append(_to_backtest_trade(**common, variant="real_spread", underlying=underlying))
 
-    return clean_trades, stressed_trades, harsh_trades
+    return clean_trades, stressed_trades, harsh_trades, real_spread_trades
