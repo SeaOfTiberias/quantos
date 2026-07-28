@@ -1,0 +1,19 @@
+[Unit]
+Description=Daily trigger for QuantOS Momentum Turnover Real-Capital Pilot (quarterly-acting)
+
+[Timer]
+# Fires DAILY, not quarterly -- core/rotation/pilot_executor.py's own
+# quarter-boundary gate is what makes this only actually act once per
+# calendar quarter (is_eligible_to_rebalance, reused unchanged from
+# core/rotation/paper_executor.py). Daily firing gives it the same
+# self-healing property as the paper walk-forward: if the quarter-end day's
+# run fails (stale token), tomorrow's run catches it instead of losing the
+# whole quarter. 07:40 IST = 02:10 UTC -- 10 minutes after
+# quantos-rotation.timer (02:00) and 5 minutes after
+# quantos-paper-momentum.timer (02:05), so all three land after the same
+# shared daily Fyers token refresh without racing each other.
+OnCalendar=*-*-* 02:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

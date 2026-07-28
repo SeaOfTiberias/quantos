@@ -128,6 +128,29 @@ rotation:
                                      # authorization to deploy more capital.
   universe_file: agent/universe_nifty500.txt
 
+rotation_pilot:
+  # Real-capital pilot (core/rotation/pilot_executor.py) for the momentum-
+  # turnover walk-forward candidate (docs/MOMENTUM_TURNOVER_WALKFORWARD_
+  # METHODOLOGY.md) -- quarterly cadence, runs ALONGSIDE the paper ledger
+  # (agent/paper_rotation_positions.py), does NOT replace it; the paper
+  # walk-forward's 4-quarter OOS test still owns the strategy's verdict.
+  # Sole purpose: generate real trade-level data (fills, slippage, closed
+  # trades) -- Kelly sizing (core/risk/kelly.py) has been wired into the
+  # live agent since an earlier sprint but has never seen a single real
+  # closed trade. Deliberately small: position_size ~Rs2,500 vs the
+  # strategy's design Rs50,000, sized off the account's existing idle
+  # balance, not a scaled-down bet the strategy is profitable.
+  enabled: false                    # Master switch, same two-flag opt-in as rotation: above.
+  dry_run: true                     # Watch at least one supervised dry-run cycle before setting false.
+  capital_reference: 53000          # Stop-loss denominator ONLY -- buys always size off live
+                                     # broker.get_funds(), never this snapshot.
+  position_size: 2500               # DO NOT raise without explicit user confirmation each time --
+                                     # same rule as rotation.position_size above.
+  top_n: 20
+  max_loss_pct: 0.25                # Halt new buys once cumulative PILOT realized loss (not the
+                                     # whole account's) exceeds this fraction of capital_reference.
+  universe_file: agent/universe_nifty500.txt
+
 options:
   # Phase 2 (2026-07-21): regime/strategy advisor -> real options execution
   # (core/options/regime_trigger.py, executor.py). Confirm-before-execute,

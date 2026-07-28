@@ -1,0 +1,23 @@
+[Unit]
+Description=QuantOS Momentum Turnover Real-Capital Pilot (candidate 11 -- small bounded real orders, runs alongside the paper walk-forward)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_rotation_pilot.py
+Environment=HOME=/home/ubuntu
+
+# No Restart= here deliberately, same reasoning as quantos-rotation.service
+# and quantos-paper-momentum.service: the most likely failure is a stale
+# Fyers auth token, which needs a human to refresh interactively, not an
+# immediate retry. Safe to fail silently more often than that, though,
+# since core/rotation/pilot_executor.py's quarter-boundary gate makes
+# today's failure recoverable by tomorrow's run without losing the quarter.
+# No Telegram alert wired up in this first version (deliberately, matching
+# quantos-paper-momentum.service's own scoping) -- check
+# `journalctl -u quantos-rotation-pilot` during the existing daily VM
+# check-in. rotation_pilot.enabled must ALSO be true in agent/config.yaml
+# before this places any order, real or dry-run.

@@ -135,6 +135,29 @@ async def _init_signal_db():
     await db.connect()
 
 
+# How often to retry Postgres once the startup connect() has failed
+# (2026-07-27/28: confirmed DATABASE_URL pointed at a dead host —
+# ConnectionRefusedError — most likely a stale Railway service reference).
+# A DSN pointing at nothing won't fix itself, but a Railway-dashboard-side
+# relink can happen at any time; without this loop the app would only pick
+# that up on its next redeploy. connect() is already idempotent/cheap to
+# call again (returns True immediately once already connected).
+DB_RECONNECT_INTERVAL_SECONDS = 600
+
+
+async def _db_reconnect_loop():
+    db = await get_db()
+    while True:
+        await asyncio.sleep(DB_RECONNECT_INTERVAL_SECONDS)
+        if not db.is_postgres:
+            await db.connect()
+
+
+@app.on_event("startup")
+async def _start_db_reconnect_loop():
+    asyncio.create_task(_db_reconnect_loop())
+
+
 @app.on_event("startup")
 async def _register_telegram_webhook():
     try:
