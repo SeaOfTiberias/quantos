@@ -131,7 +131,7 @@ class TestOrderAndQuoteSymbolFormatting:
     def test_place_order_formats_equity_symbol(self):
         broker = _connected_broker()
         broker._client.place_order.return_value = {
-            "code": 200, "id": "ORD1", "message": "ok",
+            "s": "ok", "code": 200, "id": "ORD1", "message": "ok",
         }
         order = Order(
             symbol="RELIANCE", direction=OrderDirection.BUY, quantity=1,
@@ -219,7 +219,7 @@ class TestAlreadyQualifiedSymbolPassthrough:
     def test_place_order_passes_through_qualified_futures_symbol(self):
         broker = _connected_broker()
         broker._client.place_order.return_value = {
-            "code": 200, "id": "ORD1", "message": "ok",
+            "s": "ok", "code": 200, "id": "ORD1", "message": "ok",
         }
         order = Order(
             symbol="NSE:BANKNIFTY26JULFUT", direction=OrderDirection.BUY,
@@ -231,3 +231,65 @@ class TestAlreadyQualifiedSymbolPassthrough:
 
         sent = broker._client.place_order.call_args.kwargs["data"]
         assert sent["symbol"] == "NSE:BANKNIFTY26JULFUT"
+
+
+class TestOrderMutationOutcomeField:
+    """
+    Regression for the rotation pilot's first-ever real order attempt
+    (2026-07-29): place_order/cancel_order/modify_stop_loss all checked
+    response["code"] == 200 for success, matching every data-read endpoint
+    (history/quotes/positions/funds). But Fyers' order-management endpoints
+    don't use that convention -- a real, genuinely-accepted submission ack
+    came back with a non-200 "code" alongside message "Successfully placed
+    order", and the old check raised BrokerError on it, logging a fabricated
+    "rejection" instead of the outcome. "s" ("ok"/"error") is Fyers'
+    universal outcome field across every endpoint, data or order-management
+    alike, and is what these three methods must key off instead.
+    """
+
+    def _order(self) -> Order:
+        return Order(
+            symbol="RELIANCE", direction=OrderDirection.BUY, quantity=1,
+            order_type=OrderType.MARKET, product_type=ProductType.CNC,
+        )
+
+    def test_place_order_succeeds_on_ok_status_despite_non_200_code(self):
+        broker = _connected_broker()
+        broker._client.place_order.return_value = {
+            "s": "ok", "code": 1101, "id": "ORD1",
+            "message": "Successfully placed order",
+        }
+        result = broker.place_order(self._order())
+        assert result.order_id == "ORD1"
+
+    def test_place_order_raises_on_error_status_regardless_of_code(self):
+        broker = _connected_broker()
+        broker._client.place_order.return_value = {
+            "s": "error", "code": -99,
+            "message": "16387: Security is not allowed to trade in this market.",
+        }
+        try:
+            broker.place_order(self._order())
+            assert False, "expected BrokerError"
+        except Exception as e:
+            assert "Security is not allowed to trade" in str(e)
+
+    def test_cancel_order_true_on_ok_status_despite_non_200_code(self):
+        broker = _connected_broker()
+        broker._client.cancel_order.return_value = {"s": "ok", "code": 1100}
+        assert broker.cancel_order("ORD1") is True
+
+    def test_cancel_order_false_on_error_status(self):
+        broker = _connected_broker()
+        broker._client.cancel_order.return_value = {"s": "error", "code": -99}
+        assert broker.cancel_order("ORD1") is False
+
+    def test_modify_stop_loss_true_on_ok_status_despite_non_200_code(self):
+        broker = _connected_broker()
+        broker._client.modify_order.return_value = {"s": "ok", "code": 1100}
+        assert broker.modify_stop_loss("ORD1", 100.0) is True
+
+    def test_modify_stop_loss_false_on_error_status(self):
+        broker = _connected_broker()
+        broker._client.modify_order.return_value = {"s": "error", "code": -99}
+        assert broker.modify_stop_loss("ORD1", 100.0) is False

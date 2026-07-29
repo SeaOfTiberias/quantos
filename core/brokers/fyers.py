@@ -203,7 +203,21 @@ class FyersBroker(BrokerAdapter):
             }
 
             response = self._client.place_order(data=data)
-            if response.get("code") != 200:
+            # Confirmed live 2026-07-29 (the rotation pilot's first-ever real
+            # order attempt): Fyers' order-management endpoints (place_order/
+            # cancel_order/modify_order) do NOT use "code": 200 for success
+            # the way every data-read endpoint (history/quotes/positions/
+            # funds/orderbook) does -- a genuinely successful submission ack
+            # came back with a non-200 "code" alongside message "Successfully
+            # placed order", which this check misread as a rejection. "s" is
+            # Fyers' universal ok/error field across every endpoint (data AND
+            # order-management alike) and is what actually reflects outcome
+            # here. The order in question was separately, correctly rejected
+            # by Fyers' own RMS (pre-market CNC submission) -- confirmed via
+            # a live orderbook/positions check, zero real fills resulted --
+            # but this check would have silently misfiled a genuine fill the
+            # same way, so it's fixed regardless of that lucky timing.
+            if response.get("s") != "ok":
                 raise BrokerError(f"Order rejected: {response.get('message')}")
 
             order_id = response["id"]
@@ -229,7 +243,9 @@ class FyersBroker(BrokerAdapter):
     def cancel_order(self, order_id: str) -> bool:
         self._assert_connected()
         response = self._client.cancel_order(data={"id": order_id})
-        return response.get("code") == 200
+        # Same "s", not "code" outcome field as place_order — see its
+        # comment above.
+        return response.get("s") == "ok"
 
     def modify_stop_loss(self, order_id: str, new_trigger_price: float) -> bool:
         """Trail a standalone SL_M stop order (placed separately from the
@@ -244,7 +260,9 @@ class FyersBroker(BrokerAdapter):
                 "type": self._map_order_type(OrderType.SL_M),
                 "stopPrice": new_trigger_price,
             })
-            if response.get("code") != 200:
+            # Same "s", not "code" outcome field as place_order — see its
+            # comment above.
+            if response.get("s") != "ok":
                 logger.error("modify_stop_loss rejected for order %s: %s",
                              order_id, response.get("message"))
                 return False
