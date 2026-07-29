@@ -19,15 +19,16 @@ const C = {
 // ─── Cloud API ──────────────────────────────────────────────────────────────
 // Must match agent/config.yaml's cloud.api_url (the same Railway instance the
 // local agent talks to). Override via cockpit/.env's VITE_CLOUD_API_URL — see
-// .env.example. As of 2026-07-29: System Health, Regime, Momentum Shortlist
-// (formerly Discovery Watchlist — retired, zero evidenced edge, see S7-3),
-// Signal Feed, Positions, Morning Shortlist, and Claude Chat are all wired to
-// real cloud data (see per-panel comments below for each route). Greeks and
-// Alpha-vs-Nifty are the two panels still without a real feed — both have a
-// real backend (POST /options/greeks/panel, POST /options/alpha) but no data
-// pipeline yet syncs live options positions or realized trade history to the
-// cloud for them to consume, so they render an honest empty state instead of
-// fabricated numbers.
+// .env.example. As of 2026-07-29: System Health, Regime, Signal Feed,
+// Morning Shortlist, and the two Momentum Shortlist panels (Nifty Alpha 50 +
+// Nifty200 Momentum 30 — formerly one Discovery Watchlist panel, retired,
+// zero evidenced edge, see S7-3) are all wired to real cloud data (see
+// per-panel comments below for each route). Open Positions, Alpha-vs-Nifty,
+// and Claude Analyst were removed 2026-07-29 (dead placeholders or unused)
+// to make room. Greeks still has no real feed — real backend
+// (POST /options/greeks/panel) but no data pipeline yet syncs live options
+// positions, so it renders an honest empty state instead of fabricated
+// numbers.
 const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
   || "https://web-production-b5527.up.railway.app";
 
@@ -59,8 +60,16 @@ const MOCK_REGIME = {
 // daily feed. Server already sorts entries by bucket priority then
 // momentum — this just takes the top 5 for a compact digest. Discretionary
 // review only: not a signal, no execution path.
+// Mirrors core/discovery/momentum_shortlist.py's BUCKET_PRIORITY — combined
+// entries come from two independently-sorted universes (Alpha 50 + Nifty200
+// Momentum 30), so they need re-sorting together before taking the top 5,
+// not just concatenating.
+const BUCKET_PRIORITY = { LEADER_TIGHT_BASE: 0, LEADER_EXTENDED: 1, BUILDING_BASE: 2, WATCH: 3 };
+
 function buildMorningShortlist(entries) {
-  return entries
+  return [...entries]
+    .sort((a, b) => (BUCKET_PRIORITY[a.bucket] ?? 9) - (BUCKET_PRIORITY[b.bucket] ?? 9)
+      || b.momentum_pct - a.momentum_pct)
     .slice(0, 5)
     .map((e, i) => ({
       rank: i + 1,
@@ -73,8 +82,31 @@ function buildMorningShortlist(entries) {
     }));
 }
 
+// Momentum + Base Quality Shortlist — see cloud/api/momentum_shortlist_routes.py.
+// Polled rather than pushed since scripts/run_momentum_shortlist.py syncs
+// once a day, not on a fixed schedule the client could otherwise predict.
+function useMomentumShortlist(universe, setState) {
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/discovery/momentum-shortlist/${universe}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setState({ entries: data.entries ?? [], updatedAt: data.updated_at, error: false });
+        }
+      } catch {
+        if (!cancelled) setState(d => ({ ...d, error: true }));
+      }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [universe]);
+}
+
 const fmt = (n, dp = 2) => n?.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp }) ?? "—";
-const fmtPct = n => n != null ? `${n > 0 ? "+" : ""}${n.toFixed(2)}%` : "—";
 const fmtINR = n => n != null ? `₹${fmt(n, 0)}` : "—";
 const fmtMs = n => n != null ? `${Math.round(n)} ms` : "—";
 const fmtAge = s => {
@@ -223,29 +255,6 @@ function GreeksPanel() {
   );
 }
 
-// No real trade-history feed reaches the cloud yet: the backend for this
-// (GET /risk/stats, core/options/alpha_attribution.py's POST /options/alpha)
-// is real, but it's wired to a TradeHistoryService instance that nothing
-// ever populates — the agent keeps its own separate local instance and never
-// syncs it (agent/main.py). No validated strategy is live-trading right now
-// either (see project memory), so there is no real curve to plot. Honest
-// empty state rather than a fabricated/random one.
-function AlphaCurve() {
-  return (
-    <Card>
-      <Label color={C.accent}>Alpha vs Nifty</Label>
-      <div style={{
-        marginTop: 12, padding: "14px 12px", borderRadius: 6,
-        background: C.bg, border: `1px solid ${C.border}`,
-        fontSize: 12, color: C.muted, textAlign: "center",
-      }}>
-        No realized trade history synced yet — no strategy is currently live
-        with a validated edge to attribute alpha against.
-      </div>
-    </Card>
-  );
-}
-
 function SignalFeed({ signals, error }) {
   return (
     <Card>
@@ -294,73 +303,6 @@ function SignalFeed({ signals, error }) {
           );
         })}
       </div>
-      )}
-    </Card>
-  );
-}
-
-function PositionsTable({ positions, error }) {
-  const totalPnl = positions.reduce((s, p) => s + p.pnl, 0);
-  return (
-    <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Label color={C.accent}>Open Positions</Label>
-        {positions.length > 0 && (
-          <div style={{
-            fontSize: 14, fontWeight: 700,
-            color: totalPnl >= 0 ? C.green : C.red,
-          }}>
-            {totalPnl >= 0 ? "+" : ""}₹{fmt(Math.abs(totalPnl), 0)} today
-          </div>
-        )}
-      </div>
-      {positions.length === 0 ? (
-        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
-          {error ? "Could not reach cloud API." : "No open positions."}
-        </div>
-      ) : (
-      <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {["Symbol", "Qty", "Entry", "LTP", "P&L", "%"].map(h => (
-              <th key={h} style={{
-                textAlign: h === "Symbol" ? "left" : "right",
-                fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
-                color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
-                textTransform: "uppercase",
-              }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {positions.map(p => (
-            <tr key={p.symbol}>
-              <td style={{ padding: "8px 6px", color: C.white, fontWeight: 600 }}>
-                {p.symbol}
-              </td>
-              <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>{p.qty}</td>
-              <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
-                {fmtINR(p.entry)}
-              </td>
-              <td style={{ padding: "8px 6px", textAlign: "right", color: C.white }}>
-                {fmtINR(p.ltp)}
-              </td>
-              <td style={{
-                padding: "8px 6px", textAlign: "right", fontWeight: 600,
-                color: p.pnl >= 0 ? C.green : C.red,
-              }}>
-                {p.pnl >= 0 ? "+" : ""}₹{fmt(Math.abs(p.pnl), 0)}
-              </td>
-              <td style={{
-                padding: "8px 6px", textAlign: "right", fontWeight: 600,
-                color: p.pnl_pct >= 0 ? C.green : C.red,
-              }}>
-                {fmtPct(p.pnl_pct)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
       )}
     </Card>
   );
@@ -416,21 +358,19 @@ const bucketMeta = {
   WATCH:             { label: "Watch",               color: C.muted },
 };
 
-function MomentumShortlistPanel({ entries, updatedAt, error }) {
+function MomentumShortlistPanel({ title, universeName, entries, updatedAt, error }) {
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <Label color={C.gold}>Momentum Shortlist</Label>
+          <Label color={C.gold}>{title}</Label>
           <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
-            Nifty Alpha 50, ranked by 52-week-high proximity, overlaid with
+            {universeName}, ranked by 52-week-high proximity, overlaid with
             each name's Darvas weekly base state — a "tight" base only
             counts if daily EMA9 is also above EMA21, so a name merely
             rolling over (not making new highs/lows, but trending down)
             isn't mislabeled as a constructive base. Discretionary review
-            only — not a signal, no execution path (replaces the
-            pure-Darvas Discovery Watchlist, retired 2026-07-29 — zero
-            evidenced edge, see S7-3).
+            only — not a signal, no execution path.
           </div>
         </div>
         <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", marginLeft: 12 }}>
@@ -492,87 +432,6 @@ function MomentumShortlistPanel({ entries, updatedAt, error }) {
           </tbody>
         </table>
       )}
-    </Card>
-  );
-}
-
-function ClaudeChat() {
-  const [messages, setMessages] = useState([
-    { role: "assistant", text: "QuantOS analyst ready. Ask me about current signals, regime, or open positions." }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const send = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg = input.trim();
-    setInput("");
-    setMessages(m => [...m, { role: "user", text: userMsg }]);
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${CLOUD_API_URL}/analyst/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
-      });
-      const data = await response.json();
-      const text = data.reply ?? "Unable to get response.";
-      setMessages(m => [...m, { role: "assistant", text }]);
-    } catch {
-      setMessages(m => [...m, { role: "assistant", text: "Connection error — try again." }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Card style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Label color={C.purple}>Claude Analyst</Label>
-      <div style={{
-        flex: 1, overflowY: "auto", marginTop: 10,
-        display: "flex", flexDirection: "column", gap: 8,
-        maxHeight: 300,
-      }}>
-        {messages.map((m, i) => (
-          <div key={i} style={{
-            padding: "8px 10px", borderRadius: 6, fontSize: 12, lineHeight: 1.5,
-            ...(m.role === "user"
-              ? { background: `${C.purple}20`, border: `1px solid ${C.purple}40`,
-                  color: C.white, alignSelf: "flex-end", maxWidth: "85%" }
-              : { background: C.bg, border: `1px solid ${C.border}`,
-                  color: C.mid, alignSelf: "flex-start", maxWidth: "90%" }
-            ),
-          }}>{m.text}</div>
-        ))}
-        {loading && (
-          <div style={{ color: C.purple, fontSize: 12, padding: "4px 10px" }}>
-            Claude is thinking…
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && send()}
-          placeholder="Ask Claude about your positions…"
-          style={{
-            flex: 1, background: C.bg, border: `1px solid ${C.border}`,
-            borderRadius: 6, padding: "8px 12px", color: C.white,
-            fontSize: 12, outline: "none",
-          }}
-        />
-        <button
-          onClick={send}
-          disabled={loading || !input.trim()}
-          style={{
-            background: C.purple, color: C.white, border: "none",
-            borderRadius: 6, padding: "8px 14px", cursor: "pointer",
-            fontSize: 12, fontWeight: 600, opacity: loading ? 0.5 : 1,
-          }}
-        >→</button>
-      </div>
     </Card>
   );
 }
@@ -711,9 +570,12 @@ export default function QuantOSCockpit() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [regime, setRegime] = useState(MOCK_REGIME);
   const [signals, setSignals] = useState({ list: [], error: false });
-  const [positions, setPositions] = useState({ list: [], error: false });
-  const [shortlist, setShortlist] = useState({ entries: [], updatedAt: null, error: false });
-  const screener = useMemo(() => buildMorningShortlist(shortlist.entries), [shortlist.entries]);
+  const [shortlistAlpha50, setShortlistAlpha50] = useState({ entries: [], updatedAt: null, error: false });
+  const [shortlistMomentum30, setShortlistMomentum30] = useState({ entries: [], updatedAt: null, error: false });
+  const screener = useMemo(
+    () => buildMorningShortlist([...shortlistAlpha50.entries, ...shortlistMomentum30.entries]),
+    [shortlistAlpha50.entries, shortlistMomentum30.entries],
+  );
   const [obs, setObs] = useState(null);
   const [obsError, setObsError] = useState(false);
 
@@ -728,26 +590,10 @@ export default function QuantOSCockpit() {
   }, []);
 
   // Momentum + Base Quality Shortlist — see cloud/api/momentum_shortlist_routes.py.
-  // Polled rather than pushed since scripts/run_momentum_shortlist.py syncs
-  // once a day, not on a fixed schedule the client could otherwise predict.
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch(`${CLOUD_API_URL}/discovery/momentum-shortlist`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!cancelled) {
-          setShortlist({ entries: data.entries ?? [], updatedAt: data.updated_at, error: false });
-        }
-      } catch {
-        if (!cancelled) setShortlist(d => ({ ...d, error: true }));
-      }
-    };
-    load();
-    const id = setInterval(load, 30000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  // One universe per slot (2026-07-29: Alpha 50 and Nifty200 Momentum 30 sync
+  // independently so neither clobbers the other's daily post).
+  useMomentumShortlist("alpha50", setShortlistAlpha50);
+  useMomentumShortlist("nifty200momentum30", setShortlistMomentum30);
 
   // Signal feed: recent signals across all sources (Pine + internal Stage B),
   // see cloud/api/main.py's GET /signals. Polled since signals arrive at
@@ -762,26 +608,6 @@ export default function QuantOSCockpit() {
         if (!cancelled) setSignals({ list: data.signals ?? [], error: false });
       } catch {
         if (!cancelled) setSignals(s => ({ ...s, error: true }));
-      }
-    };
-    load();
-    const id = setInterval(load, 15000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
-
-  // Open positions: broker-reported qty/entry/LTP/PnL, see
-  // cloud/api/positions_routes.py's GET /positions/status. Polled every 15s
-  // to match the trailing-stop check's ~60s push cadence with headroom.
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch(`${CLOUD_API_URL}/positions/status`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!cancelled) setPositions({ list: data.positions ?? [], error: false });
-      } catch {
-        if (!cancelled) setPositions(p => ({ ...p, error: true }));
       }
     };
     load();
@@ -850,43 +676,43 @@ export default function QuantOSCockpit() {
           <SystemHealthPanel obs={obs} error={obsError} />
         </div>
 
-        {/* Row 1: Regime · Greeks · Alpha curve */}
+        {/* Row 1: Regime · Greeks */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 2fr",
+          gridTemplateColumns: "1fr 1fr",
           gap: 16, marginBottom: 16,
         }}>
           <RegimePanel regime={regime} />
           <GreeksPanel />
-          <AlphaCurve />
         </div>
 
-        {/* Row 2: Signals · Positions */}
+        {/* Row 2: Signals · Morning Shortlist */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: 16, marginBottom: 16,
         }}>
           <SignalFeed signals={signals.list} error={signals.error} />
-          <PositionsTable positions={positions.list} error={positions.error} />
-        </div>
-
-        {/* Row 3: Screener · Claude Chat */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16, marginBottom: 16,
-        }}>
           <ScreenerPanel candidates={screener} />
-          <ClaudeChat />
         </div>
 
-        {/* Row 4: Momentum + Base Quality Shortlist (discretionary review) */}
+        {/* Row 3: Momentum + Base Quality Shortlists (discretionary review) —
+            replaced Alpha-vs-Nifty, Open Positions, and Claude Analyst
+            2026-07-29, all three either dead placeholders or unused. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
           <MomentumShortlistPanel
-            entries={shortlist.entries}
-            updatedAt={shortlist.updatedAt}
-            error={shortlist.error}
+            title="Momentum Shortlist — Nifty Alpha 50"
+            universeName="Nifty Alpha 50"
+            entries={shortlistAlpha50.entries}
+            updatedAt={shortlistAlpha50.updatedAt}
+            error={shortlistAlpha50.error}
+          />
+          <MomentumShortlistPanel
+            title="Momentum Shortlist — Nifty200 Momentum 30"
+            universeName="Nifty200 Momentum 30"
+            entries={shortlistMomentum30.entries}
+            updatedAt={shortlistMomentum30.updatedAt}
+            error={shortlistMomentum30.error}
           />
         </div>
       </div>

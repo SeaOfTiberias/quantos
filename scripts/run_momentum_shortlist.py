@@ -18,15 +18,23 @@ Runs standalone (does not import or wake agent/main.py's run_agent() loop,
 so it does NOT revive Darvas discovery/scanning/live trading, which stays
 intentionally mothballed) — same pattern as scripts/run_paper_momentum_walkforward.py.
 
+Scans every --universe given (default: both Nifty Alpha 50 and Nifty200
+Momentum 30) in one run, sequentially over a single broker connection, and
+syncs each to its own labeled slot in the cloud
+(cloud/api/momentum_shortlist_routes.py) so the cockpit can show them as
+separate panels without one universe's daily sync clobbering the other's.
+
 Usage:
     python scripts/run_momentum_shortlist.py
     python scripts/run_momentum_shortlist.py --universe agent/universe_nifty500.txt
+    python scripts/run_momentum_shortlist.py --universe agent/universe_alpha50.txt --universe agent/universe_nifty200momentum30.txt
     python scripts/run_momentum_shortlist.py --no-report   # skip the cloud POST
 """
 
 import argparse
 import asyncio
 import logging
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,17 +50,31 @@ logging.basicConfig(level=logging.INFO,
                      format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("quantos.discovery.momentum_shortlist")
 
-# Nifty Alpha 50 — NSE's own risk-adjusted-momentum index, and already this
-# project's alpha benchmark elsewhere (docs/MOMENTUM_TURNOVER_ABLATION_RESULTS.md).
-# Chosen over the full Nifty 500 deliberately: a shorter, already
-# momentum-pre-screened list for a human to actually skim daily, not a
-# 500-row table. Override with --universe for a wider scan.
-DEFAULT_UNIVERSE_FILE = "agent/universe_alpha50.txt"
+# Nifty Alpha 50 (NSE's own risk-adjusted-momentum index, already this
+# project's alpha benchmark elsewhere) and Nifty200 Momentum 30 (NSE's own
+# momentum-factor index, added 2026-07-29) — both short, already
+# momentum-pre-screened lists for a human to actually skim daily, not a
+# 500-row table. Override with one or more --universe flags for a
+# different scan.
+DEFAULT_UNIVERSE_FILES = [
+    "agent/universe_alpha50.txt",
+    "agent/universe_nifty200momentum30.txt",
+]
 
 # core/rotation/ranker.LOOKBACK_DAYS (252 trading days) plus enough calendar
 # buffer for weekends/holidays, mirroring core/rotation/paper_executor.py's
 # own FETCH_WINDOW_DAYS margin for the same 252-trading-day requirement.
 FETCH_WINDOW_DAYS = 400
+
+
+def _universe_label(universe_path: str) -> str:
+    """Derives the cloud sync slot from a universe filename, e.g.
+    "agent/universe_alpha50.txt" -> "alpha50",
+    "agent/universe_nifty200momentum30.txt" -> "nifty200momentum30" —
+    no separate --label flag needed, and it can't drift out of sync with
+    the file it's actually labeling."""
+    stem = Path(universe_path).stem  # "universe_alpha50"
+    return re.sub(r"^universe_", "", stem) or stem
 
 
 def _cloud_url_and_headers(config: dict) -> tuple[str, dict]:
@@ -62,11 +84,12 @@ def _cloud_url_and_headers(config: dict) -> tuple[str, dict]:
     return cloud_url, headers
 
 
-def _report_shortlist_to_cloud(config: dict, entries: list[ShortlistEntry]) -> None:
+def _report_shortlist_to_cloud(config: dict, universe_label: str,
+                                entries: list[ShortlistEntry]) -> None:
     from dataclasses import asdict
     cloud_url, headers = _cloud_url_and_headers(config)
     payload = {"entries": [asdict(e) for e in entries]}
-    resp = requests.post(f"{cloud_url}/discovery/momentum-shortlist",
+    resp = requests.post(f"{cloud_url}/discovery/momentum-shortlist/{universe_label}",
                           json=payload, headers=headers, timeout=15)
     resp.raise_for_status()
 
@@ -103,6 +126,27 @@ def _log_summary(entries: list[ShortlistEntry]) -> None:
                         f"{e.rr_ratio:.2f}" if e.rr_ratio is not None else "—")
 
 
+async def _run_one_universe(broker, config: dict, universe_path: str, no_report: bool) -> None:
+    label = _universe_label(universe_path)
+    universe = _load_universe(universe_path)
+    if not universe:
+        raise RuntimeError(f"Momentum shortlist universe is empty ({universe_path})")
+
+    logger.info("[%s] Fetching daily history for %d symbols (%s)...",
+                label, len(universe), universe_path)
+    daily_by_symbol = await _fetch_universe_daily(broker, universe)
+    logger.info("[%s] Got history for %d/%d symbols", label, len(daily_by_symbol), len(universe))
+
+    entries = build_shortlist(daily_by_symbol, datetime.now(timezone.utc))
+    logger.info("[%s] Shortlist built: %d/%d symbols had enough history to rank",
+                label, len(entries), len(daily_by_symbol))
+    _log_summary(entries)
+
+    if not no_report:
+        _report_shortlist_to_cloud(config, label, entries)
+        logger.info("[%s] Synced to cloud (slot=%s) — cockpit will pick this up.", label, label)
+
+
 async def main_async(args) -> int:
     config = load_config(args.config)
 
@@ -111,22 +155,8 @@ async def main_async(args) -> int:
     logger.info("Connecting to broker: %s", config.get("broker"))
     broker.connect()
 
-    universe = _load_universe(args.universe)
-    if not universe:
-        raise RuntimeError(f"Momentum shortlist universe is empty ({args.universe})")
-
-    logger.info("Fetching daily history for %d symbols (%s)...", len(universe), args.universe)
-    daily_by_symbol = await _fetch_universe_daily(broker, universe)
-    logger.info("Got history for %d/%d symbols", len(daily_by_symbol), len(universe))
-
-    entries = build_shortlist(daily_by_symbol, datetime.now(timezone.utc))
-    logger.info("Shortlist built: %d/%d symbols had enough history to rank",
-                len(entries), len(daily_by_symbol))
-    _log_summary(entries)
-
-    if not args.no_report:
-        _report_shortlist_to_cloud(config, entries)
-        logger.info("Synced to cloud — cockpit's Momentum Shortlist panel will pick this up.")
+    for universe_path in args.universe:
+        await _run_one_universe(broker, config, universe_path, args.no_report)
 
     return 0
 
@@ -135,10 +165,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="agent/config.yaml")
-    parser.add_argument("--universe", default=DEFAULT_UNIVERSE_FILE)
+    parser.add_argument("--universe", action="append", default=None,
+                        help="Universe file to scan; repeatable. Defaults to both "
+                             "Alpha 50 and Nifty200 Momentum 30 if omitted.")
     parser.add_argument("--no-report", action="store_true",
                         help="Skip POSTing results to the cloud (local/manual runs).")
     args = parser.parse_args()
+    if args.universe is None:
+        args.universe = DEFAULT_UNIVERSE_FILES
     try:
         return asyncio.run(main_async(args))
     except Exception as e:

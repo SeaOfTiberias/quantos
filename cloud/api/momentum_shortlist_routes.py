@@ -12,6 +12,13 @@ endpoint and its tests stay untouched.
 This is a discretionary review aid, not a trading signal: no dry_run flag,
 no execution path, nothing here is ever wired to broker.place_order().
 
+Keyed by `universe` (2026-07-29: added a second scan, Nifty200 Momentum 30,
+alongside the original Nifty Alpha 50 — a single wholesale-replace store
+would have let the second script's daily sync silently clobber the first's).
+The label is whatever scripts/run_momentum_shortlist.py derives from its
+universe filename (e.g. "alpha50", "nifty200momentum30") — see that
+script's `_universe_label()`.
+
 Same auth split as every other read-only router in this app: POST (from the
 standalone script, same "keys never leave this machine" trust boundary as
 the agent) is guarded with X-Cloud-Secret; GET (from the cockpit's browser
@@ -30,9 +37,10 @@ from cloud.api.auth import require_cloud_secret
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
-# In-memory mirror — replaced wholesale on every daily sync from the script.
-_shortlist_store: list[dict] = []
-_last_synced_at: Optional[datetime] = None
+# In-memory mirrors, keyed by universe label — each replaced wholesale on
+# every daily sync from that universe's scan.
+_shortlist_store: dict[str, list[dict]] = {}
+_last_synced_at: dict[str, datetime] = {}
 
 
 class ShortlistEntryIn(BaseModel):
@@ -54,21 +62,24 @@ class ShortlistSyncRequest(BaseModel):
     entries: list[ShortlistEntryIn]
 
 
-@router.post("/momentum-shortlist")
-async def sync_momentum_shortlist(payload: ShortlistSyncRequest,
+@router.post("/momentum-shortlist/{universe}")
+async def sync_momentum_shortlist(universe: str, payload: ShortlistSyncRequest,
                                    _auth=Depends(require_cloud_secret)):
-    """Called once a day by scripts/run_momentum_shortlist.py."""
-    global _shortlist_store, _last_synced_at
-    _shortlist_store = [e.model_dump() for e in payload.entries]
-    _last_synced_at = datetime.now(timezone.utc)
-    logger.info("Momentum shortlist synced: %d entries", len(_shortlist_store))
-    return {"synced": len(_shortlist_store)}
+    """Called once a day by scripts/run_momentum_shortlist.py, once per
+    configured universe."""
+    _shortlist_store[universe] = [e.model_dump() for e in payload.entries]
+    _last_synced_at[universe] = datetime.now(timezone.utc)
+    logger.info("Momentum shortlist synced (%s): %d entries",
+                universe, len(_shortlist_store[universe]))
+    return {"universe": universe, "synced": len(_shortlist_store[universe])}
 
 
-@router.get("/momentum-shortlist")
-async def get_momentum_shortlist():
-    """Read by the cockpit dashboard."""
+@router.get("/momentum-shortlist/{universe}")
+async def get_momentum_shortlist(universe: str):
+    """Read by the cockpit dashboard, one call per panel/universe."""
+    entries = _shortlist_store.get(universe, [])
+    updated_at = _last_synced_at.get(universe)
     return {
-        "entries": _shortlist_store,
-        "updated_at": _last_synced_at.isoformat() if _last_synced_at else None,
+        "entries": entries,
+        "updated_at": updated_at.isoformat() if updated_at else None,
     }
