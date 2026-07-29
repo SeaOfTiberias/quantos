@@ -38,9 +38,18 @@ from core.rotation.ranker import LOOKBACK_DAYS, SymbolSeries, rolling_high_serie
 # just ranked and labeled lower-priority for a momentum-focused review.
 LEADER_TERCILE = 1 / 3
 
-# Mirrors core/darvas/box.py's DarvasBox.is_tight threshold — same
-# definition of "tight base" used everywhere else in this codebase.
-TIGHT_BASE_WIDTH_PCT = 4.0
+# "Tight base" is the narrowest third of box widths AMONG names that
+# currently have a live weekly box, not a fixed percentage cutoff. A fixed
+# 4% threshold (core/darvas/box.py's DarvasBox.is_tight, borrowed here in an
+# earlier version) was calibrated for that module's short-window intraday
+# boxes and never matched this weekly engine's own natural scale — a live
+# run against Nifty Alpha 50 (2026-07-29) came back with confirmed-box
+# widths of 8.6%-34.1% and zero names under 4%, so every name silently
+# landed in WATCH/LEADER_EXTENDED regardless of how narrow its base
+# actually was relative to its peers. Ranking widths against each other,
+# same as the momentum tercile above, self-calibrates to whatever this
+# engine's real distribution is instead of guessing a magic number.
+TIGHT_BASE_TERCILE = 1 / 3
 
 # Darvas statuses that represent an actual, currently-live box (as opposed
 # to "BOX FORMING", which has no confirmed ceiling/floor yet to be tight).
@@ -78,13 +87,21 @@ def _momentum_tier(rank: int, total: int) -> str:
     return "LAGGARD"
 
 
-def _has_tight_base(base: Optional[DiscoveryResult]) -> bool:
-    return bool(
-        base is not None
+def _tight_base_symbols(base_by_symbol: dict[str, Optional[DiscoveryResult]]) -> set[str]:
+    """Symbols in the narrowest TIGHT_BASE_TERCILE of box width, among only
+    those with a currently-live base (a symbol with no base, or one still
+    BOX FORMING, is never "tight" regardless of any width value)."""
+    live = sorted(
+        (base.box_width_pct, symbol)
+        for symbol, base in base_by_symbol.items()
+        if base is not None
         and base.status in _LIVE_BASE_STATUSES
         and base.box_width_pct is not None
-        and base.box_width_pct < TIGHT_BASE_WIDTH_PCT
     )
+    if not live:
+        return set()
+    tercile_size = max(1, round(len(live) * TIGHT_BASE_TERCILE))
+    return {symbol for _, symbol in live[:tercile_size]}
 
 
 def _bucket(momentum_tier: str, has_tight_base: bool) -> str:
@@ -109,6 +126,7 @@ def build_shortlist(
     tests/unit/test_rotation_ranker.py's own helper.
     """
     momentum_scores: list[tuple[str, float, float]] = []
+    base_by_symbol: dict[str, Optional[DiscoveryResult]] = {}
 
     for symbol, daily in daily_by_symbol.items():
         series = SymbolSeries(
@@ -122,15 +140,17 @@ def build_shortlist(
         close, high = v
         if high > 0:
             momentum_scores.append((symbol, close, close / high * 100))
+            base_by_symbol[symbol] = analyse_symbol(symbol, daily)
 
     momentum_scores.sort(key=lambda x: -x[2])
     total = len(momentum_scores)
+    tight_symbols = _tight_base_symbols(base_by_symbol)
 
     entries = []
     for rank, (symbol, close, pct) in enumerate(momentum_scores, start=1):
         tier = _momentum_tier(rank, total)
-        base = analyse_symbol(symbol, daily_by_symbol[symbol])
-        tight = _has_tight_base(base)
+        base = base_by_symbol[symbol]
+        tight = symbol in tight_symbols
         bucket = _bucket(tier, tight)
         entries.append(ShortlistEntry(
             symbol=symbol, close=round(close, 2),

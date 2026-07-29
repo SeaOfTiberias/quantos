@@ -14,7 +14,7 @@ from unittest.mock import patch
 from core.brokers.base import OHLCV
 from core.darvas.weekly_discovery import DiscoveryResult
 from core.discovery.momentum_shortlist import (
-    _bucket, _has_tight_base, _momentum_tier, build_shortlist,
+    _bucket, _momentum_tier, _tight_base_symbols, build_shortlist,
 )
 
 EPOCH = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -29,11 +29,11 @@ def _series(closes: list[float]) -> list[OHLCV]:
     return [_candle(i, c) for i, c in enumerate(closes)]
 
 
-def _tight_base(width_pct: float = 2.0) -> DiscoveryResult:
+def _live_base(width_pct: float) -> DiscoveryResult:
     return DiscoveryResult(symbol="X", status="APPROACHING", box_width_pct=width_pct)
 
 
-def _wide_or_forming_base() -> DiscoveryResult:
+def _forming_base() -> DiscoveryResult:
     return DiscoveryResult(symbol="X", status="BOX FORMING")
 
 
@@ -55,20 +55,37 @@ class TestMomentumTier:
         assert _momentum_tier(rank=1, total=1) == "LEADER"
 
 
-class TestHasTightBase:
+class TestTightBaseSymbols:
+    """"Tight" is the narrowest third of box widths among symbols with a
+    currently-live base — a relative ranking, not a fixed percentage (see
+    TIGHT_BASE_TERCILE's docstring for why: a fixed 4% cutoff borrowed from
+    a different Darvas engine never matched this one's real-world widths,
+    which ran 8%-34% live against Nifty Alpha 50 on 2026-07-29)."""
 
-    def test_none_base_is_not_tight(self):
-        assert _has_tight_base(None) is False
+    def test_empty_dict_yields_no_tight_symbols(self):
+        assert _tight_base_symbols({}) == set()
 
-    def test_box_forming_is_not_tight_even_without_width(self):
-        assert _has_tight_base(_wide_or_forming_base()) is False
+    def test_none_and_forming_bases_never_count_as_live(self):
+        result = _tight_base_symbols({"A": None, "B": _forming_base()})
+        assert result == set()
 
-    def test_live_status_under_threshold_is_tight(self):
-        assert _has_tight_base(_tight_base(3.9)) is True
+    def test_narrowest_third_among_live_bases_is_tight(self):
+        bases = {
+            "NARROW": _live_base(2.0),
+            "MID":    _live_base(10.0),
+            "WIDE":   _live_base(20.0),
+        }
+        # 3 live bases -> tercile_size = max(1, round(3/3)) = 1: only the
+        # single narrowest one qualifies.
+        assert _tight_base_symbols(bases) == {"NARROW"}
 
-    def test_live_status_at_or_over_threshold_is_not_tight(self):
-        assert _has_tight_base(_tight_base(4.0)) is False
-        assert _has_tight_base(_tight_base(10.0)) is False
+    def test_forming_or_missing_bases_excluded_even_if_others_are_wide(self):
+        bases = {
+            "NARROW": _live_base(2.0),
+            "FORMING": _forming_base(),
+            "MISSING": None,
+        }
+        assert _tight_base_symbols(bases) == {"NARROW"}
 
 
 class TestBucket:
@@ -103,13 +120,18 @@ class TestBuildShortlist:
         }
 
     def _mock_base(self, symbol: str):
+        # All 6 symbols get a live (non-forming) base so all 6 compete in
+        # the width tercile: tercile_size = max(1, round(6/3)) = 2, so the
+        # two narrowest widths (L1=2.0, G1=3.0) are "tight" and the other
+        # four (10/15/20/25) are not — independent of momentum tier, which
+        # is driven entirely by _daily_by_symbol's closes above.
         return {
-            "L1": _tight_base(2.0),
-            "L2": _wide_or_forming_base(),
-            "M1": _tight_base(3.5),
-            "M2": _wide_or_forming_base(),
-            "G1": _tight_base(1.0),
-            "G2": _wide_or_forming_base(),
+            "L1": _live_base(2.0),
+            "L2": _live_base(10.0),
+            "M1": _live_base(15.0),
+            "M2": _live_base(20.0),
+            "G1": _live_base(3.0),
+            "G2": _live_base(25.0),
         }[symbol]
 
     def test_buckets_assigned_per_symbol(self):
@@ -121,17 +143,17 @@ class TestBuildShortlist:
 
         by_symbol = {e.symbol: e for e in entries}
         assert by_symbol["L1"].momentum_tier == "LEADER"
-        assert by_symbol["L1"].bucket == "LEADER_TIGHT_BASE"
+        assert by_symbol["L1"].bucket == "LEADER_TIGHT_BASE"    # leader, narrowest width
         assert by_symbol["L2"].momentum_tier == "LEADER"
-        assert by_symbol["L2"].bucket == "LEADER_EXTENDED"
+        assert by_symbol["L2"].bucket == "LEADER_EXTENDED"      # leader, not in the tight tercile
         assert by_symbol["M1"].momentum_tier == "MIDPACK"
-        assert by_symbol["M1"].bucket == "BUILDING_BASE"
+        assert by_symbol["M1"].bucket == "WATCH"                # non-leader, not tight
         assert by_symbol["M2"].momentum_tier == "MIDPACK"
-        assert by_symbol["M2"].bucket == "WATCH"
+        assert by_symbol["M2"].bucket == "WATCH"                # non-leader, not tight
         assert by_symbol["G1"].momentum_tier == "LAGGARD"
-        assert by_symbol["G1"].bucket == "BUILDING_BASE"
+        assert by_symbol["G1"].bucket == "BUILDING_BASE"        # non-leader, 2nd-narrowest width
         assert by_symbol["G2"].momentum_tier == "LAGGARD"
-        assert by_symbol["G2"].bucket == "WATCH"
+        assert by_symbol["G2"].bucket == "WATCH"                # non-leader, widest of all
 
     def test_sort_order_groups_by_bucket_then_momentum_desc(self):
         daily = self._daily_by_symbol()
@@ -142,15 +164,12 @@ class TestBuildShortlist:
 
         assert [e.bucket for e in entries] == [
             "LEADER_TIGHT_BASE", "LEADER_EXTENDED",
-            "BUILDING_BASE", "BUILDING_BASE",
-            "WATCH", "WATCH",
+            "BUILDING_BASE",
+            "WATCH", "WATCH", "WATCH",
         ]
-        # Within BUILDING_BASE, M1 (66.7%) outranks G1 (11.1%).
-        building = [e for e in entries if e.bucket == "BUILDING_BASE"]
-        assert [e.symbol for e in building] == ["M1", "G1"]
-        # Within WATCH, M2 (55.6%) outranks G2 (5.6%).
+        # Within WATCH, momentum descending: M1 (66.7%) > M2 (55.6%) > G2 (5.6%).
         watch = [e for e in entries if e.bucket == "WATCH"]
-        assert [e.symbol for e in watch] == ["M2", "G2"]
+        assert [e.symbol for e in watch] == ["M1", "M2", "G2"]
 
     def test_excludes_symbols_without_enough_momentum_history(self):
         daily = {
