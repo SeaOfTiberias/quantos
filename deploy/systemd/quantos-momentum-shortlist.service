@@ -1,0 +1,17 @@
+[Unit]
+Description=QuantOS Momentum + Base Quality Shortlist (discretionary review, no execution path)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_momentum_shortlist.py
+Environment=HOME=/home/ubuntu
+
+# No Restart= here deliberately, same reasoning as quantos-paper-momentum.service:
+# the most likely failure is a stale Fyers auth token, which needs a human to
+# refresh interactively. Harmless to fail silently until the next day's run --
+# this produces a fresh review list, not a position or a gated boundary, so
+# there is no "missed window" to lose the way a rebalance would.

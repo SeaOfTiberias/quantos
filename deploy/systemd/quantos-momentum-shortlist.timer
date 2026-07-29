@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily trigger for QuantOS Momentum + Base Quality Shortlist
+
+[Timer]
+# 02:15 UTC = 07:45 IST -- ten minutes after quantos-rotation-pilot.timer's
+# 02:10 UTC fire, so the same daily pre-market Fyers token refresh already
+# covers this too. Runs once/day: a discretionary review list only needs a
+# fresh EOD daily bar, not intraday timing.
+OnCalendar=*-*-* 02:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -19,7 +19,8 @@ const C = {
 // ─── Cloud API ──────────────────────────────────────────────────────────────
 // Must match agent/config.yaml's cloud.api_url (the same Railway instance the
 // local agent talks to). Override via cockpit/.env's VITE_CLOUD_API_URL — see
-// .env.example. As of 2026-07-24: System Health, Regime, Discovery Watchlist,
+// .env.example. As of 2026-07-29: System Health, Regime, Momentum Shortlist
+// (formerly Discovery Watchlist — retired, zero evidenced edge, see S7-3),
 // Signal Feed, Positions, Morning Shortlist, and Claude Chat are all wired to
 // real cloud data (see per-panel comments below for each route). Greeks and
 // Alpha-vs-Nifty are the two panels still without a real feed — both have a
@@ -51,30 +52,23 @@ const MOCK_REGIME = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-// Morning Shortlist derives from the Discovery Watchlist (Stage A) rather
-// than the older CSV-upload screener pipeline (core/screener/ranker.py),
-// which has no automated daily feed — this stays fully live with no manual
-// upload step. "score" is the real R:R ratio, not a fabricated composite.
-const SHORTLIST_TIER_PRIORITY = { HOT: 3, WARM: 2, "VOL-SURGE": 1.5, WATCH: 1 };
-
+// Morning Shortlist derives from the Momentum + Base Quality Shortlist
+// (core/discovery/momentum_shortlist.py, synced daily by
+// scripts/run_momentum_shortlist.py) rather than the older CSV-upload
+// screener pipeline (core/screener/ranker.py), which has no automated
+// daily feed. Server already sorts entries by bucket priority then
+// momentum — this just takes the top 5 for a compact digest. Discretionary
+// review only: not a signal, no execution path.
 function buildMorningShortlist(entries) {
   return entries
-    .filter(e => e.status === "APPROACHING" || e.status === "FRESH BREAKOUT")
-    .sort((a, b) => {
-      const tierDiff = (SHORTLIST_TIER_PRIORITY[b.alert_tier] ?? 0)
-        - (SHORTLIST_TIER_PRIORITY[a.alert_tier] ?? 0);
-      if (tierDiff !== 0) return tierDiff;
-      return (a.dist_to_ceil ?? 999) - (b.dist_to_ceil ?? 999);
-    })
     .slice(0, 5)
     .map((e, i) => ({
       rank: i + 1,
       symbol: e.symbol,
-      score: e.rr_ratio != null ? Math.round(e.rr_ratio * 10) / 10 : "—",
+      score: `${e.momentum_pct.toFixed(1)}%`,
       rationale: [
-        e.status,
-        e.alert_tier || null,
-        e.dist_to_ceil != null ? `${e.dist_to_ceil.toFixed(1)}% from ceiling` : null,
+        e.bucket.replace(/_/g, " "),
+        e.base_status !== "NO BASE" ? e.base_status : null,
       ].filter(Boolean).join(" · "),
     }));
 }
@@ -377,13 +371,12 @@ function ScreenerPanel({ candidates }) {
     <Card>
       <Label color={C.gold}>Morning Shortlist</Label>
       <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
-        Same weekly pre-screen as Discovery Watchlist below — worth a look,
-        not a confirmed daily breakout box.
+        Top 5 from the Momentum Shortlist below — for discretionary review,
+        not a signal.
       </div>
       {candidates.length === 0 ? (
         <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
-          Darvas scanner disabled 2026-07-25 — no evidenced edge (see S7-3).
-          No replacement filter live yet.
+          Waiting for the daily momentum-shortlist run.
         </div>
       ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
@@ -416,48 +409,45 @@ function ScreenerPanel({ candidates }) {
   );
 }
 
-const tierColor = t => ({
-  HOT: C.red, WARM: C.gold, WATCH: C.mid, "VOL-SURGE": C.purple,
-})[t] ?? C.muted;
+const bucketMeta = {
+  LEADER_TIGHT_BASE: { label: "Leader · Tight Base", color: C.green },
+  LEADER_EXTENDED:   { label: "Leader · Extended",   color: C.gold },
+  BUILDING_BASE:     { label: "Building Base",       color: C.accent },
+  WATCH:             { label: "Watch",               color: C.muted },
+};
 
-const discoveryStatusColor = s => ({
-  "FRESH BREAKOUT": C.green, APPROACHING: C.gold, WATCHING: C.accent,
-  "BOX FORMING": C.muted, POSITION_OPEN: C.purple,
-})[s] ?? C.muted;
-
-function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const firedToday = entries.filter(e => e.last_fired_date === today);
-
+function MomentumShortlistPanel({ entries, updatedAt, error }) {
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <Label color={C.gold}>Discovery Watchlist</Label>
+          <Label color={C.gold}>Momentum Shortlist</Label>
           <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
-            Darvas weekly pre-screen — disabled 2026-07-25, zero evidenced
-            edge (fails even at zero slippage, see S7-3). Kept visible as a
-            placeholder for a validated replacement, not currently populated.
+            Nifty Alpha 50, ranked by 52-week-high proximity, overlaid with
+            each name's Darvas weekly base state. Discretionary review only —
+            not a signal, no execution path (replaces the pure-Darvas
+            Discovery Watchlist, retired 2026-07-29 — zero evidenced edge,
+            see S7-3).
           </div>
         </div>
         <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", marginLeft: 12 }}>
           {error ? "offline"
-            : updatedAt ? `last data ${new Date(updatedAt).toLocaleTimeString("en-IN", { hour12: false })} (scanner disabled)`
-            : "waiting for agent…"}
+            : updatedAt ? `updated ${new Date(updatedAt).toLocaleString("en-IN", { hour12: false })}`
+            : "waiting for first daily run…"}
         </span>
       </div>
 
       {entries.length === 0 ? (
         <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
-          {error ? "Could not reach cloud API." : "Scanner disabled — no replacement filter live yet."}
+          {error ? "Could not reach cloud API." : "No data yet — waiting for the daily scan."}
         </div>
       ) : (
         <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Symbol", "Status", "Tier", "Ceiling", "Dist%", "R:R"].map(h => (
+              {["Symbol", "Bucket", "Momentum", "Base", "Width%", "R:R"].map(h => (
                 <th key={h} style={{
-                  textAlign: (h === "Symbol" || h === "Status") ? "left" : "right",
+                  textAlign: (h === "Symbol" || h === "Bucket" || h === "Base") ? "left" : "right",
                   fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
                   color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
                   textTransform: "uppercase",
@@ -466,51 +456,35 @@ function DiscoveryWatchlistPanel({ entries, updatedAt, error }) {
             </tr>
           </thead>
           <tbody>
-            {entries.map(e => (
-              <tr key={e.symbol}>
-                <td style={{ padding: "8px 6px", color: C.white, fontWeight: 600 }}>{e.symbol}</td>
-                <td style={{ padding: "8px 6px", color: discoveryStatusColor(e.status), fontSize: 11 }}>
-                  {e.status}
-                </td>
-                <td style={{ padding: "8px 6px" }}>
-                  {e.alert_tier && (
+            {entries.map(e => {
+              const meta = bucketMeta[e.bucket] ?? { label: e.bucket, color: C.muted };
+              return (
+                <tr key={e.symbol}>
+                  <td style={{ padding: "8px 6px", color: C.white, fontWeight: 600 }}>{e.symbol}</td>
+                  <td style={{ padding: "8px 6px" }}>
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                      color: tierColor(e.alert_tier), background: `${tierColor(e.alert_tier)}20`,
-                      border: `1px solid ${tierColor(e.alert_tier)}40`,
-                    }}>{e.alert_tier}</span>
-                  )}
-                </td>
-                <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
-                  {fmtINR(e.box_ceiling)}
-                </td>
-                <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
-                  {e.dist_to_ceil != null ? fmtPct(e.dist_to_ceil) : "—"}
-                </td>
-                <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
-                  {e.rr_ratio != null ? e.rr_ratio.toFixed(2) : "—"}
-                </td>
-              </tr>
-            ))}
+                      color: meta.color, background: `${meta.color}20`,
+                      border: `1px solid ${meta.color}40`,
+                    }}>{meta.label}</span>
+                  </td>
+                  <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
+                    {e.momentum_pct.toFixed(1)}%
+                  </td>
+                  <td style={{ padding: "8px 6px", color: C.mid, fontSize: 11 }}>
+                    {e.base_status}
+                  </td>
+                  <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
+                    {e.box_width_pct != null ? `${e.box_width_pct.toFixed(1)}%` : "—"}
+                  </td>
+                  <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
+                    {e.rr_ratio != null ? e.rr_ratio.toFixed(2) : "—"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-      )}
-
-      {firedToday.length > 0 && (
-        <>
-          <Divider />
-          <Label color={C.accent}>Fired Today (Stage B → webhook)</Label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-            {firedToday.map(e => (
-              <div key={e.symbol} style={{ fontSize: 11, color: C.mid }}>
-                <span style={{ color: C.white, fontWeight: 600 }}>{e.symbol}</span>
-                {" "}confluence={e.last_fired_confluence ?? "—"}
-                {" → "}{e.last_fired_signal_id || "—"}
-                {" "}({e.last_fired_status || "unknown"})
-              </div>
-            ))}
-          </div>
-        </>
       )}
     </Card>
   );
@@ -732,8 +706,8 @@ export default function QuantOSCockpit() {
   const [regime, setRegime] = useState(MOCK_REGIME);
   const [signals, setSignals] = useState({ list: [], error: false });
   const [positions, setPositions] = useState({ list: [], error: false });
-  const [discovery, setDiscovery] = useState({ entries: [], updatedAt: null, error: false });
-  const screener = useMemo(() => buildMorningShortlist(discovery.entries), [discovery.entries]);
+  const [shortlist, setShortlist] = useState({ entries: [], updatedAt: null, error: false });
+  const screener = useMemo(() => buildMorningShortlist(shortlist.entries), [shortlist.entries]);
   const [obs, setObs] = useState(null);
   const [obsError, setObsError] = useState(false);
 
@@ -747,21 +721,21 @@ export default function QuantOSCockpit() {
     return () => clearInterval(id);
   }, []);
 
-  // The only panel below wired to real data — see cloud/api/discovery_routes.py.
-  // Polled rather than pushed since the agent syncs at most once/day (Stage A)
-  // plus whenever Stage B fires, not on a fixed schedule.
+  // Momentum + Base Quality Shortlist — see cloud/api/momentum_shortlist_routes.py.
+  // Polled rather than pushed since scripts/run_momentum_shortlist.py syncs
+  // once a day, not on a fixed schedule the client could otherwise predict.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch(`${CLOUD_API_URL}/discovery/watchlist`);
+        const res = await fetch(`${CLOUD_API_URL}/discovery/momentum-shortlist`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!cancelled) {
-          setDiscovery({ entries: data.entries ?? [], updatedAt: data.updated_at, error: false });
+          setShortlist({ entries: data.entries ?? [], updatedAt: data.updated_at, error: false });
         }
       } catch {
-        if (!cancelled) setDiscovery(d => ({ ...d, error: true }));
+        if (!cancelled) setShortlist(d => ({ ...d, error: true }));
       }
     };
     load();
@@ -901,12 +875,12 @@ export default function QuantOSCockpit() {
           <ClaudeChat />
         </div>
 
-        {/* Row 4: Discovery Watchlist (Stage A/B two-stage Darvas pipeline) */}
+        {/* Row 4: Momentum + Base Quality Shortlist (discretionary review) */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-          <DiscoveryWatchlistPanel
-            entries={discovery.entries}
-            updatedAt={discovery.updatedAt}
-            error={discovery.error}
+          <MomentumShortlistPanel
+            entries={shortlist.entries}
+            updatedAt={shortlist.updatedAt}
+            error={shortlist.error}
           />
         </div>
       </div>
