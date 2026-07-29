@@ -44,7 +44,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import requests  # noqa: E402
 
 from agent.main import load_config, _load_universe  # noqa: E402
-from core.discovery.momentum_shortlist import ShortlistEntry, build_shortlist  # noqa: E402
+from core.discovery.momentum_shortlist import (  # noqa: E402
+    EMA_FAST, EMA_SLOW, ShortlistEntry, build_shortlist, is_uptrend,
+)
 
 logging.basicConfig(level=logging.INFO,
                      format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -65,6 +67,10 @@ DEFAULT_UNIVERSE_FILES = [
 # buffer for weekends/holidays, mirroring core/rotation/paper_executor.py's
 # own FETCH_WINDOW_DAYS margin for the same 252-trading-day requirement.
 FETCH_WINDOW_DAYS = 400
+
+# core/regime/fetcher.py's own NIFTY_SYMBOL/VIX_SYMBOL convention.
+NIFTY_SYMBOL = "NIFTY 50"
+VIX_SYMBOL = "INDIA VIX"
 
 
 def _universe_label(universe_path: str) -> str:
@@ -92,6 +98,46 @@ def _report_shortlist_to_cloud(config: dict, universe_label: str,
     resp = requests.post(f"{cloud_url}/discovery/momentum-shortlist/{universe_label}",
                           json=payload, headers=headers, timeout=15)
     resp.raise_for_status()
+
+
+async def _sync_market_snapshot(broker, config: dict, no_report: bool) -> None:
+    """NIFTY LTP + short-term trend (same EMA9/EMA21 check applied to every
+    stock in the shortlist tables, so this reading and theirs never use two
+    different definitions of "uptrend") + India VIX LTP. NOT a regime
+    classification -- see cloud/api/market_snapshot_routes.py's module
+    docstring for why that line is deliberate. Runs once per script
+    invocation (not per-universe), before the universe loop, so a slow or
+    failing universe scan can't stop this cheap, quick sync from keeping
+    the observability heartbeat fresh."""
+    from scripts.validate_regime_classifier import fetch_chunked_daily
+
+    to_date = datetime.now(timezone.utc)
+    from_date = to_date - timedelta(days=FETCH_WINDOW_DAYS)
+    sem = asyncio.Semaphore(2)
+
+    nifty_daily = await fetch_chunked_daily(broker, NIFTY_SYMBOL, from_date, to_date, sem)
+    if not nifty_daily:
+        logger.warning("Market snapshot: no NIFTY history returned — skipping sync.")
+        return
+    trend_up = is_uptrend(nifty_daily, to_date, EMA_FAST, EMA_SLOW)
+
+    loop = asyncio.get_event_loop()
+    ltp = await loop.run_in_executor(None, lambda: broker.get_ltp([NIFTY_SYMBOL, VIX_SYMBOL]))
+    nifty_ltp = ltp.get(NIFTY_SYMBOL) or nifty_daily[-1].close
+    vix_current = ltp.get(VIX_SYMBOL)
+
+    logger.info("Market snapshot: NIFTY=%.1f trend=%s VIX=%s",
+                nifty_ltp, "UP" if trend_up else "down",
+                f"{vix_current:.2f}" if vix_current is not None else "—")
+
+    if not no_report:
+        cloud_url, headers = _cloud_url_and_headers(config)
+        resp = requests.post(f"{cloud_url}/market/snapshot",
+                              json={"nifty_ltp": nifty_ltp, "nifty_trend_up": trend_up,
+                                    "vix_current": vix_current},
+                              headers=headers, timeout=15)
+        resp.raise_for_status()
+        logger.info("Market snapshot synced to cloud.")
 
 
 async def _fetch_universe_daily(broker, universe: list[str]) -> dict:
@@ -154,6 +200,13 @@ async def main_async(args) -> int:
     broker = get_broker(config)
     logger.info("Connecting to broker: %s", config.get("broker"))
     broker.connect()
+
+    try:
+        await _sync_market_snapshot(broker, config, args.no_report)
+    except Exception as e:
+        # Best-effort: a failed snapshot sync shouldn't block the universe
+        # scans below, which are this script's main job.
+        logger.error("Market snapshot sync failed (continuing): %s", e)
 
     for universe_path in args.universe:
         await _run_one_universe(broker, config, universe_path, args.no_report)

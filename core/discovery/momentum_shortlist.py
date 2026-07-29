@@ -101,7 +101,7 @@ class ShortlistEntry:
     vol_ratio:      float = 0.0
 
 
-def _ema_series(closes: list[float], period: int) -> list[Optional[float]]:
+def ema_series(closes: list[float], period: int) -> list[Optional[float]]:
     """Standard EMA, SMA-seeded: None for the first `period`-1 bars (not
     warmed up), then the seed SMA, then the usual recursive smoothing."""
     if len(closes) < period:
@@ -116,7 +116,7 @@ def _ema_series(closes: list[float], period: int) -> list[Optional[float]]:
     return result
 
 
-def _is_uptrend(daily: list[OHLCV], as_of_date: datetime,
+def is_uptrend(daily: list[OHLCV], as_of_date: datetime,
                  fast: int = EMA_FAST, slow: int = EMA_SLOW) -> bool:
     """EMA(fast) > EMA(slow) on daily closes, evaluated at the most recent
     bar at or before as_of_date. False (not just "unknown") when there
@@ -127,8 +127,8 @@ def _is_uptrend(daily: list[OHLCV], as_of_date: datetime,
     if idx < 0:
         return False
     closes = [c.close for c in daily[:idx + 1]]
-    ema_fast = _ema_series(closes, fast)
-    ema_slow = _ema_series(closes, slow)
+    ema_fast = ema_series(closes, fast)
+    ema_slow = ema_series(closes, slow)
     if ema_fast[-1] is None or ema_slow[-1] is None:
         return False
     return ema_fast[-1] > ema_slow[-1]
@@ -210,7 +210,7 @@ def build_shortlist(
         if high > 0:
             momentum_scores.append((symbol, close, close / high * 100))
             base_by_symbol[symbol] = analyse_symbol(symbol, daily)
-            uptrend_by_symbol[symbol] = _is_uptrend(daily, as_of_date, ema_fast, ema_slow)
+            uptrend_by_symbol[symbol] = is_uptrend(daily, as_of_date, ema_fast, ema_slow)
 
     momentum_scores.sort(key=lambda x: -x[2])
     total = len(momentum_scores)

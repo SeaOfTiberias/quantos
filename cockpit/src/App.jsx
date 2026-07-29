@@ -32,23 +32,14 @@ const C = {
 const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
   || "https://web-production-b5527.up.railway.app";
 
-// Fallback shown only until the agent's first regime sync lands (or after a
-// Railway redeploy wipes the in-memory mirror) — not fabricated trading data,
-// just a neutral placeholder so the panel isn't blank on first paint.
-const MOCK_REGIME = {
-  regime: "UNCERTAIN",
-  confidence: 0,
-  trend_signal: "UNKNOWN",
-  vix_signal: "UNKNOWN",
-  breadth_signal: "UNKNOWN",
-  advance_count: 0,
-  decline_count: 0,
-  unchanged_count: 0,
-  ad_ratio: 1,
+// Fallback shown only until scripts/run_momentum_shortlist.py's first daily
+// market-snapshot sync lands (or after a Railway redeploy wipes the
+// in-memory mirror) — not fabricated data, just a neutral placeholder so
+// the panel isn't blank on first paint.
+const MOCK_MARKET_SNAPSHOT = {
   nifty_ltp: null,
+  nifty_trend_up: null,
   vix_current: null,
-  darvas_enabled: false,
-  allowed_strategies: [],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -116,11 +107,6 @@ const fmtAge = s => {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ago`;
 };
 
-const regimeColor = r => ({
-  TRENDING_BULL: C.green, TRENDING_BEAR: C.red,
-  RANGING: C.gold, VOLATILE: "#F97316", UNCERTAIN: C.muted,
-})[r] ?? C.muted;
-
 const statusBadge = s => ({
   PENDING_CONFIRMATION: { label: "Pending", color: C.gold },
   CONFIRMED: { label: "Confirmed", color: C.green },
@@ -157,77 +143,58 @@ function Divider() {
 
 // ─── Panels ───────────────────────────────────────────────────────────────
 
-function RegimePanel({ regime }) {
-  const color = regimeColor(regime.regime);
+// Deliberately not a regime classifier (bull/bear/ranging) — that depended
+// entirely on the mothballed quantos-agent and hasn't synced in days (see
+// cloud/api/market_snapshot_routes.py's module docstring). Three real
+// facts instead: NIFTY's LTP + short-term trend (same EMA9/EMA21 check
+// applied to every stock in the Momentum Shortlist tables below, so this
+// reading and theirs never disagree on what "uptrend" means), India VIX's
+// raw LTP (no classification layered on top), and whether the Momentum
+// Shortlist scans are actually running (replaces the old "Darvas
+// Active/Gated" chip — Darvas has had zero evidenced edge since S7-3 and
+// no live feed since the agent was mothballed; this is the tool that's
+// actually in use now).
+function MarketSnapshotPanel({ snapshot, error, shortlistFreshness }) {
+  const trendUp = snapshot.nifty_trend_up;
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <Label color={C.accent}>Market Regime</Label>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-        <div style={{
-          width: 10, height: 10, borderRadius: "50%", background: color,
-          boxShadow: `0 0 8px ${color}`,
-        }} />
-        <span style={{ fontSize: 20, fontWeight: 700, color: C.white }}>
-          {regime.regime.replace("_", " ")}
-        </span>
-        <span style={{ fontSize: 13, color: C.muted, marginLeft: "auto" }}>
-          {regime.confidence}% confidence
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Label color={C.accent}>Market Snapshot</Label>
+        <span style={{ fontSize: 10, color: C.muted }}>
+          {error ? "offline" : "daily, from Momentum Shortlist's own scan"}
         </span>
       </div>
-      <Divider />
-      <div style={{ display: "flex", gap: 24 }}>
-        {[
-          {
-            label: "Nifty 50", val: regime.trend_signal,
-            sub: regime.nifty_ltp != null ? fmt(regime.nifty_ltp, 1) : null,
-          },
-          {
-            label: "India VIX", val: regime.vix_signal,
-            sub: regime.vix_current != null ? regime.vix_current.toFixed(2) : null,
-          },
-          { label: "Darvas", val: regime.darvas_enabled ? "✅ Active" : "❌ Gated" },
-        ].map(({ label, val, sub }) => (
-          <div key={label}>
-            <Label>{label}</Label>
-            <div style={{ fontSize: 13, color: C.mid, marginTop: 2 }}>
-              {val}{sub && <span style={{ color: C.white, fontWeight: 600 }}> · {sub}</span>}
-            </div>
+      <div style={{ display: "flex", gap: 24, marginTop: 4 }}>
+        <div>
+          <Label>Nifty 50</Label>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.white, marginTop: 2 }}>
+            {snapshot.nifty_ltp != null ? fmt(snapshot.nifty_ltp, 1) : "—"}
           </div>
-        ))}
-      </div>
-      {(regime.advance_count > 0 || regime.decline_count > 0) && (
-        <>
-          <Divider />
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Label>Breadth</Label>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.green }}>
-              {regime.advance_count} ▲
-            </span>
-            <span style={{ fontSize: 13, color: C.muted }}>/</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.red }}>
-              {regime.decline_count} ▼
-            </span>
-            {regime.unchanged_count > 0 && (
-              <span style={{ fontSize: 11, color: C.muted }}>
-                · {regime.unchanged_count} unch
-              </span>
-            )}
-            <span style={{ fontSize: 12, color: C.mid, marginLeft: "auto" }}>
-              A/D {(regime.ad_ratio ?? (regime.advance_count / (regime.decline_count || 1))).toFixed(2)}
-              {regime.breadth_signal ? ` · ${regime.breadth_signal}` : ""}
-            </span>
+          <div style={{
+            fontSize: 12, fontWeight: 600, marginTop: 2,
+            color: trendUp == null ? C.muted : trendUp ? C.green : C.red,
+          }}>
+            {trendUp == null ? "no data" : trendUp ? "▲ up (EMA9>21)" : "▼ down (EMA9<21)"}
           </div>
-        </>
-      )}
-      <Divider />
-      <Label>Active Strategies</Label>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-        {regime.allowed_strategies.map(s => (
-          <span key={s} style={{
-            fontSize: 10, padding: "3px 8px", borderRadius: 4,
-            background: C.bg, border: `1px solid ${C.border}`, color: C.mid,
-          }}>{s.replace(/_/g, " ")}</span>
-        ))}
+        </div>
+        <div>
+          <Label>India VIX</Label>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.white, marginTop: 2 }}>
+            {snapshot.vix_current != null ? snapshot.vix_current.toFixed(2) : "—"}
+          </div>
+        </div>
+        <div>
+          <Label>Momentum Shortlist</Label>
+          <div style={{
+            fontSize: 13, fontWeight: 600, marginTop: 2,
+            color: shortlistFreshness.live ? C.green : C.muted,
+          }}>
+            {shortlistFreshness.live ? "✅ Active" : "— waiting"}
+          </div>
+          {shortlistFreshness.label && (
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{shortlistFreshness.label}</div>
+          )}
+        </div>
       </div>
     </Card>
   );
@@ -568,7 +535,7 @@ function TopBar({ lastRefresh, heartbeat, obsError }) {
 
 export default function QuantOSCockpit() {
   const [lastRefresh, setLastRefresh] = useState(null);
-  const [regime, setRegime] = useState(MOCK_REGIME);
+  const [marketSnapshot, setMarketSnapshot] = useState({ ...MOCK_MARKET_SNAPSHOT, error: false });
   const [signals, setSignals] = useState({ list: [], error: false });
   const [shortlistAlpha50, setShortlistAlpha50] = useState({ entries: [], updatedAt: null, error: false });
   const [shortlistMomentum30, setShortlistMomentum30] = useState({ entries: [], updatedAt: null, error: false });
@@ -576,6 +543,19 @@ export default function QuantOSCockpit() {
     () => buildMorningShortlist([...shortlistAlpha50.entries, ...shortlistMomentum30.entries]),
     [shortlistAlpha50.entries, shortlistMomentum30.entries],
   );
+  // Same 36h daily-cadence window cloud/api/observability_routes.py's
+  // heartbeat uses — one missed day doesn't false-alarm, two does.
+  const shortlistFreshness = useMemo(() => {
+    const timestamps = [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt]
+      .filter(Boolean).map(t => new Date(t).getTime());
+    if (timestamps.length === 0) return { live: false, label: null };
+    const freshest = Math.max(...timestamps);
+    const ageSeconds = (Date.now() - freshest) / 1000;
+    return {
+      live: ageSeconds < 36 * 3600,
+      label: `last scan ${fmtAge(ageSeconds)}`,
+    };
+  }, [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt]);
   const [obs, setObs] = useState(null);
   const [obsError, setObsError] = useState(false);
 
@@ -615,23 +595,24 @@ export default function QuantOSCockpit() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Market regime (S5-4): the agent classifies regime locally (only it has a
-  // broker, ADR-01) and syncs it here; we poll the read-only mirror. Falls back
-  // to MOCK_REGIME until the agent's first sync lands so the panel is never empty.
+  // Market snapshot — see cloud/api/market_snapshot_routes.py. Synced once a
+  // day by scripts/run_momentum_shortlist.py, not by the mothballed agent
+  // (that was /regime/status, now unused by the cockpit — see its module
+  // docstring for why this isn't a repurposing of that dead endpoint).
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch(`${CLOUD_API_URL}/regime/status`);
+        const res = await fetch(`${CLOUD_API_URL}/market/snapshot`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!cancelled && data && data.regime) setRegime(data);
+        if (!cancelled) setMarketSnapshot({ ...data, error: false });
       } catch {
-        /* keep last-known / mock — TopBar's LIVE/STALE badge conveys agent liveness */
+        if (!cancelled) setMarketSnapshot(s => ({ ...s, error: true }));
       }
     };
     load();
-    const id = setInterval(load, 15000);
+    const id = setInterval(load, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
@@ -676,13 +657,17 @@ export default function QuantOSCockpit() {
           <SystemHealthPanel obs={obs} error={obsError} />
         </div>
 
-        {/* Row 1: Regime · Greeks */}
+        {/* Row 1: Market Snapshot · Greeks */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: 16, marginBottom: 16,
         }}>
-          <RegimePanel regime={regime} />
+          <MarketSnapshotPanel
+            snapshot={marketSnapshot}
+            error={marketSnapshot.error}
+            shortlistFreshness={shortlistFreshness}
+          />
           <GreeksPanel />
         </div>
 

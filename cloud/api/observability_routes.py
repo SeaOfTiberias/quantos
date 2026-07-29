@@ -34,15 +34,23 @@ from fastapi import APIRouter
 from cloud.api import metrics
 from cloud.api.db import get_db
 from cloud.api.discovery_routes import get_last_synced_at as discovery_synced_at
+from cloud.api.market_snapshot_routes import get_last_synced_at as market_snapshot_synced_at
 from cloud.api.regime_routes import get_last_synced_at as regime_synced_at
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["observability"])
 
-# How stale the agent heartbeat may get before the cockpit flags it. Defaults
-# to 1800s — the same window cloud/api/regime_routes treats a synced regime as
-# unavailable, so a single missed sync tick doesn't false-alarm.
-HEARTBEAT_STALE_SECONDS = float(os.getenv("HEARTBEAT_STALE_SECONDS", "1800"))
+# How stale the heartbeat may get before the cockpit flags it. 2026-07-29:
+# raised from 1800s (30 min) to 36h. The 30-min window was calibrated for
+# the old quantos-agent's continuous ~15-min regime-sync loop, which has
+# been mothballed since Darvas was disabled -- regime_synced_at/
+# discovery_synced_at below are effectively permanently None now. Current
+# "contact" is scripts/run_momentum_shortlist.py's market-snapshot sync,
+# which runs once a day (quantos-momentum-shortlist.timer) -- a 30-min
+# window would flag "STALE" for all but a few minutes of every day even
+# when everything is working exactly as designed. 36h survives one missed
+# day (stale token, VM hiccup) without a false alarm, but catches two.
+HEARTBEAT_STALE_SECONDS = float(os.getenv("HEARTBEAT_STALE_SECONDS", str(36 * 3600)))
 
 
 def _iso(dt: Optional[datetime]) -> Optional[str]:
@@ -50,11 +58,15 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
 
 
 def _heartbeat() -> dict:
-    """Freshest agent-contact timestamp across the sync sources, plus its age
-    and a stale flag — the dead-man display."""
+    """Freshest contact timestamp across the sync sources, plus its age and
+    a stale flag — the dead-man display. regime_at/watchlist_at are legacy
+    quantos-agent sources, permanently None since it was mothballed;
+    snapshot_at (scripts/run_momentum_shortlist.py, current daily
+    automation) is what actually drives this now."""
     regime_at = regime_synced_at()
     watchlist_at = discovery_synced_at()
-    candidates = [t for t in (regime_at, watchlist_at) if t is not None]
+    snapshot_at = market_snapshot_synced_at()
+    candidates = [t for t in (regime_at, watchlist_at, snapshot_at) if t is not None]
     last_contact = max(candidates) if candidates else None
 
     age_seconds = None

@@ -46,6 +46,7 @@ from cloud.api.options_routes import router as options_router
 from cloud.api.options_webhook_routes import router as options_webhook_router
 from cloud.api.discovery_routes import router as discovery_router
 from cloud.api.momentum_shortlist_routes import router as momentum_shortlist_router
+from cloud.api.market_snapshot_routes import router as market_snapshot_router
 from cloud.api.regime_routes import router as regime_router
 from cloud.api.positions_routes import router as positions_router
 from cloud.api.analyst_routes import router as analyst_router
@@ -81,6 +82,7 @@ app.include_router(options_router)
 app.include_router(options_webhook_router)
 app.include_router(discovery_router)
 app.include_router(momentum_shortlist_router)
+app.include_router(market_snapshot_router)
 app.include_router(regime_router)
 app.include_router(positions_router)
 app.include_router(analyst_router)

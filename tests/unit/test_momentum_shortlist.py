@@ -14,7 +14,7 @@ from unittest.mock import patch
 from core.brokers.base import OHLCV
 from core.darvas.weekly_discovery import DiscoveryResult
 from core.discovery.momentum_shortlist import (
-    _bucket, _ema_series, _is_uptrend, _momentum_tier, _tight_base_symbols, build_shortlist,
+    _bucket, ema_series, is_uptrend, _momentum_tier, _tight_base_symbols, build_shortlist,
 )
 
 EPOCH = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -91,11 +91,11 @@ class TestTightBaseSymbols:
 class TestEmaSeries:
 
     def test_none_before_warmed_up(self):
-        assert _ema_series([10.0, 20.0], period=3) == [None, None]
+        assert ema_series([10.0, 20.0], period=3) == [None, None]
 
     def test_seeds_with_sma_then_smooths(self):
         # period=3, k=0.5: seed = avg(10,20,30) = 20; next = 40*0.5+20*0.5 = 30.
-        result = _ema_series([10.0, 20.0, 30.0, 40.0], period=3)
+        result = ema_series([10.0, 20.0, 30.0, 40.0], period=3)
         assert result[:2] == [None, None]
         assert result[2] == 20.0
         assert result[3] == 30.0
@@ -105,26 +105,26 @@ class TestIsUptrend:
 
     def test_false_when_not_enough_history_for_slow_ema(self):
         daily = _series([10, 11, 12])
-        assert _is_uptrend(daily, EPOCH + timedelta(days=2), fast=2, slow=5) is False
+        assert is_uptrend(daily, EPOCH + timedelta(days=2), fast=2, slow=5) is False
 
     def test_true_when_fast_ema_above_slow_ema(self):
         # Steady climb -> the faster EMA (2) sits above the slower one (3).
         daily = _series([50, 55, 60, 70, 85, 100])
         as_of = EPOCH + timedelta(days=5)
-        assert _is_uptrend(daily, as_of, fast=2, slow=3) is True
+        assert is_uptrend(daily, as_of, fast=2, slow=3) is True
 
     def test_false_when_fast_ema_below_slow_ema(self):
         # Steady decline -> the faster EMA reacts down quicker than the slow one.
         daily = _series([100, 85, 70, 60, 55, 50])
         as_of = EPOCH + timedelta(days=5)
-        assert _is_uptrend(daily, as_of, fast=2, slow=3) is False
+        assert is_uptrend(daily, as_of, fast=2, slow=3) is False
 
     def test_respects_as_of_date_ignoring_later_bars(self):
         # As of day 2 (still climbing to 60), later decline days shouldn't
         # be visible yet.
         daily = _series([50, 55, 60, 40, 30, 20])
         as_of = EPOCH + timedelta(days=2)
-        assert _is_uptrend(daily, as_of, fast=2, slow=3) is True
+        assert is_uptrend(daily, as_of, fast=2, slow=3) is True
 
 
 class TestBucket:

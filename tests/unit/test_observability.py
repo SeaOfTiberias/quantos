@@ -111,7 +111,8 @@ class TestHeartbeat:
 
     def test_fresh_sync_is_live(self):
         with patch.object(obs_routes, "regime_synced_at", return_value=self._at(60)), \
-             patch.object(obs_routes, "discovery_synced_at", return_value=None):
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=None):
             hb = obs_routes._heartbeat()
         assert hb["stale"] is False
         assert hb["age_seconds"] < obs_routes.HEARTBEAT_STALE_SECONDS
@@ -119,13 +120,15 @@ class TestHeartbeat:
     def test_old_sync_goes_stale(self):
         old = self._at(obs_routes.HEARTBEAT_STALE_SECONDS + 120)
         with patch.object(obs_routes, "regime_synced_at", return_value=old), \
-             patch.object(obs_routes, "discovery_synced_at", return_value=None):
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=None):
             hb = obs_routes._heartbeat()
         assert hb["stale"] is True
 
     def test_no_sync_ever_is_stale(self):
         with patch.object(obs_routes, "regime_synced_at", return_value=None), \
-             patch.object(obs_routes, "discovery_synced_at", return_value=None):
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=None):
             hb = obs_routes._heartbeat()
         assert hb["stale"] is True
         assert hb["last_contact"] is None
@@ -133,11 +136,35 @@ class TestHeartbeat:
 
     def test_uses_freshest_of_the_two_sources(self):
         with patch.object(obs_routes, "regime_synced_at", return_value=self._at(5000)), \
-             patch.object(obs_routes, "discovery_synced_at", return_value=self._at(30)):
+             patch.object(obs_routes, "discovery_synced_at", return_value=self._at(30)), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=None):
             hb = obs_routes._heartbeat()
         # The 30-s-old watchlist sync wins → live, not the stale regime one.
         assert hb["stale"] is False
         assert hb["age_seconds"] < 120
+
+    def test_market_snapshot_sync_counts_as_contact(self):
+        # 2026-07-29: regime_synced_at/discovery_synced_at are permanently
+        # None now (quantos-agent mothballed) -- the daily
+        # scripts/run_momentum_shortlist.py market-snapshot sync is the
+        # real liveness signal going forward.
+        with patch.object(obs_routes, "regime_synced_at", return_value=None), \
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=self._at(60)):
+            hb = obs_routes._heartbeat()
+        assert hb["stale"] is False
+        assert hb["age_seconds"] < 120
+
+    def test_market_snapshot_from_earlier_today_is_not_stale(self):
+        # The daily cadence gate: a sync from several hours ago (this
+        # morning's run) must still read LIVE, not STALE, since the next
+        # run isn't due for ~24h -- this is what HEARTBEAT_STALE_SECONDS
+        # being raised to 36h (from the old agent's 30-min window) fixes.
+        with patch.object(obs_routes, "regime_synced_at", return_value=None), \
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=self._at(8 * 3600)):
+            hb = obs_routes._heartbeat()
+        assert hb["stale"] is False
 
 
 # ─── /observability route ──────────────────────────────────────────────────────
@@ -147,7 +174,8 @@ class TestObservabilityRoute:
     @pytest.mark.asyncio
     async def test_returns_full_shape(self):
         with patch.object(obs_routes, "regime_synced_at", return_value=datetime.now(timezone.utc)), \
-             patch.object(obs_routes, "discovery_synced_at", return_value=None):
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=None):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 r = await client.get("/observability")
         assert r.status_code == 200
@@ -160,7 +188,8 @@ class TestObservabilityRoute:
     @pytest.mark.asyncio
     async def test_route_reports_stale_when_agent_silent(self):
         with patch.object(obs_routes, "regime_synced_at", return_value=None), \
-             patch.object(obs_routes, "discovery_synced_at", return_value=None):
+             patch.object(obs_routes, "discovery_synced_at", return_value=None), \
+             patch.object(obs_routes, "market_snapshot_synced_at", return_value=None):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 r = await client.get("/observability")
         assert r.json()["heartbeat"]["stale"] is True
