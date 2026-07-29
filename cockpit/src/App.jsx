@@ -424,10 +424,13 @@ function MomentumShortlistPanel({ entries, updatedAt, error }) {
           <Label color={C.gold}>Momentum Shortlist</Label>
           <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
             Nifty Alpha 50, ranked by 52-week-high proximity, overlaid with
-            each name's Darvas weekly base state. Discretionary review only —
-            not a signal, no execution path (replaces the pure-Darvas
-            Discovery Watchlist, retired 2026-07-29 — zero evidenced edge,
-            see S7-3).
+            each name's Darvas weekly base state — a "tight" base only
+            counts if daily EMA9 is also above EMA21, so a name merely
+            rolling over (not making new highs/lows, but trending down)
+            isn't mislabeled as a constructive base. Discretionary review
+            only — not a signal, no execution path (replaces the
+            pure-Darvas Discovery Watchlist, retired 2026-07-29 — zero
+            evidenced edge, see S7-3).
           </div>
         </div>
         <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", marginLeft: 12 }}>
@@ -445,7 +448,7 @@ function MomentumShortlistPanel({ entries, updatedAt, error }) {
         <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Symbol", "Bucket", "Momentum", "Base", "Width%", "R:R"].map(h => (
+              {["Symbol", "Bucket", "Momentum", "Trend", "Base", "Width%", "R:R"].map(h => (
                 <th key={h} style={{
                   textAlign: (h === "Symbol" || h === "Bucket" || h === "Base") ? "left" : "right",
                   fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
@@ -470,6 +473,9 @@ function MomentumShortlistPanel({ entries, updatedAt, error }) {
                   </td>
                   <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
                     {e.momentum_pct.toFixed(1)}%
+                  </td>
+                  <td style={{ padding: "8px 6px", textAlign: "right", color: e.trend_up ? C.green : C.red, fontSize: 11 }}>
+                    {e.trend_up ? "▲ up" : "▼ down"}
                   </td>
                   <td style={{ padding: "8px 6px", color: C.mid, fontSize: 11 }}>
                     {e.base_status}

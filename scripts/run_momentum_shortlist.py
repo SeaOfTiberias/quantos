@@ -97,8 +97,8 @@ def _log_summary(entries: list[ShortlistEntry]) -> None:
             continue
         logger.info("%s (%d):", bucket, len(rows))
         for e in rows:
-            logger.info("  %-12s momentum=%.1f%% base=%-16s width=%s rr=%s",
-                        e.symbol, e.momentum_pct, e.base_status,
+            logger.info("  %-12s momentum=%.1f%% trend=%-4s base=%-16s width=%s rr=%s",
+                        e.symbol, e.momentum_pct, "UP" if e.trend_up else "down", e.base_status,
                         f"{e.box_width_pct:.1f}%" if e.box_width_pct is not None else "—",
                         f"{e.rr_ratio:.2f}" if e.rr_ratio is not None else "—")
 

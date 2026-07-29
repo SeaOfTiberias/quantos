@@ -20,11 +20,18 @@ Combines two independently-built, already-tested primitives:
     automated as an entry/exit trigger. Used here purely to label whether a
     name is currently basing tightly (worth a human's attention for a
     lower-risk entry) or already extended (worth watching for a pullback).
+  - a daily EMA9/EMA21 trend gate (added 2026-07-29 after GLENMARK showed
+    up labeled "building a base" while actively rolling over — the box
+    state machine only detects sideways-ness, never direction, so a tight
+    range mid-downtrend and a genuine bullish pause looked identical to it).
+    A "tight" base only counts toward a bucket if the name is also in a
+    short-term uptrend by this measure.
 
 Output is a mechanical, reproducible label — not a recommendation. A human
 still decides whether/when/how much to buy.
 """
 
+import bisect
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -32,6 +39,21 @@ from typing import Optional
 from core.brokers.base import OHLCV
 from core.darvas.weekly_discovery import DiscoveryResult, analyse_symbol
 from core.rotation.ranker import LOOKBACK_DAYS, SymbolSeries, rolling_high_series, value_as_of
+
+# Daily EMA9/EMA21 trend gate. Confirmed live 2026-07-29: GLENMARK had a
+# "tight" weekly Darvas box (width in the narrowest tercile) while its
+# daily EMA9 had already crossed under EMA21 four sessions earlier -- an
+# active short-term downtrend the box detector's own logic can't see, since
+# it only tracks whether price has stopped making new highs/lows, never
+# which direction it's actually headed. A range that's merely "not making
+# new highs or lows" is satisfied just as easily by a stock rolling over as
+# by one genuinely pausing mid-uptrend, so "tight" alone isn't enough to
+# call something a constructive base worth a human's attention. This is
+# the same EMA9/EMA21 check a discretionary trader would eyeball on a daily
+# chart, chosen over a slower filter (e.g. price vs. 50/200 SMA) precisely
+# because it reacts fast enough to catch a fresh rollover like GLENMARK's.
+EMA_FAST = 9
+EMA_SLOW = 21
 
 # Top third of the scanned universe by 52-week-high proximity = "LEADER"
 # tier. Middle/bottom thirds are still returned (nothing here hides a name),
@@ -72,10 +94,44 @@ class ShortlistEntry:
     momentum_tier:  str                # LEADER | MIDPACK | LAGGARD
     bucket:         str                # LEADER_TIGHT_BASE | LEADER_EXTENDED | BUILDING_BASE | WATCH
     base_status:    str                # weekly_discovery status, or "NO BASE" if analyse_symbol returned None
+    trend_up:       bool               # daily EMA9 > EMA21 -- see EMA_FAST/EMA_SLOW's comment
     box_width_pct:  Optional[float] = None
     dist_to_ceil:   Optional[float] = None
     rr_ratio:       Optional[float] = None
     vol_ratio:      float = 0.0
+
+
+def _ema_series(closes: list[float], period: int) -> list[Optional[float]]:
+    """Standard EMA, SMA-seeded: None for the first `period`-1 bars (not
+    warmed up), then the seed SMA, then the usual recursive smoothing."""
+    if len(closes) < period:
+        return [None] * len(closes)
+    k = 2 / (period + 1)
+    result: list[Optional[float]] = [None] * (period - 1)
+    prev = sum(closes[:period]) / period
+    result.append(prev)
+    for c in closes[period:]:
+        prev = c * k + prev * (1 - k)
+        result.append(prev)
+    return result
+
+
+def _is_uptrend(daily: list[OHLCV], as_of_date: datetime,
+                 fast: int = EMA_FAST, slow: int = EMA_SLOW) -> bool:
+    """EMA(fast) > EMA(slow) on daily closes, evaluated at the most recent
+    bar at or before as_of_date. False (not just "unknown") when there
+    isn't enough history to warm up either EMA -- a base can't be called
+    constructive on data we don't have."""
+    dates = [c.timestamp for c in daily]
+    idx = bisect.bisect_right(dates, as_of_date) - 1
+    if idx < 0:
+        return False
+    closes = [c.close for c in daily[:idx + 1]]
+    ema_fast = _ema_series(closes, fast)
+    ema_slow = _ema_series(closes, slow)
+    if ema_fast[-1] is None or ema_slow[-1] is None:
+        return False
+    return ema_fast[-1] > ema_slow[-1]
 
 
 def _momentum_tier(rank: int, total: int) -> str:
@@ -114,6 +170,8 @@ def build_shortlist(
     daily_by_symbol: dict[str, list[OHLCV]],
     as_of_date: datetime,
     momentum_window: int = LOOKBACK_DAYS,
+    ema_fast: int = EMA_FAST,
+    ema_slow: int = EMA_SLOW,
 ) -> list[ShortlistEntry]:
     """Pure, no-I/O: given each symbol's daily candles, rank by 52-week-high
     proximity and overlay each symbol's current Darvas base state.
@@ -123,10 +181,21 @@ def build_shortlist(
     same rule core/rotation/ranker.py's rank_universe uses. `momentum_window`
     defaults to the real 252-day lookback; tests pass a smaller value to
     warm up on compact fixtures, same pattern as
-    tests/unit/test_rotation_ranker.py's own helper.
+    tests/unit/test_rotation_ranker.py's own helper. `ema_fast`/`ema_slow`
+    default to the real EMA9/EMA21 trend gate; tests pass smaller values for
+    the same reason.
+
+    A symbol only counts toward the "tight base" tercile if it's ALSO in an
+    uptrend (ema_fast > ema_slow) — a name that's merely range-bound but
+    rolling over (see EMA_FAST/EMA_SLOW's module comment) never qualifies
+    as a base worth a human's attention, regardless of how narrow its box
+    is. It still falls through to LEADER_EXTENDED or WATCH via _bucket()'s
+    existing "not tight" path — base_status/box_width_pct etc. stay as
+    whatever Darvas actually detected; only bucket eligibility changes.
     """
     momentum_scores: list[tuple[str, float, float]] = []
     base_by_symbol: dict[str, Optional[DiscoveryResult]] = {}
+    uptrend_by_symbol: dict[str, bool] = {}
 
     for symbol, daily in daily_by_symbol.items():
         series = SymbolSeries(
@@ -141,10 +210,15 @@ def build_shortlist(
         if high > 0:
             momentum_scores.append((symbol, close, close / high * 100))
             base_by_symbol[symbol] = analyse_symbol(symbol, daily)
+            uptrend_by_symbol[symbol] = _is_uptrend(daily, as_of_date, ema_fast, ema_slow)
 
     momentum_scores.sort(key=lambda x: -x[2])
     total = len(momentum_scores)
-    tight_symbols = _tight_base_symbols(base_by_symbol)
+    uptrending_bases = {
+        symbol: base for symbol, base in base_by_symbol.items()
+        if uptrend_by_symbol[symbol]
+    }
+    tight_symbols = _tight_base_symbols(uptrending_bases)
 
     entries = []
     for rank, (symbol, close, pct) in enumerate(momentum_scores, start=1):
@@ -157,6 +231,7 @@ def build_shortlist(
             momentum_pct=round(pct, 2), momentum_rank=rank, momentum_tier=tier,
             bucket=bucket,
             base_status=base.status if base else "NO BASE",
+            trend_up=uptrend_by_symbol[symbol],
             box_width_pct=base.box_width_pct if base else None,
             dist_to_ceil=base.dist_to_ceil if base else None,
             rr_ratio=base.rr_ratio if base else None,

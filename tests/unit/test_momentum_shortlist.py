@@ -14,7 +14,7 @@ from unittest.mock import patch
 from core.brokers.base import OHLCV
 from core.darvas.weekly_discovery import DiscoveryResult
 from core.discovery.momentum_shortlist import (
-    _bucket, _momentum_tier, _tight_base_symbols, build_shortlist,
+    _bucket, _ema_series, _is_uptrend, _momentum_tier, _tight_base_symbols, build_shortlist,
 )
 
 EPOCH = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -88,6 +88,45 @@ class TestTightBaseSymbols:
         assert _tight_base_symbols(bases) == {"NARROW"}
 
 
+class TestEmaSeries:
+
+    def test_none_before_warmed_up(self):
+        assert _ema_series([10.0, 20.0], period=3) == [None, None]
+
+    def test_seeds_with_sma_then_smooths(self):
+        # period=3, k=0.5: seed = avg(10,20,30) = 20; next = 40*0.5+20*0.5 = 30.
+        result = _ema_series([10.0, 20.0, 30.0, 40.0], period=3)
+        assert result[:2] == [None, None]
+        assert result[2] == 20.0
+        assert result[3] == 30.0
+
+
+class TestIsUptrend:
+
+    def test_false_when_not_enough_history_for_slow_ema(self):
+        daily = _series([10, 11, 12])
+        assert _is_uptrend(daily, EPOCH + timedelta(days=2), fast=2, slow=5) is False
+
+    def test_true_when_fast_ema_above_slow_ema(self):
+        # Steady climb -> the faster EMA (2) sits above the slower one (3).
+        daily = _series([50, 55, 60, 70, 85, 100])
+        as_of = EPOCH + timedelta(days=5)
+        assert _is_uptrend(daily, as_of, fast=2, slow=3) is True
+
+    def test_false_when_fast_ema_below_slow_ema(self):
+        # Steady decline -> the faster EMA reacts down quicker than the slow one.
+        daily = _series([100, 85, 70, 60, 55, 50])
+        as_of = EPOCH + timedelta(days=5)
+        assert _is_uptrend(daily, as_of, fast=2, slow=3) is False
+
+    def test_respects_as_of_date_ignoring_later_bars(self):
+        # As of day 2 (still climbing to 60), later decline days shouldn't
+        # be visible yet.
+        daily = _series([50, 55, 60, 40, 30, 20])
+        as_of = EPOCH + timedelta(days=2)
+        assert _is_uptrend(daily, as_of, fast=2, slow=3) is True
+
+
 class TestBucket:
 
     def test_leader_with_tight_base(self):
@@ -108,68 +147,78 @@ class TestBucket:
 class TestBuildShortlist:
 
     def _daily_by_symbol(self):
-        # window=5 (passed explicitly below): momentum score looks at the
-        # rolling max of each symbol's last 5 closes.
+        # window=5, ema_fast=2, ema_slow=3 (all passed explicitly below).
+        # Momentum (last-5-close-window proximity) descends cleanly
+        # L1 > L2 > M1 > M2 > G1 > G2; trend (EMA2 vs EMA3) is up for
+        # L1/L2/M1 and down for M2/G1/G2 — chosen independently of momentum
+        # so the two dimensions can be tested in combination.
         return {
-            "L1": _series([50, 50, 60, 70, 80, 90, 100]),   # last5 max=100, close=100 -> 100.0%
-            "L2": _series([50, 50, 60, 70, 80, 90, 95]),     # last5 max=95, close=95 -> 100.0%
-            "M1": _series([50, 50, 90, 60, 70, 50, 60]),     # last5 max=90, close=60 -> 66.7%
-            "M2": _series([50, 50, 90, 55, 65, 50, 50]),     # last5 max=90, close=50 -> 55.6%
-            "G1": _series([50, 50, 90, 40, 30, 20, 10]),     # last5 max=90, close=10 -> 11.1%
-            "G2": _series([50, 50, 90, 30, 20, 10, 5]),      # last5 max=90, close=5 -> 5.6%
+            "L1": _series([50, 50, 55, 60, 70, 85, 100]),  # momentum=100.0%, uptrend
+            "L2": _series([50, 50, 60, 80, 95, 98, 95]),   # momentum=96.9%,  uptrend
+            "M1": _series([50, 52, 58, 66, 74, 80, 72]),   # momentum=90.0%,  uptrend
+            "M2": _series([50, 60, 70, 65, 60, 55, 50]),   # momentum=71.4%,  DOWNTREND
+            "G1": _series([50, 60, 70, 50, 40, 35, 30]),   # momentum=42.9%,  downtrend
+            "G2": _series([50, 55, 60, 40, 30, 20, 10]),   # momentum=16.7%,  downtrend
         }
 
     def _mock_base(self, symbol: str):
-        # All 6 symbols get a live (non-forming) base so all 6 compete in
-        # the width tercile: tercile_size = max(1, round(6/3)) = 2, so the
-        # two narrowest widths (L1=2.0, G1=3.0) are "tight" and the other
-        # four (10/15/20/25) are not — independent of momentum tier, which
-        # is driven entirely by _daily_by_symbol's closes above.
+        # M2 is deliberately given the single NARROWEST width of all six
+        # (1.0) but is in a downtrend — the exact GLENMARK case (2026-07-29
+        # live run): a tight weekly box that's actually rolling over must
+        # NOT count as a constructive base. Only L1/L2/M1 are uptrend, so
+        # only they compete for "tight"; among those three M1 (3.0) is
+        # narrowest and wins it despite not being the narrowest overall.
         return {
-            "L1": _live_base(2.0),
-            "L2": _live_base(10.0),
-            "M1": _live_base(15.0),
-            "M2": _live_base(20.0),
-            "G1": _live_base(3.0),
-            "G2": _live_base(25.0),
+            "L1": _live_base(15.0),
+            "L2": _live_base(20.0),
+            "M1": _live_base(3.0),
+            "M2": _live_base(1.0),
+            "G1": _live_base(25.0),
+            "G2": _live_base(30.0),
         }[symbol]
+
+    def _build(self, daily, as_of):
+        with patch("core.discovery.momentum_shortlist.analyse_symbol",
+                   side_effect=lambda symbol, d, cfg=None: self._mock_base(symbol)):
+            return build_shortlist(daily, as_of, momentum_window=5, ema_fast=2, ema_slow=3)
 
     def test_buckets_assigned_per_symbol(self):
         daily = self._daily_by_symbol()
         as_of = EPOCH + timedelta(days=6)
-        with patch("core.discovery.momentum_shortlist.analyse_symbol",
-                   side_effect=lambda symbol, d, cfg=None: self._mock_base(symbol)):
-            entries = build_shortlist(daily, as_of, momentum_window=5)
+        entries = self._build(daily, as_of)
 
         by_symbol = {e.symbol: e for e in entries}
         assert by_symbol["L1"].momentum_tier == "LEADER"
-        assert by_symbol["L1"].bucket == "LEADER_TIGHT_BASE"    # leader, narrowest width
+        assert by_symbol["L1"].bucket == "LEADER_EXTENDED"     # leader, uptrend, but not narrowest of the uptrenders
         assert by_symbol["L2"].momentum_tier == "LEADER"
-        assert by_symbol["L2"].bucket == "LEADER_EXTENDED"      # leader, not in the tight tercile
+        assert by_symbol["L2"].bucket == "LEADER_EXTENDED"     # leader, uptrend, wider still
         assert by_symbol["M1"].momentum_tier == "MIDPACK"
-        assert by_symbol["M1"].bucket == "WATCH"                # non-leader, not tight
+        assert by_symbol["M1"].trend_up is True
+        assert by_symbol["M1"].bucket == "BUILDING_BASE"       # non-leader, uptrend, narrowest among uptrenders
         assert by_symbol["M2"].momentum_tier == "MIDPACK"
-        assert by_symbol["M2"].bucket == "WATCH"                # non-leader, not tight
+        assert by_symbol["M2"].trend_up is False
+        assert by_symbol["M2"].bucket == "WATCH"               # narrowest width of ALL six, but downtrend -> not tight
         assert by_symbol["G1"].momentum_tier == "LAGGARD"
-        assert by_symbol["G1"].bucket == "BUILDING_BASE"        # non-leader, 2nd-narrowest width
+        assert by_symbol["G1"].bucket == "WATCH"               # non-leader, downtrend
         assert by_symbol["G2"].momentum_tier == "LAGGARD"
-        assert by_symbol["G2"].bucket == "WATCH"                # non-leader, widest of all
+        assert by_symbol["G2"].bucket == "WATCH"               # non-leader, downtrend, widest of all
 
     def test_sort_order_groups_by_bucket_then_momentum_desc(self):
         daily = self._daily_by_symbol()
         as_of = EPOCH + timedelta(days=6)
-        with patch("core.discovery.momentum_shortlist.analyse_symbol",
-                   side_effect=lambda symbol, d, cfg=None: self._mock_base(symbol)):
-            entries = build_shortlist(daily, as_of, momentum_window=5)
+        entries = self._build(daily, as_of)
 
         assert [e.bucket for e in entries] == [
-            "LEADER_TIGHT_BASE", "LEADER_EXTENDED",
+            "LEADER_EXTENDED", "LEADER_EXTENDED",
             "BUILDING_BASE",
             "WATCH", "WATCH", "WATCH",
         ]
-        # Within WATCH, momentum descending: M1 (66.7%) > M2 (55.6%) > G2 (5.6%).
+        # Within LEADER_EXTENDED, momentum descending: L1 (100.0%) > L2 (96.9%).
+        leaders = [e for e in entries if e.bucket == "LEADER_EXTENDED"]
+        assert [e.symbol for e in leaders] == ["L1", "L2"]
+        # Within WATCH, momentum descending: M2 (71.4%) > G1 (42.9%) > G2 (16.7%).
         watch = [e for e in entries if e.bucket == "WATCH"]
-        assert [e.symbol for e in watch] == ["M1", "M2", "G2"]
+        assert [e.symbol for e in watch] == ["M2", "G1", "G2"]
 
     def test_excludes_symbols_without_enough_momentum_history(self):
         daily = {

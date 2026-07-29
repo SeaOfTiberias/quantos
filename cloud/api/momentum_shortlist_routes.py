@@ -43,6 +43,7 @@ class ShortlistEntryIn(BaseModel):
     momentum_tier:  str
     bucket:         str
     base_status:    str
+    trend_up:       bool = False
     box_width_pct:  Optional[float] = None
     dist_to_ceil:   Optional[float] = None
     rr_ratio:       Optional[float] = None
