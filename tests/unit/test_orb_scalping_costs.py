@@ -7,10 +7,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from core.orb_scalping.costs import (  # noqa: E402
     HARSH_NEXT_WEEK_SLIPPAGE_BPS,
     REAL_SPREAD_SLIPPAGE_BPS,
+    SAMPLED_SPREAD_SLIPPAGE_BPS,
     STRESSED_SLIPPAGE_BPS,
     clean_trade_cost,
     harsh_trade_cost,
     real_spread_trade_cost,
+    sampled_spread_trade_cost,
     stressed_trade_cost,
 )
 
@@ -108,3 +110,36 @@ def test_real_spread_rejects_unknown_underlying():
     import pytest
     with pytest.raises(ValueError):
         real_spread_trade_cost(100.0, 120.0, 65, date(2026, 1, 15), underlying="SENSEX")
+
+
+# ─── Sampled-spread (post-hoc, multi-session timer average) ──────────────
+
+def test_sampled_spread_charges_less_than_real_spread_single_snapshot():
+    # The 2-day sampled average (9.8/11.8bps) is well below the single
+    # 2026-07-28 snapshot (107.5/65.0bps) -- that day's spreads were an
+    # outlier, not representative.
+    entry_date = date(2026, 1, 15)
+    nifty_real = real_spread_trade_cost(100.0, 120.0, 65, entry_date, underlying="NIFTY")
+    nifty_sampled = sampled_spread_trade_cost(100.0, 120.0, 65, entry_date, underlying="NIFTY")
+    banknifty_real = real_spread_trade_cost(100.0, 120.0, 30, entry_date, underlying="BANKNIFTY")
+    banknifty_sampled = sampled_spread_trade_cost(100.0, 120.0, 30, entry_date, underlying="BANKNIFTY")
+    assert nifty_sampled.total < nifty_real.total
+    assert banknifty_sampled.total < banknifty_real.total
+
+
+def test_sampled_spread_slippage_matches_documented_rate():
+    entry_date = date(2026, 1, 15)
+    lot_size = 65
+    entry_premium, exit_premium = 100.0, 120.0
+    result = sampled_spread_trade_cost(entry_premium, exit_premium, lot_size, entry_date, underlying="NIFTY")
+    expected_slippage = (
+        (entry_premium * lot_size + exit_premium * lot_size)
+        * SAMPLED_SPREAD_SLIPPAGE_BPS["NIFTY"] / 10_000.0
+    )
+    assert round(result.slippage, 6) == round(expected_slippage, 6)
+
+
+def test_sampled_spread_rejects_unknown_underlying():
+    import pytest
+    with pytest.raises(ValueError):
+        sampled_spread_trade_cost(100.0, 120.0, 65, date(2026, 1, 15), underlying="SENSEX")

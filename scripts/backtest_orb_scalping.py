@@ -56,7 +56,8 @@ def _metrics_row(label: str, m: BacktestMetrics) -> str:
             f"{m.sharpe_ratio:.2f} | {m.net_profit_pct:+.1f}% | {m.max_drawdown_pct:.1f}% |")
 
 
-def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spread: list) -> str:
+def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spread: list,
+             sampled_spread: list) -> str:
     lines = [f"## {underlying}", ""]
     if not clean:
         lines += ["*(zero trades generated)*", ""]
@@ -68,15 +69,16 @@ def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spr
         _metrics_row("Clean", _compute_metrics(clean)),
         _metrics_row("Stressed (+15bps/leg)", _compute_metrics(stressed)),
         _metrics_row("Harsh (post-hoc, see below)", _compute_metrics(harsh)),
-        _metrics_row("Real-spread (post-hoc, live snapshot)", _compute_metrics(real_spread)),
+        _metrics_row("Real-spread (post-hoc, single snapshot)", _compute_metrics(real_spread)),
+        _metrics_row("Sampled-spread (post-hoc, multi-session)", _compute_metrics(sampled_spread)),
         "",
-        "### Per-year breakdown (Real-spread)",
+        "### Per-year breakdown (Sampled-spread)",
         "",
         "| Year | Trades | Win rate | Profit factor | Sharpe | Net P&L % | Max DD % |",
         "|---|---|---|---|---|---|---|",
     ]
     by_year: dict[int, list[BacktestTrade]] = {}
-    for t in real_spread:
+    for t in sampled_spread:
         by_year.setdefault(t.exit_date.year, []).append(t)
     for year in sorted(by_year):
         year_trades = by_year[year]
@@ -88,6 +90,7 @@ def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spr
     stressed_metrics = _compute_metrics(stressed)
     harsh_metrics = _compute_metrics(harsh)
     real_spread_metrics = _compute_metrics(real_spread)
+    sampled_spread_metrics = _compute_metrics(sampled_spread)
     lines += [
         "",
         f"**Verdict ({underlying}, gates on Stressed per the pre-registered methodology doc)**: "
@@ -106,13 +109,19 @@ def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spr
         f"the actual measured round-trip bid-ask spread "
         f"(PF {real_spread_metrics.profit_factor:.2f}, Sharpe {real_spread_metrics.sharpe_ratio:.2f}).",
         "",
+        f"**Sampled-spread read (post-hoc, 3x/day timer, 2026-07-29 to 2026-07-30, "
+        f"n=7 fires/leg -- still a small sample, but multi-session not single-snapshot)**: "
+        f"{'still clears' if sampled_spread_metrics.has_positive_edge else 'FAILS'} the same bar under "
+        f"the sampled round-trip bid-ask spread "
+        f"(PF {sampled_spread_metrics.profit_factor:.2f}, Sharpe {sampled_spread_metrics.sharpe_ratio:.2f}).",
+        "",
     ]
     return "\n".join(lines)
 
 
 def summarize(
-    nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread,
-    banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread,
+    nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread, nifty_sampled_spread,
+    banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread, banknifty_sampled_spread,
     nifty_window: tuple, banknifty_window: tuple,
 ) -> str:
     lines = [
@@ -121,29 +130,33 @@ def summarize(
         "Methodology: docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md. NIFTY and "
         "BankNifty reported independently below -- never pooled.",
         "",
-        "**Harsh and Real-spread are POST-HOC additional stress tests** "
-        "(added 2026-07-28, `core/orb_scalping/costs.py`) — NEITHER is part "
-        "of the pre-registered methodology doc's pass/fail bar, which gates "
-        "on Stressed alone. Real-spread uses ONE live bid-ask option-chain "
-        "snapshot (`scripts/probe_orb_scalping_real_spreads.py`), not a "
-        "sampled average across sessions -- a directional sanity check, not "
-        "a fourth rigorously pre-registered tier. Reported for transparency, "
-        "not to move the goalposts after the fact.",
+        "**Harsh, Real-spread, and Sampled-spread are POST-HOC additional "
+        "stress tests** (added 2026-07-28/2026-07-30, "
+        "`core/orb_scalping/costs.py`) — NONE are part of the pre-"
+        "registered methodology doc's pass/fail bar, which gates on "
+        "Stressed alone. Real-spread uses ONE live bid-ask option-chain "
+        "snapshot; Sampled-spread uses the same probe fired 3x/day by "
+        "`deploy/systemd/quantos-orb-spread-probe.timer` and averaged over "
+        "multiple sessions (`data_cache/orb_scalping_spread_samples.csv`) "
+        "-- still a small sample, but a better directional read than the "
+        "single snapshot. Reported for transparency, not to move the "
+        "goalposts after the fact.",
         "",
         f"NIFTY window: {nifty_window[0]} to {nifty_window[1]} "
         f"({len(nifty_clean)} trades). BankNifty window: {banknifty_window[0]} to "
         f"{banknifty_window[1]} ({len(banknifty_clean)} trades).",
         "",
-        _section("NIFTY", nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread),
-        _section("BankNifty", banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread),
+        _section("NIFTY", nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread, nifty_sampled_spread),
+        _section("BankNifty", banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread,
+                  banknifty_sampled_spread),
         "## Overall read",
         "",
         "Read each index's own per-year table before trusting the pooled row "
         "-- same discipline every prior candidate's per-fold/per-year "
         "breakdown has used. A pass on Clean/Stressed that fails under Harsh "
-        "or Real-spread is a real finding (the pre-registered Stressed cost "
-        "model still understates real F&O brokerage/liquidity friction at "
-        "this trade size), not something to average away.",
+        "or Real-spread/Sampled-spread is a real finding (the pre-registered "
+        "Stressed cost model still understates real F&O brokerage/liquidity "
+        "friction at this trade size), not something to average away.",
     ]
     return "\n".join(lines)
 
@@ -183,13 +196,14 @@ async def main_async(args) -> int:
         return 1
 
     print("Running NIFTY backtest ...")
-    nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread = run_index_backtest(
+    nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread, nifty_sampled_spread = run_index_backtest(
         nifty_candles, vix_candles, underlying="NIFTY",
     )
     print(f"  {len(nifty_clean)} NIFTY trades")
 
     print("Running BankNifty backtest ...")
-    banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread = run_index_backtest(
+    (banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread,
+     banknifty_sampled_spread) = run_index_backtest(
         banknifty_candles, vix_candles, underlying="BANKNIFTY",
     )
     print(f"  {len(banknifty_clean)} BankNifty trades")
@@ -204,8 +218,8 @@ async def main_async(args) -> int:
     banknifty_window = (min(banknifty_by_day), max(banknifty_by_day))
 
     report = summarize(
-        nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread,
-        banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread,
+        nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread, nifty_sampled_spread,
+        banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread, banknifty_sampled_spread,
         nifty_window, banknifty_window,
     )
     out_path = Path(args.out)

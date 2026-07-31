@@ -81,18 +81,23 @@ def test_run_index_backtest_produces_one_trade_per_variant_per_signal_day():
 
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
 
-    clean, stressed, harsh, real_spread = run_index_backtest(candles, vix_candles, underlying="NIFTY")
+    clean, stressed, harsh, real_spread, sampled_spread = run_index_backtest(
+        candles, vix_candles, underlying="NIFTY",
+    )
 
     assert len(clean) == 1
     assert len(stressed) == 1
     assert len(harsh) == 1
     assert len(real_spread) == 1
+    assert len(sampled_spread) == 1
     assert clean[0].qty == NIFTY_LOT_SIZE
-    # Same gross profit, different (higher) cost under Stressed/Harsh/RealSpread.
-    assert clean[0].profit == stressed[0].profit == harsh[0].profit == real_spread[0].profit
+    # Same gross profit, different (higher) cost under Stressed/Harsh/RealSpread/SampledSpread.
+    assert (clean[0].profit == stressed[0].profit == harsh[0].profit
+            == real_spread[0].profit == sampled_spread[0].profit)
     assert stressed[0].costs > clean[0].costs
     assert harsh[0].costs > clean[0].costs
     assert real_spread[0].costs > clean[0].costs
+    assert sampled_spread[0].costs > clean[0].costs
 
 
 def test_run_index_backtest_uses_banknifty_lot_size():
@@ -104,7 +109,7 @@ def test_run_index_backtest_uses_banknifty_lot_size():
         candles.append(bar(day1, i, 50100.0))
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
 
-    clean, _, _, _ = run_index_backtest(candles, vix_candles, underlying="BANKNIFTY")
+    clean, _, _, _, _ = run_index_backtest(candles, vix_candles, underlying="BANKNIFTY")
     assert len(clean) == 1
     assert clean[0].qty == BANKNIFTY_LOT_SIZE
 
@@ -116,22 +121,26 @@ def test_run_index_backtest_skips_days_missing_vix():
     for i in range(OPENING_RANGE_CANDLES + 1, OPENING_RANGE_CANDLES + 60):
         candles.append(bar(day1, i, 24030.0))
 
-    clean, stressed, harsh, real_spread = run_index_backtest(candles, [], underlying="NIFTY")
+    clean, stressed, harsh, real_spread, sampled_spread = run_index_backtest(candles, [], underlying="NIFTY")
     assert clean == []
     assert stressed == []
     assert harsh == []
     assert real_spread == []
+    assert sampled_spread == []
 
 
 def test_run_index_backtest_no_breakout_produces_no_trades():
     day1 = date(2024, 1, 2)
     candles = flat_day(day1, 80, price=24000.0)  # never breaks out
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
-    clean, stressed, harsh, real_spread = run_index_backtest(candles, vix_candles, underlying="NIFTY")
+    clean, stressed, harsh, real_spread, sampled_spread = run_index_backtest(
+        candles, vix_candles, underlying="NIFTY",
+    )
     assert clean == []
     assert stressed == []
     assert harsh == []
     assert real_spread == []
+    assert sampled_spread == []
 
 
 def test_run_index_backtest_rejects_unknown_underlying():

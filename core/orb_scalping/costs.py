@@ -69,6 +69,24 @@ HARSH_NEXT_WEEK_SLIPPAGE_BPS = 30.0    # double, for the DTE-floor-rolled (less 
 # core/risk/costs.py's _slippage()/round_trip().)
 REAL_SPREAD_SLIPPAGE_BPS = {"NIFTY": 107.5, "BANKNIFTY": 65.0}
 
+# ── Sampled-spread (post-hoc, 3x/day timer, 2026-07-29 to 2026-07-30) ──────
+# `deploy/systemd/quantos-orb-spread-probe.{service,timer}` (deployed
+# 2026-07-28) appends every fire to data_cache/orb_scalping_spread_samples.
+# csv. First two days of REAL fires (n=7 per leg — the 2026-07-28 fire
+# itself failed on a stale VM token, confirming wiring not data) give a
+# blended round-trip spread of NIFTY 0.196%, BANKNIFTY 0.235% of mid — both
+# well BELOW even Harsh's flat 0.15-0.30% assumption, and 5-11x tighter
+# than the single 2026-07-28 post-close snapshot above (that day happened
+# to be both NIFTY's weekly AND BankNifty's monthly expiry, plausibly an
+# unusually wide-spread outlier day, not a representative one).
+#   NIFTY:     mean CE 0.208%, PE 0.185%  -> blended 0.196% -> bps = 50*0.196 = 9.8
+#   BANKNIFTY: mean CE 0.208%, PE 0.263%  -> blended 0.235% -> bps = 50*0.235 = 11.8
+# Still only 2 distinct days / 7 fires per leg -- same "directional, not yet
+# a rigorously sampled rate" caveat as Real-spread above, just with a
+# larger (still small) n. Recompute again once the timer has accumulated
+# more sessions.
+SAMPLED_SPREAD_SLIPPAGE_BPS = {"NIFTY": 9.8, "BANKNIFTY": 11.8}
+
 
 def _model(entry_date: date, slippage_bps: float, brokerage_pct: float = 0.0003) -> CostModel:
     return CostModel(
@@ -128,4 +146,18 @@ def real_spread_trade_cost(entry_premium: float, exit_premium: float, lot_size: 
         raise ValueError(f"unsupported underlying: {underlying!r}")
     return _model(
         entry_date, REAL_SPREAD_SLIPPAGE_BPS[underlying], brokerage_pct=HARSH_BROKERAGE_PCT,
+    ).round_trip(buy_price=entry_premium, sell_price=exit_premium, quantity=lot_size)
+
+
+def sampled_spread_trade_cost(entry_premium: float, exit_premium: float, lot_size: float,
+                               entry_date: date, underlying: str) -> CostBreakdown:
+    """POST-HOC (2026-07-30) — same idea as `real_spread_trade_cost()` but
+    uses the 3x/day timer's accumulating multi-session average instead of
+    one post-close snapshot. Still a small sample (see module docstring
+    above `SAMPLED_SPREAD_SLIPPAGE_BPS`) — a better directional estimate
+    than the single-day Real-spread variant, not yet a final rate."""
+    if underlying not in SAMPLED_SPREAD_SLIPPAGE_BPS:
+        raise ValueError(f"unsupported underlying: {underlying!r}")
+    return _model(
+        entry_date, SAMPLED_SPREAD_SLIPPAGE_BPS[underlying], brokerage_pct=HARSH_BROKERAGE_PCT,
     ).round_trip(buy_price=entry_premium, sell_price=exit_premium, quantity=lot_size)
