@@ -343,6 +343,15 @@ async def register_telegram_webhook() -> bool:
     Requires TELEGRAM_BOT_TOKEN and PUBLIC_API_URL (or falls back to the
     known Railway URL). TELEGRAM_WEBHOOK_SECRET, if set, is echoed back by
     Telegram on every update as X-Telegram-Bot-Api-Secret-Token.
+
+    NOT called automatically as of 2026-07-31 (self-hosted on the Oracle
+    VM, plain HTTP, no domain/TLS) — Telegram flatly rejects a non-HTTPS
+    setWebhook URL ("An HTTPS URL must be provided for webhook"),
+    confirmed live. `_telegram_poll_loop` (cloud/api/main.py) is the
+    active delivery mechanism instead — see `get_telegram_updates`/
+    `delete_telegram_webhook` below. Left in place, still fully
+    functional, for if/when a domain + TLS gets added later — the route
+    (`POST /webhook/telegram`) and secret-token check are untouched.
     """
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if not token:
@@ -370,3 +379,57 @@ async def register_telegram_webhook() -> bool:
     except Exception as e:
         logger.error("Telegram setWebhook error: %s", _sanitized(e, token))
         return False
+
+
+async def delete_telegram_webhook() -> bool:
+    """Clears any webhook Telegram has registered for this bot (e.g. a
+    stale one pointing at the now-dead Railway URL from before). Telegram
+    refuses `getUpdates` (long-polling) while a webhook is set — this must
+    run before `_telegram_poll_loop` starts polling, every boot, since
+    Telegram-side state persists independently of ours. Idempotent (a
+    no-op, still `ok: True`, if no webhook was registered)."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return False
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{TELEGRAM_URL}/bot{token}/deleteWebhook")
+            data = resp.json()
+            if data.get("ok"):
+                logger.info("Telegram webhook cleared (polling mode)")
+                return True
+            logger.error("Telegram deleteWebhook failed: %s", _sanitized(str(data), token))
+            return False
+    except Exception as e:
+        logger.error("Telegram deleteWebhook error: %s", _sanitized(e, token))
+        return False
+
+
+async def get_telegram_updates(offset: int, timeout: int) -> list[dict]:
+    """Long-poll Telegram's getUpdates once. `offset` is the next
+    update_id to request (Telegram's own ack-by-offset cursor — anything
+    >= offset is unacknowledged); `timeout` (seconds) is how long Telegram
+    holds the connection open waiting for a new update before responding
+    with an empty list — NOT this call's own network timeout, which the
+    caller must set higher (see _telegram_poll_loop). Returns [] on any
+    failure (logged) rather than raising, so the caller's loop can retry
+    on its own cadence instead of crashing the whole poll task."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return []
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout + 10.0) as client:
+            resp = await client.get(
+                f"{TELEGRAM_URL}/bot{token}/getUpdates",
+                params={"offset": offset, "timeout": timeout, "allowed_updates": ["message"]},
+            )
+            data = resp.json()
+            if not data.get("ok"):
+                logger.warning("Telegram getUpdates failed: %s", _sanitized(str(data), token))
+                return []
+            return data.get("result", [])
+    except Exception as e:
+        logger.warning("Telegram getUpdates error: %s", _sanitized(e, token))
+        return []

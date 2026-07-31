@@ -56,7 +56,8 @@ from cloud.api.rotation_routes import router as rotation_router
 from cloud.api import metrics
 from core import prompts
 from cloud.api.notifier import (
-    send_telegram, register_telegram_webhook, send_exit_notification, deliver_confirmation,
+    send_telegram, send_exit_notification, deliver_confirmation,
+    delete_telegram_webhook, get_telegram_updates,
 )
 from cloud.analyst.pre_trade import analyse_signal
 from core.events.service import EventFilterService, format_event_block_whatsapp
@@ -162,12 +163,38 @@ async def _start_db_reconnect_loop():
     asyncio.create_task(_db_reconnect_loop())
 
 
+TELEGRAM_POLL_TIMEOUT_SECONDS = 30  # how long Telegram holds getUpdates open per call
+
+
+async def _telegram_poll_loop():
+    """Active Telegram delivery mechanism as of 2026-07-31 (self-hosted,
+    plain HTTP, no TLS — see register_telegram_webhook's docstring for why
+    push-webhook mode can't be used). Long-polls getUpdates in a loop for
+    the lifetime of the app, same background-task pattern as
+    _db_reconnect_loop. `offset` only advances past an update once it's
+    been handed to _process_telegram_update, so a crash mid-batch just
+    re-delivers that update next iteration (at-least-once, matching
+    Telegram's own delivery guarantee) rather than silently dropping it."""
+    if not os.getenv("TELEGRAM_BOT_TOKEN", ""):
+        logger.info("TELEGRAM_BOT_TOKEN not set — Telegram polling disabled")
+        return
+    await delete_telegram_webhook()
+    offset = 0
+    while True:
+        updates = await get_telegram_updates(offset, TELEGRAM_POLL_TIMEOUT_SECONDS)
+        for update in updates:
+            offset = update["update_id"] + 1
+            try:
+                await _process_telegram_update(update)
+            except Exception as e:
+                logger.error("Telegram update processing failed: %s", e)
+        if not updates:
+            await asyncio.sleep(2)  # avoid a tight loop on repeated empty/failed polls
+
+
 @app.on_event("startup")
-async def _register_telegram_webhook():
-    try:
-        await register_telegram_webhook()
-    except Exception as e:
-        logger.error("Telegram webhook self-registration failed: %s", e)
+async def _start_telegram_polling():
+    asyncio.create_task(_telegram_poll_loop())
 
 
 @app.on_event("startup")
@@ -511,28 +538,23 @@ async def agent_halt(payload: HaltReport, _auth=Depends(require_cloud_secret)):
     return {"status": "HALTED", "reason": payload.reason}
 
 
-@app.post("/webhook/telegram")
-async def telegram_webhook(request: Request,
-                            x_telegram_bot_api_secret_token: str = Header(default="")):
-    """
-    Receives Telegram Bot API updates (set up via register_telegram_webhook()
-    on startup). Handles the human-in-loop 'execute' / 'skip' reply (ADR-05).
+async def _process_telegram_update(update: dict) -> None:
+    """Handles the human-in-loop 'execute' / 'skip' reply (ADR-05). Shared
+    by both delivery mechanisms — the dormant POST /webhook/telegram route
+    below and the active _telegram_poll_loop (see its docstring) — so
+    there is exactly one place this logic lives regardless of which one
+    is actually running.
 
     The user must reply directly to the original signal alert message —
     the signal ID is parsed out of that message's text, not guessed.
     """
-    if TELEGRAM_WEBHOOK_SECRET and not hmac.compare_digest(
-            x_telegram_bot_api_secret_token, TELEGRAM_WEBHOOK_SECRET):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bad secret token")
-
-    update = await request.json()
     message = update.get("message") or update.get("edited_message") or {}
     text = (message.get("text") or "").strip().lower()
     reply_to = message.get("reply_to_message") or {}
     reply_text = reply_to.get("text") or ""
 
     if text not in ("execute", "skip"):
-        return {"ok": True}  # not a command we care about
+        return  # not a command we care about
 
     match = _SIGNAL_ID_RE.search(reply_text)
     if not match:
@@ -540,7 +562,7 @@ async def telegram_webhook(request: Request,
             "Couldn't find a signal ID — reply directly (swipe-to-reply) "
             "to the original QuantOS Signal message."
         )
-        return {"ok": True}
+        return
 
     signal_id = match.group(1)
     new_status = "CONFIRMED" if text == "execute" else "SKIPPED"
@@ -549,6 +571,23 @@ async def telegram_webhook(request: Request,
     ack = ("Confirmed — agent will execute shortly." if new_status == "CONFIRMED"
            else "Skipped.")
     await send_telegram(f"[{signal_id}] {ack}")
+
+
+@app.post("/webhook/telegram")
+async def telegram_webhook(request: Request,
+                            x_telegram_bot_api_secret_token: str = Header(default="")):
+    """
+    Receives Telegram Bot API updates (set up via register_telegram_webhook()
+    — dormant as of 2026-07-31, see that function's docstring; kept working
+    for if/when a domain + TLS gets added). See _process_telegram_update
+    for the actual reply-handling logic, shared with the currently-active
+    _telegram_poll_loop.
+    """
+    if TELEGRAM_WEBHOOK_SECRET and not hmac.compare_digest(
+            x_telegram_bot_api_secret_token, TELEGRAM_WEBHOOK_SECRET):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bad secret token")
+
+    await _process_telegram_update(await request.json())
     return {"ok": True}
 
 
