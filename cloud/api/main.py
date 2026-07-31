@@ -153,7 +153,7 @@ async def _db_reconnect_loop():
     db = await get_db()
     while True:
         await asyncio.sleep(DB_RECONNECT_INTERVAL_SECONDS)
-        if not db.is_postgres:
+        if not db.is_persistent:
             await db.connect()
 
 

@@ -115,7 +115,8 @@ async def operational_status():
         "uptime_seconds": uptime_secs,
         "market":         market_status,
         "timestamp_utc":  now_utc.isoformat(),
-        "database_connected": db.is_postgres,
+        "database_connected": db.is_persistent,
+        "database_backend":   db.backend,
         "any_signal_ever":    any_signal_ever,
         "database_connect_error": db.last_connect_error,
         "config": {

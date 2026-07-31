@@ -19,9 +19,10 @@ ta>=0.11.0           # Technical analysis indicators
 statsmodels>=0.14.0  # Engle-Granger/ADF cointegration test (pairs trading)
 scikit-learn>=1.5.0  # ML multi-factor stock ranking (candidate 16)
 
-# Database (cloud — Postgres)
+# Database (cloud — Postgres OR SQLite, see cloud/api/db.py)
 sqlalchemy>=2.0.0
 asyncpg>=0.29.0
+aiosqlite>=0.20.0    # Self-hosted VM deployment (2026-07-31) uses SQLite, not Postgres
 alembic>=1.13.0      # Migrations
 
 # Notifications / agent HTTP
