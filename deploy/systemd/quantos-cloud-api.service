@@ -1,0 +1,32 @@
+[Unit]
+Description=QuantOS Cloud API (self-hosted, replaces Railway as of 2026-07-31)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/uvicorn cloud.api.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=15
+Environment=HOME=/home/ubuntu
+# Secrets (ANTHROPIC_API_KEY, WEBHOOK_SECRET, CLOUD_API_SECRET,
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET,
+# DATABASE_URL, PUBLIC_API_URL) live in this file, VM-only, never
+# committed -- see deploy/vm_env.md for the full list and how to fill it.
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+
+# Same reasoning as quantos-agent.service's cap (see that file's comment):
+# this VM has ~1GB RAM and already OOM-killed itself twice with just the
+# trading agent running, taking systemd-journald/snapd/SSH down with it.
+# A FastAPI+SQLAlchemy+SQLite process at this traffic level should sit
+# well under 150MB RSS -- these caps give real headroom while still
+# scoping any runaway growth to just this cgroup instead of a whole-VM
+# event. Bound to 127.0.0.1 only (nginx reverse-proxies from :80), never
+# exposed directly.
+MemoryHigh=250M
+MemoryMax=350M
+
+[Install]
+WantedBy=multi-user.target

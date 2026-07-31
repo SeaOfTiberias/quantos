@@ -1,5 +1,10 @@
 # QuantOS — Railway Environment Variables
 
+**Superseded 2026-07-31** — Railway's trial expired and the project moved
+the cloud API to self-hosting on the Oracle VM. See `deploy/vm_env.md`
+for the current setup; this file is kept only as a historical record of
+the variable names (unchanged) and what each one does.
+
 Set these in the Railway dashboard under your service → **Variables**.
 
 ---
