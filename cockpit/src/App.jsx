@@ -29,8 +29,12 @@ const C = {
 // (POST /options/greeks/panel) but no data pipeline yet syncs live options
 // positions, so it renders an honest empty state instead of fabricated
 // numbers.
-const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL
-  || "https://web-production-b5527.up.railway.app";
+// 2026-07-31: cloud API moved off Railway (trial expired) onto self-hosting
+// on the same VM/origin nginx serves this SPA from -- default is now "" (same
+// origin) rather than a hardcoded external URL, so it never goes stale if
+// the VM's IP changes. .env.development.local overrides this for local dev
+// against a standalone backend.
+const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL || "";
 
 // Fallback shown only until scripts/run_momentum_shortlist.py's first daily
 // market-snapshot sync lands (or after a Railway redeploy wipes the
