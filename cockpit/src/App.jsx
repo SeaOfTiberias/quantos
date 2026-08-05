@@ -115,6 +115,11 @@ function useMomentumShortlist(universe, setState) {
 
 const fmt = (n, dp = 2) => n?.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp }) ?? "—";
 const fmtINR = n => n != null ? `₹${fmt(n, 0)}` : "—";
+
+// Shortlist symbols are bare NSE tickers (e.g. "APOLLOHOSP", no exchange
+// suffix — see core/discovery/momentum_shortlist.py), which is exactly the
+// format TradingView's chart URL expects under the NSE prefix.
+const tradingViewUrl = symbol => `https://www.tradingview.com/chart/?symbol=NSE%3A${encodeURIComponent(symbol)}`;
 const fmtMs = n => n != null ? `${Math.round(n)} ms` : "—";
 const fmtAge = s => {
   if (s == null) return "never";
@@ -265,8 +270,16 @@ function SignalFeed({ signals, error }) {
                 border: `1px solid ${sig.action === "BUY" ? C.green : C.red}50`,
               }}>{sig.action}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: C.white, fontSize: 14 }}>
-                  {sig.symbol}
+                <div style={{ fontSize: 14 }}>
+                  <a
+                    className="qs-symbol-link"
+                    href={tradingViewUrl(sig.symbol)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontWeight: 700 }}
+                  >
+                    {sig.symbol}
+                  </a>
                   <span style={{ fontWeight: 400, color: C.muted, fontSize: 12, marginLeft: 8 }}>
                     @ {fmtINR(sig.price)}
                   </span>
@@ -318,7 +331,15 @@ function ScreenerPanel({ candidates }) {
               fontSize: 10, fontWeight: 700, color: C.gold, flexShrink: 0,
             }}>{c.rank}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontWeight: 700, color: C.white }}>{c.symbol}</span>
+              <a
+                className="qs-symbol-link"
+                href={tradingViewUrl(c.symbol)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontWeight: 700 }}
+              >
+                {c.symbol}
+              </a>
               <span style={{ marginLeft: 8, fontSize: 11, color: C.muted }}>{c.rationale}</span>
             </div>
             <div style={{
@@ -341,26 +362,52 @@ const bucketMeta = {
   WATCH:             { label: "Watch",               color: C.muted },
 };
 
-function MomentumShortlistPanel({ title, universeName, entries, updatedAt, error }) {
+// One Card with a tab strip instead of three stacked panels — same three
+// feeds (see scripts/run_momentum_shortlist.py's DEFAULT_UNIVERSE_FILES),
+// just switched instead of scrolled past.
+function MomentumShortlistTabs({ tabs, active, onSelect }) {
+  const current = tabs.find(t => t.key === active) ?? tabs[0];
+  const { entries, error } = current;
+
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <Label color={C.gold}>{title}</Label>
-          <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
-            {universeName}, ranked by 52-week-high proximity, overlaid with
-            each name's Darvas weekly base state — a "tight" base only
-            counts if daily EMA9 is also above EMA21, so a name merely
-            rolling over (not making new highs/lows, but trending down)
-            isn't mislabeled as a constructive base. Discretionary review
-            only — not a signal, no execution path.
-          </div>
-        </div>
+        <Label color={C.gold}>Momentum Shortlist</Label>
         <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", marginLeft: 12 }}>
-          {error ? "offline"
-            : updatedAt ? `updated ${new Date(updatedAt).toLocaleString("en-IN", { hour12: false })}`
+          {current.error ? "offline"
+            : current.updatedAt ? `updated ${new Date(current.updatedAt).toLocaleString("en-IN", { hour12: false })}`
             : "waiting for first daily run…"}
         </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 4, marginTop: 12, borderBottom: `1px solid ${C.border}` }}>
+        {tabs.map(t => {
+          const isActive = t.key === current.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => onSelect(t.key)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: "8px 16px", fontSize: 12, fontWeight: 600,
+                color: isActive ? C.accent : C.muted,
+                borderBottom: `2px solid ${isActive ? C.accent : "transparent"}`,
+                marginBottom: -1,
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 10 }}>
+        {current.universeName}, ranked by 52-week-high proximity, overlaid with
+        each name's Darvas weekly base state — a "tight" base only
+        counts if daily EMA9 is also above EMA21, so a name merely
+        rolling over (not making new highs/lows, but trending down)
+        isn't mislabeled as a constructive base. Discretionary review
+        only — not a signal, no execution path.
       </div>
 
       {entries.length === 0 ? (
@@ -386,7 +433,16 @@ function MomentumShortlistPanel({ title, universeName, entries, updatedAt, error
               const meta = bucketMeta[e.bucket] ?? { label: e.bucket, color: C.muted };
               return (
                 <tr key={e.symbol}>
-                  <td style={{ padding: "8px 6px", color: C.white, fontWeight: 600 }}>{e.symbol}</td>
+                  <td style={{ padding: "8px 6px", fontWeight: 600 }}>
+                    <a
+                      className="qs-symbol-link"
+                      href={tradingViewUrl(e.symbol)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {e.symbol}
+                    </a>
+                  </td>
                   <td style={{ padding: "8px 6px" }}>
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
@@ -564,6 +620,22 @@ export default function QuantOSCockpit() {
     () => topByRank(shortlistNifty500.entries, 10),
     [shortlistNifty500.entries],
   );
+  const [shortlistTab, setShortlistTab] = useState("alpha50");
+  const shortlistTabs = useMemo(() => ([
+    {
+      key: "alpha50", label: "Alpha 50", universeName: "Nifty Alpha 50",
+      entries: shortlistAlpha50.entries, updatedAt: shortlistAlpha50.updatedAt, error: shortlistAlpha50.error,
+    },
+    {
+      key: "nifty200momentum30", label: "Momentum 30", universeName: "Nifty200 Momentum 30",
+      entries: shortlistMomentum30.entries, updatedAt: shortlistMomentum30.updatedAt, error: shortlistMomentum30.error,
+    },
+    {
+      key: "nifty500", label: "Nifty 500 (Top 10)",
+      universeName: "Nifty 500, full 500-symbol scan truncated to the top 10 by rank",
+      entries: nifty500Top10, updatedAt: shortlistNifty500.updatedAt, error: shortlistNifty500.error,
+    },
+  ]), [shortlistAlpha50, shortlistMomentum30, nifty500Top10, shortlistNifty500.updatedAt, shortlistNifty500.error]);
   // Same 36h daily-cadence window cloud/api/observability_routes.py's
   // heartbeat uses — one missed day doesn't false-alarm, two does.
   const shortlistFreshness = useMemo(() => {
@@ -669,6 +741,8 @@ export default function QuantOSCockpit() {
         ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 2px; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         input::placeholder { color: ${C.muted}; }
+        .qs-symbol-link { color: ${C.white}; text-decoration: none; }
+        .qs-symbol-link:hover { color: ${C.accent}; text-decoration: underline; }
       `}</style>
 
       <TopBar lastRefresh={lastRefresh} heartbeat={obs?.heartbeat} obsError={obsError} />
@@ -703,31 +777,13 @@ export default function QuantOSCockpit() {
           <ScreenerPanel candidates={screener} />
         </div>
 
-        {/* Row 3: Momentum + Base Quality Shortlists (discretionary review) —
+        {/* Row 3: Momentum + Base Quality Shortlist (discretionary review) —
             replaced Alpha-vs-Nifty, Open Positions, and Claude Analyst
-            2026-07-29, all three either dead placeholders or unused. */}
+            2026-07-29, all three either dead placeholders or unused. Three
+            universes (Alpha 50 / Momentum 30 / Nifty 500), tabbed instead of
+            stacked as of 2026-08-05. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-          <MomentumShortlistPanel
-            title="Momentum Shortlist — Nifty Alpha 50"
-            universeName="Nifty Alpha 50"
-            entries={shortlistAlpha50.entries}
-            updatedAt={shortlistAlpha50.updatedAt}
-            error={shortlistAlpha50.error}
-          />
-          <MomentumShortlistPanel
-            title="Momentum Shortlist — Nifty200 Momentum 30"
-            universeName="Nifty200 Momentum 30"
-            entries={shortlistMomentum30.entries}
-            updatedAt={shortlistMomentum30.updatedAt}
-            error={shortlistMomentum30.error}
-          />
-          <MomentumShortlistPanel
-            title="Momentum Shortlist — Nifty 500 (Top 10)"
-            universeName="Nifty 500, full 500-symbol scan truncated to the top 10 by rank"
-            entries={nifty500Top10}
-            updatedAt={shortlistNifty500.updatedAt}
-            error={shortlistNifty500.error}
-          />
+          <MomentumShortlistTabs tabs={shortlistTabs} active={shortlistTab} onSelect={setShortlistTab} />
         </div>
       </div>
     </div>
