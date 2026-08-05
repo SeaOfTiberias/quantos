@@ -61,10 +61,14 @@ const MOCK_MARKET_SNAPSHOT = {
 // not just concatenating.
 const BUCKET_PRIORITY = { LEADER_TIGHT_BASE: 0, LEADER_EXTENDED: 1, BUILDING_BASE: 2, WATCH: 3 };
 
-function buildMorningShortlist(entries) {
+function rankByBucketThenMomentum(entries) {
   return [...entries]
     .sort((a, b) => (BUCKET_PRIORITY[a.bucket] ?? 9) - (BUCKET_PRIORITY[b.bucket] ?? 9)
-      || b.momentum_pct - a.momentum_pct)
+      || b.momentum_pct - a.momentum_pct);
+}
+
+function buildMorningShortlist(entries) {
+  return rankByBucketThenMomentum(entries)
     .slice(0, 5)
     .map((e, i) => ({
       rank: i + 1,
@@ -75,6 +79,14 @@ function buildMorningShortlist(entries) {
         e.base_status !== "NO BASE" ? e.base_status : null,
       ].filter(Boolean).join(" · "),
     }));
+}
+
+// Nifty 500 isn't pre-screened like Alpha 50 / Momentum 30 (see
+// scripts/run_momentum_shortlist.py's DEFAULT_UNIVERSE_FILES comment), so
+// its panel truncates to the top N by the same bucket-then-momentum rank
+// instead of showing the full pass list.
+function topByRank(entries, n) {
+  return rankByBucketThenMomentum(entries).slice(0, n);
 }
 
 // Momentum + Base Quality Shortlist — see cloud/api/momentum_shortlist_routes.py.
@@ -543,14 +555,19 @@ export default function QuantOSCockpit() {
   const [signals, setSignals] = useState({ list: [], error: false });
   const [shortlistAlpha50, setShortlistAlpha50] = useState({ entries: [], updatedAt: null, error: false });
   const [shortlistMomentum30, setShortlistMomentum30] = useState({ entries: [], updatedAt: null, error: false });
+  const [shortlistNifty500, setShortlistNifty500] = useState({ entries: [], updatedAt: null, error: false });
   const screener = useMemo(
     () => buildMorningShortlist([...shortlistAlpha50.entries, ...shortlistMomentum30.entries]),
     [shortlistAlpha50.entries, shortlistMomentum30.entries],
   );
+  const nifty500Top10 = useMemo(
+    () => topByRank(shortlistNifty500.entries, 10),
+    [shortlistNifty500.entries],
+  );
   // Same 36h daily-cadence window cloud/api/observability_routes.py's
   // heartbeat uses — one missed day doesn't false-alarm, two does.
   const shortlistFreshness = useMemo(() => {
-    const timestamps = [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt]
+    const timestamps = [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt, shortlistNifty500.updatedAt]
       .filter(Boolean).map(t => new Date(t).getTime());
     if (timestamps.length === 0) return { live: false, label: null };
     const freshest = Math.max(...timestamps);
@@ -559,7 +576,7 @@ export default function QuantOSCockpit() {
       live: ageSeconds < 36 * 3600,
       label: `last scan ${fmtAge(ageSeconds)}`,
     };
-  }, [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt]);
+  }, [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt, shortlistNifty500.updatedAt]);
   const [obs, setObs] = useState(null);
   const [obsError, setObsError] = useState(false);
 
@@ -578,6 +595,7 @@ export default function QuantOSCockpit() {
   // independently so neither clobbers the other's daily post).
   useMomentumShortlist("alpha50", setShortlistAlpha50);
   useMomentumShortlist("nifty200momentum30", setShortlistMomentum30);
+  useMomentumShortlist("nifty500", setShortlistNifty500);
 
   // Signal feed: recent signals across all sources (Pine + internal Stage B),
   // see cloud/api/main.py's GET /signals. Polled since signals arrive at
@@ -702,6 +720,13 @@ export default function QuantOSCockpit() {
             entries={shortlistMomentum30.entries}
             updatedAt={shortlistMomentum30.updatedAt}
             error={shortlistMomentum30.error}
+          />
+          <MomentumShortlistPanel
+            title="Momentum Shortlist — Nifty 500 (Top 10)"
+            universeName="Nifty 500, full 500-symbol scan truncated to the top 10 by rank"
+            entries={nifty500Top10}
+            updatedAt={shortlistNifty500.updatedAt}
+            error={shortlistNifty500.error}
           />
         </div>
       </div>

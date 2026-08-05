@@ -56,11 +56,15 @@ logger = logging.getLogger("quantos.discovery.momentum_shortlist")
 # project's alpha benchmark elsewhere) and Nifty200 Momentum 30 (NSE's own
 # momentum-factor index, added 2026-07-29) — both short, already
 # momentum-pre-screened lists for a human to actually skim daily, not a
-# 500-row table. Override with one or more --universe flags for a
-# different scan.
+# 500-row table. Nifty 500 added 2026-08-05 so the same top-N names the S8-3
+# rotation basket picks (which ranks the full 500) are visible here too --
+# the cockpit panel truncates this one to the top 10 by rank since, unlike
+# the other two, it isn't pre-screened. Override with one or more --universe
+# flags for a different scan.
 DEFAULT_UNIVERSE_FILES = [
     "agent/universe_alpha50.txt",
     "agent/universe_nifty200momentum30.txt",
+    "agent/universe_nifty500.txt",
 ]
 
 # core/rotation/ranker.LOOKBACK_DAYS (252 trading days) plus enough calendar
