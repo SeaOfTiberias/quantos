@@ -5,8 +5,10 @@ Description=Daily trigger for QuantOS Momentum + Base Quality Shortlist
 # 02:15 UTC = 07:45 IST -- ten minutes after quantos-rotation-pilot.timer's
 # 02:10 UTC fire, so the same daily pre-market Fyers token refresh already
 # covers this too. Runs once/day: a discretionary review list only needs a
-# fresh EOD daily bar, not intraday timing.
-OnCalendar=*-*-* 02:15:00
+# fresh EOD daily bar, not intraday timing. Mon-Fri only (added 2026-08-07)
+# -- NSE is shut weekends, so a Sat/Sun fire would just re-rank Friday's
+# already-synced EOD bars against a stale/expired token for no new signal.
+OnCalendar=Mon..Fri *-*-* 02:15:00
 Persistent=true
 
 [Install]
