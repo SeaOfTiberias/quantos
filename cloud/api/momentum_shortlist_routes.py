@@ -25,8 +25,11 @@ the agent) is guarded with X-Cloud-Secret; GET (from the cockpit's browser
 JS) is intentionally public, same reasoning as cloud/api/discovery_routes.py.
 """
 
+import json
 import logging
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -41,6 +44,85 @@ router = APIRouter(prefix="/discovery", tags=["discovery"])
 # every daily sync from that universe's scan.
 _shortlist_store: dict[str, list[dict]] = {}
 _last_synced_at: dict[str, datetime] = {}
+
+# ...backed by a small JSON file, because the scan that fills these is
+# expensive and rare: ~11 minutes over ~580 symbols, and (since
+# quantos-momentum-shortlist.path) it runs on the daily Fyers token refresh.
+# Without a disk copy, any API restart blanks all three cockpit tabs until
+# the NEXT morning's refresh -- and deploying is itself a restart, so the
+# deploy pipeline would reliably wipe the panels it just shipped.
+#
+# Deliberately a plain file, not the SignalDB/SQLite layer in cloud/api/db.py:
+# this is a regenerable mirror of a scan, not a record of anything that
+# happened, so it needs no schema, no migration, and no correctness guarantee
+# beyond "better than empty". Read at import, rewritten on every sync.
+#
+# Read through _cache_path() rather than a module constant so tests can point
+# it at a tmp_path without touching the developer's real ~/.quantos.
+def _cache_path() -> Path:
+    override = os.getenv("QUANTOS_SHORTLIST_CACHE")
+    if override:
+        return Path(override)
+    return Path.home() / ".quantos" / "shortlist_cache.json"
+
+
+def _save_cache() -> None:
+    """Mirror the in-memory store to disk. Never raises: a cockpit panel that
+    survives a restart is a nicety, and must not be able to fail the sync that
+    the scan just spent 11 minutes producing."""
+    try:
+        path = _cache_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            universe: {
+                "entries": entries,
+                "updated_at": _last_synced_at[universe].isoformat()
+                if _last_synced_at.get(universe) else None,
+            }
+            for universe, entries in _shortlist_store.items()
+        }
+        # Write-then-rename so a crash mid-write can't leave a truncated file
+        # that would poison the next boot's load.
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as e:
+        logger.warning("Could not persist shortlist cache: %s", e)
+
+
+def _load_cache() -> None:
+    """Repopulate the store from disk at import. Never raises: a corrupt or
+    missing cache must degrade to today's behaviour (empty until next sync),
+    not stop the API from booting."""
+    try:
+        path = _cache_path()
+        if not path.exists():
+            return
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        logger.warning("Could not read shortlist cache: %s", e)
+        return
+
+    if not isinstance(raw, dict):
+        logger.warning("Shortlist cache is not an object; ignoring it.")
+        return
+
+    for universe, blob in raw.items():
+        if not isinstance(blob, dict) or not isinstance(blob.get("entries"), list):
+            continue
+        _shortlist_store[universe] = blob["entries"]
+        stamp = blob.get("updated_at")
+        if stamp:
+            try:
+                _last_synced_at[universe] = datetime.fromisoformat(stamp)
+            except ValueError:
+                pass
+    if _shortlist_store:
+        logger.info("Shortlist cache restored: %s",
+                    {u: len(e) for u, e in _shortlist_store.items()})
+
+
+_load_cache()
 
 
 class ShortlistEntryIn(BaseModel):
@@ -69,6 +151,7 @@ async def sync_momentum_shortlist(universe: str, payload: ShortlistSyncRequest,
     configured universe."""
     _shortlist_store[universe] = [e.model_dump() for e in payload.entries]
     _last_synced_at[universe] = datetime.now(timezone.utc)
+    _save_cache()
     logger.info("Momentum shortlist synced (%s): %d entries",
                 universe, len(_shortlist_store[universe]))
     return {"universe": universe, "synced": len(_shortlist_store[universe])}

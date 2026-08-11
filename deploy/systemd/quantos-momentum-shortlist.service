@@ -22,12 +22,24 @@ Environment=HOME=/home/ubuntu
 # trigger is still allowed to retry. Only a genuinely completed run suppresses
 # the rest of the day.
 #
+# The same condition also enforces Mon-Fri. The .timer already does this via
+# OnCalendar, but the .path unit cannot -- systemd path units have no
+# day-of-week filter -- so a weekend token refresh would otherwise trigger a
+# pointless ~11 minute scan that just re-ranks Friday's EOD bars.
+#
+# Weekday and stamp are both evaluated in IST, not UTC: the thing being gated
+# is an NSE trading day. It matches in practice for a normal ~02:00 UTC
+# refresh (07:30 IST, same date), but an unusually late-evening UTC refresh
+# is already the next trading day in Indian time, and should be treated as one.
+#
 # To force a re-run by hand (new universe file, debugging a ranking):
 #     rm -f ~/.quantos/last_shortlist_run && sudo systemctl start quantos-momentum-shortlist.service
 # Starting the unit without clearing the stamp is a deliberate no-op, not a
-# failure -- systemctl reports success and the log stays silent.
-ExecCondition=/bin/sh -c '[ "$(cat /home/ubuntu/.quantos/last_shortlist_run 2>/dev/null)" != "$(date -u +%%F)" ]'
-ExecStartPost=/bin/sh -c 'date -u +%%F > /home/ubuntu/.quantos/last_shortlist_run'
+# failure -- systemctl reports success and the log stays silent. On a weekend
+# the weekday test blocks even that, so bypass systemd entirely:
+#     cd ~/quantos && .venv/bin/python scripts/run_momentum_shortlist.py
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(cat /home/ubuntu/.quantos/last_shortlist_run 2>/dev/null)" != "$(TZ=Asia/Kolkata date +%%F)" ]'
+ExecStartPost=/bin/sh -c 'TZ=Asia/Kolkata date +%%F > /home/ubuntu/.quantos/last_shortlist_run'
 
 # No Restart= here deliberately, same reasoning as quantos-paper-momentum.service:
 # the most likely failure is a stale Fyers auth token, which needs a human to
