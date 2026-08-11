@@ -82,8 +82,24 @@ function Ok($text)      { Write-Host "  [ok]   $text" -ForegroundColor Green }
 function Warn($text)    { Write-Host "  [warn] $text" -ForegroundColor Yellow }
 function Fail($text)    { throw $text }
 
+# Remote commands are base64'd rather than passed as a plain string, for two
+# PowerShell 5.1 reasons that both bit this script during development:
+#   1. PS mangles/strips the double quotes when handing an argument to a native
+#      exe, so a bash line like changed="$changed $n" arrived unquoted and bash
+#      tried to EXECUTE the value as a command.
+#   2. A native command writing to stderr becomes a terminating
+#      NativeCommandError under $ErrorActionPreference='Stop', so an ordinary
+#      warning on the far end would abort the deploy.
+# base64 is [A-Za-z0-9+/=] only, so nothing survives for PS to mangle.
 function Invoke-Remote([string]$cmd) {
-    $out = & $ssh -i $KeyPath -o StrictHostKeyChecking=accept-new $RemoteHost $cmd 2>&1
+    $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cmd))
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $out = & $ssh -i $KeyPath -o StrictHostKeyChecking=accept-new $RemoteHost "echo $b64 | base64 -d | bash" 2>&1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
     return ($out | Out-String)
 }
 
@@ -148,6 +164,25 @@ try {
     $vmHeadBefore = (Invoke-Remote "cd $RemoteRepo && git rev-parse HEAD").Trim()
     Write-Host "  VM HEAD: $($vmHeadBefore.Substring(0,7))"
     if ($vmHeadBefore -eq $localHead) { Ok "VM already at target commit" }
+
+    # What changed is measured from the last SUCCESSFULLY deployed commit, not
+    # from the VM's git HEAD. They differ whenever a previous run died between
+    # the pull and the restart -- which happened on 2026-08-11: the retry saw
+    # HEAD already at target, concluded "no backend change", and skipped the
+    # API restart, leaving freshly pulled code sitting unloaded on disk.
+    $marker = "/home/ubuntu/.quantos/last_deployed_head"
+    $lastDeployed = (Invoke-Remote "cat $marker 2>/dev/null || true").Trim()
+    $unknownBaseline = $false
+    if ($lastDeployed -match '^[0-9a-f]{40}$') {
+        $baseRef = $lastDeployed
+        if ($baseRef -ne $vmHeadBefore) {
+            Warn "last successful deploy was $($baseRef.Substring(0,7)) but VM HEAD is $($vmHeadBefore.Substring(0,7)) - a previous run stopped mid-way; diffing from the deploy marker"
+        }
+    } else {
+        $baseRef = $vmHeadBefore
+        $unknownBaseline = $true
+        Warn "no deploy marker yet - restarting the API regardless, since what is loaded cannot be inferred"
+    }
 
     # Uncommitted tracked changes on the VM are the real hazard: they are work
     # that exists nowhere else, and a pull would either conflict or bury it.
@@ -250,16 +285,31 @@ if [ -n "$changed" ]; then sudo systemctl daemon-reload; echo "UNITS_CHANGED:$ch
     if ($unitsChanged) { Ok "units updated + daemon-reload: $unitsChanged" } else { Ok "systemd units already in sync" }
 
     # ─── 6. Deploy: restart the API only when it needs it ─────────────────
-    $apiTouched = $false
-    if ($vmHeadBefore -ne $vmHeadAfter) {
-        git diff --quiet $vmHeadBefore $vmHeadAfter -- cloud/ core/
+    $apiTouched = $unknownBaseline
+    if ($baseRef -ne $vmHeadAfter) {
+        git diff --quiet $baseRef $vmHeadAfter -- cloud/ core/
         if ($LASTEXITCODE -ne 0) { $apiTouched = $true }
     }
     if ($unitsChanged -match "quantos-cloud-api") { $apiTouched = $true }
 
     if ($apiTouched) {
-        Invoke-Remote "sudo systemctl restart quantos-cloud-api && sleep 4" | Out-Null
-        Ok "quantos-cloud-api restarted (cloud/ or core/ changed)"
+        # Poll for readiness rather than sleeping a fixed interval: uvicorn on
+        # this 1 GB box took 8s to finish startup on 2026-08-11, and a sleep 4
+        # made the verify step report a spurious 000 on a perfectly healthy API.
+        $restartCmd = @'
+sudo systemctl restart quantos-cloud-api
+for i in $(seq 1 30); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/health 2>/dev/null)
+  if [ "$code" = "200" ]; then echo "READY_AFTER:${i}s"; exit 0; fi
+  sleep 1
+done
+echo "NOT_READY"
+'@
+        $restart = Invoke-Remote $restartCmd
+        if ($restart -match "NOT_READY") { Fail "quantos-cloud-api did not answer /health within 30s of restart. Check: journalctl -u quantos-cloud-api -n 50" }
+        $waited = ""
+        if ($restart -match "READY_AFTER:(\S+)") { $waited = " (ready in $($Matches[1]))" }
+        Ok "quantos-cloud-api restarted$waited"
     } else {
         Ok "quantos-cloud-api left running (no backend change)"
     }
@@ -268,8 +318,8 @@ if [ -n "$changed" ]; then sudo systemctl daemon-reload; echo "UNITS_CHANGED:$ch
     # Built HERE, never on the VM: the box has no node/npm, and only ~500 MB
     # free — this project has already OOM-killed itself once (2026-07-15).
     $cockpitTouched = $Cockpit.IsPresent
-    if (-not $cockpitTouched -and $vmHeadBefore -ne $vmHeadAfter) {
-        git diff --quiet $vmHeadBefore $vmHeadAfter -- cockpit/
+    if (-not $cockpitTouched -and $baseRef -ne $vmHeadAfter) {
+        git diff --quiet $baseRef $vmHeadAfter -- cockpit/
         if ($LASTEXITCODE -ne 0) { $cockpitTouched = $true }
     }
 
@@ -329,8 +379,13 @@ done
         Ok "all three shortlist slots served"
     }
 
+    # Marker advances only here, after every verification has passed, so a run
+    # that dies earlier leaves the previous value and the next run re-does the
+    # work rather than assuming it landed.
+    Invoke-Remote "mkdir -p /home/ubuntu/.quantos && printf '%s' '$vmHeadAfter' > $marker" | Out-Null
+
     Section "Done"
-    Write-Host "  $($vmHeadBefore.Substring(0,7)) -> $($vmHeadAfter.Substring(0,7)) on $RemoteHost" -ForegroundColor Green
+    Write-Host "  $($baseRef.Substring(0,7)) -> $($vmHeadAfter.Substring(0,7)) on $RemoteHost" -ForegroundColor Green
 }
 finally {
     Pop-Location
