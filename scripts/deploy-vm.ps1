@@ -331,9 +331,16 @@ echo "NOT_READY"
         $dist = Join-Path $repo "cockpit\dist"
         if (-not (Test-Path (Join-Path $dist "index.html"))) { Fail "No cockpit/dist/index.html after build." }
 
-        Invoke-Remote "rm -rf /tmp/quantos-dist && mkdir -p /tmp/quantos-dist" | Out-Null
-        & $scp -i $KeyPath -r -o StrictHostKeyChecking=accept-new "$dist\*" "${RemoteHost}:/tmp/quantos-dist/"
+        # Copy the DIRECTORY, not "$dist\*": scp comes from Git for Windows and
+        # does not glob a Windows path, so the wildcard arrives literally and it
+        # fails with `stat local ...\dist\*: No such file or directory`. With no
+        # pre-existing /tmp/quantos-dist, scp -r creates it as a copy of dist.
+        Invoke-Remote "rm -rf /tmp/quantos-dist" | Out-Null
+        & $scp -i $KeyPath -r -o StrictHostKeyChecking=accept-new "$dist" "${RemoteHost}:/tmp/quantos-dist"
         if ($LASTEXITCODE -ne 0) { Fail "scp of cockpit dist failed (exit $LASTEXITCODE)" }
+
+        $landed = (Invoke-Remote "test -f /tmp/quantos-dist/index.html && echo OK || echo MISSING").Trim()
+        if ($landed -notmatch "OK") { Fail "cockpit dist did not land on the VM (no index.html in /tmp/quantos-dist)." }
 
         # rm the old assets/ first: filenames are content-hashed, so copying
         # over the top accumulates every past build forever.
