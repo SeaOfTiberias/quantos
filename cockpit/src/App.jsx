@@ -67,6 +67,17 @@ function rankByBucketThenMomentum(entries) {
       || b.momentum_pct - a.momentum_pct);
 }
 
+// "OUT 12d" / "FRESH" / "NEAR" / null. Shared by the tables and the morning
+// shortlist so both describe a stock the same way. Tolerates an entry restored
+// from a cache written before these fields existed (renders nothing).
+function describeBreakout(e) {
+  if (!e.breakout_state || e.breakout_state === "NO BASE") return null;
+  if (e.breakout_state === "OUT" && e.days_above_ceil != null) {
+    return `OUT ${e.days_above_ceil}d`;
+  }
+  return e.breakout_state;
+}
+
 function buildMorningShortlist(entries) {
   return rankByBucketThenMomentum(entries)
     .slice(0, 5)
@@ -74,9 +85,12 @@ function buildMorningShortlist(entries) {
       rank: i + 1,
       symbol: e.symbol,
       score: `${e.momentum_pct.toFixed(1)}%`,
+      // Same breakout_state the tables show, not the raw Darvas base_status:
+      // this panel sits on the same page, and two labels disagreeing about the
+      // same stock is worse than either label alone.
       rationale: [
         e.bucket.replace(/_/g, " "),
-        e.base_status !== "NO BASE" ? e.base_status : null,
+        describeBreakout(e),
       ].filter(Boolean).join(" · "),
     }));
 }
@@ -471,15 +485,14 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
                   </td>
                   <td style={{ padding: "8px 6px", fontSize: 11 }}>
                     {(() => {
-                      const b = breakoutMeta[e.breakout_state] ?? { label: e.breakout_state ?? "—", color: C.muted };
-                      const age = e.breakout_state === "OUT" && e.days_above_ceil != null
-                        ? ` ${e.days_above_ceil}d` : "";
+                      const b = breakoutMeta[e.breakout_state] ?? { label: "—", color: C.muted };
+                      const text = describeBreakout(e) ?? b.label;
                       return (
                         <span style={{
                           fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
                           color: b.color, background: `${b.color}20`,
                           border: `1px solid ${b.color}40`, whiteSpace: "nowrap",
-                        }}>{b.label}{age}</span>
+                        }}>{text}</span>
                       );
                     })()}
                   </td>
