@@ -1,0 +1,22 @@
+[Unit]
+Description=Fire the QuantOS momentum shortlist as soon as the Fyers token is refreshed
+Documentation=man:systemd.path(5)
+
+[Path]
+# The daily interactive Fyers token refresh is the real gate on this list:
+# quantos-momentum-shortlist.timer fires at a fixed 02:15 UTC, so any refresh
+# done AFTER that (2026-08-10's was 03:26 UTC) leaves the cockpit serving
+# yesterday's ranking for a whole extra day, while a refresh done BEFORE it
+# still idles until the clock comes round. Watching the token instead makes
+# the refresh itself the trigger -- the list is rebuilt within seconds of the
+# credential that gates it becoming valid, whenever that happens.
+#
+# PathModified (not PathChanged): agent/auth/fyers_auth.py writes the token
+# with a plain TOKEN_PATH.write_text(), an in-place open/write/close on the
+# existing inode, which emits IN_CLOSE_WRITE. There is no temp-file+rename,
+# so no parent-directory watch is needed.
+PathModified=/home/ubuntu/.quantos/fyers_token
+Unit=quantos-momentum-shortlist.service
+
+[Install]
+WantedBy=paths.target

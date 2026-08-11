@@ -10,6 +10,25 @@ WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_momentum_shortlist.py
 Environment=HOME=/home/ubuntu
 
+# Run at most once per calendar day, whichever trigger gets here first.
+# There are now two: quantos-momentum-shortlist.path (fires the moment the
+# daily Fyers token is refreshed) and .timer (02:15 UTC, kept as the fallback
+# for a day the token watch misses). Without this guard a normal morning --
+# refresh at 01:41, timer at 02:15 -- would run the same ~11 minute, ~580
+# symbol scan twice for one set of EOD bars.
+#
+# ExecStartPost only runs when ExecStart SUCCEEDED, which is what makes this
+# safe: a run that dies on an expired token writes no stamp, so the next
+# trigger is still allowed to retry. Only a genuinely completed run suppresses
+# the rest of the day.
+#
+# To force a re-run by hand (new universe file, debugging a ranking):
+#     rm -f ~/.quantos/last_shortlist_run && sudo systemctl start quantos-momentum-shortlist.service
+# Starting the unit without clearing the stamp is a deliberate no-op, not a
+# failure -- systemctl reports success and the log stays silent.
+ExecCondition=/bin/sh -c '[ "$(cat /home/ubuntu/.quantos/last_shortlist_run 2>/dev/null)" != "$(date -u +%%F)" ]'
+ExecStartPost=/bin/sh -c 'date -u +%%F > /home/ubuntu/.quantos/last_shortlist_run'
+
 # No Restart= here deliberately, same reasoning as quantos-paper-momentum.service:
 # the most likely failure is a stale Fyers auth token, which needs a human to
 # refresh interactively. Harmless to fail silently until the next day's run --
