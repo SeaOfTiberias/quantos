@@ -355,6 +355,19 @@ function ScreenerPanel({ candidates }) {
   );
 }
 
+// Replaces the raw Darvas base_status in the table (2026-08-11). base_status
+// collapses "broke out days ago", "above the ceiling without a volume surge"
+// and "still inside the box" all into WATCHING; breakout_state (see
+// core/discovery/momentum_shortlist.py) separates them. base_status is still
+// carried in the payload, just not shown.
+const breakoutMeta = {
+  "FRESH":   { label: "FRESH",  color: C.green },
+  "OUT":     { label: "OUT",    color: C.accent },
+  "NEAR":    { label: "NEAR",   color: C.gold },
+  "IN BOX":  { label: "IN BOX", color: C.muted },
+  "NO BASE": { label: "—",      color: C.muted },
+};
+
 const bucketMeta = {
   LEADER_TIGHT_BASE: { label: "Leader · Tight Base", color: C.green },
   LEADER_EXTENDED:   { label: "Leader · Extended",   color: C.gold },
@@ -418,9 +431,9 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Symbol", "Bucket", "Momentum", "Trend", "Base", "Width%", "R:R"].map(h => (
+              {["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200", "Width%", "R:R"].map(h => (
                 <th key={h} style={{
-                  textAlign: (h === "Symbol" || h === "Bucket" || h === "Base") ? "left" : "right",
+                  textAlign: (h === "Symbol" || h === "Bucket" || h === "Breakout" || h === "50/200") ? "left" : "right",
                   fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
                   color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
                   textTransform: "uppercase",
@@ -456,8 +469,25 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
                   <td style={{ padding: "8px 6px", textAlign: "right", color: e.trend_up ? C.green : C.red, fontSize: 11 }}>
                     {e.trend_up ? "▲ up" : "▼ down"}
                   </td>
-                  <td style={{ padding: "8px 6px", color: C.mid, fontSize: 11 }}>
-                    {e.base_status}
+                  <td style={{ padding: "8px 6px", fontSize: 11 }}>
+                    {(() => {
+                      const b = breakoutMeta[e.breakout_state] ?? { label: e.breakout_state ?? "—", color: C.muted };
+                      const age = e.breakout_state === "OUT" && e.days_above_ceil != null
+                        ? ` ${e.days_above_ceil}d` : "";
+                      return (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                          color: b.color, background: `${b.color}20`,
+                          border: `1px solid ${b.color}40`, whiteSpace: "nowrap",
+                        }}>{b.label}{age}</span>
+                      );
+                    })()}
+                  </td>
+                  <td style={{ padding: "8px 6px", fontSize: 11, whiteSpace: "nowrap",
+                               color: e.ma_cross === "BULL" ? C.green : e.ma_cross === "BEAR" ? C.red : C.muted }}>
+                    {e.ma_cross
+                      ? `${e.ma_cross}${e.ma_cross_days != null ? ` ${e.ma_cross_days}d` : ""}`
+                      : "—"}
                   </td>
                   <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
                     {e.box_width_pct != null ? `${e.box_width_pct.toFixed(1)}%` : "—"}

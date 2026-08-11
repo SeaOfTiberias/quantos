@@ -170,8 +170,14 @@ def _log_summary(entries: list[ShortlistEntry]) -> None:
             continue
         logger.info("%s (%d):", bucket, len(rows))
         for e in rows:
-            logger.info("  %-12s momentum=%.1f%% trend=%-4s base=%-16s width=%s rr=%s",
-                        e.symbol, e.momentum_pct, "UP" if e.trend_up else "down", e.base_status,
+            breakout = e.breakout_state
+            if e.breakout_state == "OUT" and e.days_above_ceil is not None:
+                breakout = f"OUT {e.days_above_ceil}d"
+            cross = e.ma_cross or "—"
+            if e.ma_cross and e.ma_cross_days is not None:
+                cross = f"{e.ma_cross} {e.ma_cross_days}d"
+            logger.info("  %-12s momentum=%.1f%% trend=%-4s breakout=%-10s 50/200=%-9s width=%s rr=%s",
+                        e.symbol, e.momentum_pct, "UP" if e.trend_up else "down", breakout, cross,
                         f"{e.box_width_pct:.1f}%" if e.box_width_pct is not None else "—",
                         f"{e.rr_ratio:.2f}" if e.rr_ratio is not None else "—")
 

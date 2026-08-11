@@ -138,6 +138,13 @@ class ShortlistEntryIn(BaseModel):
     dist_to_ceil:   Optional[float] = None
     rr_ratio:       Optional[float] = None
     vol_ratio:      float = 0.0
+    # Added 2026-08-11. Defaulted, not required: an entry restored from a
+    # cache file written by the previous build must still validate, and the
+    # cockpit degrades to "-" for a missing flag rather than erroring.
+    breakout_state: str = "NO BASE"
+    days_above_ceil: Optional[int] = None
+    ma_cross:       Optional[str] = None
+    ma_cross_days:  Optional[int] = None
 
 
 class ShortlistSyncRequest(BaseModel):

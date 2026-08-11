@@ -55,6 +55,18 @@ from core.rotation.ranker import LOOKBACK_DAYS, SymbolSeries, rolling_high_serie
 EMA_FAST = 9
 EMA_SLOW = 21
 
+# The classic 50/200 SMA pair ("golden"/"death" cross). Purely DESCRIPTIVE
+# here -- it labels a well-known chart condition a human is going to check
+# anyway, and deliberately feeds no bucket, no ranking and no order. This
+# project has already killed several trend-following candidates on real
+# evidence, so nothing about showing this column implies it has an edge;
+# it exists so the user doesn't have to open a chart to see the alignment.
+#
+# SMA, not EMA (see sma_series): the cross date has to agree with what
+# TradingView shows when the user clicks through from the symbol link.
+MA_FAST = 50
+MA_SLOW = 200
+
 # Top third of the scanned universe by 52-week-high proximity = "LEADER"
 # tier. Middle/bottom thirds are still returned (nothing here hides a name),
 # just ranked and labeled lower-priority for a momentum-focused review.
@@ -99,6 +111,14 @@ class ShortlistEntry:
     dist_to_ceil:   Optional[float] = None
     rr_ratio:       Optional[float] = None
     vol_ratio:      float = 0.0
+    # Derived display fields (2026-08-11). base_status is retained above --
+    # it is what Darvas actually said, and dropping it would make a stored
+    # entry harder to reconcile against the engine -- but the cockpit shows
+    # breakout_state instead, because base_status is ambiguous by construction.
+    breakout_state: str = "NO BASE"     # FRESH | OUT | NEAR | IN BOX | NO BASE
+    days_above_ceil: Optional[int] = None   # sessions closed above the box ceiling
+    ma_cross:       Optional[str] = None    # BULL | BEAR (50 vs 200 SMA), None if not warmed up
+    ma_cross_days:  Optional[int] = None    # sessions since the flip, None if older than our window
 
 
 def ema_series(closes: list[float], period: int) -> list[Optional[float]]:
@@ -132,6 +152,104 @@ def is_uptrend(daily: list[OHLCV], as_of_date: datetime,
     if ema_fast[-1] is None or ema_slow[-1] is None:
         return False
     return ema_fast[-1] > ema_slow[-1]
+
+
+def sma_series(closes: list[float], period: int) -> list[Optional[float]]:
+    """Simple moving average, None until warmed up. Kept separate from
+    ema_series because the 50/200 cross is conventionally an SMA cross —
+    using an EMA here would silently report cross dates that disagree with
+    every chart the user cross-checks against."""
+    if len(closes) < period:
+        return [None] * len(closes)
+    result: list[Optional[float]] = [None] * (period - 1)
+    window = sum(closes[:period])
+    result.append(window / period)
+    for i in range(period, len(closes)):
+        window += closes[i] - closes[i - period]
+        result.append(window / period)
+    return result
+
+
+def ma_cross_state(daily: list[OHLCV], as_of_date: datetime,
+                   fast: int = MA_FAST, slow: int = MA_SLOW,
+                   ) -> tuple[Optional[str], Optional[int]]:
+    """(state, sessions_since_cross) for the classic 50/200 SMA pair.
+
+    state is "BULL" (fast above slow) or "BEAR", or None when there isn't
+    enough history to warm up the slow SMA. sessions_since_cross is how many
+    bars ago the pair last flipped, or None if it never flipped inside the
+    data we hold — the honest answer for a stock that has been in the same
+    alignment longer than our ~400-calendar-day fetch window, and the reason
+    the cockpit renders a bare "BULL" rather than inventing an age.
+
+    Only ranked symbols reach this, and ranking already requires >=252 daily
+    bars, so the slow SMA is defined for at least ~50 bars in practice.
+    """
+    dates = [c.timestamp for c in daily]
+    idx = bisect.bisect_right(dates, as_of_date) - 1
+    if idx < 0:
+        return None, None
+    closes = [c.close for c in daily[:idx + 1]]
+
+    fast_ma = sma_series(closes, fast)
+    slow_ma = sma_series(closes, slow)
+    if fast_ma[-1] is None or slow_ma[-1] is None:
+        return None, None
+
+    state = "BULL" if fast_ma[-1] > slow_ma[-1] else "BEAR"
+
+    # Walk back to the most recent bar whose alignment differs from today's;
+    # the cross happened on the bar after it.
+    current_above = fast_ma[-1] > slow_ma[-1]
+    for age, i in enumerate(range(len(closes) - 2, -1, -1), start=1):
+        if fast_ma[i] is None or slow_ma[i] is None:
+            break
+        if (fast_ma[i] > slow_ma[i]) != current_above:
+            return state, age
+    return state, None
+
+
+def breakout_state(base: Optional[DiscoveryResult], daily: list[OHLCV],
+                   as_of_date: datetime) -> tuple[str, Optional[int]]:
+    """(state, sessions_above_ceiling) — the unambiguous version of
+    DiscoveryResult.status.
+
+    weekly_discovery's own status collapses three different situations into
+    "WATCHING": broke out days ago on volume, sits above the ceiling without
+    a volume surge, and sits inside the box. dist_to_ceil already carries the
+    distinction (negative = above the ceiling) and the label discards it, so
+    a name that cleared its box a fortnight ago is indistinguishable from one
+    still consolidating. This recovers that.
+
+    States: FRESH (defer to Darvas's own first-day-out + volume test),
+    OUT (above the ceiling, with how many sessions), NEAR (below but within
+    Darvas's proximity band), IN BOX, NO BASE.
+    """
+    if base is None or base.box_ceiling is None or base.dist_to_ceil is None:
+        return "NO BASE", None
+
+    if base.status == "FRESH BREAKOUT":
+        return "FRESH", _sessions_above(daily, base.box_ceiling, as_of_date)
+    if base.dist_to_ceil < 0:
+        return "OUT", _sessions_above(daily, base.box_ceiling, as_of_date)
+    if base.status == "APPROACHING":
+        return "NEAR", None
+    return "IN BOX", None
+
+
+def _sessions_above(daily: list[OHLCV], ceiling: float,
+                    as_of_date: datetime) -> Optional[int]:
+    """Consecutive daily closes above `ceiling`, counting back from as_of_date.
+    None if the latest bar isn't above it at all."""
+    dates = [c.timestamp for c in daily]
+    idx = bisect.bisect_right(dates, as_of_date) - 1
+    if idx < 0 or daily[idx].close <= ceiling:
+        return None
+    count = 0
+    while idx >= 0 and daily[idx].close > ceiling:
+        count += 1
+        idx -= 1
+    return count
 
 
 def _momentum_tier(rank: int, total: int) -> str:
@@ -172,6 +290,8 @@ def build_shortlist(
     momentum_window: int = LOOKBACK_DAYS,
     ema_fast: int = EMA_FAST,
     ema_slow: int = EMA_SLOW,
+    ma_fast: int = MA_FAST,
+    ma_slow: int = MA_SLOW,
 ) -> list[ShortlistEntry]:
     """Pure, no-I/O: given each symbol's daily candles, rank by 52-week-high
     proximity and overlay each symbol's current Darvas base state.
@@ -226,6 +346,9 @@ def build_shortlist(
         base = base_by_symbol[symbol]
         tight = symbol in tight_symbols
         bucket = _bucket(tier, tight)
+        daily = daily_by_symbol[symbol]
+        bo_state, days_above = breakout_state(base, daily, as_of_date)
+        cross, cross_days = ma_cross_state(daily, as_of_date, ma_fast, ma_slow)
         entries.append(ShortlistEntry(
             symbol=symbol, close=round(close, 2),
             momentum_pct=round(pct, 2), momentum_rank=rank, momentum_tier=tier,
@@ -236,6 +359,10 @@ def build_shortlist(
             dist_to_ceil=base.dist_to_ceil if base else None,
             rr_ratio=base.rr_ratio if base else None,
             vol_ratio=base.vol_ratio if base else 0.0,
+            breakout_state=bo_state,
+            days_above_ceil=days_above,
+            ma_cross=cross,
+            ma_cross_days=cross_days,
         ))
 
     entries.sort(key=lambda e: (BUCKET_PRIORITY[e.bucket], -e.momentum_pct))
