@@ -145,6 +145,15 @@ class ShortlistEntryIn(BaseModel):
     days_above_ceil: Optional[int] = None
     ma_cross:       Optional[str] = None
     ma_cross_days:  Optional[int] = None
+    # Obsidian vault audit, added 2026-08-14 (core/vault/shortlist_audit.py).
+    # These MUST be declared to survive the round trip: Pydantic drops
+    # undeclared fields silently, so between 2026-08-14 and this commit the
+    # scan computed a verdict, POSTed it, and the API discarded it before it
+    # ever reached the store. Same defaulting rule as the block above.
+    # Annotation only — the shortlist has no execution path, so a FAIL here
+    # blocks nothing; it is a review aid, not a veto.
+    vault_verdict:  Optional[str] = None    # PASS | FAIL | INSUFFICIENT_DATA | UNAVAILABLE
+    vault_detail:   Optional[str] = None    # per-note breakdown, human-readable
 
 
 class ShortlistSyncRequest(BaseModel):

@@ -157,3 +157,59 @@ async def test_get_returns_restored_cache(tmp_path):
     assert resp.status_code == 200
     assert body["entries"][0]["symbol"] == "TVSMOTOR"
     assert body["updated_at"] is not None
+
+
+class TestFieldsSurviveTheRoundTrip:
+    """scripts/run_momentum_shortlist.py POSTs `asdict(entry)` wholesale, and
+    Pydantic drops undeclared keys in silence. That combination cost the vault
+    audit its entire trip to the cockpit: the scan computed a verdict, sent it,
+    and the API discarded it before `model_dump()`. Nothing failed, nothing
+    logged — the column was simply never there.
+    """
+
+    def test_every_dataclass_field_is_declared_on_the_model(self):
+        """The structural guard. Any field added to ShortlistEntry and not to
+        ShortlistEntryIn is dropped in transit, so assert the model covers the
+        dataclass rather than waiting to notice a blank column."""
+        from dataclasses import fields as dataclass_fields
+
+        from core.discovery.momentum_shortlist import ShortlistEntry
+
+        sent = {f.name for f in dataclass_fields(ShortlistEntry)}
+        accepted = set(routes.ShortlistEntryIn.model_fields)
+        assert not (sent - accepted), (
+            f"ShortlistEntry fields the API would silently drop: {sorted(sent - accepted)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_vault_verdict_and_detail_reach_the_cockpit(self):
+        await _sync("alpha50", [dict(_entry(),
+                                     vault_verdict="FAIL",
+                                     vault_detail="VCP: FAIL (close < sma(200)); Stage: PASS")])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/discovery/momentum-shortlist/alpha50")
+
+        entry = resp.json()["entries"][0]
+        assert entry["vault_verdict"] == "FAIL"
+        assert "VCP: FAIL" in entry["vault_detail"]
+
+    @pytest.mark.asyncio
+    async def test_the_verdict_survives_a_restart(self, tmp_path):
+        await _sync("alpha50", [dict(_entry(), vault_verdict="PASS",
+                                     vault_detail="VCP: PASS")])
+        routes._shortlist_store.clear()
+        routes._load_cache()
+
+        assert routes._shortlist_store["alpha50"][0]["vault_verdict"] == "PASS"
+
+    @pytest.mark.asyncio
+    async def test_an_entry_without_the_audit_still_validates(self):
+        """Cached entries written before the audit existed, and scans run with
+        `vault.annotate_shortlist: false`, both arrive without these keys."""
+        await _sync("alpha50", [_entry()])       # no vault keys at all
+
+        stored = routes._shortlist_store["alpha50"][0]
+        assert stored["vault_verdict"] is None   # distinct from "UNAVAILABLE"
+        assert stored["vault_detail"] is None

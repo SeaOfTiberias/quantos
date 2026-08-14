@@ -382,6 +382,19 @@ const breakoutMeta = {
   "NO BASE": { label: "—",      color: C.muted },
 };
 
+// Obsidian vault audit (2026-08-14) — whether the name satisfies the written
+// rules in the brain/ strategy notes (Minervini VCP, Weinstein Stage
+// Analysis). Annotation only: this shortlist has no execution path, so a FAIL
+// is a reason to look closer, not a block. Hover the badge for the per-note
+// breakdown. UNAVAILABLE and null are deliberately distinct — the first means
+// the audit ran and could not answer, the second that it never ran at all.
+const vaultMeta = {
+  "PASS":              { label: "PASS",    color: C.green },
+  "FAIL":              { label: "fail",    color: C.red },
+  "INSUFFICIENT_DATA": { label: "no data", color: C.gold },
+  "UNAVAILABLE":       { label: "n/a",     color: C.muted },
+};
+
 const bucketMeta = {
   LEADER_TIGHT_BASE: { label: "Leader · Tight Base", color: C.green },
   LEADER_EXTENDED:   { label: "Leader · Extended",   color: C.gold },
@@ -433,8 +446,10 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         each name's Darvas weekly base state — a "tight" base only
         counts if daily EMA9 is also above EMA21, so a name merely
         rolling over (not making new highs/lows, but trending down)
-        isn't mislabeled as a constructive base. Discretionary review
-        only — not a signal, no execution path.
+        isn't mislabeled as a constructive base. Vault = whether the name
+        satisfies the written rules in the Obsidian strategy notes; hover it
+        for the per-note breakdown. Discretionary review only — not a
+        signal, no execution path.
       </div>
 
       {entries.length === 0 ? (
@@ -445,9 +460,10 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200", "Width%", "R:R"].map(h => (
+              {["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200", "Vault", "Width%", "R:R"].map(h => (
                 <th key={h} style={{
-                  textAlign: (h === "Symbol" || h === "Bucket" || h === "Breakout" || h === "50/200") ? "left" : "right",
+                  textAlign: (h === "Symbol" || h === "Bucket" || h === "Breakout"
+                              || h === "50/200" || h === "Vault") ? "left" : "right",
                   fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
                   color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
                   textTransform: "uppercase",
@@ -501,6 +517,24 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
                     {e.ma_cross
                       ? `${e.ma_cross}${e.ma_cross_days != null ? ` ${e.ma_cross_days}d` : ""}`
                       : "—"}
+                  </td>
+                  <td style={{ padding: "8px 6px", fontSize: 11 }}>
+                    {(() => {
+                      const v = vaultMeta[e.vault_verdict];
+                      // No entry at all (not even UNAVAILABLE) means the scan
+                      // ran before the audit existed, or with it switched off.
+                      if (!v) return <span style={{ color: C.muted }}>—</span>;
+                      return (
+                        <span
+                          title={e.vault_detail || undefined}
+                          style={{
+                            fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                            color: v.color, background: `${v.color}20`,
+                            border: `1px solid ${v.color}40`, whiteSpace: "nowrap",
+                            cursor: e.vault_detail ? "help" : "default",
+                          }}>{v.label}</span>
+                      );
+                    })()}
                   </td>
                   <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
                     {e.box_width_pct != null ? `${e.box_width_pct.toFixed(1)}%` : "—"}
