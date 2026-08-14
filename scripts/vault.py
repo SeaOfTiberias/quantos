@@ -7,9 +7,13 @@ Karpathy's three LLM-wiki operations, plus the housekeeping they imply.
     # 1. drop files into obsidian_vault/QuantOS/raw/_inbox/, then:
     python scripts/vault.py ingest --topic minervini
 
-    # 2. compile raw sources into interlinked wiki pages (calls Claude)
+    # 2. compile raw sources into interlinked wiki pages.
+    #    Preferred: ask your coding agent to "compile the vault" -- it uses
+    #    .claude/skills/vault-compile/SKILL.md and file tools, needs no API key,
+    #    and can read the existing pages before linking to them.
+    #    This command is the UNATTENDED fallback (needs ANTHROPIC_API_KEY):
+    python scripts/vault.py compile --dry-run
     python scripts/vault.py compile
-    python scripts/vault.py compile --limit 1 --dry-run
 
     # 3. ask the vault a question (BM25 + graph expansion, no model needed)
     python scripts/vault.py query "what makes a base tight enough to buy"
@@ -20,9 +24,9 @@ Karpathy's three LLM-wiki operations, plus the housekeeping they imply.
     python scripts/vault.py status        # what is where
     python scripts/vault.py graph VCP     # links in and out of a note
 
-`ingest`, `query`, `lint`, `index` and `status` need no API key and no network.
-Only `compile` calls a model — it is the step that turns sources into durable
-pages, and it is the only one that costs anything.
+`ingest`, `query`, `lint`, `index`, `status` and `graph` need no API key and no
+network. Only `compile` calls a model, and even that is better run through the
+agent skill than through this command.
 
 To audit a SYMBOL against the strategy rules in brain/, use
 scripts/audit_symbol.py. This script manages the vault; that one uses it.
@@ -46,6 +50,22 @@ from core.vault.layers import Layer, VaultPaths  # noqa: E402
 from core.vault.lint import Severity, lint_vault  # noqa: E402
 
 logger = logging.getLogger("quantos.vault")
+
+_AGENT_COMPILE_HINT = """\
+Compiling is the one vault operation that needs a model, and there are two ways
+to run it:
+
+  1. In your coding agent (recommended).  Ask Claude Code to "compile the
+     vault" -- it loads .claude/skills/vault-compile/SKILL.md and does the work
+     with file tools. It reads every existing wiki page before linking a new
+     concept to them, then runs `vault lint` and fixes what it finds. No API
+     key, no separate bill.
+
+  2. Unattended, via this command.  Needs ANTHROPIC_API_KEY and the anthropic
+     SDK. Use this only for a scheduled compile where no agent is present -- it
+     sees existing pages by NAME only, so its linking is weaker.
+
+Everything else (ingest, query, lint, index, status, graph) needs no key."""
 
 
 def _paths(args) -> VaultPaths:
@@ -100,7 +120,8 @@ def cmd_ingest(args) -> int:
 
     print(f"\n{len(filed)} filed, {len(skipped)} skipped.")
     if filed:
-        print("Next: python scripts/vault.py compile")
+        print("Next: ask your coding agent to \"compile the vault\", or run "
+              "`python scripts/vault.py compile` for an unattended pass.")
     return 0
 
 
@@ -127,7 +148,12 @@ def cmd_compile(args) -> int:
             force=args.force, limit=args.limit,
         )
     except CompileError as e:
-        print(f"error: {e}", file=sys.stderr)
+        # No API key is the expected case, not an error worth a stack trace:
+        # the better path is the agent already sitting in the terminal, which
+        # can read the existing pages before linking to them. See
+        # .claude/skills/vault-compile/SKILL.md.
+        print(f"error: {e}\n", file=sys.stderr)
+        print(_AGENT_COMPILE_HINT, file=sys.stderr)
         return 2
 
     for path in result.pages_written:
@@ -278,7 +304,9 @@ def main() -> int:
                    help="Leave originals in the inbox after filing")
     p.set_defaults(func=cmd_ingest, move=True)
 
-    p = sub.add_parser("compile", parents=[common], help="Compile raw/ sources into wiki/ pages (calls Claude)")
+    p = sub.add_parser("compile", parents=[common],
+                       help="Unattended compile of raw/ -> wiki/ (needs ANTHROPIC_API_KEY; "
+                            "prefer asking your coding agent to compile the vault)")
     p.add_argument("--force", action="store_true", help="Recompile already-compiled sources")
     p.add_argument("--limit", type=int, help="Compile at most N sources this run")
     p.add_argument("--dry-run", action="store_true", help="Show what would compile, call nothing")

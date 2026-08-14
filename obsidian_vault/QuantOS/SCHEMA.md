@@ -129,7 +129,7 @@ For agents running `compile`, in addition to `prompts/vault_compile_system.md`:
 ```bash
 python scripts/vault.py init                 # create the layout
 python scripts/vault.py ingest --topic X     # file raw/_inbox -> raw/X/
-python scripts/vault.py compile              # raw/ -> wiki/  (calls Claude)
+python scripts/vault.py compile              # raw/ -> wiki/  (unattended; needs a key)
 python scripts/vault.py query "..."          # BM25 + graph expansion
 python scripts/vault.py lint                 # integrity + safety
 python scripts/vault.py index                # regenerate wiki/index.md
@@ -139,7 +139,10 @@ python scripts/vault.py graph <note>         # links in and out
 python scripts/audit_symbol.py TVSMOTOR      # audit a symbol against brain/
 ```
 
-Only `compile` needs an API key.
+Only `compile` needs an API key, and only in its unattended form. The better
+route is to ask your coding agent to **"compile the vault"** — it loads
+`.claude/skills/vault-compile/SKILL.md`, reads the existing pages properly
+before linking to them, and needs no key.
 
 ---
 

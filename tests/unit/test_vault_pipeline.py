@@ -368,3 +368,31 @@ class TestLint:
         (vault.brain / "B.md").write_text("# B\n", encoding="utf-8")
         report = lint_vault(VaultIndex.load(vault.root))
         assert any(f.code == "index-stale" for f in report.warnings)
+
+
+class TestLeadingH1IsNotDuplicated:
+    """`_render` writes `# {title}`, and `_derive_title` lifts that title from
+    the source's own first H1 — so without removing it the note renders the
+    same heading twice."""
+
+    def test_source_h1_matching_the_title_is_dropped(self, vault):
+        drop(vault, "a.md", "# My Title\n\nBody.\n")
+        result = ingest_file(vault.inbox / "a.md", vault, topic="t")
+        assert result.vault_path.read_text(encoding="utf-8").count("# My Title") == 1
+
+    def test_a_different_leading_h1_is_kept(self, vault):
+        """An explicit --title must not silently delete the source's heading."""
+        drop(vault, "a.md", "# Source Heading\n\nBody.\n")
+        result = ingest_file(vault.inbox / "a.md", vault, topic="t", title="Chosen Title")
+        text = result.vault_path.read_text(encoding="utf-8")
+        assert "# Chosen Title" in text and "# Source Heading" in text
+
+    def test_subheadings_survive(self, vault):
+        drop(vault, "a.md", "# My Title\n\n## Mechanics\n\nBody.\n")
+        result = ingest_file(vault.inbox / "a.md", vault, topic="t")
+        assert "## Mechanics" in result.vault_path.read_text(encoding="utf-8")
+
+    def test_source_with_no_h1_is_untouched(self, vault):
+        drop(vault, "a.md", "Just a paragraph, no heading.\n")
+        result = ingest_file(vault.inbox / "a.md", vault, topic="t")
+        assert "Just a paragraph" in result.vault_path.read_text(encoding="utf-8")

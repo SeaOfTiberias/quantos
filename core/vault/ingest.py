@@ -275,6 +275,26 @@ def _derive_title(text: str, source: Path) -> str:
     return source.stem
 
 
+def _drop_leading_h1(text: str, title: str) -> str:
+    """Remove the source's own leading H1 when it is the title we lifted.
+
+    `_render` writes `# {title}` as the note's heading. Without this, a source
+    that begins with its own H1 — which most markdown does — renders the same
+    heading twice, once from us and once from the file. Only the FIRST heading
+    is removed, and only when it matches, so subheadings and any later `#` in
+    the body survive untouched.
+    """
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# ") and stripped[2:].strip() == title:
+            return "\n".join(lines[i + 1:]).strip()
+        return text.strip()
+    return text.strip()
+
+
 def _find_by_checksum(directory: Path, checksum: str) -> Optional[Path]:
     """Locate an already-ingested source with this checksum, by reading the
     `checksum:` line out of each file's frontmatter."""
@@ -308,7 +328,7 @@ def _render(text: str, *, title: str, topic: str, origin: str,
         "> [!info] Ingested source\n"
         f"> Filed {stamp} from `{origin}`. Do not edit — wiki pages cite this\n"
         "> file's contents, and `vault lint` re-hashes it to check.\n\n"
-        f"{text.strip()}\n"
+        f"{_drop_leading_h1(text, title)}\n"
     )
 
     def _document(body_hash: str) -> str:

@@ -33,7 +33,7 @@ core/vault/
   layers.py          # the three layers + the brain-only-executes rule
   wikilinks.py       # [[link]] parsing and the note graph
   ingest.py          # raw/_inbox -> raw/ with provenance
-  compile.py         # raw/ -> wiki/ entity pages (calls Claude)
+  compile.py         # raw/ -> wiki/ entity pages (UNATTENDED path only)
   lint.py            # integrity, links, layer safety
   models.py          # Verdict, Rule, RuleResult, AuditReport, GateDecision
   parser.py          # markdown + YAML frontmatter -> StrategyNote
@@ -48,6 +48,9 @@ core/vault/
 prompts/
   vault_audit_narrator_system.md
   vault_audit_narrator_user.md
+
+.claude/skills/vault-compile/
+  SKILL.md                         # the PREFERRED compile path: agent + file tools
 
 scripts/vault.py                   # CLI: init/ingest/compile/query/lint/index/status/graph
 scripts/audit_symbol.py            # CLI: audit a symbol against brain/
@@ -77,8 +80,8 @@ runs", never to "everything runs".
 ```bash
 python scripts/vault.py init                 # create brain/ raw/ wiki/
 python scripts/vault.py ingest --topic X     # file raw/_inbox -> raw/X/
-python scripts/vault.py compile              # raw/ -> wiki/   (only step that calls a model)
 python scripts/vault.py compile --dry-run    # show what would compile, call nothing
+python scripts/vault.py compile              # UNATTENDED compile (needs ANTHROPIC_API_KEY)
 python scripts/vault.py query "..."          # BM25 + graph expansion
 python scripts/vault.py lint                 # integrity + layer safety
 python scripts/vault.py index                # regenerate wiki/index.md
@@ -97,15 +100,34 @@ Re-ingesting byte-identical content is a no-op. A changed version of the same
 source lands beside the original rather than replacing it. `.md`, `.txt` and
 light HTML are supported; a PDF must have its text extracted first.
 
-### Compile
+### Compile — two paths
 
-Reads `raw/` once and writes interlinked entity pages into `wiki/`, one concept
-per page, each claim citing its source. This is what makes the knowledge base
-compound rather than re-derive: the second article about volatility contraction
-updates the existing page instead of sitting beside it as another chunk.
+Compiling reads `raw/` and writes interlinked entity pages into `wiki/`, one
+concept per page, each claim citing its source. This is what makes the
+knowledge base compound rather than re-derive: the second article about
+volatility contraction updates the existing page instead of sitting beside it
+as another chunk. Sources already in `wiki/log.md` are skipped, so re-running
+after adding one article costs one call, not N.
 
-Sources already in `wiki/log.md` are skipped, so re-running after adding one
-article costs one model call, not N.
+**1. Through your coding agent — preferred.** Ask Claude Code to *"compile the
+vault"*. It loads `.claude/skills/vault-compile/SKILL.md` and does the work with
+file tools.
+
+This is how Karpathy's pattern is actually meant to run — it is a prompt handed
+to an agent, not an API integration. It is also simply better: the agent reads
+the **contents** of every existing wiki page before deciding whether a concept
+needs a new page or an update to an old one, then runs `vault lint` and fixes
+what it finds. And it costs no API credits, because the agent is already there.
+
+**2. Unattended, via `scripts/vault.py compile`.** Needs `ANTHROPIC_API_KEY` and
+the `anthropic` SDK. Use this only where no agent is present — a scheduled
+compile on the VM, say. It is weaker: one shot, 4,000 max tokens, source
+truncated to 24,000 chars, and it sees existing pages by **name only**, so it
+links by guessing from filenames rather than from what those pages say.
+
+Both paths write the same format and both append to `wiki/log.md`, so they
+interoperate — you can compile interactively and let a timer catch anything you
+missed.
 
 ### Retrieval and the graph
 
