@@ -60,6 +60,7 @@ from core.options.positions import (
 from core.options import chain_builder as options_chain_builder
 from core.options import fyers_symbol_master as options_symbol_master
 from core.options.models import OptionType, StrategyTemplate
+from core.brokers.history import fetch_daily
 from core.vault.gates import audit_gate as vault_audit_gate
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
@@ -825,12 +826,13 @@ def _vault_gate_allows(config: dict, symbol: str, broker, *, context: str) -> bo
 
     try:
         end = datetime.now(timezone.utc)
-        # "1d", lower case — core/brokers/fyers.py matches the timeframe
-        # literally, so "1D" raises BrokerError, which the except below turns
-        # into a permanent BLOCK. Off by default, so this never reached a
-        # live order, but the gate would have vetoed 100% of signals the
-        # moment it was switched on.
-        daily = broker.get_historical_data(symbol, "1d", end - timedelta(days=600), end)
+        # Chunked: Fyers rejects any daily request spanning >366 days, and
+        # 600 is what the rules need (sma(200) plus 20 bars of lookback, plus
+        # a 52-week high). A direct call here raised, and the except below
+        # turned that into a permanent BLOCK — a gate that vetoed everything
+        # while logging like one that worked. Off by default, so no live
+        # order was ever affected. See core/brokers/history.py.
+        daily = fetch_daily(broker, symbol, end - timedelta(days=600), end)
     except Exception as e:
         # Fail closed, consistent with core/vault/gates.py: a gate that opens
         # when its own data feed breaks is worse than no gate.

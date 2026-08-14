@@ -296,17 +296,22 @@ class TestVaultGateAllows:
     """
 
     def _broker(self, bars=None):
-        """A broker as strict about the timeframe as the real adapters."""
+        """A broker as strict as the real adapter about both things the gate
+        got wrong: the timeframe literal, and Fyers' 366-day range cap."""
         from core.brokers.base import BrokerError
         from core.brokers.fyers import _TF_MAP
 
         broker = MagicMock()
+        supply = rising_bars() if bars is None else bars
 
         def _history(symbol, timeframe, from_date, to_date):
             if timeframe not in _TF_MAP:
                 raise BrokerError(f"Unsupported timeframe: {timeframe}. "
                                   f"Use one of: {list(_TF_MAP)}")
-            return rising_bars() if bars is None else bars
+            if (to_date - from_date).days > 366:
+                raise BrokerError("History fetch failed: Date range cannot "
+                                  "exceed 366 days for 1D resolution")
+            return supply
 
         broker.get_historical_data.side_effect = _history
         return broker
