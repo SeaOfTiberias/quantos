@@ -139,7 +139,15 @@ class TestVaultIndex:
     def test_indexes_every_markdown_file(self, vault):
         index = VaultIndex.load(vault)
         assert len(index.notes) == 3
-        assert len(index.auditable_notes) == 2
+
+    def test_notes_at_the_vault_root_parse_rules_but_never_execute_them(self, vault):
+        """This fixture writes to the vault root, i.e. outside brain/raw/wiki.
+        The rules still PARSE — they are indexed and searchable — but nothing
+        outside brain/ is executable, so none of them can gate a trade. See
+        core/vault/layers.py."""
+        index = VaultIndex.load(vault)
+        assert len(index.get("Minervini").rules) == 2
+        assert index.auditable_notes == []
 
     def test_get_by_filename_stem(self, vault):
         assert VaultIndex.load(vault).get("Minervini").strategy_id == "minervini_vcp"
@@ -249,3 +257,44 @@ class TestTokenize:
 
     def test_lowercases_and_splits_on_punctuation(self):
         assert tokenize("SMA(200) > SMA(200)[20]!") == ["sma", "200", "sma", "200", "20"]
+
+
+class TestNestedFences:
+    """A note that DOCUMENTS the rule syntax must not have its examples parsed
+    as live rules. CommonMark closes a fence only with a run of backticks at
+    least as long as the opener, so a ````markdown block legitimately contains
+    a nested ```quantos-rules sample."""
+
+    def test_rule_block_inside_a_four_backtick_fence_is_not_a_rule(self, tmp_path):
+        brain = tmp_path / "brain"
+        brain.mkdir()
+        (brain / "Docs.md").write_text(
+            "# How to write rules\n\n"
+            "````markdown\n"
+            "```quantos-rules\n"
+            "close > sma(50)\n"
+            "```\n"
+            "````\n",
+            encoding="utf-8")
+        assert VaultIndex.load(tmp_path).get("Docs").rules == ()
+
+    def test_a_real_rule_block_beside_a_documented_one_still_parses(self, tmp_path):
+        brain = tmp_path / "brain"
+        brain.mkdir()
+        (brain / "Both.md").write_text(
+            "# Both\n\n"
+            "````markdown\n```quantos-rules\nclose > sma(999)\n```\n````\n\n"
+            "```quantos-rules\nclose > sma(50)\n```\n",
+            encoding="utf-8")
+        rules = VaultIndex.load(tmp_path).get("Both").rules
+        assert [r.expression for r in rules] == ["close > sma(50)"]
+
+    def test_the_shipped_schema_note_exposes_no_rules(self):
+        """obsidian_vault/QuantOS/SCHEMA.md documents the DSL. If this ever
+        fails, the vault's own conventions doc has become a strategy."""
+        from pathlib import Path
+        from core.vault.parser import parse_note
+        schema = (Path(__file__).resolve().parents[2]
+                  / "obsidian_vault" / "QuantOS" / "SCHEMA.md")
+        if schema.is_file():
+            assert parse_note(schema).rules == ()

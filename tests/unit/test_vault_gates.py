@@ -79,10 +79,14 @@ def _clean_shared_auditor():
 
 @pytest.fixture
 def vault(tmp_path):
-    (tmp_path / "Trend.md").write_text(TREND_NOTE, encoding="utf-8")
-    (tmp_path / "NeedsRS.md").write_text(RS_NOTE, encoding="utf-8")
-    (tmp_path / "Strict.md").write_text(STRICT_NOTE, encoding="utf-8")
-    (tmp_path / "Context.md").write_text(CONTEXT_ONLY, encoding="utf-8")
+    """Notes go in brain/ — the only layer whose rules may execute.
+    See core/vault/layers.py."""
+    brain = tmp_path / "brain"
+    brain.mkdir()
+    (brain / "Trend.md").write_text(TREND_NOTE, encoding="utf-8")
+    (brain / "NeedsRS.md").write_text(RS_NOTE, encoding="utf-8")
+    (brain / "Strict.md").write_text(STRICT_NOTE, encoding="utf-8")
+    (brain / "Context.md").write_text(CONTEXT_ONLY, encoding="utf-8")
     return tmp_path
 
 

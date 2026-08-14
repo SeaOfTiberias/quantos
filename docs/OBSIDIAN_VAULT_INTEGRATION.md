@@ -12,12 +12,29 @@ about structure — never evidence of an edge. See the closing section.
 
 ## Layout
 
+Three layers, following Karpathy's LLM-wiki pattern (April 2026) with a
+hand-authored `brain/` added on top.
+
 ```
-obsidian_vault/QuantOS/            # the vault. Notes tracked; .obsidian/ ignored
-  Mark_Minervini_VCP_Strategy.md   # id: minervini_vcp
-  Stan_Weinstein_Stage_Analysis.md # id: weinstein_stage2
+obsidian_vault/QuantOS/            # notes tracked; .obsidian/ ignored
+  SCHEMA.md                        # conventions, for humans and agents
+  brain/                           # human-authored canon.  EXECUTABLE
+    Mark_Minervini_VCP_Strategy.md #   id: minervini_vcp
+    Stan_Weinstein_Stage_Analysis.md #  id: weinstein_stage2
+  raw/                             # immutable sources.     never executable
+    _inbox/                        #   drop zone (not indexed)
+    <topic>/YYYY-MM-DD-slug.md
+  wiki/                            # agent-compiled pages.  never executable
+    index.md                       #   generated contents
+    log.md                         #   append-only compile log
+    concepts/
 
 core/vault/
+  layers.py          # the three layers + the brain-only-executes rule
+  wikilinks.py       # [[link]] parsing and the note graph
+  ingest.py          # raw/_inbox -> raw/ with provenance
+  compile.py         # raw/ -> wiki/ entity pages (calls Claude)
+  lint.py            # integrity, links, layer safety
   models.py          # Verdict, Rule, RuleResult, AuditReport, GateDecision
   parser.py          # markdown + YAML frontmatter -> StrategyNote
   index.py           # VaultIndex: load, tag filter, BM25 retrieval, mtime reload
@@ -32,8 +49,70 @@ prompts/
   vault_audit_narrator_system.md
   vault_audit_narrator_user.md
 
-scripts/audit_symbol.py            # CLI: audit, search, list
+scripts/vault.py                   # CLI: init/ingest/compile/query/lint/index/status/graph
+scripts/audit_symbol.py            # CLI: audit a symbol against brain/
 ```
+
+## The layer rule
+
+| Layer | Written by | Rules execute? | Mutable |
+|---|---|---|---|
+| `brain/` | you, by hand | **yes** | yes |
+| `raw/` | `vault ingest` | no | **no — append only** |
+| `wiki/` | `vault compile` (an agent) | no | yes, freely |
+
+Only `brain/` is executable, and that is enforced in `Layer.is_executable`
+rather than left as a convention. `wiki/` is written by a language model; if a
+compiled page could carry a rule block, a model would be authoring the
+conditions that gate real orders — reviewed by nobody, appearing in no diff.
+Compiled pages have rule blocks stripped on write, and `vault lint` reports any
+that survive as an ERROR.
+
+A consequence worth knowing: a note left at the vault root is `LOOSE` and is
+**not** executable. An un-migrated flat vault therefore degrades to "nothing
+runs", never to "everything runs".
+
+## The vault CLI
+
+```bash
+python scripts/vault.py init                 # create brain/ raw/ wiki/
+python scripts/vault.py ingest --topic X     # file raw/_inbox -> raw/X/
+python scripts/vault.py compile              # raw/ -> wiki/   (only step that calls a model)
+python scripts/vault.py compile --dry-run    # show what would compile, call nothing
+python scripts/vault.py query "..."          # BM25 + graph expansion
+python scripts/vault.py lint                 # integrity + layer safety
+python scripts/vault.py index                # regenerate wiki/index.md
+python scripts/vault.py status               # what is where
+python scripts/vault.py graph <note>         # links in and out
+```
+
+### Ingest
+
+Drop anything into `raw/_inbox/`, run `ingest`. Files are normalised (frontmatter
+with origin, date and two SHA-256 hashes; line endings to LF) and filed under
+`raw/<topic>/YYYY-MM-DD-slug.md`. The body is otherwise preserved verbatim —
+sources are evidence, and rewriting evidence on the way in defeats citing it.
+
+Re-ingesting byte-identical content is a no-op. A changed version of the same
+source lands beside the original rather than replacing it. `.md`, `.txt` and
+light HTML are supported; a PDF must have its text extracted first.
+
+### Compile
+
+Reads `raw/` once and writes interlinked entity pages into `wiki/`, one concept
+per page, each claim citing its source. This is what makes the knowledge base
+compound rather than re-derive: the second article about volatility contraction
+updates the existing page instead of sitting beside it as another chunk.
+
+Sources already in `wiki/log.md` are skipped, so re-running after adding one
+article costs one model call, not N.
+
+### Retrieval and the graph
+
+`query` runs BM25 over tag-filtered notes, then expands through the `[[link]]`
+graph — land on the page that matched, then pull in what it connects to.
+`--hops` controls depth. Unresolved links are reported by `lint` as INFO: in
+Obsidian an unresolved link means "page worth writing", not "broken".
 
 ---
 

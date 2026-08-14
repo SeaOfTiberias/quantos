@@ -49,8 +49,10 @@ close < sma(200)
 
 @pytest.fixture
 def vault(tmp_path):
-    (tmp_path / "Trend.md").write_text(TREND_NOTE, encoding="utf-8")
-    (tmp_path / "Strict.md").write_text(STRICT_NOTE, encoding="utf-8")
+    brain = tmp_path / "brain"
+    brain.mkdir()
+    (brain / "Trend.md").write_text(TREND_NOTE, encoding="utf-8")
+    (brain / "Strict.md").write_text(STRICT_NOTE, encoding="utf-8")
     return tmp_path
 
 
@@ -98,7 +100,8 @@ class TestAnnotator:
         """The shortlist has already ranked the universe, which is exactly the
         cross-sectional input the notes need and a single symbol cannot
         supply."""
-        (tmp_path / "RS.md").write_text(
+        (tmp_path / "brain").mkdir(exist_ok=True)
+        (tmp_path / "brain" / "RS.md").write_text(
             "---\nquantos:\n  id: rs\n---\n# RS\n```quantos-rules\nrs_rating >= 90\n```\n",
             encoding="utf-8")
         entries = [entry(f"S{i}", i) for i in range(1, 11)]
@@ -110,7 +113,8 @@ class TestAnnotator:
     def test_rs_rating_survives_a_filtered_subset(self, tmp_path):
         """Ranks come from the full universe, so a caller passing only the top
         bucket must not have every row collapse to INSUFFICIENT_DATA."""
-        (tmp_path / "RS.md").write_text(
+        (tmp_path / "brain").mkdir(exist_ok=True)
+        (tmp_path / "brain" / "RS.md").write_text(
             "---\nquantos:\n  id: rs\n---\n# RS\n```quantos-rules\nrs_rating >= 50\n```\n",
             encoding="utf-8")
         subset = [entry("A", 1), entry("B", 2), entry("C", 500)]

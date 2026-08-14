@@ -22,7 +22,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:      # import-cycle guard: layers/wikilinks do not import models
+    from core.vault.layers import Layer
+    from core.vault.wikilinks import WikiLink
 
 
 class Verdict(str, Enum):
@@ -91,11 +95,12 @@ class RuleResult:
 
 @dataclass(frozen=True)
 class StrategyNote:
-    """A parsed Obsidian note that carries a machine-readable rule block.
+    """A parsed Obsidian note.
 
     Notes WITHOUT a rule block are still indexed and still retrievable (they
     are useful context for the narrator and for `VaultIndex.search`); they
-    just cannot produce a PASS/FAIL. `is_auditable` distinguishes the two.
+    just cannot produce a PASS/FAIL. `is_auditable` distinguishes the two —
+    and note that it requires BOTH rules and an executable layer.
     """
     name: str                             # file stem, e.g. "Mark_Minervini_VCP_Strategy"
     path: Path
@@ -104,10 +109,27 @@ class StrategyNote:
     body: str                             # markdown with frontmatter stripped
     rules: tuple[Rule, ...] = ()
     frontmatter: dict[str, Any] = field(default_factory=dict)
+    layer: "Layer" = None                 # brain | raw | wiki | loose
+    links: tuple["WikiLink", ...] = ()    # outgoing [[wiki-links]]
 
     @property
     def is_auditable(self) -> bool:
-        return bool(self.rules)
+        """Rules exist AND this layer is allowed to execute them.
+
+        The layer half is the safety line: a wiki page compiled by an agent
+        may contain a rule block (it is a lint error, but it can happen), and
+        it must never become a gate. See core/vault/layers.py.
+        """
+        if not self.rules:
+            return False
+        return self.layer is None or self.layer.is_executable
+
+    @property
+    def has_unexecutable_rules(self) -> bool:
+        """Rule block present in a layer that may not execute — surfaced by
+        `vault lint` as an error, since it means someone (or something) wrote
+        conditions that silently do nothing."""
+        return bool(self.rules) and self.layer is not None and not self.layer.is_executable
 
     @property
     def strategy_id(self) -> str:

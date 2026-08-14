@@ -199,6 +199,17 @@ def main() -> int:
     parser.add_argument("--vault", type=Path, default=None,
                         help="Vault directory (default: $QUANTOS_VAULT_DIR or obsidian_vault/QuantOS).")
     parser.add_argument("-v", "--verbose", action="store_true")
+
+    # Windows consoles default to cp1252, which cannot encode the box-drawing
+    # characters, em dashes and ellipses that appear in perfectly ordinary
+    # notes. Without this, printing an excerpt from a note containing an ASCII
+    # chart raises UnicodeEncodeError and takes the whole command down.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):      # already wrapped, or a pipe
+            pass
+
     args = parser.parse_args()
 
     logging.basicConfig(

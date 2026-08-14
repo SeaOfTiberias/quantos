@@ -44,7 +44,9 @@ from typing import Any, Optional
 
 import yaml
 
+from core.vault.layers import Layer, layer_of
 from core.vault.models import Rule, StrategyNote
+from core.vault.wikilinks import parse_links
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +58,23 @@ _RULE_BLOCK_RE = re.compile(
     re.DOTALL | re.MULTILINE,
 )
 _H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+# A fence of 4+ backticks — CommonMark's way of wrapping a block that itself
+# contains a 3-backtick fence. See _strip_outer_fences.
+_OUTER_FENCE_RE = re.compile(r"^(`{4,})[^\n]*\n.*?^\1`*[ \t]*$",
+                             re.DOTALL | re.MULTILINE)
 
 
 class VaultParseError(ValueError):
     """The file could not be read as a strategy note."""
 
 
-def parse_note(path: Path) -> StrategyNote:
+def parse_note(path: Path, vault_dir: Optional[Path] = None) -> StrategyNote:
     """Read and parse one markdown file. Raises `VaultParseError`.
+
+    `vault_dir` determines which layer the note belongs to, and therefore
+    whether its rule block may ever execute (core/vault/layers.py). Omitting
+    it leaves `layer` as None, which the index never does — it is a
+    convenience for tests parsing a single file in isolation.
 
     Malformed frontmatter is a warning, not a failure — a note whose YAML has
     a stray tab is still useful as retrieval context, and refusing to load
@@ -90,6 +101,8 @@ def parse_note(path: Path) -> StrategyNote:
         body=body,
         rules=rules,
         frontmatter=frontmatter,
+        layer=layer_of(path, vault_dir) if vault_dir else None,
+        links=parse_links(body),
     )
 
 
@@ -139,7 +152,7 @@ def _extract_rules(body: str, *, note_name: str) -> list[Rule]:
     somewhere a human can actually look.
     """
     rules: list[Rule] = []
-    for block in _RULE_BLOCK_RE.finditer(body):
+    for block in _RULE_BLOCK_RE.finditer(_strip_outer_fences(body)):
         for offset, raw_line in enumerate(block.group(1).splitlines(), start=1):
             expression, comment = _strip_comment(raw_line)
             if not expression:
@@ -151,6 +164,24 @@ def _extract_rules(body: str, *, note_name: str) -> list[Rule]:
                 comment=comment,
             ))
     return rules
+
+
+def _strip_outer_fences(body: str) -> str:
+    """Blank out fenced blocks opened with FOUR or more backticks.
+
+    CommonMark closes a fence only with a run of backticks at least as long as
+    the one that opened it, so a ````markdown block legitimately contains a
+    nested ```quantos-rules block as sample text. Without this, any note that
+    DOCUMENTS the rule syntax — obsidian_vault/QuantOS/SCHEMA.md is the first —
+    has its examples parsed as live rules.
+
+    Replaced with blank lines rather than deleted so line numbers in error
+    messages still point at the right place in the file.
+    """
+    def _blank(match: re.Match) -> str:
+        return "\n" * match.group(0).count("\n")
+
+    return _OUTER_FENCE_RE.sub(_blank, body)
 
 
 def _strip_comment(line: str) -> tuple[str, str]:

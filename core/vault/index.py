@@ -41,8 +41,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Iterable, Optional
 
+from core.vault.layers import Layer, VaultPaths
 from core.vault.models import SearchHit, StrategyNote
 from core.vault.parser import VaultParseError, parse_note
+from core.vault.wikilinks import NoteGraph
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,14 @@ VAULT_DIR = Path(os.getenv("QUANTOS_VAULT_DIR", str(_DEFAULT_DIR)))
 # Obsidian's own config directory, plus the usual template/attachment folders.
 # Skipped wholesale — .obsidian/workspace.json in particular rewrites itself
 # every time a pane moves, and it is not a strategy note.
-_SKIP_DIRS = {".obsidian", ".trash", ".git", "templates", "attachments"}
+_SKIP_DIRS = {
+    ".obsidian", ".trash", ".git", "templates", "attachments",
+    # raw/_inbox is a staging area, not vault content. A file sitting there has
+    # not been through `vault ingest`, so it has no provenance, no checksum and
+    # no topic — indexing it would let an un-filed drop be retrieved as though
+    # it were a cited source, and compiled into the wiki as one.
+    "_inbox",
+}
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -88,10 +97,19 @@ class VaultIndex:
         self.vault_dir = vault_dir
         self._notes: dict[str, StrategyNote] = {}
         self._by_id: dict[str, StrategyNote] = {}
+        # Notes are keyed by stem, so two files sharing one make the second
+        # silently replace the first — and every [[link]] to that name becomes
+        # ambiguous. Record the collisions rather than losing them, so
+        # core/vault/lint.py can report what the index cannot represent.
+        self.duplicate_stems: dict[str, list[Path]] = {}
         for note in notes:
+            if note.name in self._notes:
+                self.duplicate_stems.setdefault(
+                    note.name, [self._notes[note.name].path]).append(note.path)
             self._notes[note.name] = note
             self._by_id[note.strategy_id] = note
         self._stamps = {n.path: _stamp(n.path) for n in self._notes.values()}
+        self.graph = NoteGraph.build(self._notes.values())
         self._build_bm25()
 
     # ── loading ───────────────────────────────────────────────────────────
@@ -117,7 +135,7 @@ class VaultIndex:
             if any(part in _SKIP_DIRS for part in path.relative_to(directory).parts[:-1]):
                 continue
             try:
-                notes.append(parse_note(path))
+                notes.append(parse_note(path, directory))
             except VaultParseError as e:
                 logger.warning("Vault: skipping %s — %s", path.name, e)
 
@@ -149,6 +167,7 @@ class VaultIndex:
         fresh = VaultIndex.load(self.vault_dir)
         self._notes, self._by_id = fresh._notes, fresh._by_id
         self._stamps = fresh._stamps
+        self.graph = fresh.graph
         self._build_bm25()
         logger.info("Vault: reloaded after detecting a change on disk")
         return True
@@ -189,7 +208,26 @@ class VaultIndex:
 
     @property
     def auditable_notes(self) -> list[StrategyNote]:
+        """Notes with rules that are ALSO in an executable layer — see
+        StrategyNote.is_auditable and core/vault/layers.py."""
         return [n for n in self._notes.values() if n.is_auditable]
+
+    def by_layer(self, layer: Layer) -> list[StrategyNote]:
+        return [n for n in self._notes.values() if n.layer is layer]
+
+    @property
+    def paths(self) -> VaultPaths:
+        return VaultPaths(self.vault_dir)
+
+    def related(self, name: str, *, hops: int = 1) -> list[StrategyNote]:
+        """Notes reachable from `name` through the wiki-link graph.
+
+        This is what makes retrieval compound rather than return isolated
+        documents: land on a match, then walk outward the way a reader would
+        follow links in Obsidian.
+        """
+        return [self._notes[n] for n in self.graph.expand([name], hops=hops)
+                if n in self._notes and n != name]
 
     # ── BM25 retrieval ────────────────────────────────────────────────────
 
