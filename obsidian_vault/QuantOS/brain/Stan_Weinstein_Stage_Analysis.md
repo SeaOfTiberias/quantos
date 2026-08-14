@@ -49,7 +49,8 @@ flat-or-falling 30-week moving average**, regardless of how good the story is.
 2. The 30-week MA has **flattened out and turned up**.
 3. Price has broken out **above the Stage 1 base's resistance ceiling**.
 4. The breakout came on a **meaningful volume expansion** — Weinstein wants at
-   least double the recent average on the breakout week.
+   least double the recent average on the breakout week, and volume to stay
+   elevated on the advance that follows.
 5. **Relative strength versus the market index is positive** and ideally has
    itself broken out.
 
@@ -72,8 +73,16 @@ sma(150) > sma(150)[25]
 #    supposed to be clearing. See the caveat on base detection below.
 close > high(126)[5]
 
-# 4. Volume expansion on the move: today at least 2x the 50-day average.
-volume > volume_sma(50) * 2.0
+# 4. Volume is confirming the advance. Two ways that shows up, either of
+#    which counts:
+#      a) today IS the breakout bar — 2x the 50-day average, Weinstein's
+#         literal condition; or
+#      b) the breakout already happened and volume has stayed up — the last
+#         ~5 weeks averaging at least 10% above the last ~10 weeks, which is
+#         the signature of a base being left on real participation.
+#    Until 2026-08-14 this was arm (a) alone, which is a same-session test
+#    and therefore false on every day except one. See the caveat below.
+volume > volume_sma(50) * 2.0 or volume_sma(25) > volume_sma(50) * 1.1
 
 # 5. Relative strength positive. Requires an injected cross-sectional rating;
 #    without one this is UNEVALUABLE and the audit blocks.
@@ -94,11 +103,25 @@ rs_rating >= 60
   box state machine — and is a better instrument for this if you want to
   invest in it. It is not wired in here because the DSL evaluates scalars, not
   state machines.
-- **Rule 4 fires on the breakout day only.** Volume at 2x the 50-day average is
-  a same-session condition, so this note effectively audits *the day of* a
-  Stage 2 entry, not "is this in Stage 2". If you want the latter, copy this
-  note, delete rule 4, and give it its own `quantos.id`. Notes are cheap;
-  overloading one with two meanings is not.
+- **Rule 4 used to fire on the breakout day only** — `volume > volume_sma(50)
+  * 2.0` is a same-session test, so it was false on every day but one, and a
+  name that broke out three weeks ago and is unambiguously in Stage 2 failed
+  it every morning. That made this note audit *the day of* an entry while its
+  own name, id and subject all say **stage** — a persistent state. Changed
+  2026-08-14 to accept either the breakout bar itself or sustained expansion
+  since, so the note now answers the question it is named for.
+
+  The `volume_sma(25) > volume_sma(50) * 1.1` arm is a proxy, not Weinstein.
+  He describes volume expanding on rallies and drying up on pullbacks within
+  Stage 2; the DSL cannot separate up-days from down-days, so this compares
+  the recent window against the base window and accepts the aggregate. A name
+  can therefore satisfy it on heavy *distribution*, which is the opposite of
+  what Weinstein means. Reading a PASS here as "volume confirms" is only safe
+  alongside rules 1–3, which establish that price is advancing.
+
+- **If you want the strict breakout-day auditor back**, copy this note, keep
+  arm (a) alone, and give it its own `quantos.id` — e.g. `weinstein_entry`.
+  Notes are cheap; overloading one with two meanings is not.
 
 ---
 

@@ -44,7 +44,7 @@ The VCP is defined strictly by the **progressive reduction of price volatility a
 | **Trend Stage** | Confirmed Stage 2 Uptrend | `Close > SMA(50) > SMA(150) > SMA(200)` |
 | **MA Trajectory** | 200 SMA Sloping Upwards | `SMA(200)[t] > SMA(200)[t-20]` (Slope > 0 for 1-3 months) |
 | **Proximity to Highs** | Near Blue Sky Territory | `Close >= Highest(High, 252) * 0.75` (Within 25% of 52-W High) |
-| **Distance from Lows** | Cleared out Bottoming Formations | `Close >= Lowest(Low, 252) * 2.00` (At least 100% off 52-W Low) |
+| **Distance from Lows** | Cleared out Bottoming Formations | `Close >= Lowest(Low, 252) * 1.25` (At least 25% off 52-W Low) |
 | **Relative Strength** | Structural Index Outperformance | `RS_Rating >= 70` (Ideally 90+) |
 | **The Pivot Point** | Entry Activation Point | Trigger on a breakout crossing the tightest contraction's ceiling. |
 
@@ -67,8 +67,12 @@ sma(200) > sma(200)[20]
 # Proximity to highs — within 25% of the 52-week high
 close >= high(252) * 0.75
 
-# Distance from lows — at least 100% above the 52-week low
-close >= low(252) * 2.00
+# Distance from lows — at least 25% above the 52-week low.
+# 1.25, not 2.00. Trend Template criterion #7 is "at least 25 percent above
+# its 52-week low"; the 100% figure comes from his parenthetical that the
+# best selections are often 100-300% off their lows before they advance.
+# That is an observation about winners, not the filter. See the caveat below.
+close >= low(252) * 1.25
 
 # Relative strength — requires a cross-sectional rating to be supplied.
 # Without one this rule is UNEVALUABLE and the audit returns
@@ -96,6 +100,14 @@ volume_sma(5) / volume_sma(50) < 0.40
   VCP", never "a VCP is present".
 - **Daily bars.** `sma(150)` stands in for the 30-week average. See
   [[Stan_Weinstein_Stage_Analysis]] for the same substitution and why.
+- **The distance-from-lows threshold was 2.00 until 2026-08-14.** That is what
+  the first version of this note transcribed, and it silently voided the whole
+  template: it demands the stock has already doubled off its 52-week low, so
+  it rejected names in exactly the condition the rest of the checklist selects
+  for. RADICO — first by momentum in the Alpha 50, +86% off its low, passing
+  every other price rule — failed on this line alone. Corrected to 1.25, the
+  published criterion. Kept in writing because a threshold this consequential
+  should not be able to change back without someone reading why.
 
 ---
 
