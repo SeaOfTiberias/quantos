@@ -196,6 +196,21 @@ class TestFieldsSurviveTheRoundTrip:
         assert "VCP: FAIL" in entry["vault_detail"]
 
     @pytest.mark.asyncio
+    async def test_the_rule_tally_reaches_the_cockpit(self):
+        """The tally is what the column actually renders — the verdict alone
+        reads FAIL for nearly every name, so losing this would put the panel
+        back to showing one value forever."""
+        await _sync("alpha50", [dict(_entry(), vault_verdict="FAIL",
+                                     vault_rules_passed=9, vault_rules_total=11)])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/discovery/momentum-shortlist/alpha50")
+
+        entry = resp.json()["entries"][0]
+        assert (entry["vault_rules_passed"], entry["vault_rules_total"]) == (9, 11)
+
+    @pytest.mark.asyncio
     async def test_the_verdict_survives_a_restart(self, tmp_path):
         await _sync("alpha50", [dict(_entry(), vault_verdict="PASS",
                                      vault_detail="VCP: PASS")])

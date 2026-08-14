@@ -166,10 +166,17 @@ class AuditReport:
     def unevaluated_rules(self) -> tuple[RuleResult, ...]:
         return tuple(r for r in self.results if r.passed is None)
 
+    @property
+    def rules_passed(self) -> int:
+        return sum(1 for r in self.results if r.passed is True)
+
+    @property
+    def rules_total(self) -> int:
+        return len(self.results)
+
     def summary_line(self) -> str:
-        passed = sum(1 for r in self.results if r.passed is True)
         return (f"{self.symbol} vs {self.note_name}: {self.verdict.value} "
-                f"({passed}/{len(self.results)} rules passed) — {self.reason}")
+                f"({self.rules_passed}/{self.rules_total} rules passed) — {self.reason}")
 
 
 @dataclass(frozen=True)

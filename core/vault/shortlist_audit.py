@@ -105,6 +105,8 @@ def annotate_with_vault_audit(
             entry,
             vault_verdict=verdict.value,
             vault_detail=_detail(reports),
+            vault_rules_passed=sum(r.rules_passed for r in reports),
+            vault_rules_total=sum(r.rules_total for r in reports),
         ))
         counts[verdict.value] = counts.get(verdict.value, 0) + 1
 
@@ -123,10 +125,18 @@ def _worst(reports: Sequence[AuditReport]) -> Verdict:
 
 
 def _detail(reports: Sequence[AuditReport]) -> str:
-    """One line per note. Kept short — this lands in a table cell and in the
-    JSON the cockpit renders, not in a report anybody reads at length. The
-    full rule-by-rule breakdown is what scripts/audit_symbol.py is for."""
-    return " | ".join(f"{r.note_name}: {r.verdict.value}" for r in reports)
+    """One line per note, with each note's rule tally.
+
+    The tally is the point. Both bundled notes are strict conjunctive screens,
+    so the headline verdict reads FAIL for nearly every name on nearly every
+    day — measured 2026-08-14: 0 of 50 Alpha 50 names cleared both. A binary
+    column that is always the same value carries no information, whereas
+    "5/6 | 4/5" separates a name that missed on one rule from one that is
+    nowhere near. The full rule-by-rule breakdown is what
+    scripts/audit_symbol.py is for.
+    """
+    return " | ".join(f"{r.note_name}: {r.verdict.value} "
+                      f"({r.rules_passed}/{r.rules_total})" for r in reports)
 
 
 def _all_unavailable(entries: Sequence[ShortlistEntry], reason: str) -> list[ShortlistEntry]:

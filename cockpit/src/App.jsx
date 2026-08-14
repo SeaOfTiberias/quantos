@@ -385,15 +385,31 @@ const breakoutMeta = {
 // Obsidian vault audit (2026-08-14) — whether the name satisfies the written
 // rules in the brain/ strategy notes (Minervini VCP, Weinstein Stage
 // Analysis). Annotation only: this shortlist has no execution path, so a FAIL
-// is a reason to look closer, not a block. Hover the badge for the per-note
-// breakdown. UNAVAILABLE and null are deliberately distinct — the first means
-// the audit ran and could not answer, the second that it never ran at all.
+// is a reason to look closer, not a block. Hover for the per-note breakdown.
+//
+// The cell shows the RULE TALLY, not the verdict, because both bundled notes
+// are strict conjunctive screens: measured 2026-08-14, 0 of 50 Alpha 50 names
+// cleared both, so a binary column would read "fail" every day and carry no
+// information. 9/11 vs 5/11 is the part worth scanning. Colour still encodes
+// the verdict, so a genuine clean pass is unmissable.
 const vaultMeta = {
   "PASS":              { label: "PASS",    color: C.green },
   "FAIL":              { label: "fail",    color: C.red },
   "INSUFFICIENT_DATA": { label: "no data", color: C.gold },
   "UNAVAILABLE":       { label: "n/a",     color: C.muted },
 };
+
+// Within FAIL, distance from clearing. The thresholds are for reading speed
+// only — nothing branches on them.
+function vaultColor(verdict, passed, total) {
+  if (verdict === "PASS") return C.green;
+  if (verdict === "INSUFFICIENT_DATA") return C.gold;
+  if (verdict === "UNAVAILABLE" || !total) return C.muted;
+  const ratio = passed / total;
+  if (ratio >= 0.8) return C.accent;      // one rule away
+  if (ratio >= 0.5) return C.mid;
+  return C.muted;
+}
 
 const bucketMeta = {
   LEADER_TIGHT_BASE: { label: "Leader · Tight Base", color: C.green },
@@ -446,9 +462,11 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         each name's Darvas weekly base state — a "tight" base only
         counts if daily EMA9 is also above EMA21, so a name merely
         rolling over (not making new highs/lows, but trending down)
-        isn't mislabeled as a constructive base. Vault = whether the name
-        satisfies the written rules in the Obsidian strategy notes; hover it
-        for the per-note breakdown. Discretionary review only — not a
+        isn't mislabeled as a constructive base. Vault = how many of the
+        Obsidian strategy notes' written rules the name satisfies, across all
+        notes audited; hover it for the per-note breakdown. Both notes are
+        strict conjunctive screens, so clearing every rule is rare by design —
+        read the tally, not the pass. Discretionary review only — not a
         signal, no execution path.
       </div>
 
@@ -524,15 +542,21 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
                       // No entry at all (not even UNAVAILABLE) means the scan
                       // ran before the audit existed, or with it switched off.
                       if (!v) return <span style={{ color: C.muted }}>—</span>;
+                      const total = e.vault_rules_total;
+                      const color = vaultColor(e.vault_verdict, e.vault_rules_passed, total);
+                      // Falls back to the verdict word when no tally exists —
+                      // UNAVAILABLE rows never got as far as evaluating a rule.
+                      const text = total ? `${e.vault_rules_passed}/${total}` : v.label;
                       return (
                         <span
                           title={e.vault_detail || undefined}
                           style={{
                             fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                            color: v.color, background: `${v.color}20`,
-                            border: `1px solid ${v.color}40`, whiteSpace: "nowrap",
+                            color, background: `${color}20`,
+                            border: `1px solid ${color}40`, whiteSpace: "nowrap",
+                            fontVariantNumeric: "tabular-nums",
                             cursor: e.vault_detail ? "help" : "default",
-                          }}>{v.label}</span>
+                          }}>{text}</span>
                       );
                     })()}
                   </td>

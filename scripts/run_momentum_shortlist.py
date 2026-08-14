@@ -186,6 +186,8 @@ def _log_summary(entries: list[ShortlistEntry]) -> None:
             vault = {"PASS": "PASS", "FAIL": "fail",
                      "INSUFFICIENT_DATA": "no-data",
                      "UNAVAILABLE": "n/a"}.get(e.vault_verdict or "", "—")
+            if e.vault_rules_total:
+                vault += f" {e.vault_rules_passed}/{e.vault_rules_total}"
             logger.info("  %-12s momentum=%.1f%% trend=%-4s breakout=%-10s 50/200=%-9s width=%s rr=%s vault=%s",
                         e.symbol, e.momentum_pct, "UP" if e.trend_up else "down", breakout, cross,
                         f"{e.box_width_pct:.1f}%" if e.box_width_pct is not None else "—",

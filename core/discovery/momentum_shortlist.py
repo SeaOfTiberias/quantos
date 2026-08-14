@@ -127,6 +127,13 @@ class ShortlistEntry:
     # difference between "not attempted" and "could not be evaluated".
     vault_verdict:  Optional[str] = None    # PASS | FAIL | INSUFFICIENT_DATA | UNAVAILABLE
     vault_detail:   Optional[str] = None    # per-note verdicts, human-readable
+    # Rule tally across every note audited. Both bundled notes are strict
+    # conjunctive screens, so the verdict alone reads FAIL for nearly every
+    # name on nearly every day and cannot separate "missed by one rule" from
+    # "nowhere close". None when no audit produced results (never zero --
+    # 0/0 and "not attempted" are different states).
+    vault_rules_passed: Optional[int] = None
+    vault_rules_total:  Optional[int] = None
 
 
 def ema_series(closes: list[float], period: int) -> list[Optional[float]]:

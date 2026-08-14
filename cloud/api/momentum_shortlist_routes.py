@@ -154,6 +154,8 @@ class ShortlistEntryIn(BaseModel):
     # blocks nothing; it is a review aid, not a veto.
     vault_verdict:  Optional[str] = None    # PASS | FAIL | INSUFFICIENT_DATA | UNAVAILABLE
     vault_detail:   Optional[str] = None    # per-note breakdown, human-readable
+    vault_rules_passed: Optional[int] = None
+    vault_rules_total:  Optional[int] = None
 
 
 class ShortlistSyncRequest(BaseModel):
