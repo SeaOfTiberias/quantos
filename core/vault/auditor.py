@@ -64,17 +64,21 @@ class StrategyAuditor:
                 reason=str(e),
             )
 
+        label, strategy_id = note.display_label, note.strategy_id
+
         if not note.is_auditable:
             return AuditReport(
                 symbol=symbol, note_name=note.name, verdict=Verdict.UNAVAILABLE,
                 reason=(f"{note.name} has no ```quantos-rules``` block, so it carries "
                         f"no machine-checkable conditions"),
+                note_label=label, strategy_id=strategy_id,
             )
 
         if not daily:
             return AuditReport(
                 symbol=symbol, note_name=note.name, verdict=Verdict.INSUFFICIENT_DATA,
                 reason=f"no price history supplied for {symbol}",
+                note_label=label, strategy_id=strategy_id,
             )
 
         facts = MarketFacts(symbol, list(daily), rs_rating=rs_rating)
@@ -82,7 +86,8 @@ class StrategyAuditor:
         verdict, reason = _verdict_of(results, facts.bar_count)
 
         return AuditReport(symbol=symbol, note_name=note.name, verdict=verdict,
-                           reason=reason, results=results)
+                           reason=reason, results=results,
+                           note_label=label, strategy_id=strategy_id)
 
     def audit_all(
         self,

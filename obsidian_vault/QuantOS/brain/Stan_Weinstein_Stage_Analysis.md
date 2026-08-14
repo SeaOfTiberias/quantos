@@ -6,6 +6,7 @@ tags:
   - algo/feature-extraction
 quantos:
   id: weinstein_stage2
+  label: Weinstein
   timeframe: daily
 ---
 
@@ -128,10 +129,24 @@ rs_rating >= 60
 ## 🔗 Relationship to the rest of the system
 
 - [[Mark_Minervini_VCP_Strategy]] — the SEPA trend template is a stricter
-  descendant of this. Minervini's `Close > SMA50 > SMA150 > SMA200` stack
-  implies Weinstein's rule 1 and then adds two more moving averages.
-  Auditing against **both** notes means a name has to satisfy both; that is a
-  high bar and is meant to be.
+  descendant of this on the *price* rules. Minervini's
+  `Close > SMA50 > SMA150 > SMA200` stack implies Weinstein's rule 1 and then
+  adds two more moving averages.
+
+  **On volume the two are opposed, and this is not a detail.** Minervini's
+  sixth rule wants volume *drying up* (`volume_sma(5)/volume_sma(50) < 0.40`);
+  rule 4 here wants it *expanding*. Those describe consecutive phases — the
+  quiet pivot before a breakout, and the breakout and advance after it — so a
+  name satisfying both at once is rare by construction, not merely by
+  strictness. Measured 2026-08-14 across 482 Nifty 500 names: **5 cleared
+  Minervini, 11 cleared this note, 0 cleared both.**
+
+  An earlier version of this section called auditing against both "a high bar
+  and is meant to be". That was wrong: it is closer to a contradiction than a
+  bar, and reading a combined score as "how good is this name" conflates two
+  disciplines that cannot both fire. Read the two verdicts side by side. The
+  cockpit shows them as separate columns for exactly this reason and never
+  sums them.
 - Weinstein's own weakness in this repo's terms: it is a trend-following
   breakout method, and every trend-following breakout candidate tested here so
   far has failed on turnover and cost grounds (Darvas S7-3, Dow theory, 10:10

@@ -211,6 +211,32 @@ class TestFieldsSurviveTheRoundTrip:
         assert (entry["vault_rules_passed"], entry["vault_rules_total"]) == (9, 11)
 
     @pytest.mark.asyncio
+    async def test_per_note_scores_reach_the_cockpit(self):
+        """These are the columns the panel actually renders — the aggregate is
+        deliberately not shown, because the two bundled notes' clean-pass sets
+        are disjoint by construction."""
+        await _sync("alpha50", [dict(_entry(), vault_verdict="FAIL", vault_notes=[
+            {"label": "Minervini", "strategy_id": "minervini_vcp",
+             "verdict": "FAIL", "rules_passed": 5, "rules_total": 6},
+            {"label": "Weinstein", "strategy_id": "weinstein_stage2",
+             "verdict": "PASS", "rules_passed": 5, "rules_total": 5},
+        ])])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/discovery/momentum-shortlist/alpha50")
+
+        notes = resp.json()["entries"][0]["vault_notes"]
+        assert [n["label"] for n in notes] == ["Minervini", "Weinstein"]
+        assert notes[1]["verdict"] == "PASS"
+
+    @pytest.mark.asyncio
+    async def test_an_entry_without_note_scores_still_validates(self):
+        """Rows cached before the per-note split existed."""
+        await _sync("alpha50", [_entry()])
+        assert routes._shortlist_store["alpha50"][0]["vault_notes"] == []
+
+    @pytest.mark.asyncio
     async def test_the_verdict_survives_a_restart(self, tmp_path):
         await _sync("alpha50", [dict(_entry(), vault_verdict="PASS",
                                      vault_detail="VCP: PASS")])

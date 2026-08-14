@@ -125,6 +125,18 @@ def _load_cache() -> None:
 _load_cache()
 
 
+class VaultNoteScoreIn(BaseModel):
+    """One strategy note's verdict. The cockpit renders one column per entry
+    in this list; the aggregate on ShortlistEntryIn is deliberately not what
+    it shows — see core/vault/shortlist_audit._note_scores for why summing
+    the two bundled notes produces a near-meaningless number."""
+    label:        str
+    strategy_id:  str
+    verdict:      str
+    rules_passed: int
+    rules_total:  int
+
+
 class ShortlistEntryIn(BaseModel):
     symbol:         str
     close:          float
@@ -156,6 +168,7 @@ class ShortlistEntryIn(BaseModel):
     vault_detail:   Optional[str] = None    # per-note breakdown, human-readable
     vault_rules_passed: Optional[int] = None
     vault_rules_total:  Optional[int] = None
+    vault_notes: list[VaultNoteScoreIn] = []
 
 
 class ShortlistSyncRequest(BaseModel):

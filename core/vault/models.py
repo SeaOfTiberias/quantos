@@ -141,6 +141,23 @@ class StrategyNote:
             return str(quantos["id"])
         return self.name
 
+    @property
+    def display_label(self) -> str:
+        """Short name for a table column or a badge.
+
+        Read from `quantos.label` so the note itself decides how it is
+        labelled — the alternative is a note-name-to-column map living in the
+        cockpit, which would silently mislabel any note the user adds. Falls
+        back to the first token of the strategy id ("minervini_vcp" ->
+        "Minervini"), which is right often enough that a note needs the
+        explicit field only when it is not.
+        """
+        quantos = self.frontmatter.get("quantos") or {}
+        if isinstance(quantos, dict) and quantos.get("label"):
+            return str(quantos["label"])
+        first = self.strategy_id.replace("-", "_").split("_")[0]
+        return first.capitalize() if first.islower() else first
+
 
 @dataclass(frozen=True)
 class AuditReport:
@@ -157,6 +174,11 @@ class AuditReport:
     reason: str
     results: tuple[RuleResult, ...] = ()
     narration: Optional[str] = None
+    # Carried from the note so a consumer can label a column or pin a result
+    # without holding the index. Defaulted, so every existing construction of
+    # this dataclass stays valid.
+    note_label: Optional[str] = None
+    strategy_id: Optional[str] = None
 
     @property
     def failed_rules(self) -> tuple[RuleResult, ...]:

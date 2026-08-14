@@ -183,11 +183,13 @@ def _log_summary(entries: list[ShortlistEntry]) -> None:
                 cross = f"{e.ma_cross} {e.ma_cross_days}d"
             # Vault column abbreviated to keep the line scannable: the full
             # per-note breakdown lives in e.vault_detail and in the cockpit.
-            vault = {"PASS": "PASS", "FAIL": "fail",
-                     "INSUFFICIENT_DATA": "no-data",
-                     "UNAVAILABLE": "n/a"}.get(e.vault_verdict or "", "—")
-            if e.vault_rules_total:
-                vault += f" {e.vault_rules_passed}/{e.vault_rules_total}"
+            # Per note, never summed -- the two bundled notes' clean-pass sets
+            # are disjoint by construction (see shortlist_audit._note_scores).
+            vault = " ".join(
+                f"{n.label}={n.rules_passed}/{n.rules_total}" for n in e.vault_notes
+            ) or {"PASS": "PASS", "FAIL": "fail",
+                  "INSUFFICIENT_DATA": "no-data",
+                  "UNAVAILABLE": "n/a"}.get(e.vault_verdict or "", "—")
             logger.info("  %-12s momentum=%.1f%% trend=%-4s breakout=%-10s 50/200=%-9s width=%s rr=%s vault=%s",
                         e.symbol, e.momentum_pct, "UP" if e.trend_up else "down", breakout, cross,
                         f"{e.box_width_pct:.1f}%" if e.box_width_pct is not None else "—",

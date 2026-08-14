@@ -140,6 +140,47 @@ class TestRuleTally:
         assert out[0].vault_rules_passed == 1      # close > sma(50) held
         assert out[0].vault_rules_total == 2       # the rs_rating rule still counts
 
+    def test_scores_each_note_separately(self, vault):
+        """The cockpit renders one column per note and never sums them.
+        Measured 2026-08-14 across 482 Nifty 500 names, 5 cleared Minervini,
+        11 cleared Weinstein and 0 cleared both — their volume rules are
+        opposed, so a combined score conflates two disciplines that cannot
+        both fire."""
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["trend", "strict"], vault_dir=vault)
+        scores = {n.strategy_id: n for n in out[0].vault_notes}
+        assert set(scores) == {"trend", "strict"}
+        assert (scores["trend"].verdict, scores["trend"].rules_passed) == ("PASS", 1)
+        assert (scores["strict"].verdict, scores["strict"].rules_passed) == ("FAIL", 0)
+
+    def test_note_scores_keep_the_configured_order(self, vault):
+        """Column order comes from this list, so it must not be a set."""
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["strict", "trend"], vault_dir=vault)
+        assert [n.strategy_id for n in out[0].vault_notes] == ["strict", "trend"]
+
+    def test_the_column_label_comes_from_the_note(self, tmp_path):
+        """Not from a map in the cockpit, which would silently mislabel any
+        note the user adds."""
+        (tmp_path / "brain").mkdir()
+        (tmp_path / "brain" / "Long_Winded_Name.md").write_text(
+            "---\nquantos:\n  id: some_strategy\n  label: Shorty\n---\n# X\n"
+            "```quantos-rules\nclose > sma(50)\n```\n", encoding="utf-8")
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["some_strategy"], vault_dir=tmp_path)
+        assert out[0].vault_notes[0].label == "Shorty"
+
+    def test_label_falls_back_to_the_first_token_of_the_id(self, vault):
+        """An un-labelled note still gets a usable column header."""
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["trend"], vault_dir=vault)
+        assert out[0].vault_notes[0].label == "Trend"
+
+    def test_no_note_scores_when_the_vault_never_loaded(self, tmp_path):
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["trend"], vault_dir=tmp_path / "gone")
+        assert out[0].vault_notes == ()
+
     def test_no_history_scores_nothing_rather_than_zero_of_n(self, vault):
         """The auditor returns before evaluating any rule, so 0/0 is honest:
         the cockpit falls back to the verdict word instead of rendering a

@@ -98,6 +98,21 @@ BUCKET_PRIORITY = {
 
 
 @dataclass
+class VaultNoteScore:
+    """One strategy note's verdict on one symbol.
+
+    Declared here rather than in core/vault so this module keeps its promise
+    of importing nothing from the vault — it is a plain data holder that the
+    annotator fills in, not a vault type. See core/vault/shortlist_audit.py.
+    """
+    label:        str                  # column header, from the note's quantos.label
+    strategy_id:  str
+    verdict:      str                  # PASS | FAIL | INSUFFICIENT_DATA | UNAVAILABLE
+    rules_passed: int
+    rules_total:  int
+
+
+@dataclass
 class ShortlistEntry:
     symbol:         str
     close:          float
@@ -134,6 +149,15 @@ class ShortlistEntry:
     # 0/0 and "not attempted" are different states).
     vault_rules_passed: Optional[int] = None
     vault_rules_total:  Optional[int] = None
+    # Per-note scores, one per configured strategy note. This is what the
+    # cockpit renders. The aggregate above is retained because a gate still
+    # needs a single answer, but it must NOT be read as "how good is this
+    # name": measured 2026-08-14 on 482 Nifty 500 names, the two bundled
+    # notes' clean-pass sets were DISJOINT, because Minervini's volume dry-up
+    # and Weinstein's volume expansion are opposed conditions describing
+    # consecutive phases. Conjoining them asks for a name that is
+    # pre-breakout and post-breakout at once.
+    vault_notes: tuple["VaultNoteScore", ...] = ()
 
 
 def ema_series(closes: list[float], period: int) -> list[Optional[float]]:

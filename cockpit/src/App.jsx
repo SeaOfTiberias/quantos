@@ -411,6 +411,27 @@ function vaultColor(verdict, passed, total) {
   return C.muted;
 }
 
+// One column per strategy note, NOT one aggregate column. Measured 2026-08-14
+// across 482 Nifty 500 names: 5 cleared Minervini, 11 cleared Weinstein, 0
+// cleared both — the sets are disjoint, because Minervini's volume dry-up and
+// Weinstein's volume expansion are opposed conditions describing consecutive
+// phases (the quiet pivot before a breakout, and the breakout itself). A
+// combined score conflates two disciplines that structurally cannot both
+// fire, so the notes are shown side by side and never summed here.
+//
+// Derived from the data rather than hardcoded: the audited notes come from
+// config (vault.shortlist_notes), so a hardcoded pair of columns would go
+// stale silently the moment a note is added or swapped.
+function vaultColumns(entries) {
+  const seen = new Map();
+  for (const e of entries) {
+    for (const n of e.vault_notes ?? []) {
+      if (!seen.has(n.strategy_id)) seen.set(n.strategy_id, n.label);
+    }
+  }
+  return [...seen].map(([strategyId, label]) => ({ strategyId, label }));
+}
+
 const bucketMeta = {
   LEADER_TIGHT_BASE: { label: "Leader · Tight Base", color: C.green },
   LEADER_EXTENDED:   { label: "Leader · Extended",   color: C.gold },
@@ -424,6 +445,8 @@ const bucketMeta = {
 function MomentumShortlistTabs({ tabs, active, onSelect }) {
   const current = tabs.find(t => t.key === active) ?? tabs[0];
   const { entries, error } = current;
+  const vaultCols = useMemo(() => vaultColumns(entries), [entries]);
+  const vaultLabels = useMemo(() => new Set(vaultCols.map(c => c.label)), [vaultCols]);
 
   return (
     <Card>
@@ -462,12 +485,13 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         each name's Darvas weekly base state — a "tight" base only
         counts if daily EMA9 is also above EMA21, so a name merely
         rolling over (not making new highs/lows, but trending down)
-        isn't mislabeled as a constructive base. Vault = how many of the
-        Obsidian strategy notes' written rules the name satisfies, across all
-        notes audited; hover it for the per-note breakdown. Both notes are
-        strict conjunctive screens, so clearing every rule is rare by design —
-        read the tally, not the pass. Discretionary review only — not a
-        signal, no execution path.
+        isn't mislabeled as a constructive base. The right-hand columns show
+        how many of each Obsidian strategy note's written rules the name
+        satisfies; hover one for its reason. They are shown separately and
+        never summed — Minervini wants volume drying up before a breakout and
+        Weinstein wants it expanding on one, so the two describe consecutive
+        phases and a name clearing both is rare by construction. Discretionary
+        review only — not a signal, no execution path.
       </div>
 
       {entries.length === 0 ? (
@@ -478,10 +502,14 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         <table style={{ width: "100%", marginTop: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200", "Vault", "Width%", "R:R"].map(h => (
+              {[
+                ...["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200"],
+                ...vaultCols.map(c => c.label),
+                ...["Width%", "R:R"],
+              ].map(h => (
                 <th key={h} style={{
                   textAlign: (h === "Symbol" || h === "Bucket" || h === "Breakout"
-                              || h === "50/200" || h === "Vault") ? "left" : "right",
+                              || h === "50/200" || vaultLabels.has(h)) ? "left" : "right",
                   fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
                   color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
                   textTransform: "uppercase",
@@ -536,30 +564,35 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
                       ? `${e.ma_cross}${e.ma_cross_days != null ? ` ${e.ma_cross_days}d` : ""}`
                       : "—"}
                   </td>
-                  <td style={{ padding: "8px 6px", fontSize: 11 }}>
-                    {(() => {
-                      const v = vaultMeta[e.vault_verdict];
-                      // No entry at all (not even UNAVAILABLE) means the scan
-                      // ran before the audit existed, or with it switched off.
-                      if (!v) return <span style={{ color: C.muted }}>—</span>;
-                      const total = e.vault_rules_total;
-                      const color = vaultColor(e.vault_verdict, e.vault_rules_passed, total);
-                      // Falls back to the verdict word when no tally exists —
-                      // UNAVAILABLE rows never got as far as evaluating a rule.
-                      const text = total ? `${e.vault_rules_passed}/${total}` : v.label;
+                  {vaultCols.map(col => {
+                    const score = (e.vault_notes ?? []).find(n => n.strategy_id === col.strategyId);
+                    // No score means this row predates the note, or the scan
+                    // ran with it switched off — distinct from UNAVAILABLE,
+                    // which means the audit ran and could not answer.
+                    if (!score) {
                       return (
+                        <td key={col.strategyId} style={{ padding: "8px 6px", fontSize: 11, color: C.muted }}>
+                          —
+                        </td>
+                      );
+                    }
+                    const color = vaultColor(score.verdict, score.rules_passed, score.rules_total);
+                    const label = vaultMeta[score.verdict]?.label ?? score.verdict;
+                    const text = score.rules_total
+                      ? `${score.rules_passed}/${score.rules_total}` : label;
+                    return (
+                      <td key={col.strategyId} style={{ padding: "8px 6px", fontSize: 11 }}>
                         <span
-                          title={e.vault_detail || undefined}
+                          title={`${col.label}: ${label}`}
                           style={{
                             fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
                             color, background: `${color}20`,
                             border: `1px solid ${color}40`, whiteSpace: "nowrap",
-                            fontVariantNumeric: "tabular-nums",
-                            cursor: e.vault_detail ? "help" : "default",
+                            fontVariantNumeric: "tabular-nums", cursor: "help",
                           }}>{text}</span>
-                      );
-                    })()}
-                  </td>
+                      </td>
+                    );
+                  })}
                   <td style={{ padding: "8px 6px", textAlign: "right", color: C.mid }}>
                     {e.box_width_pct != null ? `${e.box_width_pct.toFixed(1)}%` : "—"}
                   </td>

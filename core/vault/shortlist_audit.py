@@ -32,7 +32,7 @@ from dataclasses import replace
 from typing import Optional, Sequence
 
 from core.brokers.base import OHLCV
-from core.discovery.momentum_shortlist import ShortlistEntry
+from core.discovery.momentum_shortlist import ShortlistEntry, VaultNoteScore
 from core.vault.auditor import StrategyAuditor
 from core.vault.gates import rs_rating_from_rank
 from core.vault.index import VaultIndex, VaultNotFoundError
@@ -107,6 +107,7 @@ def annotate_with_vault_audit(
             vault_detail=_detail(reports),
             vault_rules_passed=sum(r.rules_passed for r in reports),
             vault_rules_total=sum(r.rules_total for r in reports),
+            vault_notes=_note_scores(reports),
         ))
         counts[verdict.value] = counts.get(verdict.value, 0) + 1
 
@@ -114,6 +115,30 @@ def annotate_with_vault_audit(
                 ", ".join(f"{v}={n}" for v, n in sorted(counts.items())),
                 len(entries), ", ".join(note_names))
     return annotated
+
+
+def _note_scores(reports: Sequence[AuditReport]) -> tuple[VaultNoteScore, ...]:
+    """One score per note, in the order the notes were configured.
+
+    This is what the cockpit renders, and it exists because the aggregate
+    cannot be read as a quality score. Measured 2026-08-14 across 482 Nifty
+    500 names: 5 cleared Minervini, 11 cleared Weinstein, and **none cleared
+    both**. Minervini's sixth rule wants volume drying up; Weinstein's fourth
+    wants volume expanding. Those describe consecutive phases — the quiet
+    pivot before a breakout, and the breakout itself — so requiring both at
+    once asks for a state a name is almost never in. Side by side the two
+    verdicts each say something; summed they say very little.
+    """
+    return tuple(
+        VaultNoteScore(
+            label=r.note_label or r.note_name,
+            strategy_id=r.strategy_id or r.note_name,
+            verdict=r.verdict.value,
+            rules_passed=r.rules_passed,
+            rules_total=r.rules_total,
+        )
+        for r in reports
+    )
 
 
 def _worst(reports: Sequence[AuditReport]) -> Verdict:

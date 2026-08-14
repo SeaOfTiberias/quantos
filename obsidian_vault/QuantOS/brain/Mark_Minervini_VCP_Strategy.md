@@ -6,6 +6,7 @@ tags:
   - screening/trend-template
 quantos:
   id: minervini_vcp
+  label: Minervini
   timeframe: daily
 ---
 
