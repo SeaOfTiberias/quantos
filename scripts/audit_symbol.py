@@ -64,23 +64,33 @@ _MARK = {
 
 
 def _load_broker():
-    """Build the configured broker adapter, mirroring how the agent does it."""
+    """Build the configured broker adapter, mirroring how the agent does it.
+
+    Via `get_broker`, not a local broker map. The first cut of this function
+    hand-rolled the dispatch and passed `config["credentials"]` to the
+    adapter, but every adapter takes the WHOLE config and reads
+    `self.config["credentials"]` itself — so it died with `KeyError:
+    'credentials'` against a perfectly valid config. Deferring to the one
+    factory also keeps this script from drifting out of step with
+    core/brokers/__init__.py's supported list.
+    """
     config_path = Path(__file__).resolve().parents[1] / "agent" / "config.yaml"
     if not config_path.is_file():
         raise SystemExit(f"No broker config at {config_path} — cannot fetch price data.")
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-    name = (config.get("broker") or "fyers").lower()
-    if name == "fyers":
-        from core.brokers.fyers import FyersBroker
-        broker = FyersBroker(config.get("credentials", {}))
-    elif name == "zerodha":
-        from core.brokers.zerodha import ZerodhaBroker
-        broker = ZerodhaBroker(config.get("credentials", {}))
-    else:
-        raise SystemExit(f"Unsupported broker {name!r} in agent/config.yaml")
+    from core.brokers import BrokerError, get_broker
 
-    if not broker.connect():
+    try:
+        broker = get_broker(config)
+        connected = broker.connect()
+    except BrokerError as e:
+        raise SystemExit(
+            f"Broker connect failed: {e}\nIf this is Fyers, the daily token has "
+            f"most likely expired — refresh it and retry."
+        ) from e
+
+    if not connected:
         raise SystemExit(
             "Broker connect failed. If this is Fyers, the daily token has most "
             "likely expired — refresh it and retry."
