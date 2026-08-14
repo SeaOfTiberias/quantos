@@ -74,6 +74,9 @@ class ResolvedOption:
     expiry: date
     strike: float
     option_type: OptionType
+    underlying: str = ""     # populated by both resolve_option_symbol and
+                             # resolve_symbol_to_option; defaulted so existing
+                             # callers that construct this without it don't break
 
 
 def _cache_path(segment: str) -> str:
@@ -193,9 +196,65 @@ def resolve_option_symbol(
                 expiry=expiry,
                 strike=float(strike),
                 option_type=option_type,
+                underlying=row[_COL_UNDERLYING],
             )
 
     raise SymbolMasterError(
         f"No contract found for {underlying} {expiry.isoformat()} "
         f"{strike} {option_type.value} — not listed in the {segment} symbol master"
+    )
+
+
+def resolve_symbol_to_option(
+    fyers_symbol: str,
+    segment: str = "NSE_FO",
+    force_refresh: bool = False,
+) -> ResolvedOption:
+    """
+    Reverse of resolve_option_symbol: given a real Fyers option symbol as
+    returned by the broker (e.g. from BrokerAdapter.get_positions(), which
+    hands symbols back with the "NSE:" prefix already stripped — see
+    core/brokers/fyers.py's get_positions()/_parse_order), look up its
+    underlying/strike/expiry/option_type from the same symbol master.
+
+    Added for agent-side auto-registration of option positions opened
+    OUTSIDE QuantOS's own /webhook/options "open" flow — e.g. placed by
+    hand via TradingView's Fyers trading panel (Fyers is a native
+    TradingView broker integration, so an order placed there lands
+    directly in this same Fyers account). Without a way to go from "here's
+    a live position on Fyers" back to (underlying, strike, expiry, CE/PE),
+    core/options/positions.py's store — and therefore the existing
+    trailing-stop "close" webhook path — has no way to find and flatten a
+    manually-opened position.
+
+    Accepts the symbol with or without the "NSE:" prefix. No underlying is
+    known ahead of time here (that's the whole point), so this scans every
+    option row in the master file rather than pre-filtering by underlying
+    the way every other lookup in this module does.
+
+    Raises SymbolMasterError if the symbol isn't found (not an option, a
+    typo, or an expired/delisted contract no longer in the current file).
+    """
+    target = fyers_symbol.upper()
+    if not target.startswith("NSE:"):
+        target = f"NSE:{target}"
+
+    text = _load_master_text(segment, force_refresh=force_refresh)
+    reader = csv.reader(io.StringIO(text))
+    for row in reader:
+        if (len(row) > _COL_OPTION_TYPE
+                and row[_COL_INSTRUMENT_TYPE] in _OPTION_INSTRUMENT_TYPES
+                and row[_COL_FYERS_SYMBOL].upper() == target):
+            return ResolvedOption(
+                symbol=row[_COL_FYERS_SYMBOL],
+                lot_size=int(row[_COL_LOT_SIZE]),
+                expiry=_row_expiry(row),
+                strike=float(row[_COL_STRIKE]),
+                option_type=OptionType(row[_COL_OPTION_TYPE]),
+                underlying=row[_COL_UNDERLYING],
+            )
+
+    raise SymbolMasterError(
+        f"Symbol {fyers_symbol!r} not found in the {segment} option symbol "
+        f"master — can't resolve it to an underlying/strike/expiry"
     )

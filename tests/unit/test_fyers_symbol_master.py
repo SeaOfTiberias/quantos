@@ -120,6 +120,60 @@ class TestListExpiries:
             sm.list_expiries("NOTAREALSYMBOL")
 
 
+class TestResolveSymbolToOption:
+    """Reverse lookup added for agent-side auto-registration of manually-
+    placed positions (agent.main._auto_register_manual_options_positions)
+    — going from a raw broker position symbol back to
+    underlying/strike/expiry/CE-PE."""
+
+    def test_resolves_with_nse_prefix(self):
+        resolved = sm.resolve_symbol_to_option("NSE:NIFTY2672129450CE")
+        assert resolved.underlying == "NIFTY"
+        assert resolved.strike == 29450.0
+        assert resolved.option_type == OptionType.CALL
+        assert resolved.expiry == date(2026, 7, 21)
+        assert resolved.lot_size == 65
+
+    def test_resolves_without_nse_prefix(self):
+        """BrokerAdapter.get_positions() hands symbols back with "NSE:"
+        already stripped — the reverse lookup has to work from that form
+        too, not just the fully-qualified one resolve_option_symbol returns."""
+        resolved = sm.resolve_symbol_to_option("NIFTY2672129450CE")
+        assert resolved.symbol == "NSE:NIFTY2672129450CE"
+        assert resolved.underlying == "NIFTY"
+
+    def test_resolves_stock_monthly_symbol(self):
+        resolved = sm.resolve_symbol_to_option("SBIN26JUL600CE")
+        assert resolved.underlying == "SBIN"
+        assert resolved.strike == 600.0
+        assert resolved.option_type == OptionType.CALL
+        assert resolved.lot_size == 750
+
+    def test_put_resolves_independently_of_call(self):
+        resolved = sm.resolve_symbol_to_option("NSE:NIFTY2672129450PE")
+        assert resolved.option_type == OptionType.PUT
+
+    def test_unknown_symbol_raises(self):
+        with pytest.raises(sm.SymbolMasterError):
+            sm.resolve_symbol_to_option("NSE:NOTAREALSYMBOL123CE")
+
+    def test_futures_symbol_never_matches(self):
+        """The sample's only BANKNIFTY row is a future (instrument_type 11,
+        strike -1, option_type XX) — a reverse option lookup must not
+        match it even though the symbol string itself is a valid row."""
+        with pytest.raises(sm.SymbolMasterError):
+            sm.resolve_symbol_to_option("NSE:BANKNIFTY26JULFUT")
+
+    def test_resolve_option_symbol_also_populates_underlying(self):
+        """resolve_option_symbol (the forward direction) gained the same
+        `underlying` field on ResolvedOption — confirm it's actually set,
+        not just defaulted."""
+        resolved = sm.resolve_option_symbol(
+            "NIFTY", date(2026, 7, 21), 29450.0, OptionType.CALL,
+        )
+        assert resolved.underlying == "NIFTY"
+
+
 class TestCaching:
 
     def test_second_call_uses_cache_not_network(self, _mock_master_download):

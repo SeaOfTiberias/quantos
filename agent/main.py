@@ -723,6 +723,88 @@ def _run_options_webhook_check(broker, cloud_url: str, headers: dict,
         logger.error("Options webhook: unknown action %r for %s", action, underlying)
 
 
+def _auto_register_manual_options_positions(broker, options_positions: dict) -> None:
+    """
+    Registers option positions that exist in the broker account but weren't
+    opened through QuantOS's own /webhook/options "open" flow — e.g. placed
+    by hand via TradingView's Fyers trading panel (Fyers is a native
+    TradingView broker integration, so an order placed there lands directly
+    in this same Fyers account this agent manages). Without this,
+    _handle_options_webhook_close has nothing to find: it only ever reads
+    options_positions, which _handle_options_webhook_open is otherwise the
+    only writer of. This closes that gap so a Pine-computed trailing-stop
+    "close" alert can flatten a manually-placed position exactly like it
+    already does for a QuantOS-opened one.
+
+    Runs every tick, same cadence as the options webhook check below — a
+    manually-placed entry should be registered promptly so a trailing-stop
+    alert fired shortly after doesn't miss it. Uses
+    fyers_symbol_master.resolve_symbol_to_option to identify which broker
+    positions are options at all (equities/futures raise SymbolMasterError
+    and are skipped) and to recover the underlying/strike/expiry/CE-PE the
+    raw position doesn't carry on its own.
+
+    Registered as strategy="manual_single_leg" — a marker distinguishing
+    these from QuantOS-opened spreads in the store/cockpit/logs, and what
+    a mismatched `template` on the close alert will be compared against
+    (see _handle_options_webhook_close's warning path; a mismatch there
+    still closes the position, it just logs).
+    """
+    try:
+        broker_positions = broker.get_positions()
+    except Exception as e:
+        logger.error("Auto-register: failed to fetch broker positions: %s", e)
+        return
+
+    for p in broker_positions:
+        if p.quantity == 0:
+            continue  # flat/closed line some brokers still return
+
+        try:
+            resolved = options_symbol_master.resolve_symbol_to_option(p.symbol)
+        except options_symbol_master.SymbolMasterError:
+            continue  # not an option symbol (equity/future/unrecognized) — not ours
+
+        underlying = resolved.underlying
+        if has_options_position(options_positions, underlying):
+            # Either this exact position is already tracked (re-seen next
+            # tick, expected steady state), or a second manual position
+            # exists for an underlying that already has one — the store's
+            # one-open-position-per-underlying invariant isn't this
+            # function's call to override, so leave it alone either way.
+            continue
+
+        if resolved.lot_size <= 0 or p.quantity % resolved.lot_size != 0:
+            logger.warning(
+                "Auto-register: %s quantity %d doesn't divide evenly by lot "
+                "size %d — skipping rather than guessing a lot count",
+                p.symbol, p.quantity, resolved.lot_size)
+            continue
+
+        lots = abs(p.quantity) // resolved.lot_size
+        action = "BUY" if p.quantity > 0 else "SELL"
+        leg = {
+            "action": action, "option_type": resolved.option_type.value,
+            "strike": resolved.strike, "premium": p.average_price,
+            "quantity": lots, "symbol": resolved.symbol,
+            "lot_size": resolved.lot_size,
+        }
+
+        from core.options.positions import OptionsPosition
+        add_options_position(options_positions, OptionsPosition(
+            signal_id=f"MANUAL-{underlying}-{int(time.time())}",
+            underlying=underlying, strategy="manual_single_leg",
+            expiry=resolved.expiry.isoformat(), legs=[leg],
+            entry_date=datetime.now(timezone.utc).isoformat(),
+        ))
+        logger.info(
+            "Auto-registered manually-placed option position: %s %s %s "
+            "strike=%s qty=%d (lots=%d) avg=%.2f — a trailing-stop close "
+            "alert for %s will now find and flatten this",
+            action, underlying, resolved.option_type.value, resolved.strike,
+            p.quantity, lots, p.average_price, underlying)
+
+
 def _handle_options_webhook_open(broker, cloud_url: str, headers: dict,
                                   options_positions: dict, underlying: str,
                                   template_value: str, lots: int) -> None:
@@ -1361,6 +1443,10 @@ def run_agent(config: dict):
             # regime-gating semantics (see _run_options_trigger's docstring).
             options_cfg = config.get("options", {})
             if bool(options_cfg.get("enabled", False)):
+                try:
+                    _auto_register_manual_options_positions(broker, opts_positions)
+                except Exception as e:
+                    logger.error("Auto-register manual options positions failed: %s", e)
                 try:
                     _run_options_webhook_check(
                         broker, cloud_url, headers, opts_positions,

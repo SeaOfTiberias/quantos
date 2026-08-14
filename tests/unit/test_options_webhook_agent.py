@@ -12,7 +12,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import agent.main as main
+from core.brokers.base import Position, ProductType
 from core.options.executor import FlattenResult
+from core.options.fyers_symbol_master import ResolvedOption, SymbolMasterError
 from core.options.models import OptionChainSnapshot, OptionLeg, OptionType
 from core.options.positions import OptionsPosition
 
@@ -225,3 +227,120 @@ class TestHandleOptionsWebhookClose:
         main._handle_options_webhook_close(MagicMock(), "http://cloud", {}, positions,
                                            "NIFTY", "bull_call_spread")
         assert "NIFTY" in positions
+
+
+class TestAutoRegisterManualOptionsPositions:
+    """agent._auto_register_manual_options_positions — closes the gap where
+    a position placed by hand (e.g. via TradingView's Fyers trading panel,
+    bypassing QuantOS's own /webhook/options 'open' flow) has no entry in
+    the options_positions store, so a trailing-stop 'close' webhook fired
+    for it later would otherwise find nothing to flatten."""
+
+    def _position(self, symbol, qty, avg=100.0):
+        return Position(symbol=symbol, quantity=qty, average_price=avg,
+                         current_price=avg, pnl=0.0, pnl_percent=0.0,
+                         product_type=ProductType.INTRADAY)
+
+    def _resolved(self, underlying="TVSMOTOR", strike=4350.0,
+                  option_type=OptionType.CALL, lot_size=1000):
+        return ResolvedOption(
+            symbol=f"NSE:{underlying}25AUG{int(strike)}{option_type.value}",
+            lot_size=lot_size, expiry=date(2026, 8, 25), strike=strike,
+            option_type=option_type, underlying=underlying,
+        )
+
+    def test_registers_new_manual_option_position(self, monkeypatch):
+        broker = MagicMock()
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 1000, avg=52.5)]
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: self._resolved())
+
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)
+
+        assert "TVSMOTOR" in positions
+        pos = positions["TVSMOTOR"]
+        assert pos.strategy == "manual_single_leg"
+        assert pos.legs == [{
+            "action": "BUY", "option_type": "CE", "strike": 4350.0, "premium": 52.5,
+            "quantity": 1, "symbol": "NSE:TVSMOTOR25AUG4350CE", "lot_size": 1000,
+        }]
+
+    def test_short_position_registers_as_sell(self, monkeypatch):
+        broker = MagicMock()
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", -1000)]
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: self._resolved())
+
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)
+        assert positions["TVSMOTOR"].legs[0]["action"] == "SELL"
+
+    def test_skips_zero_quantity_position(self, monkeypatch):
+        broker = MagicMock()
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 0)]
+        called = {}
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: called.setdefault("called", True))
+
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)
+        assert positions == {}
+        assert "called" not in called   # never even attempted to resolve a flat line
+
+    def test_skips_non_option_position(self, monkeypatch):
+        """An equity position's symbol won't resolve against the option
+        symbol master — must be skipped, not raise."""
+        broker = MagicMock()
+        broker.get_positions.return_value = [self._position("RELIANCE", 10)]
+
+        def _raise(symbol, **k):
+            raise SymbolMasterError(f"{symbol} not an option")
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option", _raise)
+
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)
+        assert positions == {}
+
+    def test_skips_underlying_already_tracked(self, monkeypatch):
+        existing = OptionsPosition(signal_id="SIG-1", underlying="TVSMOTOR",
+                                   strategy="manual_single_leg", expiry="2026-08-25",
+                                   legs=[{"symbol": "NSE:TVSMOTOR25AUG4300CE"}])
+        broker = MagicMock()
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 1000)]
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: self._resolved())
+
+        positions = {"TVSMOTOR": existing}
+        main._auto_register_manual_options_positions(broker, positions)
+        # Untouched — not overwritten with the newly-seen position.
+        assert positions["TVSMOTOR"] is existing
+
+    def test_skips_lot_size_mismatch_without_raising(self, monkeypatch):
+        broker = MagicMock()
+        # 999 doesn't divide evenly by lot_size=1000.
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 999)]
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: self._resolved())
+
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)
+        assert positions == {}
+
+    def test_broker_fetch_failure_does_not_raise(self, monkeypatch):
+        broker = MagicMock()
+        broker.get_positions.side_effect = RuntimeError("broker unreachable")
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)   # must not raise
+        assert positions == {}
+
+    def test_multiple_lots_computed_correctly(self, monkeypatch):
+        broker = MagicMock()
+        # 3 lots of 1000 = 3000 net quantity.
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 3000)]
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: self._resolved())
+
+        positions = {}
+        main._auto_register_manual_options_positions(broker, positions)
+        assert positions["TVSMOTOR"].legs[0]["quantity"] == 3
