@@ -14,7 +14,19 @@ env/
 .env
 .env.local
 *.env.local
+# Vite/Next per-mode overrides: `.env.development.local` does NOT match
+# `*.env.local`, so cockpit/.env.development.local sat untracked and
+# UN-ignored — one `git add -A` from being published.
+.env.*.local
+*.env.*.local
 agent/config.yaml
+# Timestamped hand-made backups of the live config carry the same Fyers and
+# cloud credentials as the original. `agent/config.yaml` alone does not match
+# `agent/config.yaml.bak-20260716`.
+agent/config.yaml.*
+!agent/config.yaml.example
+*.bak
+*.bak-*
 
 # IDE
 .vscode/
