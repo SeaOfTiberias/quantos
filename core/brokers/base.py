@@ -89,6 +89,79 @@ class OHLCV:
     volume: int
 
 
+@dataclass(frozen=True)
+class DepthLevel:
+    """One price level of the order book."""
+    price: float
+    quantity: int
+    orders: int = 0        # number of resting orders, when the broker reports it
+
+
+@dataclass(frozen=True)
+class MarketDepth:
+    """A snapshot of the order book, both sides, best price first.
+
+    `bids` descend in price, `asks` ascend — so index 0 of each is the touch.
+    Depth is what separates an execution decision from a price decision: a
+    quote tells you where the market is, depth tells you how much of it you
+    can have before you move it.
+
+    Levels are what the broker DISPLAYS. Hidden/iceberg size is not here, so
+    treat displayed quantity as a lower bound on what is really available —
+    never as the whole book.
+    """
+    symbol: str
+    bids: tuple[DepthLevel, ...]
+    asks: tuple[DepthLevel, ...]
+    timestamp: datetime
+
+    @property
+    def best_bid(self) -> Optional[float]:
+        return self.bids[0].price if self.bids else None
+
+    @property
+    def best_ask(self) -> Optional[float]:
+        return self.asks[0].price if self.asks else None
+
+    @property
+    def mid(self) -> Optional[float]:
+        """Mid price, or None when either side is unquoted.
+
+        Deliberately None rather than falling back to the one-sided price:
+        a book with no bid has no mid, and substituting the ask would make
+        every slippage measurement against it silently wrong.
+        """
+        if self.best_bid is None or self.best_ask is None:
+            return None
+        return (self.best_bid + self.best_ask) / 2.0
+
+    @property
+    def spread(self) -> Optional[float]:
+        if self.best_bid is None or self.best_ask is None:
+            return None
+        return self.best_ask - self.best_bid
+
+    @property
+    def spread_bps(self) -> Optional[float]:
+        mid = self.mid
+        if mid is None or mid <= 0:
+            return None
+        return self.spread / mid * 10_000.0
+
+    def side(self, direction: "OrderDirection") -> tuple[DepthLevel, ...]:
+        """The levels a market order in `direction` would consume.
+
+        A BUY lifts the ASK side; a SELL hits the BID side. Getting this
+        backwards is the classic sign-error in execution code, so it lives in
+        one place rather than at every call site.
+        """
+        return self.asks if direction == OrderDirection.BUY else self.bids
+
+    @property
+    def is_two_sided(self) -> bool:
+        return bool(self.bids and self.asks)
+
+
 @dataclass
 class Quote:
     """
@@ -212,6 +285,21 @@ class BrokerAdapter(ABC):
         """
         raise NotImplementedError(
             f"{self.__class__.__name__} does not support quote snapshots."
+        )
+
+    def get_market_depth(self, symbol: str) -> "MarketDepth":
+        """
+        Get the current order book for one symbol.
+
+        Default raises NotImplementedError — brokers exposing a depth
+        endpoint should override. Consumers must treat the absence as
+        "cannot slice", not as "depth is empty": core/execution/slicer.py
+        refuses to trade rather than falling back to an unsliced order,
+        because an unsliced order is exactly the thing slicing exists to
+        avoid.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support market depth."
         )
 
     # ── Options (used by Epic 7) ──────────────────────────────────────────────

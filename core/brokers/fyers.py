@@ -13,7 +13,8 @@ import logging
 from core.brokers.base import (
     BrokerAdapter, BrokerError, InsufficientFundsError,
     Order, OrderResult, OrderStatus, OrderDirection,
-    OrderType, Position, OHLCV, Quote, ProductType
+    OrderType, Position, OHLCV, Quote, ProductType,
+    DepthLevel, MarketDepth,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,33 @@ _INDEX_SYMBOL_MAP = {
     "NIFTY PSU BANK":  "NIFTYPSUBANK",
     "NIFTY INFRA":     "NIFTYINFRA",
 }
+
+
+def _parse_depth_side(payload: dict, keys: tuple[str, ...]) -> tuple[DepthLevel, ...]:
+    """Read one side of Fyers' depth payload into DepthLevels.
+
+    Levels with no quantity are dropped rather than kept as zero-size rows —
+    core/execution/slicing.py treats displayed quantity as the budget for a
+    slice, and an empty level contributes nothing but noise to the level
+    count. Ordering is preserved as the broker sent it (best price first).
+    """
+    raw = None
+    for key in keys:
+        if key in payload:
+            raw = payload[key]
+            break
+    if not raw:
+        return ()
+
+    levels = []
+    for entry in raw:
+        price = float(entry.get("price", 0) or 0)
+        quantity = int(entry.get("volume", entry.get("qty", 0)) or 0)
+        if price <= 0 or quantity <= 0:
+            continue
+        levels.append(DepthLevel(price=price, quantity=quantity,
+                                 orders=int(entry.get("ord", 0) or 0)))
+    return tuple(levels)
 
 
 def _fyers_symbol(symbol: str) -> str:
@@ -419,6 +447,45 @@ class FyersBroker(BrokerAdapter):
                     change_pct=v.get("chp", 0.0) or 0.0,
                 )
         return out
+
+    def get_market_depth(self, symbol: str) -> MarketDepth:
+        """
+        Fetch the order book for one symbol via Fyers' /depth endpoint.
+
+        NOT YET LIVE-VERIFIED — same caveat as core/options/chain_builder.py.
+        The response shape below is written from the SDK's documented form
+        (`d` keyed by fully-qualified symbol, each carrying `bids` and `ask`
+        lists of {price, volume, ord}), not from a captured response. Run it
+        once against a live token and log the raw payload before letting it
+        size a real order.
+
+        Note Fyers' asymmetric key names: the buy side is `bids` (plural) and
+        the sell side is `ask` (singular). Both are accepted here in either
+        form rather than assuming, the same defensive read
+        core/options/chain_builder.py's `_field` uses.
+        """
+        self._assert_connected()
+        fyers_symbol = _fyers_symbol(symbol)
+        response = self._client.depth(data={"symbol": fyers_symbol, "ohlcv_flag": "1"})
+        if response.get("code") != 200:
+            raise BrokerError(f"Market depth fetch failed for {symbol}: {response}")
+
+        payload = (response.get("d") or {}).get(fyers_symbol)
+        if payload is None:
+            # Some responses key by the caller's symbol rather than the
+            # qualified one; fall back to the single entry if there is one.
+            entries = list((response.get("d") or {}).values())
+            if len(entries) != 1:
+                raise BrokerError(
+                    f"Market depth response for {symbol} had no usable entry: {response}")
+            payload = entries[0]
+
+        return MarketDepth(
+            symbol=symbol,
+            bids=_parse_depth_side(payload, ("bids", "bid")),
+            asks=_parse_depth_side(payload, ("ask", "asks")),
+            timestamp=datetime.now(timezone.utc),
+        )
 
     def get_option_chain(self, underlying: str, expiry: str) -> dict:
         self._assert_connected()
