@@ -6,7 +6,7 @@ https://public.fyers.in/sym_details/NSE_FO.csv on 2026-07-21.
 """
 
 import pytest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 
 from core.options import fyers_symbol_master as sm
@@ -109,11 +109,48 @@ class TestGetLotSize:
             sm.get_lot_size("NOTAREALSYMBOL")
 
 
-class TestListExpiries:
+def _clock_fixed_at(day: date):
+    """A `datetime` stand-in whose `.now()` is pinned to `day`.
 
-    def test_lists_only_future_or_today_expiries(self):
-        expiries = sm.list_expiries("NIFTY")
-        assert date(2026, 7, 21) in expiries
+    Subclasses `datetime` rather than faking it wholesale because
+    `list_expiries` reaches the clock twice over: `datetime.now()` for
+    "today", and `datetime.fromtimestamp()` inside `_row_expiry` to decode
+    each row's expiry epoch. Only the first needs pinning; inheriting leaves
+    the second working.
+    """
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(day.year, day.month, day.day, 12, 0, tzinfo=tz)
+
+    return _Frozen
+
+
+class TestListExpiries:
+    """`list_expiries` is the one function here that consults the wall clock,
+    so every test pins it.
+
+    Until 2026-08-14 this class asserted against the real clock and passed
+    only by accident: the sample master's expiries are 21 and 28 Jul 2026, so
+    the moment real time moved past them `list_expiries` correctly returned
+    nothing and the suite went red with no code change behind it. Pinning the
+    clock also lets both halves of the documented "future-or-today" contract
+    be tested, which asserting against `date.today()` never could.
+    """
+
+    def test_lists_expiries_still_ahead(self, monkeypatch):
+        monkeypatch.setattr(sm, "datetime", _clock_fixed_at(date(2026, 7, 1)))
+        assert sm.list_expiries("NIFTY") == [date(2026, 7, 21)]
+
+    def test_includes_an_expiry_falling_today(self, monkeypatch):
+        """The "or-today" half: expiry day itself is still tradable, so the
+        contract expiring this session must not be filtered out of the list."""
+        monkeypatch.setattr(sm, "datetime", _clock_fixed_at(date(2026, 7, 21)))
+        assert sm.list_expiries("NIFTY") == [date(2026, 7, 21)]
+
+    def test_excludes_expiries_already_past(self, monkeypatch):
+        monkeypatch.setattr(sm, "datetime", _clock_fixed_at(date(2026, 7, 22)))
+        assert sm.list_expiries("NIFTY") == []
 
     def test_unknown_underlying_raises(self):
         with pytest.raises(sm.SymbolMasterError):
