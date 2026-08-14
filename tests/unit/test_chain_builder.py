@@ -9,6 +9,7 @@ mismatch surfaces here first.
 import pytest
 from datetime import date
 
+from core.options.greeks import FALLBACK_IV
 from core.options.chain_builder import (
     build_chain_snapshot, ChainBuildError,
     IV_RANK_PLACEHOLDER, IV_PERCENTILE_PLACEHOLDER,
@@ -118,3 +119,60 @@ class TestBuildChainSnapshot:
                 underlying="NIFTY", expiry=date(2026, 7, 21), spot_price=22000,
                 raw_chain={}, days_to_expiry=14,
             )
+
+
+class TestEstimatedIvIsFlagged:
+    """A leg whose IV could not be solved carries FALLBACK_IV. The value is
+    kept so nothing downstream breaks, but the flag records that it was
+    invented — otherwise a fabricated 0.18 is indistinguishable from a solved
+    one inside an OptionLeg, and gets sized off exactly the same."""
+
+    def _chain(self, rows):
+        return {"optionsChain": rows}
+
+    def _row(self, strike, ltp, opt="CE"):
+        return {"strike_price": strike, "option_type": opt, "ltp": ltp,
+                "oi": 100, "volume": 10}
+
+    def test_solvable_leg_is_not_flagged(self):
+        snap = build_chain_snapshot(
+            underlying="NIFTY", expiry=date(2026, 8, 28), spot_price=24300.0,
+            raw_chain=self._chain([self._row(24300.0, 150.0)]), days_to_expiry=5,
+        )
+        assert snap.legs[0].implied_vol_estimated is False
+        assert snap.legs[0].implied_vol != FALLBACK_IV
+
+    def test_deep_itm_leg_at_intrinsic_is_flagged(self):
+        """LTP at intrinsic leaves no time value to invert — routine on a real
+        chain, so it must not be an error, only a flag."""
+        snap = build_chain_snapshot(
+            underlying="NIFTY", expiry=date(2026, 8, 28), spot_price=24300.0,
+            raw_chain=self._chain([self._row(20000.0, 4300.0)]), days_to_expiry=5,
+        )
+        leg = snap.legs[0]
+        assert leg.implied_vol_estimated is True
+        assert leg.implied_vol == FALLBACK_IV
+
+    def test_a_flagged_leg_does_not_abort_the_chain(self):
+        snap = build_chain_snapshot(
+            underlying="NIFTY", expiry=date(2026, 8, 28), spot_price=24300.0,
+            raw_chain=self._chain([
+                self._row(20000.0, 4300.0),      # unsolvable
+                self._row(24300.0, 150.0),       # solvable
+            ]),
+            days_to_expiry=5,
+        )
+        assert len(snap.legs) == 2
+        assert [l.implied_vol_estimated for l in snap.legs] == [True, False]
+
+    def test_caller_can_filter_to_trustworthy_legs(self):
+        """The whole point of the flag."""
+        snap = build_chain_snapshot(
+            underlying="NIFTY", expiry=date(2026, 8, 28), spot_price=24300.0,
+            raw_chain=self._chain([
+                self._row(20000.0, 4300.0), self._row(24300.0, 150.0),
+            ]),
+            days_to_expiry=5,
+        )
+        solved = [l for l in snap.legs if not l.implied_vol_estimated]
+        assert [l.strike for l in solved] == [24300.0]

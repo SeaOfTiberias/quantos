@@ -3,7 +3,10 @@ US-05b Options Intelligence — Greeks Calculator Tests
 """
 
 import pytest
-from core.options.greeks import compute_greeks, estimate_probability_of_profit, implied_volatility
+from core.options.greeks import (
+    FALLBACK_IV, ImpliedVolatilityError, compute_greeks,
+    estimate_probability_of_profit, implied_volatility,
+)
 from core.options.models import OptionType
 
 
@@ -215,3 +218,67 @@ class TestImpliedVolatility:
         iv = implied_volatility(market_price=5000, spot=22000, strike=22000,
                                  days_to_expiry=30, option_type=OptionType.CALL)
         assert 0.01 <= iv <= 5.0
+
+
+class TestStrictImpliedVolatility:
+    """`strict=True` refuses to guess.
+
+    The non-strict path returns FALLBACK_IV (0.18) whenever inversion is
+    impossible, and once that constant is inside an OptionLeg it is
+    indistinguishable from a genuinely solved 0.18 — it gets averaged, ranked
+    and sized off exactly as though it were real. Two research scripts already
+    hand-mirror this function's preconditions to keep the constant out of their
+    samples; strict mode is so nothing else has to.
+    """
+
+    def _call(self, **kw):
+        params = dict(market_price=150.0, spot=24300.0, strike=24300.0,
+                      days_to_expiry=5, option_type=OptionType.CALL)
+        params.update(kw)
+        return params
+
+    def test_solvable_price_is_unaffected_by_strict(self):
+        params = self._call()
+        assert (implied_volatility(**params, strict=True)
+                == implied_volatility(**params, strict=False))
+
+    def test_expired_option_raises(self):
+        with pytest.raises(ImpliedVolatilityError, match="no time value"):
+            implied_volatility(**self._call(days_to_expiry=0), strict=True)
+
+    def test_non_positive_price_raises(self):
+        with pytest.raises(ImpliedVolatilityError, match="not positive"):
+            implied_volatility(**self._call(market_price=0.0), strict=True)
+
+    def test_price_below_intrinsic_raises(self):
+        """A deep-ITM call trading at less than spot-strike has no time value
+        left to invert."""
+        with pytest.raises(ImpliedVolatilityError, match="intrinsic"):
+            implied_volatility(**self._call(strike=20000.0, market_price=100.0),
+                               strict=True)
+
+    def test_price_outside_the_solver_bracket_raises(self):
+        """Previously bisection converged on the 5.0 ceiling and returned it as
+        though solved — an answer-shaped non-answer."""
+        with pytest.raises(ImpliedVolatilityError, match="bracket"):
+            implied_volatility(**self._call(market_price=20000.0), strict=True)
+
+    def test_that_same_price_still_returns_the_ceiling_without_strict(self):
+        """Non-strict behaviour is deliberately unchanged — existing callers
+        were written against it."""
+        assert implied_volatility(**self._call(market_price=20000.0)) == FALLBACK_IV
+
+    @pytest.mark.parametrize("kw", [
+        {"days_to_expiry": 0},
+        {"market_price": 0.0},
+        {"strike": 20000.0, "market_price": 100.0},
+        {"market_price": 20000.0},
+    ])
+    def test_every_uninvertible_case_returns_the_constant_when_not_strict(self, kw):
+        assert implied_volatility(**self._call(**kw)) == FALLBACK_IV
+
+    def test_the_error_names_the_contract(self):
+        """A raise that does not say which leg failed is useless in a 60-leg
+        chain."""
+        with pytest.raises(ImpliedVolatilityError, match="24300"):
+            implied_volatility(**self._call(days_to_expiry=0), strict=True)

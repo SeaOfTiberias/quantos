@@ -44,6 +44,12 @@ class OptionLeg:
     open_interest:    int
     volume:           int
     implied_vol:      float          # as a decimal, e.g. 0.18 = 18% IV
+    # True when implied_vol is greeks.FALLBACK_IV because the price could not
+    # be inverted (no time value left, price outside the solver's bracket),
+    # NOT because the market actually trades at 18%. The value is kept rather
+    # than nulled so no existing consumer breaks, but a caller that sizes or
+    # ranks off IV can now exclude the legs where the number was invented.
+    implied_vol_estimated: bool = False
 
     # Greeks — populated by compute_greeks() or pulled from broker if available
     delta:            Optional[float] = None

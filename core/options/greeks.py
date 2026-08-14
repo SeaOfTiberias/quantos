@@ -120,6 +120,20 @@ def compute_greeks(
     )
 
 
+FALLBACK_IV = 0.18   # the NIFTY-ish default returned when inversion is impossible
+
+VOL_FLOOR, VOL_CEILING = 0.01, 5.0
+
+
+class ImpliedVolatilityError(ValueError):
+    """The market price cannot be inverted to an implied volatility.
+
+    Raised only when `implied_volatility(..., strict=True)`. The non-strict
+    default returns FALLBACK_IV instead, preserving the behaviour every
+    existing caller was written against.
+    """
+
+
 def implied_volatility(
     market_price:   float,
     spot:           float,
@@ -129,6 +143,7 @@ def implied_volatility(
     risk_free_rate: float = DEFAULT_RISK_FREE_RATE,
     tolerance:      float = 0.001,
     max_iterations: int = 100,
+    strict:         bool = False,
 ) -> float:
     """
     Invert Black-Scholes to solve for implied volatility given a traded
@@ -139,25 +154,73 @@ def implied_volatility(
     weeklies).
 
     Returns a decimal (e.g. 0.18 = 18%), floored/capped to [0.01, 5.0].
-    Falls back to 0.18 (a reasonable NIFTY-ish default) if the price is
-    below intrinsic value or otherwise un-invertible.
+
+    `strict` controls what happens when the price is NOT invertible:
+
+      • False (default) — return FALLBACK_IV (0.18). Behaviour is unchanged
+        from before this parameter existed, so every existing caller is
+        unaffected.
+      • True — raise `ImpliedVolatilityError` naming the reason.
+
+    Prefer `strict=True` in anything that feeds a trading decision. A
+    fabricated 0.18 is indistinguishable from a solved 0.18 once it is in a
+    dataclass, and it will be averaged, ranked and sized off exactly as
+    though it were real. Two research scripts already hand-mirror this
+    function's fallback preconditions to avoid absorbing the constant into a
+    sample (`_would_hit_iv_fallback` in scripts/validate_vol_skew_signal.py
+    and validate_vol_term_structure_signal.py) — that duplication exists
+    because the non-strict path cannot report the difference.
+
+    Three conditions are un-invertible, and strict mode distinguishes them:
+      1. no time to expiry, or a non-positive price;
+      2. price at or below intrinsic — no time value left to invert;
+      3. price outside what [0.01, 5.0] vol can produce, so bisection would
+         converge on a bracket endpoint rather than a solution. The
+         non-strict path returns that endpoint silently, which looks like an
+         answer.
     """
-    if days_to_expiry <= 0 or market_price <= 0:
-        return 0.18
+    def _fallback(reason: str) -> float:
+        if strict:
+            raise ImpliedVolatilityError(
+                f"cannot invert {option_type.value} {strike} @ {market_price} "
+                f"(spot {spot}, {days_to_expiry}d): {reason}"
+            )
+        return FALLBACK_IV
+
+    if days_to_expiry <= 0:
+        return _fallback(f"days_to_expiry={days_to_expiry} leaves no time value")
+    if market_price <= 0:
+        return _fallback(f"market_price={market_price} is not positive")
 
     intrinsic = (max(0.0, spot - strike) if option_type == OptionType.CALL
                  else max(0.0, strike - spot))
     if market_price <= intrinsic:
-        return 0.18  # no time value left to invert — floor rather than guess
+        return _fallback(
+            f"price {market_price} is at or below intrinsic {intrinsic:.2f} — "
+            f"no time value to invert"
+        )
 
-    lo, hi = 0.01, 5.0
-    for _ in range(max_iterations):
-        mid = (lo + hi) / 2.0
-        price = compute_greeks(
+    def _price_at(vol: float) -> float:
+        return compute_greeks(
             spot=spot, strike=strike, days_to_expiry=days_to_expiry,
-            implied_vol=mid, option_type=option_type,
+            implied_vol=vol, option_type=option_type,
             risk_free_rate=risk_free_rate,
         ).theoretical_price
+
+    lo, hi = VOL_FLOOR, VOL_CEILING
+
+    # Bracket check. Without it, a price above the ceiling's theoretical value
+    # bisects toward 5.0 and is returned as though solved — the failure mode
+    # this project would otherwise only notice as an implausible IV downstream.
+    if market_price > _price_at(hi):
+        return _fallback(
+            f"price {market_price} exceeds the {hi:.0%}-vol value "
+            f"{_price_at(hi):.2f}; outside the solver's bracket"
+        )
+
+    for _ in range(max_iterations):
+        mid = (lo + hi) / 2.0
+        price = _price_at(mid)
 
         if abs(price - market_price) < tolerance:
             return round(mid, 4)
@@ -166,6 +229,15 @@ def implied_volatility(
         else:
             hi = mid
 
+    # Bisection halves the bracket each pass, so 100 iterations over [0.01, 5]
+    # is far more than enough; exhausting them means something is wrong with
+    # the inputs rather than the search.
+    if strict:
+        raise ImpliedVolatilityError(
+            f"did not converge in {max_iterations} iterations for "
+            f"{option_type.value} {strike} @ {market_price} (spot {spot}, "
+            f"{days_to_expiry}d); bracket still [{lo:.4f}, {hi:.4f}]"
+        )
     return round((lo + hi) / 2.0, 4)
 
 

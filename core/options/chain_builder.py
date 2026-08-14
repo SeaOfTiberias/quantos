@@ -32,7 +32,9 @@ not a new blocker.
 import logging
 from datetime import date
 
-from core.options.greeks import implied_volatility
+from core.options.greeks import (
+    FALLBACK_IV, ImpliedVolatilityError, implied_volatility,
+)
 from core.options.models import OptionChainSnapshot, OptionLeg, OptionType
 
 logger = logging.getLogger(__name__)
@@ -94,6 +96,7 @@ def build_chain_snapshot(
     legs: list[OptionLeg] = []
     total_call_oi = 0
     total_put_oi = 0
+    estimated_legs = 0      # legs whose IV could not be solved from their LTP
 
     for row in rows:
         opt_type_raw = _field(row, _OPTION_TYPE_KEYS, required=False)
@@ -111,15 +114,35 @@ def build_chain_snapshot(
         else:
             total_put_oi += oi
 
-        iv = implied_volatility(
-            market_price=ltp, spot=spot_price, strike=strike,
-            days_to_expiry=days_to_expiry, option_type=option_type,
-        )
+        # Solve strictly so a leg whose price carries no invertible time value
+        # is RECORDED as estimated rather than silently carrying the 0.18
+        # constant into the strategy builder as though it were solved. Deep-ITM
+        # legs legitimately fail this on most chains, so it is not an error —
+        # but a caller ranking or sizing off IV needs to be able to tell.
+        try:
+            iv = implied_volatility(
+                market_price=ltp, spot=spot_price, strike=strike,
+                days_to_expiry=days_to_expiry, option_type=option_type,
+                strict=True,
+            )
+            iv_estimated = False
+        except ImpliedVolatilityError:
+            iv = FALLBACK_IV
+            iv_estimated = True
+            estimated_legs += 1
 
         legs.append(OptionLeg(
             strike=strike, option_type=option_type, expiry=expiry,
             premium=ltp, open_interest=oi, volume=volume, implied_vol=iv,
+            implied_vol_estimated=iv_estimated,
         ))
+
+    if estimated_legs:
+        logger.info(
+            "Chain %s %s: %d of %d legs could not have IV solved from their LTP "
+            "(no invertible time value) — those carry FALLBACK_IV %.2f and are "
+            "flagged implied_vol_estimated=True",
+            underlying, expiry, estimated_legs, len(legs), FALLBACK_IV)
 
     if not legs:
         raise ChainBuildError(f"No CE/PE legs parsed for {underlying} {expiry}")
