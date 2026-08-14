@@ -101,7 +101,8 @@ def _load_broker():
 def _fetch_daily(broker, symbol: str) -> list[OHLCV]:
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=_HISTORY_DAYS)
-    return broker.get_historical_data(symbol, "1D", start, end)
+    # "1d" — the adapters match the timeframe literally; "1D" raises.
+    return broker.get_historical_data(symbol, "1d", start, end)
 
 
 def _print_report(report: AuditReport, *, verbose: bool) -> None:

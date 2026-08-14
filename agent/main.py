@@ -825,7 +825,12 @@ def _vault_gate_allows(config: dict, symbol: str, broker, *, context: str) -> bo
 
     try:
         end = datetime.now(timezone.utc)
-        daily = broker.get_historical_data(symbol, "1D", end - timedelta(days=600), end)
+        # "1d", lower case — core/brokers/fyers.py matches the timeframe
+        # literally, so "1D" raises BrokerError, which the except below turns
+        # into a permanent BLOCK. Off by default, so this never reached a
+        # live order, but the gate would have vetoed 100% of signals the
+        # moment it was switched on.
+        daily = broker.get_historical_data(symbol, "1d", end - timedelta(days=600), end)
     except Exception as e:
         # Fail closed, consistent with core/vault/gates.py: a gate that opens
         # when its own data feed breaks is worse than no gate.

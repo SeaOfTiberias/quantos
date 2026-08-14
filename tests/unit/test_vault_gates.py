@@ -283,6 +283,65 @@ class TestExecutionGatesAreOffByDefault:
         assert "history unavailable" in skipped[0]["reason"]
 
 
+class TestVaultGateAllows:
+    """`_vault_gate_allows` is the agent-side half of the options-webhook gate,
+    and until 2026-08-14 nothing exercised it — every test above monkeypatches
+    it away to check the *wiring*, which meant its own body was never run.
+
+    It shipped asking the broker for timeframe "1D". The adapters match the
+    string literally and raise on anything unknown, and this function's
+    except-clause turns any fetch failure into a permanent BLOCK. So the gate
+    would have vetoed 100% of signals the moment it was switched on, while
+    looking exactly like a working fail-closed gate in the logs.
+    """
+
+    def _broker(self, bars=None):
+        """A broker as strict about the timeframe as the real adapters."""
+        from core.brokers.base import BrokerError
+        from core.brokers.fyers import _TF_MAP
+
+        broker = MagicMock()
+
+        def _history(symbol, timeframe, from_date, to_date):
+            if timeframe not in _TF_MAP:
+                raise BrokerError(f"Unsupported timeframe: {timeframe}. "
+                                  f"Use one of: {list(_TF_MAP)}")
+            return rising_bars() if bars is None else bars
+
+        broker.get_historical_data.side_effect = _history
+        return broker
+
+    def test_requests_a_timeframe_the_adapters_actually_accept(self, vault):
+        import agent.main as main
+        allowed = main._vault_gate_allows(
+            {"vault": {"dir": str(vault), "notes": ["trend"]}},
+            "TEST", self._broker(), context="test")
+        assert allowed is True
+
+    def test_the_timeframe_is_exactly_1d(self, vault):
+        import agent.main as main
+        broker = self._broker()
+        main._vault_gate_allows({"vault": {"dir": str(vault), "notes": ["trend"]}},
+                                "TEST", broker, context="test")
+        assert broker.get_historical_data.call_args[0][1] == "1d"
+
+    def test_a_failing_rule_still_blocks(self, vault):
+        """The gate must keep vetoing for the RIGHT reason, not because its
+        own data fetch broke."""
+        import agent.main as main
+        assert main._vault_gate_allows(
+            {"vault": {"dir": str(vault), "notes": ["strict"]}},
+            "TEST", self._broker(), context="test") is False
+
+    def test_a_broken_fetch_blocks(self, vault):
+        import agent.main as main
+        broker = MagicMock()
+        broker.get_historical_data.side_effect = RuntimeError("socket closed")
+        assert main._vault_gate_allows(
+            {"vault": {"dir": str(vault), "notes": ["trend"]}},
+            "TEST", broker, context="test") is False
+
+
 class TestRsRatingFromRank:
 
     def test_top_rank_is_100(self):
