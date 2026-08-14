@@ -182,3 +182,49 @@ options:
                                      # — informational only, not read by any code yet. Documents the
                                      # deliberate scope decision so a future session doesn't assume
                                      # exits are being managed when they aren't.
+
+# ── Obsidian vault: qualitative strategy memory (2026-08-14) ─────────────────
+# Audits symbols against the rule blocks written into your Obsidian strategy
+# notes (obsidian_vault/QuantOS/*.md) before they reach an execution path.
+# See docs/OBSIDIAN_VAULT_INTEGRATION.md for the rule DSL and the fail-closed
+# contract.
+#
+# READ THIS BEFORE ENABLING A GATE: a non-PASS verdict BLOCKS. That includes
+# INSUFFICIENT_DATA (a rule couldn't be computed) and UNAVAILABLE (the vault
+# or note is missing). This is deliberate — a gate that opens when its own
+# inputs break is worse than no gate — but it means a typo'd note name, or a
+# newly-listed symbol with under 252 bars of history, silently stops trades.
+# Watch the shortlist's vault column for a few sessions before gating anything
+# that spends money.
+vault:
+  dir:                              # Vault directory. Blank = obsidian_vault/QuantOS
+                                     # in the repo, which is what git ships to the VM.
+                                     # $QUANTOS_VAULT_DIR overrides this.
+
+  # Notes used by the EXECUTION gates below. Filename stem or the note's
+  # frontmatter `quantos.id` both work. Conjunctive: every listed note must
+  # return PASS. An empty list with a gate enabled BLOCKS everything, rather
+  # than vacuously passing.
+  notes:
+    - minervini_vcp
+    - weinstein_stage2
+
+  # Momentum shortlist annotation. Safe: the shortlist has no execution path,
+  # so this only adds a column. On by default — it is how you build a feel for
+  # what the rules actually reject before trusting them with an order.
+  annotate_shortlist: true
+  shortlist_notes:
+    - minervini_vcp
+    - weinstein_stage2
+
+  # ── Execution gates. Both default OFF. ──────────────────────────────────
+  # Each adds a hard veto to a path that spends money. Enable one at a time
+  # and watch a full cycle before enabling the next.
+  gate_options_webhook: false       # Vetoes /webhook/options 'open'. Audits the
+                                     # UNDERLYING's cash series — Minervini and
+                                     # Weinstein are equity-structure methods and
+                                     # say nothing about the option itself.
+  gate_rotation_pilot: false        # Vetoes new entrants in the real-capital
+                                     # quarterly pilot. This is the only path with
+                                     # actual money behind it. Sells are NEVER
+                                     # filtered — exits must not depend on the vault.

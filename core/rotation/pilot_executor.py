@@ -90,6 +90,55 @@ async def _fetch_universe_series(broker: BrokerAdapter, universe: list[str],
     return symbol_series
 
 
+async def _vault_filter_buys(broker: BrokerAdapter, buys: list[str], sem: asyncio.Semaphore,
+                              vault_config: dict) -> tuple[list[str], list[dict]]:
+    """Audit each new entrant against the Obsidian vault's strategy notes.
+
+    Returns (allowed, skipped) where `skipped` carries a reason per rejected
+    symbol, in the same shape `result.skipped_buys` already uses.
+
+    Off unless `vault.gate_rotation_pilot` is true in agent/config.yaml. This
+    is the ONE path in the system that spends real money, so it does not
+    acquire a new veto by default — enabling it is a deliberate act, and a
+    supervised dry cycle should be watched before it runs live (same
+    discipline the pilot's own `dry_run` flag documents).
+
+    Sells are never filtered. A rule audit is an entry criterion; refusing to
+    exit a position because the vault could not be read would turn a research
+    aid into a risk. Same "refuse entries, keep managing exits" philosophy as
+    risk_guard and the kill switch above.
+    """
+    from core.vault.gates import audit_gate
+
+    notes = vault_config.get("notes", [])
+    to_date = datetime.now(timezone.utc)
+    from_date = to_date - timedelta(days=FETCH_WINDOW_DAYS)
+    from scripts.validate_regime_classifier import fetch_chunked_daily
+
+    allowed: list[str] = []
+    skipped: list[dict] = []
+    for symbol in buys:
+        try:
+            candles = await fetch_chunked_daily(broker, symbol, from_date, to_date, sem)
+        except Exception as e:
+            logger.error("Rotation pilot vault gate: history fetch failed for %s (%s) "
+                          "— SKIPPING the entry", symbol, e)
+            skipped.append({"symbol": symbol, "reason": f"vault gate: history unavailable ({e})"})
+            continue
+
+        decision = audit_gate(symbol, candles, notes,
+                              enabled=True, vault_dir=vault_config.get("dir"))
+        if decision.allowed:
+            allowed.append(symbol)
+            logger.info("Rotation pilot vault gate: %s cleared — %s", symbol, decision.reason)
+        else:
+            skipped.append({"symbol": symbol, "reason": f"vault gate: {decision.reason}"})
+            logger.warning("Rotation pilot vault gate: %s BLOCKED [%s] — %s",
+                            symbol, decision.verdict.value, decision.reason)
+
+    return allowed, skipped
+
+
 def _latest_price(symbol_series: dict, symbol: str, as_of: datetime) -> Optional[float]:
     series = symbol_series.get(symbol)
     if series is None:
@@ -119,6 +168,7 @@ async def run_quarterly_pilot_rebalance(
     trade_history_path,
     dry_run: bool = True,
     now: Optional[datetime] = None,
+    vault_config: Optional[dict] = None,
 ) -> Optional[PilotRebalanceResult]:
     """Runs at most one quarterly pilot rebalance. Returns None (no-op) if
     today hasn't reached the next quarter boundary yet, or that boundary was
@@ -203,14 +253,25 @@ async def run_quarterly_pilot_rebalance(
                             "entries this cycle.", reason, len(plan.buys))
             result.skipped_buys.extend({"symbol": s, "reason": f"halted: {reason}"} for s in plan.buys)
         else:
-            price_lookup = {s: _latest_price(symbol_series, s, as_of) for s in plan.buys}
+            # Obsidian vault audit (2026-08-14), default OFF. Filters new
+            # entrants against the strategy notes' written rules before any
+            # sizing happens, so a blocked name never reaches the order path.
+            buys = plan.buys
+            if (vault_config or {}).get("gate_rotation_pilot", False):
+                buys, vault_skipped = await _vault_filter_buys(
+                    broker, list(plan.buys), sem, vault_config or {})
+                result.skipped_buys.extend(vault_skipped)
+                logger.info("Rotation pilot: vault gate passed %d of %d new entrants",
+                            len(buys), len(plan.buys))
+
+            price_lookup = {s: _latest_price(symbol_series, s, as_of) for s in buys}
             try:
                 available_capital = float(broker.get_funds().get("available", 0) or 0)
             except Exception as e:
                 logger.warning("Rotation pilot: could not fetch available capital: %s", e)
                 available_capital = 0.0
 
-            sized, skipped = _size_new_entrants(plan.buys, price_lookup, available_capital, position_size)
+            sized, skipped = _size_new_entrants(buys, price_lookup, available_capital, position_size)
             result.skipped_buys.extend(skipped)
 
             for symbol, qty in sized.items():

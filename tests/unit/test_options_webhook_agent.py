@@ -54,7 +54,8 @@ class TestRunOptionsWebhookCheck:
                                                        }}))
         captured = {}
         monkeypatch.setattr(main, "_handle_options_webhook_open",
-                            lambda broker, cloud_url, headers, positions, underlying, template, lots:
+                            lambda broker, cloud_url, headers, positions, underlying, template,
+                            lots, config=None:
                             captured.update(underlying=underlying, template=template, lots=lots))
         main._run_options_webhook_check(MagicMock(), "http://cloud", {}, {}, lots=2)
         assert captured == {"underlying": "NIFTY", "template": "bull_call_spread", "lots": 2}

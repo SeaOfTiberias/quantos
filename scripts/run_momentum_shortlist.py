@@ -47,10 +47,15 @@ from agent.main import load_config, _load_universe  # noqa: E402
 from core.discovery.momentum_shortlist import (  # noqa: E402
     EMA_FAST, EMA_SLOW, ShortlistEntry, build_shortlist, is_uptrend,
 )
+from core.vault.shortlist_audit import annotate_with_vault_audit  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                      format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("quantos.discovery.momentum_shortlist")
+
+# Notes every shortlist row is audited against unless agent/config.yaml's
+# `vault.shortlist_notes` overrides. Both ship in obsidian_vault/QuantOS/.
+DEFAULT_SHORTLIST_NOTES = ("minervini_vcp", "weinstein_stage2")
 
 # Nifty Alpha 50 (NSE's own risk-adjusted-momentum index, already this
 # project's alpha benchmark elsewhere) and Nifty200 Momentum 30 (NSE's own
@@ -176,10 +181,15 @@ def _log_summary(entries: list[ShortlistEntry]) -> None:
             cross = e.ma_cross or "—"
             if e.ma_cross and e.ma_cross_days is not None:
                 cross = f"{e.ma_cross} {e.ma_cross_days}d"
-            logger.info("  %-12s momentum=%.1f%% trend=%-4s breakout=%-10s 50/200=%-9s width=%s rr=%s",
+            # Vault column abbreviated to keep the line scannable: the full
+            # per-note breakdown lives in e.vault_detail and in the cockpit.
+            vault = {"PASS": "PASS", "FAIL": "fail",
+                     "INSUFFICIENT_DATA": "no-data",
+                     "UNAVAILABLE": "n/a"}.get(e.vault_verdict or "", "—")
+            logger.info("  %-12s momentum=%.1f%% trend=%-4s breakout=%-10s 50/200=%-9s width=%s rr=%s vault=%s",
                         e.symbol, e.momentum_pct, "UP" if e.trend_up else "down", breakout, cross,
                         f"{e.box_width_pct:.1f}%" if e.box_width_pct is not None else "—",
-                        f"{e.rr_ratio:.2f}" if e.rr_ratio is not None else "—")
+                        f"{e.rr_ratio:.2f}" if e.rr_ratio is not None else "—", vault)
 
 
 async def _run_one_universe(broker, config: dict, universe_path: str, no_report: bool) -> None:
@@ -196,6 +206,20 @@ async def _run_one_universe(broker, config: dict, universe_path: str, no_report:
     entries = build_shortlist(daily_by_symbol, datetime.now(timezone.utc))
     logger.info("[%s] Shortlist built: %d/%d symbols had enough history to rank",
                 label, len(entries), len(daily_by_symbol))
+
+    # Obsidian vault audit (2026-08-14). Annotation only -- the shortlist has
+    # no execution path, so this can never block anything; it adds a column
+    # saying whether each name satisfies the strategy notes' written rules.
+    # Failures are swallowed inside annotate_with_vault_audit and surface as
+    # an UNAVAILABLE column, never as a lost shortlist.
+    vault_cfg = config.get("vault", {}) or {}
+    if vault_cfg.get("annotate_shortlist", True):
+        entries = annotate_with_vault_audit(
+            entries, daily_by_symbol,
+            vault_cfg.get("shortlist_notes", DEFAULT_SHORTLIST_NOTES),
+            vault_dir=vault_cfg.get("dir"),
+        )
+
     _log_summary(entries)
 
     if not no_report:

@@ -27,6 +27,7 @@ import time
 from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 # Allow running as `python agent/main.py` from the repo root — the script's
 # own directory (agent/) is on sys.path by default, but the repo root
@@ -59,6 +60,7 @@ from core.options.positions import (
 from core.options import chain_builder as options_chain_builder
 from core.options import fyers_symbol_master as options_symbol_master
 from core.options.models import OptionType, StrategyTemplate
+from core.vault.gates import audit_gate as vault_audit_gate
 
 # How often (in poll ticks) to re-check open positions for trailing/closure.
 # Kept slower than the 5s signal poll to avoid hammering the broker with
@@ -688,7 +690,8 @@ def _run_options_trigger(broker, config: dict, cloud_url: str, headers: dict,
 
 
 def _run_options_webhook_check(broker, cloud_url: str, headers: dict,
-                                options_positions: dict, lots: int) -> None:
+                                options_positions: dict, lots: int,
+                                config: Optional[dict] = None) -> None:
     """
     Human-driven options entry/exit, added 2026-07-25 to replace the killed
     regime trigger above. Polls POST /webhook/options/claim every tick for
@@ -715,7 +718,7 @@ def _run_options_webhook_check(broker, cloud_url: str, headers: dict,
 
     if action == "open":
         _handle_options_webhook_open(broker, cloud_url, headers, options_positions,
-                                      underlying, template, lots)
+                                      underlying, template, lots, config)
     elif action == "close":
         _handle_options_webhook_close(broker, cloud_url, headers, options_positions,
                                        underlying, template)
@@ -805,9 +808,41 @@ def _auto_register_manual_options_positions(broker, options_positions: dict) -> 
             p.quantity, lots, p.average_price, underlying)
 
 
+def _vault_gate_allows(config: dict, symbol: str, broker, *, context: str) -> bool:
+    """Audit `symbol` against the Obsidian vault's strategy notes before an
+    entry. Returns True when the trade may proceed.
+
+    Off by default (`vault.gate_*: false`). Turning it on adds a hard veto to
+    a path that spends money, so it is an explicit, per-path opt-in rather
+    than something that starts working the moment this code ships.
+
+    Fetching history here costs one extra broker call per signal. That is
+    acceptable on an entry path — which fires rarely — and is why this is not
+    used anywhere that loops over a universe.
+    """
+    vault_cfg = config.get("vault", {}) or {}
+    notes = vault_cfg.get("notes", [])
+
+    try:
+        end = datetime.now(timezone.utc)
+        daily = broker.get_historical_data(symbol, "1D", end - timedelta(days=600), end)
+    except Exception as e:
+        # Fail closed, consistent with core/vault/gates.py: a gate that opens
+        # when its own data feed breaks is worse than no gate.
+        logger.error("Vault gate (%s): could not fetch history for %s (%s) — BLOCKING",
+                     context, symbol, e)
+        return False
+
+    decision = vault_audit_gate(symbol, daily, notes,
+                                enabled=True, vault_dir=vault_cfg.get("dir"))
+    logger.info("Vault gate (%s) for %s: %s", context, symbol, decision.log_line())
+    return decision.allowed
+
+
 def _handle_options_webhook_open(broker, cloud_url: str, headers: dict,
                                   options_positions: dict, underlying: str,
-                                  template_value: str, lots: int) -> None:
+                                  template_value: str, lots: int,
+                                  config: Optional[dict] = None) -> None:
     if has_options_position(options_positions, underlying):
         logger.info("Options webhook 'open' for %s ignored — already has an open position",
                     underlying)
@@ -817,6 +852,18 @@ def _handle_options_webhook_open(broker, cloud_url: str, headers: dict,
     except ValueError:
         logger.error("Options webhook 'open' for %s: unknown template %r", underlying, template_value)
         return
+
+    # Vault audit, before any chain is built or any order is shaped. Default
+    # off; see _vault_gate_allows. Note this audits the UNDERLYING's cash
+    # series -- Minervini and Weinstein are both equity-structure methods, so
+    # the question being asked is "is the underlying in the condition these
+    # notes describe", not anything about the option itself.
+    vault_cfg = (config or {}).get("vault", {}) or {}
+    if vault_cfg.get("gate_options_webhook", False):
+        if not _vault_gate_allows(config or {}, underlying, broker, context="options webhook"):
+            logger.warning("Options webhook 'open' for %s BLOCKED by the vault audit",
+                           underlying)
+            return
 
     try:
         expiries = options_symbol_master.list_expiries(underlying)
@@ -1450,7 +1497,8 @@ def run_agent(config: dict):
                 try:
                     _run_options_webhook_check(
                         broker, cloud_url, headers, opts_positions,
-                        lots=int(options_cfg.get("lots_per_trade", 1)))
+                        lots=int(options_cfg.get("lots_per_trade", 1)),
+                        config=config)
                 except Exception as e:
                     logger.error("Options webhook check failed: %s", e)
 

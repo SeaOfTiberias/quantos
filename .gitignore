@@ -44,3 +44,10 @@ data_cache/
 
 # Docker
 .docker/
+
+# Obsidian vault — the NOTES are tracked (they are strategy definitions the
+# audit gates read, and the VM gets them via git pull), but Obsidian's own
+# per-machine config is not: workspace.json rewrites itself every time a pane
+# moves, which would make every session a dirty working tree.
+obsidian_vault/**/.obsidian/
+obsidian_vault/**/.trash/

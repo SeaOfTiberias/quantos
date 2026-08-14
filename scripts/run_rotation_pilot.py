@@ -78,6 +78,7 @@ async def main_async(args) -> int:
         top_n=top_n, position_size=position_size, max_loss_pct=max_loss_pct,
         capital_reference=capital_reference, trade_history_path=TRADE_HISTORY_PATH,
         dry_run=dry_run,
+        vault_config=config.get("vault", {}),
     )
 
     if result is None:

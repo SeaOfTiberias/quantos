@@ -119,6 +119,14 @@ class ShortlistEntry:
     days_above_ceil: Optional[int] = None   # sessions closed above the box ceiling
     ma_cross:       Optional[str] = None    # BULL | BEAR (50 vs 200 SMA), None if not warmed up
     ma_cross_days:  Optional[int] = None    # sessions since the flip, None if older than our window
+    # Obsidian vault audit (2026-08-14). Populated by
+    # core/vault/shortlist_audit.py AFTER build_shortlist has run -- this
+    # module stays pure and vault-unaware, and the annotation is optional, so
+    # a missing or broken vault costs the shortlist nothing. None means the
+    # audit was never attempted; see core/vault/models.py's Verdict for the
+    # difference between "not attempted" and "could not be evaluated".
+    vault_verdict:  Optional[str] = None    # PASS | FAIL | INSUFFICIENT_DATA | UNAVAILABLE
+    vault_detail:   Optional[str] = None    # per-note verdicts, human-readable
 
 
 def ema_series(closes: list[float], period: int) -> list[Optional[float]]:
