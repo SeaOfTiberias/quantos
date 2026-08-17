@@ -25,16 +25,23 @@ BEFORE — Stage 1 follows a decline, Stage 3 follows an advance. That is
 path-dependence, and a stateless snapshot evaluator cannot express it.
 
 It does not need a new primitive. The DSL's `[n]` bar-lag already reaches
-back: `sma(150)[25] > sma(150)[125]` reads "the 30-week average was higher
-five weeks ago than it was six months before that", i.e. the prior trend was
-up, i.e. this flat patch is a top. Reverse the comparison and it is a base.
+back: `sma(150)[25] > sma(150)[100]` reads "the 30-week average was higher
+five weeks ago than it was fifteen weeks before that", i.e. the prior trend
+was up, i.e. this flat patch is a top. Reverse it and it is a base.
 
-This is the one place the classifier's history requirement bites, and it is
-tight on purpose: `sma(150)[125]` needs 150 + 125 = 275 warmed-up bars, and
-scripts/run_momentum_shortlist.py fetches FETCH_WINDOW_DAYS = 400 calendar
-days ≈ 275 trading bars. It fits with nothing to spare. Lengthening that lag
-means widening the fetch, which means more calls under Fyers' 366-day chunk
-cap across ~500 symbols every morning. Do not lengthen it casually.
+**The lag length is a hard data constraint, not a preference.** `sma(150)[n]`
+needs 150 + n warmed-up bars. scripts/run_momentum_shortlist.py fetches
+FETCH_WINDOW_DAYS = 400 calendar days, which returns **271** trading bars
+(measured across the Nifty 500 on 2026-08-17: median 271, max 271, min 255).
+So the ceiling is n <= 105, and the shipped value is 100.
+
+This was shipped at 125 first, and it silently classified nothing: 275 bars
+needed against 271 available meant no symbol on the exchange could satisfy
+the clause, so every name in the flat band fell out as unclassified and
+Stages 1 and 3 were empty at all nine band widths tested. Unit tests missed
+it because their synthetic series are 400 bars long. Raising this lag
+without re-measuring the live bar count will reintroduce exactly that bug,
+and it will look like "no stocks are basing" rather than like an error.
 
 Not a gate
 ──────────

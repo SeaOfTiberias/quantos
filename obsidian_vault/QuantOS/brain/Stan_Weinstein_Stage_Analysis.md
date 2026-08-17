@@ -163,9 +163,13 @@ stage 2 when sma(150) > sma(150)[25] * 1.01
 # ── Flat 30-week average — the hard case ───────────────────────────────────
 # Everything reaching here has a flat average, which describes Stage 1 and
 # Stage 3 EQUALLY. They are distinguishable only by what came before: a base
-# follows a decline, a top follows an advance. Hence the long lag — this
-# compares the average five weeks ago against six months before that.
-stage 3 when sma(150)[25] > sma(150)[125]
+# follows a decline, a top follows an advance. Hence the lag — this compares
+# the average five weeks ago against fifteen weeks before that.
+#
+# The lag is 100, not 125, and the reason is measured rather than chosen:
+# sma(150)[125] needs 275 warmed-up bars and the live fetch returns 271.
+# See the history note below.
+stage 3 when sma(150)[25] > sma(150)[100]
 
 # Terminal default: flat average, prior trend not up. A base.
 stage 1
@@ -188,12 +192,26 @@ stage 1
 - **The history requirement is not flat, because first-match-wins
   short-circuits.** A name with a clearly rising or falling average matches on
   `sma(150)[25]` and needs only **175 bars**; the Stage 3 clause's
-  `sma(150)[125]` — **275 bars** — is reached only by names already in the
+  `sma(150)[100]` — **250 bars** — is reached only by names already in the
   flat band. So the deep lag binds exactly where the hard question is, and
-  nowhere else. The shortlist fetches ~275 trading days, which covers both
-  with nothing to spare.
+  nowhere else.
 
-  Names with too little history come back **unclassified**, not Stage 1 — the
+- **The lag was 125 until the first calibration run, and that was a silent
+  kill.** `sma(150)[125]` needs 275 warmed-up bars. The live fetch —
+  `FETCH_WINDOW_DAYS = 400` calendar days — returns **271** trading bars, so
+  *no symbol in the Nifty 500 could ever satisfy it*. Measured 2026-08-17:
+  median 271, max 271, minimum 255. Every name that reached the flat band
+  came back unclassified, and Stages 1 and 3 were **empty at every band
+  width** — 0 of 499 names, at all nine widths tested.
+
+  This is the same failure shape as the 2.00-vs-1.25 bug in
+  [[Mark_Minervini_VCP_Strategy]]: a threshold that looks reasonable in
+  prose, is off by a hair against real data, and voids the rule it belongs to
+  without erroring. It survived unit tests because the synthetic series there
+  are 400 bars long. **Only the live run caught it.** The lag is now 100,
+  which needs 250 and clears even the 255-bar minimum with margin.
+
+- Names with too little history come back **unclassified**, not Stage 1 — the
   classifier stops rather than falling through, for the same fail-loud reason
   the auditor separates INSUFFICIENT_DATA from FAIL. A newly listed stock is
   not "basing"; it is unknown.

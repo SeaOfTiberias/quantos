@@ -19,6 +19,7 @@ on a stage, the fail-closed argument in core/vault/models.py stops holding.
 """
 
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -321,13 +322,13 @@ class TestTheRealNote:
     def test_trending_names_classify_before_the_deep_lag_is_needed(self, clauses):
         """First-match-wins short-circuits. A clearly rising name matches the
         Stage 2 clause, which needs only sma(150)[25] = 175 bars, and never
-        reaches the Stage 3 clause that needs 275. So the block's history
-        requirement is not a flat 275 — it is 175 for trending names and 275
-        only for the flat-band ones."""
+        reaches the Stage 3 clause that needs 250. So the block's history
+        requirement is not flat — it is 175 for trending names and 250 only
+        for the flat-band ones."""
         result = classify(clauses, MarketFacts("SHORT", bars(rising(n=200))))
         assert result.stage is Stage.ADVANCING
 
-    def test_flat_names_do_need_the_full_275_bars(self, clauses):
+    def test_flat_names_do_need_the_deeper_lag(self, clauses):
         """The flat band is where the prior-trend lag actually binds — and
         the answer there must be unclassified, never the Stage 1 default."""
         result = classify(clauses, MarketFacts("FLAT", bars(flat(n=200))))
@@ -350,6 +351,70 @@ class TestTheRealNote:
     def test_reason_carries_the_live_numbers(self, clauses):
         result = classify(clauses, MarketFacts("UP", bars(rising())))
         assert "sma(150)" in result.reason and "=" in result.reason
+
+
+class TestFitsTheLiveFetchWindow:
+    """Regression guard for the bug the first calibration run found.
+
+    The Stage 3 clause originally used `sma(150)[125]`, needing 275 warmed-up
+    bars. The live fetch (FETCH_WINDOW_DAYS = 400 calendar days) returns 271.
+    So no symbol on the exchange could satisfy it, every flat-band name came
+    back unclassified, and Stages 1 and 3 were empty at all nine band widths.
+
+    Every test above missed it because their series are 400 bars long. These
+    use the number the market actually supplies. If a future edit lengthens a
+    lag past the fetch window, this is what should fail — not a chart quietly
+    reporting that nothing is basing.
+    """
+
+    # Measured across the Nifty 500 on 2026-08-17: median 271, max 271,
+    # min 255. The minimum is the number to design against, not the median.
+    LIVE_BARS = 271
+    SHORTEST_OBSERVED = 255
+
+    @pytest.fixture(scope="class")
+    def clauses(self):
+        return parse_note(WEINSTEIN_NOTE).stage_clauses
+
+    @pytest.mark.parametrize("shape", ["rising", "falling", "flat"])
+    def test_every_shape_classifies_on_a_live_sized_history(self, clauses, shape):
+        series = {"rising": rising, "falling": falling, "flat": flat}[shape]
+        result = classify(clauses, MarketFacts("LIVE", bars(series(n=self.LIVE_BARS))))
+        assert result.is_classified, (
+            f"a {shape} name is unclassifiable on {self.LIVE_BARS} bars, which is "
+            f"what the live fetch returns — a clause's lag now exceeds the window"
+        )
+
+    @pytest.mark.parametrize("shape", ["rising", "falling", "flat"])
+    def test_every_shape_classifies_on_the_shortest_observed_history(self, clauses, shape):
+        series = {"rising": rising, "falling": falling, "flat": flat}[shape]
+        result = classify(clauses, MarketFacts("MIN", bars(series(n=self.SHORTEST_OBSERVED))))
+        assert result.is_classified
+
+    def test_flat_band_reaches_stage_1_and_3_not_unclassified(self, clauses):
+        """The precise symptom: a flat series must land in a stage, because
+        this is the only path to Stages 1 and 3 existing at all."""
+        down = [100.0 * math.exp((120 - i) * 0.004) for i in range(120)]
+        up = [100.0 * math.exp(-(120 - i) * 0.004) for i in range(120)]
+        tail = flat(n=151, start=100.0)
+        base = classify(clauses, MarketFacts("BASE", bars(down + tail)))
+        top = classify(clauses, MarketFacts("TOP", bars(up + tail)))
+        assert base.stage is Stage.BASING
+        assert top.stage is Stage.TOPPING
+
+    def test_deepest_lag_in_the_note_fits_the_window(self, clauses):
+        """Reads the requirement out of the shipped clauses rather than
+        hardcoding it, so it keeps working if the block is rewritten."""
+        deepest = 0
+        for clause in clauses:
+            for period, lag in re.findall(r"sma\((\d+)\)\[(\d+)\]", clause.expression or ""):
+                deepest = max(deepest, int(period) + int(lag))
+            for period in re.findall(r"sma\((\d+)\)(?!\[)", clause.expression or ""):
+                deepest = max(deepest, int(period))
+        assert 0 < deepest <= self.SHORTEST_OBSERVED, (
+            f"the note's deepest clause needs {deepest} bars; the shortest live "
+            f"history observed is {self.SHORTEST_OBSERVED}"
+        )
 
 
 class TestSeparationFromTheGate:

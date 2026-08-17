@@ -89,7 +89,7 @@ def clauses_for(band: float, note_name: str = "calibration"):
         f"stage 2 pivot when sma(150) > sma(150)[25] * {up:.4f} and volume_sma(5) / volume_sma(50) < 0.40",
         f"stage 2 pullback when sma(150) > sma(150)[25] * {up:.4f} and close < sma(150)",
         f"stage 2 when sma(150) > sma(150)[25] * {up:.4f}",
-        "stage 3 when sma(150)[25] > sma(150)[125]",
+        "stage 3 when sma(150)[25] > sma(150)[100]",
         "stage 1",
     ]
     return [
