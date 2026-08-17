@@ -186,9 +186,16 @@ alertcondition(stage != stage[1] and stage == 3, "Entered Stage 3", "{{ticker}} 
 alertcondition(stage != stage[1] and stage == 4, "Entered Stage 4", "{{ticker}} entered Stage 4 (Declining)")
 alertcondition(stage != stage[1], "Any stage change", "{{ticker}} changed stage")
 
-// ── The journey, as a plottable series ───────────────────────────────────
-// Add this to a separate pane ("Move to -> New pane below") for a step line
-// of the whole path. Plotted as a value rather than drawn as shapes so the
-// pane can be read at a glance across years of history.
+// ── The journey, as a readable series ────────────────────────────────────
+// Data-window only, deliberately. This is an overlay indicator, so plotting
+// a 1-4 value onto the price scale would flatten the candles into a line at
+// the top of the chart. Data-window display keeps the number readable on
+// hover — scrub back through the chart and the stage reads out bar by bar —
+// without touching the scale.
+//
+// For a step-line pane of the whole journey instead, copy this file, set
+// `overlay=false` in the indicator() call, and delete the bgcolor/plot of
+// the moving average. The background shading above already conveys the same
+// path on the price chart itself, which is why that is the default.
 plot(stage == 0 ? na : stage, "Stage number", color=color.new(stageColour, 0),
      style=plot.style_stepline, linewidth=2, display=display.data_window)
