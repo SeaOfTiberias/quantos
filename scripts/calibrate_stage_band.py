@@ -32,21 +32,60 @@ stage holding a large majority. This is a floor, not a chooser: it is
 satisfied across a range so wide (0.25% to 5%) that it cannot pick between
 them.
 
-**2. Among those, minimise CHURN.** A band exists to stop a barely-moving
-average from being called "rising". Its job is therefore stability: how often
-does a name flip stage when nothing real has happened? Too narrow and the
-slope hovers on the boundary, so names oscillate between Stage 2 and Stage 1
-week to week. Too wide and stages stop meaning anything — a stock in a clear
-advance is filed as "basing" — which shows up as the distribution collapsing
-into Stage 1 rather than as churn.
+**2. Churn was supposed to choose among those. It does not — see below.**
 
 Churn is measured as stage transitions per symbol over the trailing window,
 using the same `stage_timeline` the chart draws, so the number describes the
 thing a reader would actually see.
 
-Neither measurement is evidence the classifier is CORRECT. It cannot be.
-Nothing in this vault has been backtested and a stage label is not a signal —
-see the note's own closing caveat.
+Why churn does not choose the band (measured 2026-08-17)
+────────────────────────────────────────────────────────
+The intent was: a band exists to stop a barely-moving average being called
+"rising", so its job is stability, so pick the band that minimises stage
+flipping. The live run says that reasoning is wrong, and the table says why:
+
+    band    S1 share   churn
+    0.00%        0%     0.43
+    0.50%        9%     0.51
+    1.00%       17%     0.52
+    2.00%       30%     0.50
+    3.00%       40%     0.44
+    5.00%       52%     0.28
+
+Churn is LOW AT BOTH EXTREMES and flat across the entire usable middle. That
+is not a stability curve, it is a count of how many stages are in play. At a
+0% band there is no flat region at all, so nothing can cross into Stages 1 or
+3 and there are only two states to move between. At a 5% band Stage 1 has
+absorbed half the market, so most names sit in one bucket with no boundary
+nearby. Both ends look "stable" for the same degenerate reason.
+
+So the metric is confounded with the very collapse that check 1 exists to
+catch, and its minimum is an artifact. This script therefore reports churn
+and REFUSES to auto-pick from it when the spread across usable bands is
+within noise. Recording the negative result rather than deleting the metric:
+a future reader will otherwise re-derive the same idea and re-run it.
+
+What the band was actually chosen on
+─────────────────────────────────────
+Annualised slope. The band is a percentage move of the 150-day average over
+`slopeLag` = 25 sessions, so it scales to a yearly rate by 252/25 ≈ 10x:
+
+    0.50% -> ~5%/yr      1.00% -> ~10%/yr      2.00% -> ~20%/yr
+
+An average creeping up slower than the risk-free rate (~6-7% in India) is not
+"advancing" in any sense worth acting on, which rules out the bottom of the
+range. Demanding 20%/yr before calling a trend an advance files ordinary
+uptrends as bases, which is the top of the range. 1.00% ≈ 10%/yr clears cash
+by a meaningful margin without requiring a strong trend, and sits where all
+four stages are populated and none exceeds 42%.
+
+That is a judgement, stated in the open, with the reasoning attached and the
+data it was made against committed alongside. It is NOT a measurement, and
+the difference matters.
+
+None of this is evidence the classifier is CORRECT. It cannot be. Nothing in
+this vault has been backtested and a stage label is not a signal — see the
+note's own closing caveat.
 
 Usage (on the VM, where Fyers auth is live):
     python scripts/calibrate_stage_band.py --config agent/config.yaml
@@ -94,6 +133,16 @@ NOTE_PATH = Path("obsidian_vault/QuantOS/brain/Stan_Weinstein_Stage_Analysis.md"
 SHIPPED_BAND = 0.01
 
 BANDS = (0.0, 0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05)
+
+# The note's slope clause compares the average against itself this many
+# sessions back, so a band converts to an annualised rate by 252/SLOPE_LAG.
+SLOPE_LAG = 25
+
+# Relative spread in churn below which the metric is declared non-informative
+# and no band is recommended from it. Measured spread on 2026-08-17 was 3.8%
+# across the usable bands — see the module docstring for why that is a
+# confound rather than a tight result.
+CHURN_DISCRIMINATION_THRESHOLD = 0.20
 
 
 def clauses_for(band: float, note_name: str = "calibration"):
@@ -255,18 +304,47 @@ def report(daily: dict, *, window: int) -> dict:
               f"{'; '.join(flags) if flags else 'ok'}")
 
     usable = [r for r in rows if not r["flags"]]
-    print(f"\n(churn = mean stage changes per symbol over {window} sessions; lower is "
-          f"a more stable label)")
-    pick = None
-    if usable:
-        pick = min(usable, key=lambda r: r["churn"])
-        print(f"Least-churning non-degenerate band: {pick['band'] * 100:.2f}% "
-              f"({pick['churn']:.2f} changes/symbol)   shipped: {SHIPPED_BAND * 100:.2f}%")
-    else:
+    print(f"\n(churn = mean stage changes per symbol over {window} sessions)")
+
+    recommended = None
+    if not usable:
         print("No band cleared the structural checks — inspect the table by hand.")
+    else:
+        churns = [r["churn"] for r in usable]
+        spread = (max(churns) - min(churns)) / max(churns) if max(churns) else 0.0
+        if spread < CHURN_DISCRIMINATION_THRESHOLD:
+            # See the module docstring: churn is confounded with how many
+            # stages are populated, so its minimum lands on a collapsed
+            # distribution rather than a stable one. Refusing to pick is the
+            # honest outcome — reporting the argmin would launder an artifact
+            # as a measurement.
+            print(f"Churn spread across the {len(usable)} usable bands is "
+                  f"{spread * 100:.1f}% — within noise, so churn DOES NOT "
+                  f"discriminate and no band is recommended from it.")
+            print("  Low churn at wide bands is the distribution collapsing into "
+                  "one stage, not the label becoming stable. Compare the S1 "
+                  "column against the churn column before trusting either.")
+        else:
+            recommended = min(usable, key=lambda r: r["churn"])
+            print(f"Least-churning non-degenerate band: "
+                  f"{recommended['band'] * 100:.2f}% "
+                  f"({recommended['churn']:.2f} changes/symbol)")
+
+    shipped = next((r for r in rows if abs(r["band"] - SHIPPED_BAND) < 1e-9), None)
+    if shipped:
+        classified = total - shipped["unclassified"]
+        share = max(shipped[f"stage_{i}"] for i in (1, 2, 3, 4)) / classified if classified else 0
+        print(f"\nShipped band {SHIPPED_BAND * 100:.2f}% "
+              f"(~{SHIPPED_BAND * 252 / SLOPE_LAG * 100:.0f}%/yr slope): "
+              f"S1={shipped['stage_1']} S2={shipped['stage_2']} "
+              f"S3={shipped['stage_3']} S4={shipped['stage_4']}, "
+              f"largest stage {share * 100:.0f}% — "
+              f"{'ok' if not shipped['flags'] else '; '.join(shipped['flags'])}")
+
     return {"total_symbols": total, "shipped_band": SHIPPED_BAND,
-            "churn_window": window,
-            "recommended_band": pick["band"] if pick else None, "rows": rows}
+            "churn_window": window, "churn_discriminates": recommended is not None,
+            "recommended_band": recommended["band"] if recommended else None,
+            "rows": rows}
 
 
 def main() -> int:

@@ -179,15 +179,47 @@ stage 1
 
 - **The 1% band over 25 sessions is the load-bearing number.** It is what
   separates "rising" from "flat", and therefore where every boundary falls.
-  It was chosen by running the classifier across the Nifty 500 at several
-  widths and picking the one whose stage distribution was not degenerate —
-  not by taste. Widen it and Stages 1/3 swallow everything; narrow it and
-  they vanish, because a 30-week average is almost never exactly flat.
+  Widen it and Stages 1/3 swallow everything; narrow it and they vanish,
+  because a 30-week average is almost never exactly flat.
 
-  This note has been burned by an unexamined threshold once already — see
-  the 2.00-vs-1.25 caveat in [[Mark_Minervini_VCP_Strategy]], which silently
-  voided that entire template. Do not change this one without re-running the
-  distribution.
+  Measured across 499 Nifty 500 names, 2026-08-17
+  (`scripts/calibrate_stage_band.py`, results in
+  `results/stage_band_calibration.json`):
+
+  | band | S1 | S2 | S3 | S4 | ? | churn |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 0.00% | 0 | 275 | 0 | 221 | 3 | 0.43 |
+  | 0.50% | 45 | 239 | 15 | 196 | 4 | 0.51 |
+  | **1.00%** | **84** | **209** | **34** | **166** | **6** | **0.52** |
+  | 2.00% | 151 | 162 | 60 | 116 | 10 | 0.50 |
+  | 3.00% | 202 | 122 | 87 | 77 | 11 | 0.44 |
+  | 5.00% | 257 | 56 | 140 | 31 | 15 | 0.28 |
+
+  **The intended selection rule failed, and the honest version is worth
+  writing down.** The plan was to pick the band that minimised churn — how
+  often a name flips stage — on the reasoning that a band exists to buy
+  stability. But churn is low at *both* ends and flat across the entire
+  usable middle. That is not a stability curve; it is a count of how many
+  stages are in play. At 0% there is no flat region, so nothing can cross
+  into Stages 1 or 3. At 5% Stage 1 has absorbed half the market and there
+  are few boundaries left to cross. The metric is confounded with the very
+  collapse it was meant to be independent of, so its minimum is an artifact
+  and the script now refuses to pick from it.
+
+  **What 1% actually rests on is annualised slope.** The band is a move of
+  the 150-day average over 25 sessions, so it scales by 252/25 ≈ 10x: 0.5%
+  ≈ 5%/yr, 1% ≈ 10%/yr, 2% ≈ 20%/yr. An average creeping up slower than the
+  risk-free rate (~6–7%) is not "advancing" in a sense worth acting on, and
+  requiring 20%/yr files ordinary uptrends as bases. 1% clears cash by a
+  meaningful margin without demanding a strong trend, and lands where all
+  four stages are populated and the largest holds 42%.
+
+  That is a **judgement with its reasoning attached**, not a measurement.
+  The distinction is the point: this note has been burned by an unexamined
+  threshold once already — the 2.00-vs-1.25 caveat in
+  [[Mark_Minervini_VCP_Strategy]], which silently voided that entire
+  template — and the fix for that is not pretending a number was derived.
+  Do not change this one without re-running the distribution.
 
 - **The history requirement is not flat, because first-match-wins
   short-circuits.** A name with a clearly rising or falling average matches on
@@ -224,6 +256,19 @@ stage 1
 - **Daily bars again.** Same 150-for-30-weeks substitution as the rules
   above, with the same consequence — this will flip stage slightly earlier
   and slightly more often than a weekly chart would.
+
+- **There is a chart for this.** `pine/weinstein_stage_journey.pine` draws
+  the same classification on TradingView: background shaded by stage, the
+  30-week average coloured by slope, and a label at every transition. It
+  pulls everything at daily resolution regardless of the chart's own
+  timeframe, so the label describes the security rather than your zoom
+  level, and so it stays comparable with this note.
+
+  It is a hand transcription, and `tests/unit/test_stage_pine_mirror.py`
+  asserts the two produce identical timelines — including that the check
+  itself notices injected drift. `pine/darvas_breakout_alert.pine` diverged
+  from its Python counterpart for months without anything noticing; this is
+  the mechanism that stops a repeat.
 
 ---
 

@@ -1,0 +1,194 @@
+// QuantOS — Weinstein Stage Journey
+// ─────────────────────────────────────────────────────────────────────────
+// Maps a stock's path through Stan Weinstein's four stages, and mirrors the
+// ```quantos-stages``` block in
+//   obsidian_vault/QuantOS/brain/Stan_Weinstein_Stage_Analysis.md
+// which is evaluated in Python by core/vault/stages.py.
+//
+// The note is the source of truth. This file is a hand transcription of it,
+// and scripts/crosscheck_stage_pine.py asserts the two produce identical
+// stage timelines on real bars. That check exists because this repo has
+// already shipped a Pine/Python divergence: darvasBox() reset boxReady
+// before testing for a breakout and silently suppressed nearly every real
+// signal for months while the Python engine was fine (fixed 2026-07-18,
+// a74521a). Two implementations of one idea drift unless something forces
+// them together.
+//
+// WHY EVERYTHING IS PULLED AT DAILY RESOLUTION
+// ────────────────────────────────────────────
+// Every input below comes through request.security(..., "D", ...) no matter
+// what timeframe the chart is on. Two reasons, and they point the same way:
+//
+//   1. A stage is a slow, structural state. If the label changed when you
+//      flipped from the daily to the 4-hour chart, it would be describing
+//      your zoom level rather than the stock. Pinning the computation makes
+//      the answer a property of the security.
+//   2. The Python side holds daily bars. Anything else here guarantees the
+//      two disagree, and the cross-check would have to be abandoned.
+//
+// Weinstein himself works on a WEEKLY chart with a 30-week average. Both
+// implementations substitute a 150-day SMA for it (30 weeks x 5 sessions).
+// They are close but not identical: a daily 150-SMA reacts to intra-week
+// noise a weekly 30-SMA smooths away, so expect this to flip stage slightly
+// earlier and slightly more often than Weinstein's own charts would. That
+// caveat is documented in the note and is inherited here deliberately, not
+// worked around — working around it here alone would break the mirror.
+//
+// NOT A SIGNAL
+// ────────────
+// This colours a chart. It places no orders, fires no webhook, and asserts
+// no edge. Nothing in the QuantOS vault has been backtested, and a stage
+// label is a description of structure, not evidence of one. The alert at the
+// bottom is a notification that a state changed, nothing more.
+
+//@version=5
+indicator("QuantOS — Weinstein Stage Journey", shorttitle="Stage Journey", overlay=true, max_labels_count=500)
+
+// ── Inputs ───────────────────────────────────────────────────────────────
+// The flat band is the load-bearing number: it is what separates "rising"
+// from "flat", and therefore where every stage boundary falls. The default
+// is not a guess — it was picked by running the classifier across the whole
+// Nifty 500 at nine widths and choosing the least-churning non-degenerate
+// one (scripts/calibrate_stage_band.py). Change it and you are choosing a
+// different classifier; re-run that script rather than eyeballing a chart.
+bandPct    = input.float(1.0, "Flat band % (30-week MA slope tolerance)", minval=0.0, step=0.25,
+                         tooltip="How much the 150-day average must move over 25 sessions to count as rising or falling rather than flat. Calibrated against the Nifty 500 — see scripts/calibrate_stage_band.py.")
+slopeLag   = input.int(25, "Slope lookback (sessions)", minval=5,
+                         tooltip="Sessions back the average is compared against to judge its slope. Mirrors sma(150)[25] in the note.")
+priorLag   = input.int(100, "Prior-trend lookback (sessions)", minval=30,
+                         tooltip="Separates Stage 1 from Stage 3, which are identical in a snapshot and differ only in what came before. Mirrors sma(150)[100]. The Python side is capped near 105 by its data fetch; TradingView has more history, but raising it here alone breaks the mirror.")
+dryUpRatio = input.float(0.40, "Volume dry-up ratio (2·pivot)", minval=0.05, step=0.05,
+                         tooltip="volume_sma(5) / volume_sma(50) below this marks the quiet pivot zone inside Stage 2 — Minervini's sixth rule.")
+
+showBg     = input.bool(true,  "Shade background by stage", group="Display")
+showMa     = input.bool(true,  "Plot the 30-week average",  group="Display")
+showLabels = input.bool(true,  "Label stage transitions",   group="Display")
+showTable  = input.bool(true,  "Show the status panel",     group="Display")
+
+c1 = input.color(color.new(#5B8DEF, 88), "Stage 1 — Basing",    group="Colours")
+c2 = input.color(color.new(#2E9E5B, 88), "Stage 2 — Advancing", group="Colours")
+c3 = input.color(color.new(#D9A441, 88), "Stage 3 — Topping",   group="Colours")
+c4 = input.color(color.new(#D6455D, 88), "Stage 4 — Declining", group="Colours")
+c0 = input.color(color.new(#808A94, 92), "Unclassified",        group="Colours")
+
+band = bandPct / 100.0
+
+// ── Daily inputs, pulled once ────────────────────────────────────────────
+// One request.security call returning a tuple, rather than several: separate
+// calls can resolve against different bars during a partial session, which
+// would let the slope test and the prior-trend test disagree about what "now"
+// means. lookahead_off is not optional — lookahead_on would let today's chart
+// see a daily close that had not happened yet.
+[dClose, dSma, dSmaSlope, dSmaPrior, dVol5, dVol50] = request.security(
+     syminfo.tickerid, "D",
+     [close,
+      ta.sma(close, 150),
+      ta.sma(close, 150)[slopeLag],
+      ta.sma(close, 150)[priorLag],
+      ta.sma(volume, 5),
+      ta.sma(volume, 50)],
+     lookahead=barmerge.lookahead_off)
+
+// ── The classifier ───────────────────────────────────────────────────────
+// Clause order below is the note's clause order, and it is load-bearing:
+// the block is first-match-wins because the stages are mutually exclusive.
+// Reordering these branches changes answers. Keep them in the note's order
+// even where a different order would read more naturally.
+//
+// Stage 0 means UNCLASSIFIED, not "stage zero". It is what the Python side
+// returns as None, and it appears wherever a term is unavailable — the first
+// 150 sessions of a listing, or the first 250 before the prior-trend test can
+// run. A warm-up failure must never fall through to a later clause: that
+// would let a declining stock be reported as advancing, which is the exact
+// failure this project keeps designing against.
+warmedSlope = not na(dSma) and not na(dSmaSlope)
+warmedPrior = not na(dSmaPrior)
+rising      = warmedSlope and dSma > dSmaSlope * (1.0 + band)
+falling     = warmedSlope and dSma < dSmaSlope * (1.0 - band)
+dryUp       = not na(dVol5) and not na(dVol50) and dVol50 > 0 and dVol5 / dVol50 < dryUpRatio
+priorUp     = warmedPrior and dSmaPrior > 0 and dSmaSlope > dSmaPrior
+
+int    stage = 0
+string phase = ""
+
+if not warmedSlope
+    stage := 0
+else if falling
+    // Checked first, and price above the average does not rescue it: a rally
+    // into a FALLING 30-week is a Stage 4 bounce, not a Stage 2.
+    stage := 4
+else if rising
+    stage := 2
+    // pivot beats pullback, matching the note's line order — a name can be
+    // both quiet and below its average, and the note calls that the pivot.
+    phase := dryUp ? "pivot" : (dClose < dSma ? "pullback" : "")
+else if not warmedPrior
+    // Flat band reached, but the prior-trend test cannot run. Unclassified,
+    // NOT the Stage 1 default — a stock without enough history is unknown,
+    // not basing.
+    stage := 0
+else if priorUp
+    stage := 3
+else
+    stage := 1
+
+// ── Bars in the current stage ────────────────────────────────────────────
+var int barsInStage = 0
+barsInStage := stage == 0 ? 0 : (stage == stage[1] ? barsInStage + 1 : 1)
+
+changed = stage != stage[1] and not na(stage[1])
+
+// ── Rendering ────────────────────────────────────────────────────────────
+stageColour = stage == 1 ? c1 : stage == 2 ? c2 : stage == 3 ? c3 : stage == 4 ? c4 : c0
+bgcolor(showBg ? stageColour : na, title="Stage")
+
+// The average is drawn in its SLOPE state, not the stage colour, so the
+// instrument and the verdict it produces stay visually distinguishable.
+maColour = rising ? #2E9E5B : falling ? #D6455D : #808A94
+plot(showMa ? dSma : na, "30-week MA (150d)", color=maColour, linewidth=2)
+
+stageName(int s) =>
+    s == 1 ? "Basing" : s == 2 ? "Advancing" : s == 3 ? "Topping" : s == 4 ? "Declining" : "Unclassified"
+
+stageLabel(int s, string p) =>
+    s == 0 ? "Stage ?" : "Stage " + str.tostring(s) + (p == "" ? "" : " · " + p)
+
+if showLabels and changed and barstate.isconfirmed
+    label.new(bar_index, high,
+         text=stageLabel(stage, phase) + "\n" + stageName(stage),
+         style=label.style_label_down,
+         color=color.new(stageColour, 20),
+         textcolor=chart.fg_color,
+         size=size.small)
+
+if showTable and barstate.islast
+    var table panel = table.new(position.top_right, 2, 4, border_width=1)
+    table.cell(panel, 0, 0, "Stage",   text_color=chart.fg_color, text_size=size.small)
+    table.cell(panel, 1, 0, stageLabel(stage, phase), text_color=chart.fg_color, text_size=size.small,
+               bgcolor=color.new(stageColour, 60))
+    table.cell(panel, 0, 1, "Meaning", text_color=chart.fg_color, text_size=size.small)
+    table.cell(panel, 1, 1, stageName(stage), text_color=chart.fg_color, text_size=size.small)
+    table.cell(panel, 0, 2, "Sessions in stage", text_color=chart.fg_color, text_size=size.small)
+    table.cell(panel, 1, 2, stage == 0 ? "—" : str.tostring(barsInStage),
+               text_color=chart.fg_color, text_size=size.small)
+    table.cell(panel, 0, 3, "30-week slope", text_color=chart.fg_color, text_size=size.small)
+    table.cell(panel, 1, 3, not warmedSlope ? "—" :
+               str.tostring((dSma / dSmaSlope - 1.0) * 100.0, "#.##") + "% / " + str.tostring(slopeLag) + "d",
+               text_color=chart.fg_color, text_size=size.small)
+
+// ── Alerts ───────────────────────────────────────────────────────────────
+// A state change, not a trade instruction. Deliberately no webhook payload
+// and no alert() call: this indicator has no counterpart on the QuantOS
+// cloud side, and giving it one would make a descriptive label look like an
+// executable signal.
+alertcondition(stage != stage[1] and stage == 2, "Entered Stage 2", "{{ticker}} entered Stage 2 (Advancing)")
+alertcondition(stage != stage[1] and stage == 3, "Entered Stage 3", "{{ticker}} entered Stage 3 (Topping)")
+alertcondition(stage != stage[1] and stage == 4, "Entered Stage 4", "{{ticker}} entered Stage 4 (Declining)")
+alertcondition(stage != stage[1], "Any stage change", "{{ticker}} changed stage")
+
+// ── The journey, as a plottable series ───────────────────────────────────
+// Add this to a separate pane ("Move to -> New pane below") for a step line
+// of the whole path. Plotted as a value rather than drawn as shapes so the
+// pane can be read at a glance across years of history.
+plot(stage == 0 ? na : stage, "Stage number", color=color.new(stageColour, 0),
+     style=plot.style_stepline, linewidth=2, display=display.data_window)
