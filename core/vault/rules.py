@@ -41,6 +41,7 @@ which becomes `passed=None`, which blocks.
 from __future__ import annotations
 
 import ast
+from functools import lru_cache
 from typing import Optional
 
 from core.vault.facts import MarketFacts
@@ -90,12 +91,19 @@ _WINDOWS = {
 VOCABULARY = tuple(sorted(_SCALARS)) + tuple(f"{fn}(n)" for fn in sorted(_WINDOWS))
 
 
+@lru_cache(maxsize=512)
 def parse_expression(expression: str) -> ast.Expression:
     """Parse and validate one rule expression. Raises `RuleSyntaxError`.
 
     Validation happens here, not during evaluation, so a typo in a note is
     caught the moment the vault is loaded rather than on the one morning a
     signal actually fires.
+
+    Cached because a vault holds a few dozen distinct expression strings and
+    they are re-parsed constantly — core/vault/stages.py walks the same
+    clauses across every bar of history to build a timeline, which turns a
+    handful of expressions into six figures of `ast.parse` calls. The
+    returned tree is treated as read-only by `_eval`; nothing mutates it.
     """
     try:
         tree = ast.parse(expression, mode="eval")
