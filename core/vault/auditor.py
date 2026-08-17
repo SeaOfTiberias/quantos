@@ -29,8 +29,15 @@ from typing import Optional, Sequence
 from core.brokers.base import OHLCV
 from core.vault.facts import MarketFacts
 from core.vault.index import NoteNotFoundError, VaultIndex
-from core.vault.models import AuditReport, RuleResult, StrategyNote, Verdict
+from core.vault.models import (
+    AuditReport,
+    RuleResult,
+    StageResult,
+    StrategyNote,
+    Verdict,
+)
 from core.vault.rules import evaluate_rule
+from core.vault.stages import classify
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +111,50 @@ class StrategyAuditor:
             for name in note_names
         )
 
+    def classify_stage(
+        self,
+        symbol: str,
+        daily: Sequence[OHLCV],
+        note_name: str,
+        *,
+        rs_rating: Optional[float] = None,
+        timeline_bars: int = 0,
+    ) -> StageResult:
+        """Which stage `symbol` is in, per `note_name`'s stage block.
+
+        Reporting only. This never feeds `GateDecision` — see the module
+        docstring of core/vault/stages.py for why a classifier and a
+        fail-closed gate must not share a channel. A caller wanting both
+        calls `audit` and this, and shows them side by side.
+
+        `timeline_bars` > 0 also walks the classifier back that many sessions;
+        the result is discarded here and callers wanting it should use
+        `core.vault.stages.stage_timeline` directly. It exists as a parameter
+        only so the cost is visible at the call site.
+        """
+        try:
+            note = self.index.get(note_name)
+        except NoteNotFoundError as e:
+            return StageResult(symbol=symbol, note_name=note_name, reason=str(e))
+
+        if not note.is_stage_classifier:
+            return StageResult(
+                symbol=symbol, note_name=note.name,
+                reason=(f"{note.name} has no ```quantos-stages``` block, so it cannot "
+                        f"place a symbol in a stage"),
+            )
+        if not daily:
+            return StageResult(symbol=symbol, note_name=note.name,
+                               reason=f"no price history supplied for {symbol}")
+
+        facts = MarketFacts(symbol, list(daily), rs_rating=rs_rating)
+        return classify(note.stage_clauses, facts, note_name=note.name)
+
     def auditable_note_names(self) -> list[str]:
         return sorted(n.name for n in self.index.auditable_notes)
+
+    def stage_classifier_note_names(self) -> list[str]:
+        return sorted(n.name for n in self.index.notes if n.is_stage_classifier)
 
 
 def _verdict_of(results: Sequence[RuleResult], bar_count: int) -> tuple[Verdict, str]:

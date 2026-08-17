@@ -54,6 +54,34 @@ class Verdict(str, Enum):
         return self is Verdict.PASS
 
 
+class Stage(int, Enum):
+    """Weinstein's four stages, as a classification of one symbol right now.
+
+    Distinct from `Verdict` and deliberately NOT a gate. A verdict answers
+    "do this note's conditions hold?" and fails closed; a stage answers
+    "where in the cycle is this name?" and has no safe default — there is no
+    such thing as a conservative stage. Nothing in core/vault/gates.py reads
+    this, and that separation is the whole reason the two are different types.
+    See core/vault/stages.py.
+    """
+
+    BASING = 1
+    """Flat 30-week MA after a decline. Watch. No position."""
+
+    ADVANCING = 2
+    """Rising 30-week MA. Weinstein's only buy zone."""
+
+    TOPPING = 3
+    """Flat 30-week MA after an advance. Tighten stops, take profit."""
+
+    DECLINING = 4
+    """Falling 30-week MA. Out."""
+
+    @property
+    def label(self) -> str:
+        return self.name.capitalize()
+
+
 @dataclass(frozen=True)
 class Rule:
     """One line from a note's ```quantos-rules``` block.
@@ -65,6 +93,73 @@ class Rule:
     note_name: str
     line_number: int          # 1-based, within the rule block — for error messages
     comment: str = ""         # trailing `# ...` on the rule line, if any
+
+
+@dataclass(frozen=True)
+class StageClause:
+    """One line from a note's ```quantos-stages``` block.
+
+        stage 2 pivot when sma(150) > sma(150)[25] * 1.01
+        stage 1                                   <- terminal default
+
+    Clauses are ordered and evaluated first-match-wins, which is what makes
+    this a classifier rather than another conjunctive gate: the stages are
+    mutually exclusive, so exactly one clause may claim a symbol, and the
+    note's own line order decides which.
+
+    `expression` is None for the terminal default — the clause that matches
+    unconditionally and must therefore be last.
+    """
+    stage: Stage
+    expression: Optional[str]
+    note_name: str
+    line_number: int          # 1-based, within the stage block
+    phase: str = ""           # optional sub-label, e.g. "pivot" / "pullback"
+    comment: str = ""
+
+    @property
+    def is_default(self) -> bool:
+        return self.expression is None
+
+    @property
+    def display(self) -> str:
+        """`Stage 2 · pivot`, or `Stage 2` when the clause has no phase."""
+        head = f"Stage {self.stage.value}"
+        return f"{head} · {self.phase}" if self.phase else head
+
+
+@dataclass(frozen=True)
+class StageResult:
+    """Which stage a symbol is in, and the clause that decided it.
+
+    `stage` is None when no clause could be evaluated to a decision — a
+    window that has not warmed up, or a note with no terminal default and no
+    matching clause. None means "not classified", never "stage 1": a
+    classifier that guesses on missing data is the same failure shape as a
+    gate that allows on missing data (see this module's docstring).
+    """
+    symbol: str
+    note_name: str
+    stage: Optional[Stage] = None
+    phase: str = ""
+    reason: str = ""
+    matched_clause: Optional[StageClause] = None
+    substitutions: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def is_classified(self) -> bool:
+        return self.stage is not None
+
+    @property
+    def display(self) -> str:
+        if self.stage is None:
+            return "Stage ?"
+        head = f"Stage {self.stage.value}"
+        return f"{head} · {self.phase}" if self.phase else head
+
+    def summary_line(self) -> str:
+        label = self.stage.label if self.stage else "unclassified"
+        return f"{self.symbol}: {self.display} ({label}) — {self.reason}"
 
 
 @dataclass(frozen=True)
@@ -111,6 +206,18 @@ class StrategyNote:
     frontmatter: dict[str, Any] = field(default_factory=dict)
     layer: "Layer" = None                 # brain | raw | wiki | loose
     links: tuple["WikiLink", ...] = ()    # outgoing [[wiki-links]]
+    stage_clauses: tuple[StageClause, ...] = ()
+
+    @property
+    def is_stage_classifier(self) -> bool:
+        """Carries a ```quantos-stages``` block AND may execute it.
+
+        Same layer test as `is_auditable`, for the same reason: a compiled
+        wiki page must not be able to classify any more than it can gate.
+        """
+        if not self.stage_clauses:
+            return False
+        return self.layer is None or self.layer.is_executable
 
     @property
     def is_auditable(self) -> bool:

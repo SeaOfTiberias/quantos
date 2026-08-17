@@ -106,6 +106,40 @@ Full reference: `docs/OBSIDIAN_VAULT_INTEGRATION.md`.
 
 ---
 
+## Stage blocks
+
+The other kind of machine-readable block, and the difference is the whole
+point of having two. A rule block is **conjunctive** and answers one
+PASS/FAIL. A stage block is a **classifier**: the stages are mutually
+exclusive, so it is evaluated **first match wins**, top to bottom, and line
+order is load-bearing.
+
+````markdown
+```quantos-stages
+stage 4 when sma(150) < sma(150)[25] * 0.99
+stage 2 pivot when sma(150) > sma(150)[25] * 1.01 and volume_sma(5) / volume_sma(50) < 0.40
+stage 2 when sma(150) > sma(150)[25] * 1.01
+stage 3 when sma(150)[25] > sma(150)[125]
+stage 1                       # terminal default — must be last
+```
+````
+
+`stage <1-4> [phase] [when <expression>]`. The expression is the same DSL as a
+rule block, with the same vocabulary and the same validation. The optional
+`phase` is a free sub-label (`pivot`, `pullback`) that refines the display
+without creating a new stage.
+
+**A stage is not a verdict and never gates anything.** A verdict has a safe
+default — block — and fails closed. A stage has no safe default, so when a
+clause cannot be evaluated the classifier **stops** and reports *unclassified*
+rather than falling through to a later clause. Nothing in `core/vault/gates.py`
+reads a stage, and a test enforces that.
+
+See `core/vault/stages.py`, and `Stan_Weinstein_Stage_Analysis` for the
+worked example.
+
+---
+
 ## Writing wiki pages
 
 For agents running `compile`, in addition to `prompts/vault_compile_system.md`:

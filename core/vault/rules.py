@@ -195,6 +195,25 @@ def evaluate_rule(rule: Rule, facts: MarketFacts) -> RuleResult:
     return RuleResult(rule=rule, passed=bool(outcome), substitutions=substitutions)
 
 
+def evaluate_expression(expression: str, facts: MarketFacts, *, offset: int = 0,
+                        substitutions: Optional[dict[str, float]] = None) -> bool:
+    """Evaluate a bare expression to a boolean, at an optional bar lag.
+
+    The half of `evaluate_rule` that does not assume a `Rule`, exposed for
+    core/vault/stages.py — a stage clause is the same DSL evaluated against
+    the same facts, and giving it its own copy of the walker would fork the
+    grammar the moment either side gained an operator.
+
+    Unlike `evaluate_rule` this PROPAGATES `InsufficientData` and
+    `RuleSyntaxError` rather than folding them into a result object, because
+    the two callers must react differently: an audit turns an unevaluable
+    rule into a blocking INSUFFICIENT_DATA verdict, while a classifier stops
+    and reports unclassified. Neither may be silently treated as False.
+    """
+    tree = parse_expression(expression)
+    return bool(_eval(tree.body, facts, offset, substitutions if substitutions is not None else {}))
+
+
 def _eval(node: ast.AST, facts: MarketFacts, offset: int,
           subs: dict[str, float]) -> float | bool:
     """Recursive evaluator. `offset` is the current bar-lag context, pushed

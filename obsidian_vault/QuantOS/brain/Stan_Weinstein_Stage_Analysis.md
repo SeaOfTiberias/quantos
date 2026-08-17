@@ -126,6 +126,89 @@ rs_rating >= 60
 
 ---
 
+## 🧭 Stage classification
+
+The rules above answer *"is this name in Stage 2 right now?"* — one PASS/FAIL.
+This block answers the different question the method is actually named for:
+**which** stage, out of four. It is a classifier, not a gate. Nothing in
+`core/vault/gates.py` reads it, and no execution path branches on it.
+
+The block is evaluated **first match wins**, top to bottom, so line order here
+is load-bearing in a way the `quantos-rules` block's order never is.
+
+```quantos-stages
+# ── Falling 30-week average ────────────────────────────────────────────────
+# Checked first because it is the only unconditional exit. Price above or
+# below the average does not rescue it: a rally into a falling 30-week is
+# what a Stage 4 bounce looks like, not a Stage 2.
+stage 4 when sma(150) < sma(150)[25] * 0.99
+
+# ── Rising 30-week average = Stage 2, split into its phases ────────────────
+# The phase labels are the resolution of the Minervini/Weinstein volume
+# contradiction documented below: they are consecutive, not competing.
+#
+# 2 · pivot — volume dried up, the quiet zone before a breakout. Minervini's
+#             sixth rule, same 0.40 threshold as his note uses.
+stage 2 pivot when sma(150) > sma(150)[25] * 1.01 and volume_sma(5) / volume_sma(50) < 0.40
+
+# 2 · pullback — advance intact, price has come back to or under the average.
+#                Still Stage 2: Weinstein treats a pullback to a RISING
+#                30-week as the buy zone, not a breakdown. The topping call
+#                waits for the slope to flatten, which the next clauses make.
+stage 2 pullback when sma(150) > sma(150)[25] * 1.01 and close < sma(150)
+
+# 2 — advancing, nothing special about the volume or the position.
+stage 2 when sma(150) > sma(150)[25] * 1.01
+
+# ── Flat 30-week average — the hard case ───────────────────────────────────
+# Everything reaching here has a flat average, which describes Stage 1 and
+# Stage 3 EQUALLY. They are distinguishable only by what came before: a base
+# follows a decline, a top follows an advance. Hence the long lag — this
+# compares the average five weeks ago against six months before that.
+stage 3 when sma(150)[25] > sma(150)[125]
+
+# Terminal default: flat average, prior trend not up. A base.
+stage 1
+```
+
+### Reading this block
+
+- **The 1% band over 25 sessions is the load-bearing number.** It is what
+  separates "rising" from "flat", and therefore where every boundary falls.
+  It was chosen by running the classifier across the Nifty 500 at several
+  widths and picking the one whose stage distribution was not degenerate —
+  not by taste. Widen it and Stages 1/3 swallow everything; narrow it and
+  they vanish, because a 30-week average is almost never exactly flat.
+
+  This note has been burned by an unexamined threshold once already — see
+  the 2.00-vs-1.25 caveat in [[Mark_Minervini_VCP_Strategy]], which silently
+  voided that entire template. Do not change this one without re-running the
+  distribution.
+
+- **The history requirement is not flat, because first-match-wins
+  short-circuits.** A name with a clearly rising or falling average matches on
+  `sma(150)[25]` and needs only **175 bars**; the Stage 3 clause's
+  `sma(150)[125]` — **275 bars** — is reached only by names already in the
+  flat band. So the deep lag binds exactly where the hard question is, and
+  nowhere else. The shortlist fetches ~275 trading days, which covers both
+  with nothing to spare.
+
+  Names with too little history come back **unclassified**, not Stage 1 — the
+  classifier stops rather than falling through, for the same fail-loud reason
+  the auditor separates INSUFFICIENT_DATA from FAIL. A newly listed stock is
+  not "basing"; it is unknown.
+
+- **Stage is price structure only.** `rs_rating` is deliberately absent: it
+  is injected, not computed, and letting it in would make every symbol
+  without a supplied rating unclassifiable. Relative strength stays a
+  trend-template concern.
+
+- **Daily bars again.** Same 150-for-30-weeks substitution as the rules
+  above, with the same consequence — this will flip stage slightly earlier
+  and slightly more often than a weekly chart would.
+
+---
+
 ## 🔗 Relationship to the rest of the system
 
 - [[Mark_Minervini_VCP_Strategy]] — the SEPA trend template is a stricter

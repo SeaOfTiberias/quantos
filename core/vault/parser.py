@@ -45,16 +45,22 @@ from typing import Any, Optional
 import yaml
 
 from core.vault.layers import Layer, layer_of
-from core.vault.models import Rule, StrategyNote
+from core.vault.models import Rule, StageClause, StrategyNote
+from core.vault.stages import StageSyntaxError, parse_stage_clause
 from core.vault.wikilinks import parse_links
 
 logger = logging.getLogger(__name__)
 
 RULE_BLOCK_LANGUAGE = "quantos-rules"
+STAGE_BLOCK_LANGUAGE = "quantos-stages"
 
 _FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.DOTALL)
 _RULE_BLOCK_RE = re.compile(
     rf"^```{RULE_BLOCK_LANGUAGE}[ \t]*\r?\n(.*?)^```",
+    re.DOTALL | re.MULTILINE,
+)
+_STAGE_BLOCK_RE = re.compile(
+    rf"^```{STAGE_BLOCK_LANGUAGE}[ \t]*\r?\n(.*?)^```",
     re.DOTALL | re.MULTILINE,
 )
 _H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
@@ -89,6 +95,7 @@ def parse_note(path: Path, vault_dir: Optional[Path] = None) -> StrategyNote:
 
     frontmatter, body = _split_frontmatter(text, path)
     rules = tuple(_extract_rules(body, note_name=path.stem))
+    stage_clauses = tuple(_extract_stage_clauses(body, note_name=path.stem))
 
     heading = _H1_RE.search(body)
     title = heading.group(1).strip() if heading else path.stem.replace("_", " ")
@@ -103,6 +110,7 @@ def parse_note(path: Path, vault_dir: Optional[Path] = None) -> StrategyNote:
         frontmatter=frontmatter,
         layer=layer_of(path, vault_dir) if vault_dir else None,
         links=parse_links(body),
+        stage_clauses=stage_clauses,
     )
 
 
@@ -164,6 +172,35 @@ def _extract_rules(body: str, *, note_name: str) -> list[Rule]:
                 comment=comment,
             ))
     return rules
+
+
+def _extract_stage_clauses(body: str, *, note_name: str) -> list[StageClause]:
+    """Pull every clause out of every ```quantos-stages``` block.
+
+    Unlike rules, order is load-bearing here — the block is evaluated
+    first-match-wins (core/vault/stages.py) — so multiple blocks are
+    concatenated in document order and the caller must not reorder them.
+
+    A malformed clause is DROPPED with a warning rather than aborting the
+    note, matching how malformed frontmatter is handled: one bad line should
+    not cost the reader the whole classifier. The dropped line is named at
+    WARNING level so it cannot vanish silently, and `vault lint` reports it
+    through `validate_clauses`.
+    """
+    clauses: list[StageClause] = []
+    for block in _STAGE_BLOCK_RE.finditer(_strip_outer_fences(body)):
+        for offset, raw_line in enumerate(block.group(1).splitlines(), start=1):
+            expression, comment = _strip_comment(raw_line)
+            if not expression:
+                continue
+            try:
+                clauses.append(parse_stage_clause(
+                    expression, note_name=note_name, line_number=offset,
+                    comment=comment,
+                ))
+            except StageSyntaxError as e:
+                logger.warning("Vault: dropping unparseable stage clause — %s", e)
+    return clauses
 
 
 def _strip_outer_fences(body: str) -> str:
