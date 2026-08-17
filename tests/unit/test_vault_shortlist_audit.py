@@ -319,3 +319,133 @@ class TestNarratorCannotChangeTheVerdict:
         narrate(self._report(), None, client=client)
         sent = str(client.messages.create.call_args)
         assert "OHLCV" not in sent
+
+
+# ── Stage classification (2026-08-17) ────────────────────────────────────
+# A note carrying BOTH kinds of block, so the tests can prove the two travel
+# independently: a note can fail its rules and still classify a stage, which
+# is the whole reason they are separate mechanisms.
+STAGED_NOTE = """---
+quantos:
+  id: staged
+  label: Staged
+---
+# Staged
+```quantos-rules
+close < sma(200)
+```
+
+```quantos-stages
+stage 4 when sma(150) < sma(150)[25] * 0.99
+stage 2 when sma(150) > sma(150)[25] * 1.01
+stage 3 when sma(150)[25] > sma(150)[100]
+stage 1
+```
+"""
+
+SECOND_STAGED_NOTE = """---
+quantos:
+  id: staged2
+  label: Staged2
+---
+# Staged Two
+```quantos-stages
+stage 1
+```
+"""
+
+
+def falling_bars(n=400, rate=0.004):
+    out = []
+    for i in range(n):
+        px = 100 * math.exp(-i * rate)
+        out.append(OHLCV(timestamp=_BASE + timedelta(days=i), open=px, high=px * 1.01,
+                         low=px * 0.99, close=px, volume=100_000))
+    return out
+
+
+@pytest.fixture
+def staged_vault(tmp_path):
+    brain = tmp_path / "brain"
+    brain.mkdir()
+    (brain / "Trend.md").write_text(TREND_NOTE, encoding="utf-8")
+    (brain / "Staged.md").write_text(STAGED_NOTE, encoding="utf-8")
+    return tmp_path
+
+
+class TestStageAnnotation:
+    """The stage must reach the entry, and must stay separable from the
+    verdict — they answer different questions and are not commensurable."""
+
+    def test_rising_series_is_stage_2(self, staged_vault):
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["staged"], vault_dir=staged_vault)
+        assert out[0].stage == 2
+
+    def test_falling_series_is_stage_4(self, staged_vault):
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": falling_bars()},
+                                        ["staged"], vault_dir=staged_vault)
+        assert out[0].stage == 4
+
+    def test_stage_is_independent_of_the_verdict(self, staged_vault):
+        """`close < sma(200)` fails on a rising series while the stage block
+        says Stage 2. If these two ever move together, something has started
+        conflating a classification with a gate."""
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["staged"], vault_dir=staged_vault)
+        assert out[0].vault_verdict == "FAIL"
+        assert out[0].stage == 2
+
+    def test_detail_names_the_note_and_the_numbers(self, staged_vault):
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["staged"], vault_dir=staged_vault)
+        assert "Staged" in out[0].stage_detail
+        assert "sma(150)" in out[0].stage_detail
+
+    def test_note_without_a_stage_block_leaves_stage_none(self, vault):
+        out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                        ["trend"], vault_dir=vault)
+        assert out[0].stage is None
+        assert out[0].stage_detail is None
+
+    def test_short_history_is_unclassified_not_stage_1(self, staged_vault):
+        """The load-bearing one. A name the classifier could not place must
+        come back None with a reason — never defaulted into a stage."""
+        out = annotate_with_vault_audit([entry("AAA", 1)],
+                                        {"AAA": rising_bars(n=60)},
+                                        ["staged"], vault_dir=staged_vault)
+        assert out[0].stage is None
+        assert "could not be evaluated" in out[0].stage_detail
+
+    def test_no_history_leaves_stage_none(self, staged_vault):
+        out = annotate_with_vault_audit([entry("AAA", 1)], {}, ["staged"],
+                                        vault_dir=staged_vault)
+        assert out[0].stage is None
+
+    def test_second_stage_note_is_ignored_with_a_warning(self, tmp_path, caplog):
+        """Two notes cannot both say what stage a stock is in. The first in
+        configured order wins and the ambiguity is logged, rather than the
+        second silently overwriting the first."""
+        brain = tmp_path / "brain"
+        brain.mkdir()
+        (brain / "Staged.md").write_text(STAGED_NOTE, encoding="utf-8")
+        (brain / "Staged2.md").write_text(SECOND_STAGED_NOTE, encoding="utf-8")
+
+        with caplog.at_level("WARNING"):
+            out = annotate_with_vault_audit([entry("AAA", 1)], {"AAA": rising_bars()},
+                                            ["staged", "staged2"], vault_dir=tmp_path)
+        assert out[0].stage == 2                       # from the FIRST note
+        assert any("only the first is used" in r.message for r in caplog.records)
+
+    def test_a_broken_classifier_does_not_cost_the_shortlist(self, staged_vault):
+        """Same contract as the audit itself: the annotation is optional and
+        must never drop a row or raise."""
+        auditor = StrategyAuditor(VaultIndex.load(staged_vault))
+        auditor.classify_stage = MagicMock(side_effect=RuntimeError("boom"))
+        out = annotate_with_vault_audit([entry("AAA", 1), entry("BBB", 2)],
+                                        {"AAA": rising_bars(), "BBB": rising_bars()},
+                                        ["staged"], auditor=auditor)
+        assert len(out) == 2
+        assert all(e.stage is None for e in out)
+        assert "boom" in out[0].stage_detail
+        assert all(e.vault_verdict == "FAIL" for e in out)   # the audit still ran

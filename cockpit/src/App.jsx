@@ -432,6 +432,35 @@ function vaultColumns(entries) {
   return [...seen].map(([strategyId, label]) => ({ strategyId, label }));
 }
 
+// Weinstein stage (2026-08-17) — core/vault/stages.py, mirrored on TradingView
+// by pine/weinstein_stage_journey.pine.
+//
+// This is a CLASSIFICATION, not a score, and it deliberately sits in its own
+// column rather than joining the tallies above. The vault columns answer "do
+// this note's conditions hold?" (conjunctive, PASS/FAIL); this answers "where
+// in the cycle is this name?" (mutually exclusive, 1-4). Adding them together
+// would repeat exactly the mistake the vaultColumns comment describes.
+//
+// null means UNCLASSIFIED, never stage 1 — a name without enough history is
+// unknown, not basing. It renders "—" with the reason on hover.
+const stageMeta = {
+  1: { label: "1 · Basing",    color: C.accent, title: "Flat 30-week MA after a decline. Watch, no position." },
+  2: { label: "2 · Advancing", color: C.green,  title: "Rising 30-week MA. Weinstein's only buy zone." },
+  3: { label: "3 · Topping",   color: C.gold,   title: "Flat 30-week MA after an advance. Tighten stops." },
+  4: { label: "4 · Declining", color: C.red,    title: "Falling 30-week MA. Out." },
+};
+
+// The phase refines Stage 2 without changing it, so it is appended to the
+// label rather than given a colour of its own: `2 · pivot` is still Stage 2
+// and must not read as a fifth state. These two phases are what resolve the
+// Minervini/Weinstein volume contradiction — dry-up and expansion describe
+// consecutive phases of one advance, not competing verdicts.
+function stageText(entry) {
+  const meta = stageMeta[entry.stage];
+  if (!meta) return null;
+  return entry.stage_phase ? `${entry.stage} · ${entry.stage_phase}` : meta.label;
+}
+
 const bucketMeta = {
   LEADER_TIGHT_BASE: { label: "Leader · Tight Base", color: C.green },
   LEADER_EXTENDED:   { label: "Leader · Extended",   color: C.gold },
@@ -503,13 +532,14 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
           <thead>
             <tr>
               {[
-                ...["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200"],
+                ...["Symbol", "Bucket", "Momentum", "Trend", "Breakout", "50/200", "Stage"],
                 ...vaultCols.map(c => c.label),
                 ...["Width%", "R:R"],
               ].map(h => (
                 <th key={h} style={{
                   textAlign: (h === "Symbol" || h === "Bucket" || h === "Breakout"
-                              || h === "50/200" || vaultLabels.has(h)) ? "left" : "right",
+                              || h === "50/200" || h === "Stage"
+                              || vaultLabels.has(h)) ? "left" : "right",
                   fontSize: 10, fontWeight: 600, letterSpacing: 1.2,
                   color: C.muted, padding: "4px 6px", borderBottom: `1px solid ${C.border}`,
                   textTransform: "uppercase",
@@ -563,6 +593,31 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
                     {e.ma_cross
                       ? `${e.ma_cross}${e.ma_cross_days != null ? ` ${e.ma_cross_days}d` : ""}`
                       : "—"}
+                  </td>
+                  <td style={{ padding: "8px 6px", fontSize: 11 }}>
+                    {(() => {
+                      const meta = stageMeta[e.stage];
+                      // Unclassified and never-classified are different states
+                      // and must stay distinguishable: stage_detail carries the
+                      // reason when the classifier ran and could not place the
+                      // name, and is absent entirely on a row that predates the
+                      // column or a scan with no stage note configured.
+                      if (!meta) {
+                        return (
+                          <span title={e.stage_detail || "not classified"}
+                                style={{ color: C.muted }}>—</span>
+                        );
+                      }
+                      return (
+                        <span
+                          title={e.stage_detail || meta.title}
+                          style={{
+                            fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                            color: meta.color, background: `${meta.color}20`,
+                            border: `1px solid ${meta.color}40`, whiteSpace: "nowrap",
+                          }}>{stageText(e)}</span>
+                      );
+                    })()}
                   </td>
                   {vaultCols.map(col => {
                     const score = (e.vault_notes ?? []).find(n => n.strategy_id === col.strategyId);

@@ -196,6 +196,40 @@ class TestFieldsSurviveTheRoundTrip:
         assert "VCP: FAIL" in entry["vault_detail"]
 
     @pytest.mark.asyncio
+    async def test_the_stage_reaches_the_cockpit(self):
+        """The stage is a separate trio of fields from the vault verdict and
+        travels the same fragile path — computed on the VM, POSTed, and
+        dropped by Pydantic if undeclared. The structural guard above catches
+        a missing declaration; this catches a declaration that does not
+        actually round-trip."""
+        await _sync("alpha50", [dict(_entry(), stage=2, stage_phase="pivot",
+                                     stage_detail="Stan_Weinstein_Stage_Analysis: Stage 2 - pivot")])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/discovery/momentum-shortlist/alpha50")
+
+        entry = resp.json()["entries"][0]
+        assert entry["stage"] == 2
+        assert entry["stage_phase"] == "pivot"
+        assert "Stage 2" in entry["stage_detail"]
+
+    @pytest.mark.asyncio
+    async def test_an_unclassified_stage_stays_null(self):
+        """null must survive as null. If it ever arrives as 0 or 1 the
+        cockpit would render a stage for a name that has none."""
+        await _sync("alpha50", [dict(_entry(), stage=None, stage_phase=None,
+                                     stage_detail="not enough history")])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/discovery/momentum-shortlist/alpha50")
+
+        entry = resp.json()["entries"][0]
+        assert entry["stage"] is None
+        assert entry["stage_detail"] == "not enough history"
+
+    @pytest.mark.asyncio
     async def test_the_rule_tally_reaches_the_cockpit(self):
         """The tally is what the column actually renders — the verdict alone
         reads FAIL for nearly every name, so losing this would put the panel

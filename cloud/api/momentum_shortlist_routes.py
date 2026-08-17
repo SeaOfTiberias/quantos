@@ -169,6 +169,14 @@ class ShortlistEntryIn(BaseModel):
     vault_rules_passed: Optional[int] = None
     vault_rules_total:  Optional[int] = None
     vault_notes: list[VaultNoteScoreIn] = []
+    # Weinstein stage classification, added 2026-08-17 (core/vault/stages.py).
+    # A classification, not a verdict: 1-4 are mutually exclusive and None
+    # means UNCLASSIFIED, never "stage 1". Kept as its own trio rather than
+    # folded into vault_notes because a stage is not a score and must not be
+    # summed with one.
+    stage:        Optional[int] = None
+    stage_phase:  Optional[str] = None
+    stage_detail: Optional[str] = None
 
 
 class ShortlistSyncRequest(BaseModel):

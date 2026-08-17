@@ -158,6 +158,17 @@ class ShortlistEntry:
     # consecutive phases. Conjoining them asks for a name that is
     # pre-breakout and post-breakout at once.
     vault_notes: tuple["VaultNoteScore", ...] = ()
+    # Weinstein stage classification (2026-08-17). Separate from the fields
+    # above and deliberately so: those answer "do the note's conditions
+    # hold?" and are conjunctive PASS/FAIL, this answers "where in the cycle
+    # is this name?" and is a mutually-exclusive 1-4. Summing or mixing them
+    # would repeat the mistake the vault_notes comment describes.
+    #
+    # None means UNCLASSIFIED, never "stage 1" -- a name without enough
+    # history is unknown, not basing. See core/vault/stages.py.
+    stage:        Optional[int] = None      # 1 Basing | 2 Advancing | 3 Topping | 4 Declining
+    stage_phase:  Optional[str] = None      # optional sub-label, e.g. "pivot" / "pullback"
+    stage_detail: Optional[str] = None      # which note classified it, and on what numbers
 
 
 def ema_series(closes: list[float], period: int) -> list[Optional[float]]:

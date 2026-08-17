@@ -23,6 +23,19 @@ percentile via `rs_rating_from_rank`.
 Read `rs_rating_from_rank`'s docstring before trusting a threshold: this is a
 percentile of THIS universe by THIS measure, not IBD's RS Rating, and
 Minervini's `>= 70` was written for IBD's.
+
+The stage column is a different kind of answer
+──────────────────────────────────────────────
+Alongside the per-note verdicts this also fills `stage`/`stage_phase`, from
+whichever configured note carries a ```quantos-stages``` block. Keep the two
+apart when reading a row: the verdicts are conjunctive PASS/FAIL answers to
+"do this note's conditions hold?", the stage is a mutually-exclusive 1-4
+answer to "where in the cycle is this name?". They are not commensurable and
+must never be summed — see `_note_scores` for what happened the last time two
+incommensurable vault numbers were added together.
+
+Neither is a gate. Nothing here can block anything; the shortlist has no
+execution path.
 """
 
 from __future__ import annotations
@@ -84,8 +97,10 @@ def annotate_with_vault_audit(
     # outside the range and silently turn the entire column into
     # INSUFFICIENT_DATA.
     universe_size = max(e.momentum_rank for e in entries)
+    stage_note = _stage_note_name(auditor, note_names)
     annotated: list[ShortlistEntry] = []
     counts: dict[str, int] = {}
+    stage_counts: dict[str, int] = {}
 
     for entry in entries:
         daily = daily_by_symbol.get(entry.symbol) or []
@@ -101,6 +116,9 @@ def annotate_with_vault_audit(
             continue
 
         verdict = _worst(reports)
+        stage, phase, stage_detail = _stage_of(auditor, entry.symbol, daily, stage_note)
+        stage_counts[str(stage) if stage else "?"] = \
+            stage_counts.get(str(stage) if stage else "?", 0) + 1
         annotated.append(replace(
             entry,
             vault_verdict=verdict.value,
@@ -108,13 +126,80 @@ def annotate_with_vault_audit(
             vault_rules_passed=sum(r.rules_passed for r in reports),
             vault_rules_total=sum(r.rules_total for r in reports),
             vault_notes=_note_scores(reports),
+            stage=stage,
+            stage_phase=phase,
+            stage_detail=stage_detail,
         ))
         counts[verdict.value] = counts.get(verdict.value, 0) + 1
 
     logger.info("Shortlist vault audit: %s across %d symbols vs %s",
                 ", ".join(f"{v}={n}" for v, n in sorted(counts.items())),
                 len(entries), ", ".join(note_names))
+    if stage_note:
+        logger.info("Shortlist stage classification (%s): %s", stage_note,
+                    ", ".join(f"stage {k}={n}" for k, n in sorted(stage_counts.items())))
     return annotated
+
+
+def _stage_note_name(auditor: StrategyAuditor,
+                     note_names: Sequence[str]) -> Optional[str]:
+    """Which configured note supplies the stage, or None if none does.
+
+    Resolved ONCE for the whole run rather than per symbol: it is a property
+    of the configuration, and doing it in the loop would emit the ambiguity
+    warning below several hundred times.
+
+    Two notes cannot both say what stage a stock is in — a stage is a single
+    mutually-exclusive classification, so a second classifier is a
+    configuration error rather than extra information. The first in
+    configured order wins and the rest are named in a warning, which is the
+    behaviour least likely to silently change an answer.
+    """
+    classifiers = []
+    for name in note_names:
+        try:
+            note = auditor.index.get(name)
+        except Exception:
+            continue
+        if note.is_stage_classifier:
+            classifiers.append(name)
+
+    if not classifiers:
+        return None
+    if len(classifiers) > 1:
+        logger.warning(
+            "Shortlist stage classification: %d notes carry a ```quantos-stages``` "
+            "block (%s). A stage is one mutually-exclusive answer, so only the "
+            "first is used — the others are ignored entirely.",
+            len(classifiers), ", ".join(classifiers))
+    return classifiers[0]
+
+
+def _stage_of(auditor: StrategyAuditor, symbol: str, daily: Sequence[OHLCV],
+              note_name: Optional[str]) -> tuple[Optional[int], Optional[str], Optional[str]]:
+    """(stage, phase, detail) for one symbol, or (None, None, reason).
+
+    Never raises, for the same reason the audit above does not: a broken
+    annotation must cost the shortlist nothing. An unclassified name keeps
+    the reason in `detail`, so a blank column can be told apart from a name
+    that genuinely could not be placed.
+    """
+    if not note_name:
+        return None, None, None
+    try:
+        result = auditor.classify_stage(symbol, daily, note_name)
+    except Exception as e:
+        logger.warning("Shortlist stage classification: %s raised %s", symbol, e)
+        return None, None, f"classification raised {type(e).__name__}: {e}"
+
+    # `result.note_name` is the note's own name, not the configured id that
+    # was passed in — a note can be addressed by `quantos.id` while the file
+    # is called something else, and the reader wants the file. Matches how
+    # `_detail` labels the per-note verdicts.
+    detail = f"{result.note_name or note_name}: {result.display} — {result.reason}"
+    if not result.is_classified:
+        return None, None, detail
+    return result.stage.value, result.phase or None, detail
 
 
 def _note_scores(reports: Sequence[AuditReport]) -> tuple[VaultNoteScore, ...]:
