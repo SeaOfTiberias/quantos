@@ -198,13 +198,15 @@ stage 1
   **The intended selection rule failed, and the honest version is worth
   writing down.** The plan was to pick the band that minimised churn — how
   often a name flips stage — on the reasoning that a band exists to buy
-  stability. But churn is low at *both* ends and flat across the entire
-  usable middle. That is not a stability curve; it is a count of how many
-  stages are in play. At 0% there is no flat region, so nothing can cross
-  into Stages 1 or 3. At 5% Stage 1 has absorbed half the market and there
-  are few boundaries left to cross. The metric is confounded with the very
-  collapse it was meant to be independent of, so its minimum is an artifact
-  and the script now refuses to pick from it.
+  stability. But churn **rises** from 0.43 to 0.54 as the band widens from
+  0% to 0.25%, then plateaus, then falls. A wider band cannot make a label
+  less stable, so whatever that curve is, it is not stability. What it
+  tracks is how many stages are in play: at 0% there is no flat region so
+  nothing can enter Stages 1 or 3, and at 5% Stage 1 has absorbed half the
+  market. Both ends look calm for degenerate reasons. The metric is
+  confounded with the very collapse it was meant to be independent of, so
+  its minimum (3%) is an artifact and the script now refuses to pick from
+  it.
 
   **What 1% actually rests on is annualised slope.** The band is a move of
   the 150-day average over 25 sessions, so it scales by 252/25 ≈ 10x: 0.5%

@@ -1,0 +1,126 @@
+{
+  "total_symbols": 499,
+  "shipped_band": 0.01,
+  "churn_window": 60,
+  "churn_discriminates": false,
+  "recommended_band": null,
+  "rows": [
+    {
+      "band": 0.0,
+      "stage_1": 0,
+      "stage_2": 275,
+      "stage_3": 0,
+      "stage_4": 221,
+      "unclassified": 3,
+      "pivot": 36,
+      "pullback": 37,
+      "churn": 0.42943548387096775,
+      "flags": [
+        "a stage is empty",
+        "one stage >50%"
+      ]
+    },
+    {
+      "band": 0.0025,
+      "stage_1": 22,
+      "stage_2": 254,
+      "stage_3": 9,
+      "stage_4": 210,
+      "unclassified": 4,
+      "pivot": 33,
+      "pullback": 31,
+      "churn": 0.5443548387096774,
+      "flags": [
+        "one stage >50%"
+      ]
+    },
+    {
+      "band": 0.005,
+      "stage_1": 45,
+      "stage_2": 239,
+      "stage_3": 15,
+      "stage_4": 196,
+      "unclassified": 4,
+      "pivot": 33,
+      "pullback": 25,
+      "churn": 0.5120967741935484,
+      "flags": []
+    },
+    {
+      "band": 0.0075,
+      "stage_1": 60,
+      "stage_2": 227,
+      "stage_3": 24,
+      "stage_4": 184,
+      "unclassified": 4,
+      "pivot": 32,
+      "pullback": 21,
+      "churn": 0.509090909090909,
+      "flags": []
+    },
+    {
+      "band": 0.01,
+      "stage_1": 84,
+      "stage_2": 209,
+      "stage_3": 34,
+      "stage_4": 166,
+      "unclassified": 6,
+      "pivot": 30,
+      "pullback": 15,
+      "churn": 0.5232323232323233,
+      "flags": []
+    },
+    {
+      "band": 0.015,
+      "stage_1": 119,
+      "stage_2": 185,
+      "stage_3": 47,
+      "stage_4": 141,
+      "unclassified": 7,
+      "pivot": 26,
+      "pullback": 10,
+      "churn": 0.5141700404858299,
+      "flags": []
+    },
+    {
+      "band": 0.02,
+      "stage_1": 151,
+      "stage_2": 162,
+      "stage_3": 60,
+      "stage_4": 116,
+      "unclassified": 10,
+      "pivot": 23,
+      "pullback": 7,
+      "churn": 0.5030425963488844,
+      "flags": []
+    },
+    {
+      "band": 0.03,
+      "stage_1": 202,
+      "stage_2": 122,
+      "stage_3": 87,
+      "stage_4": 77,
+      "unclassified": 11,
+      "pivot": 16,
+      "pullback": 3,
+      "churn": 0.4426229508196721,
+      "flags": []
+    },
+    {
+      "band": 0.05,
+      "stage_1": 257,
+      "stage_2": 56,
+      "stage_3": 140,
+      "stage_4": 31,
+      "unclassified": 15,
+      "pivot": 7,
+      "pullback": 0,
+      "churn": 0.27628865979381445,
+      "flags": [
+        "one stage >50%"
+      ]
+    }
+  ],
+  "universe": "agent/universe_nifty500.txt",
+  "generated_at": "2026-08-17T10:18:57.907009+00:00"
+}

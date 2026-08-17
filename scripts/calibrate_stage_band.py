@@ -52,18 +52,31 @@ flipping. The live run says that reasoning is wrong, and the table says why:
     3.00%       40%     0.44
     5.00%       52%     0.28
 
-Churn is LOW AT BOTH EXTREMES and flat across the entire usable middle. That
-is not a stability curve, it is a count of how many stages are in play. At a
-0% band there is no flat region at all, so nothing can cross into Stages 1 or
-3 and there are only two states to move between. At a 5% band Stage 1 has
-absorbed half the market, so most names sit in one bucket with no boundary
-nearby. Both ends look "stable" for the same degenerate reason.
+**Churn RISES from 0.43 to 0.54 as the band widens from 0% to 0.25%**, then
+plateaus, then falls. That single fact disqualifies it. The metric is only
+meaningful under one reading — a narrower band leaves the slope sitting on
+the boundary, so names flip more — and that reading requires churn to fall
+monotonically as the band widens. It does not, so it is measuring something
+else.
+
+What it is measuring is how many stages are in play. At a 0% band there is no
+flat region, so nothing can cross into Stages 1 or 3 and there are only two
+states to move between. At a 5% band Stage 1 has absorbed half the market, so
+most names sit in one bucket with no boundary nearby. Both ends look "stable"
+for the same degenerate reason, and the middle is flat (0.50-0.52 across
+0.5%-2%).
 
 So the metric is confounded with the very collapse that check 1 exists to
-catch, and its minimum is an artifact. This script therefore reports churn
-and REFUSES to auto-pick from it when the spread across usable bands is
-within noise. Recording the negative result rather than deleting the metric:
-a future reader will otherwise re-derive the same idea and re-run it.
+catch, and its minimum is an artifact. `_churn_is_interpretable` tests the
+monotonicity directly and the script REFUSES to auto-pick when it fails.
+Recording the negative result rather than deleting the metric: a future
+reader will otherwise re-derive the same idea and re-run it.
+
+(An earlier version of this guard used a spread threshold instead — churn
+declared uninformative if its range across usable bands was under 20%. The
+measured spread was 15.4%, so the verdict depended on a cutoff picked after
+seeing the data; 15% would have flipped it. Monotonicity has nothing to
+tune.)
 
 What the band was actually chosen on
 ─────────────────────────────────────
@@ -138,11 +151,12 @@ BANDS = (0.0, 0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05)
 # sessions back, so a band converts to an annualised rate by 252/SLOPE_LAG.
 SLOPE_LAG = 25
 
-# Relative spread in churn below which the metric is declared non-informative
-# and no band is recommended from it. Measured spread on 2026-08-17 was 3.8%
-# across the usable bands — see the module docstring for why that is a
-# confound rather than a tight result.
-CHURN_DISCRIMINATION_THRESHOLD = 0.20
+# There is deliberately NO churn-spread threshold here. The first version of
+# this guard declared churn non-informative when its spread across usable
+# bands fell below 20%. The measured spread was 15.4% — so the verdict rested
+# on a cutoff chosen after seeing the data, and a cutoff of 15% would have
+# flipped it. `_churn_is_interpretable` tests monotonicity instead, which the
+# data either satisfies or does not, with nothing left to tune.
 
 
 def clauses_for(band: float, note_name: str = "calibration"):
@@ -276,6 +290,30 @@ def churn(daily: dict, band: float, *, window: int) -> float:
     return sum(totals) / len(totals) if totals else float("nan")
 
 
+def _churn_is_interpretable(rows: list[dict]) -> tuple[bool, str]:
+    """Is churn behaving like a stability measure at all?
+
+    The test is monotonicity, not spread. Churn is only meaningful here under
+    one reading: a narrower band leaves the slope sitting on the boundary, so
+    names flip more. That reading REQUIRES churn to fall as the band widens.
+    If it rises anywhere, the reading is false and the numbers are measuring
+    something else — no threshold on the spread can rescue that, and picking
+    a spread cutoff is just choosing the answer.
+
+    Returns (interpretable, evidence).
+    """
+    ordered = sorted(rows, key=lambda r: r["band"])
+    for previous, current in zip(ordered, ordered[1:]):
+        if current["churn"] > previous["churn"] + 1e-9:
+            return False, (
+                f"churn RISES from {previous['churn']:.2f} at "
+                f"{previous['band'] * 100:.2f}% to {current['churn']:.2f} at "
+                f"{current['band'] * 100:.2f}% — a wider band cannot make a "
+                f"label less stable, so this is not stability"
+            )
+    return True, "churn falls monotonically as the band widens"
+
+
 def report(daily: dict, *, window: int) -> dict:
     total = len(daily)
     rows = []
@@ -310,20 +348,20 @@ def report(daily: dict, *, window: int) -> dict:
     if not usable:
         print("No band cleared the structural checks — inspect the table by hand.")
     else:
-        churns = [r["churn"] for r in usable]
-        spread = (max(churns) - min(churns)) / max(churns) if max(churns) else 0.0
-        if spread < CHURN_DISCRIMINATION_THRESHOLD:
-            # See the module docstring: churn is confounded with how many
-            # stages are populated, so its minimum lands on a collapsed
-            # distribution rather than a stable one. Refusing to pick is the
-            # honest outcome — reporting the argmin would launder an artifact
-            # as a measurement.
-            print(f"Churn spread across the {len(usable)} usable bands is "
-                  f"{spread * 100:.1f}% — within noise, so churn DOES NOT "
-                  f"discriminate and no band is recommended from it.")
-            print("  Low churn at wide bands is the distribution collapsing into "
-                  "one stage, not the label becoming stable. Compare the S1 "
-                  "column against the churn column before trusting either.")
+        monotone, evidence = _churn_is_interpretable(rows)
+        if not monotone:
+            # See the module docstring. Refusing to pick is the honest
+            # outcome: reporting the argmin would launder an artifact as a
+            # measurement.
+            print("Churn is NOT interpretable as stability, so no band is "
+                  "recommended from it.")
+            print(f"  {evidence}")
+            print("  A band's job is to stop a barely-moving average being called "
+                  "'rising', so churn must fall as the band widens. It does not. "
+                  "What it actually tracks is how many stages are in play — near "
+                  "zero band nothing can enter Stages 1/3, and at a wide band one "
+                  "stage absorbs the market. Both ends look calm for degenerate "
+                  "reasons. Compare the S1 column against the churn column.")
         else:
             recommended = min(usable, key=lambda r: r["churn"])
             print(f"Least-churning non-degenerate band: "
