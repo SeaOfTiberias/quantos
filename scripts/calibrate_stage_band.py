@@ -53,8 +53,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import yaml
-
 from core.vault.facts import MarketFacts
 from core.vault.models import Stage
 from core.vault.parser import parse_note
@@ -149,15 +147,18 @@ def _normalise(expression):
 async def fetch_universe(config_path: Path, universe_path: Path) -> dict:
     """Daily bars for every symbol, via the same chunked fetch the live
     shortlist uses — Fyers caps a single history request at 366 days."""
-    from agent.brokers.fyers_broker import FyersBroker
+    # Same construction path as scripts/run_momentum_shortlist.py — the point
+    # is to read exactly the bars the live shortlist reads, so a band chosen
+    # here is a band chosen against production data.
+    from agent.main import _load_universe, load_config
+    from core.brokers import get_broker
     from scripts.validate_regime_classifier import fetch_chunked_daily
 
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    broker = FyersBroker(config["broker"])
-    await broker.connect()
+    config = load_config(str(config_path))
+    broker = get_broker(config)
+    broker.connect()
 
-    symbols = [s.strip() for s in universe_path.read_text(encoding="utf-8").splitlines()
-               if s.strip() and not s.startswith("#")]
+    symbols = _load_universe(str(universe_path))
     logger.info("Fetching %d symbols (%d-day window)...", len(symbols), FETCH_WINDOW_DAYS)
 
     to_date = datetime.now(timezone.utc)
