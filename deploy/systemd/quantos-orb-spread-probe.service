@@ -10,6 +10,29 @@ WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/probe_orb_scalping_real_spreads.py
 Environment=HOME=/home/ubuntu
 
+# Only sample while NSE is actually open (Mon-Fri, 09:15-15:30 IST).
+#
+# The three OnCalendar slots are all inside that window already, so this
+# changes nothing for them. It exists for the new trigger: as of 2026-08-18
+# quantos-token-refreshed.path also fires this probe on the daily token
+# refresh, and that refresh is frequently done PRE-OPEN. This script has no
+# market-hours guard of its own -- outside hours the Fyers chain quietly
+# serves last-close quotes, and it would append them to
+# data_cache/orb_scalping_spread_samples.csv indistinguishably from live
+# ones. That file IS candidate 18's verdict on whether the real bid-ask
+# eats the edge; silently mixing stale closing spreads into it would
+# corrupt the one measurement the probe exists to make.
+#
+# ExecCondition (not ExecStartPre): a false condition marks the unit
+# cleanly SKIPPED rather than FAILED, so an out-of-hours refresh does not
+# leave a red unit behind. Exit 1 from sh is in the 1-254 skip range.
+#
+# Weekends only -- this does NOT know about NSE trading holidays, which
+# still log a stale row the same way they always have (see the .timer).
+# Leading-zero times are safe here: dash's test(1) parses "0935" as decimal
+# 935, not octal. Verified on this VM's /bin/sh.
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+
 # Read-only market-data fetch only -- no broker orders, no capital at risk.
 # Appends one row per leg to data_cache/orb_scalping_spread_samples.csv on
 # every fire; a failed run (stale token, holiday, market closed with no

@@ -47,7 +47,7 @@ _last_synced_at: dict[str, datetime] = {}
 
 # ...backed by a small JSON file, because the scan that fills these is
 # expensive and rare: ~11 minutes over ~580 symbols, and (since
-# quantos-momentum-shortlist.path) it runs on the daily Fyers token refresh.
+# quantos-token-refreshed.path) it runs on the daily Fyers token refresh.
 # Without a disk copy, any API restart blanks all three cockpit tabs until
 # the NEXT morning's refresh -- and deploying is itself a restart, so the
 # deploy pipeline would reliably wipe the panels it just shipped.

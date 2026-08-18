@@ -3,6 +3,17 @@ Description=QuantOS Momentum Turnover Real-Capital Pilot (candidate 11 -- small 
 After=network-online.target
 Wants=network-online.target
 
+# Ordering only, not a dependency: when quantos-token-refreshed.target
+# pulls the whole batch in at once, this keeps the jobs single-file instead
+# of letting them race. The VM has 956MB of RAM and no MemoryMax on any of
+# these units, and on a quarter boundary the rotation jobs each fetch a
+# few hundred symbol series at the same time the shortlist is fetching 500
+# -- the exact shape of the 2026-07-15 OOM. Cheapest day-to-day too: the
+# probe is ~5s and the rotation jobs no-op in ~2s off-boundary, so the
+# shortlist still starts within seconds of the refresh.
+# A failed or ExecCondition-skipped predecessor still releases the barrier.
+After=quantos-orb-spread-probe.service
+
 [Service]
 Type=oneshot
 User=ubuntu

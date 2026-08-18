@@ -3,7 +3,7 @@ Momentum Shortlist Routes — Unit Tests
 ────────────────────────────────────────
 Covers the disk-backed cache added 2026-08-11. The scan behind these
 endpoints takes ~11 minutes over ~580 symbols and now runs on the daily
-Fyers token refresh (deploy/systemd/quantos-momentum-shortlist.path), so a
+Fyers token refresh (deploy/systemd/quantos-token-refreshed.path), so a
 restart that silently emptied all three cockpit tabs would leave them blank
 until the next morning — and deploying restarts the API by definition.
 

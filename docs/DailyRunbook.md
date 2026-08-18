@@ -33,6 +33,37 @@ journalctl -u quantos-agent -f
 a per-calendar-day marker (`~/.quantos/last_discovery_scan.txt`) — not by market
 hours. So the morning token-refresh-and-restart triggers the day's discovery.
 
+### What the refresh itself kicks off (since 2026-08-18)
+
+Writing the token is now the trigger for the whole token-gated batch, not just
+the shortlist. `quantos-token-refreshed.path` watches `~/.quantos/fyers_token`
+and starts `quantos-token-refreshed.target`, which runs, in this order:
+
+| # | Unit | Off-boundary cost | Notes |
+|---|---|---|---|
+| 1 | `quantos-orb-spread-probe` | ~5s | Skipped unless NSE is open (Mon–Fri 09:15–15:30 IST) |
+| 2 | `quantos-rotation-pilot` | ~2s no-op | Real orders, but only on a quarter boundary |
+| 3 | `quantos-paper-momentum` | ~2s no-op | Paper only |
+| 4 | `quantos-momentum-shortlist` | ~11 min | Once per IST weekday, stamped |
+
+They run single-file on purpose — the VM has 956 MB and no `MemoryMax` on any
+of them, and on a quarter boundary jobs 2–4 would otherwise each pull a few
+hundred symbol series concurrently.
+
+**Why this exists.** Before it, each of those jobs sat on its own fixed
+`OnCalendar` (02:05 / 02:10 / 04:05 UTC), all of them ahead of a realistic
+interactive refresh — so all three failed with `code -8 token expired` *every
+single day*, and the only visible symptom was three permanently-red units that
+looked like background noise. Each timer is kept as a fallback for a day the
+inotify watch misses.
+
+To confirm a morning went through:
+
+```bash
+systemctl list-units 'quantos*' --all          # nothing should be `failed`
+journalctl -u quantos-token-refreshed.target -n 20
+```
+
 ⚠️ `ssh`/`scp` are not on plain PowerShell's PATH — they ship with Git at
 `C:\Program Files\Git\usr\bin\`. Use the full path or Git Bash.
 

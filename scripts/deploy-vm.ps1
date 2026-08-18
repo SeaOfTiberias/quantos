@@ -380,7 +380,7 @@ done
     $slotLine = ($slots -split "`n" | ForEach-Object { $_.Trim() }) -join "  "
     Write-Host "  shortlist slots: $slotLine"
     if ($slots -match "=0\b") {
-        Warn "a shortlist slot is empty — it repopulates on the next Fyers token refresh (quantos-momentum-shortlist.path), or force one now:"
+        Warn "a shortlist slot is empty — it repopulates on the next Fyers token refresh (quantos-token-refreshed.path), or force one now:"
         Write-Host "         ssh ... 'rm -f ~/.quantos/last_shortlist_run && sudo systemctl start quantos-momentum-shortlist.service'" -ForegroundColor DarkYellow
     } else {
         Ok "all three shortlist slots served"

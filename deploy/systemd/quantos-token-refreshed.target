@@ -1,0 +1,24 @@
+[Unit]
+Description=QuantOS batch jobs that are gated on a fresh Fyers token
+Documentation=man:systemd.target(5)
+
+# Every job below needs a valid Fyers token and nothing else. Until
+# 2026-08-18 each one sat on its own fixed OnCalendar clock -- 02:05, 02:10,
+# 04:05 UTC -- all of them AHEAD of a realistic interactive refresh, so all
+# three failed with `code -8 token expired` every single day and nobody
+# noticed. Only the shortlist had a token watch. This target generalises that
+# watch to the whole batch: quantos-token-refreshed.path starts it the moment
+# the token is rewritten, whenever that happens to be.
+#
+# The timers are all KEPT as fallbacks (same reasoning as the shortlist's own
+# timer), for a day the inotify watch misses -- e.g. a token delivered by
+# temp-file+rename rather than the in-place write agent/auth/fyers_auth.py
+# does today, which would not raise IN_CLOSE_WRITE on the watched inode.
+#
+# There is no [Install] section on purpose. This target is started by the
+# path unit, never pulled in at boot -- a boot-time fire would run the whole
+# batch against whatever stale token happened to be on disk.
+Wants=quantos-orb-spread-probe.service
+Wants=quantos-rotation-pilot.service
+Wants=quantos-paper-momentum.service
+Wants=quantos-momentum-shortlist.service

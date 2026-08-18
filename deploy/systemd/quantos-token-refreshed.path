@@ -1,0 +1,21 @@
+[Unit]
+Description=Fire the QuantOS token-gated batch as soon as the Fyers token is refreshed
+Documentation=man:systemd.path(5)
+
+[Path]
+# Supersedes quantos-momentum-shortlist.path (2026-08-18), which watched this
+# same file but started only the shortlist. The reasoning for watching the
+# token at all is unchanged and still applies to all four jobs: the daily
+# interactive refresh is the real gate, a fixed clock is only ever a guess at
+# when it will happen, and every job that guesses wrong fails on an expired
+# token for the rest of the day.
+#
+# PathModified (not PathChanged): agent/auth/fyers_auth.py writes the token
+# with a plain TOKEN_PATH.write_text(), an in-place open/write/close on the
+# existing inode, which emits IN_CLOSE_WRITE. There is no temp-file+rename,
+# so no parent-directory watch is needed.
+PathModified=/home/ubuntu/.quantos/fyers_token
+Unit=quantos-token-refreshed.target
+
+[Install]
+WantedBy=paths.target
