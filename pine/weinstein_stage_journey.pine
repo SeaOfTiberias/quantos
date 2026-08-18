@@ -1,18 +1,33 @@
-// QuantOS — Weinstein Stage Journey
+// QuantOS — Weinstein Stage Journey + Minervini SEPA
 // ─────────────────────────────────────────────────────────────────────────
-// Maps a stock's path through Stan Weinstein's four stages, and mirrors the
-// ```quantos-stages``` block in
-//   obsidian_vault/QuantOS/brain/Stan_Weinstein_Stage_Analysis.md
-// which is evaluated in Python by core/vault/stages.py.
+// Two written strategies on one chart, because they answer different halves
+// of the same question. Weinstein's stages say WHERE IN THE CYCLE a stock is;
+// Minervini's SEPA trend template says WHETHER IT IS IN CONDITION for a VCP
+// to form. A Stage 2 name failing SEPA and a SEPA-passing name in Stage 4
+// are both worth seeing, and neither is visible if you only draw one.
 //
-// The note is the source of truth. This file is a hand transcription of it,
-// and scripts/crosscheck_stage_pine.py asserts the two produce identical
-// stage timelines on real bars. That check exists because this repo has
-// already shipped a Pine/Python divergence: darvasBox() reset boxReady
-// before testing for a breakout and silently suppressed nearly every real
-// signal for months while the Python engine was fine (fixed 2026-07-18,
-// a74521a). Two implementations of one idea drift unless something forces
-// them together.
+// This file mirrors TWO notes:
+//   ```quantos-stages``` in
+//     obsidian_vault/QuantOS/brain/Stan_Weinstein_Stage_Analysis.md
+//     (evaluated in Python by core/vault/stages.py)
+//   ```quantos-rules```  in
+//     obsidian_vault/QuantOS/brain/Mark_Minervini_VCP_Strategy.md
+//     (evaluated in Python by core/vault/auditor.py)
+//
+// The notes are the source of truth. This file is a hand transcription of
+// both, and scripts/crosscheck_stage_pine.py asserts the constants here match
+// the constants there. That check exists because this repo has already
+// shipped a Pine/Python divergence: darvasBox() reset boxReady before testing
+// for a breakout and silently suppressed nearly every real signal for months
+// while the Python engine was fine (fixed 2026-07-18, a74521a). Two
+// implementations of one idea drift unless something forces them together.
+//
+// The Minervini note carries its own scar on exactly this point: its
+// distance-from-lows threshold read 2.00 until 2026-08-14, demanding a stock
+// had already doubled off its 52-week low, which rejected names in precisely
+// the condition the rest of the checklist selects for. Every constant below
+// is therefore an input() rather than a literal, so the cross-check can read
+// it back out of this file and compare it to the note.
 //
 // WHY EVERYTHING IS PULLED AT DAILY RESOLUTION
 // ────────────────────────────────────────────
@@ -34,36 +49,76 @@
 // caveat is documented in the note and is inherited here deliberately, not
 // worked around — working around it here alone would break the mirror.
 //
+// WHAT SEPA HERE IS NOT
+// ─────────────────────
+// A PASS means "this name is in the right condition for a VCP", never "a VCP
+// is present". The actual heart of a VCP — 2 to 6 contractions, each roughly
+// half the last — is NOT tested, by either implementation. The rule DSL has
+// no pattern matching over swing structure, and neither does this file. What
+// is encoded is the trend template plus the volume dry-up, i.e. the context.
+//
 // NOT A SIGNAL
 // ────────────
 // This colours a chart. It places no orders, fires no webhook, and asserts
-// no edge. Nothing in the QuantOS vault has been backtested, and a stage
-// label is a description of structure, not evidence of one. The alert at the
-// bottom is a notification that a state changed, nothing more.
+// no edge. Nothing in the QuantOS vault has been backtested, and neither a
+// stage label nor a SEPA verdict is evidence of one. The alerts at the bottom
+// are notifications that a state changed, nothing more.
 
 //@version=5
-indicator("QuantOS — Weinstein Stage Journey", shorttitle="Stage Journey", overlay=true, max_labels_count=500)
+indicator("QuantOS — Stage Journey + SEPA", shorttitle="Stage+SEPA", overlay=true, max_labels_count=500)
 
-// ── Inputs ───────────────────────────────────────────────────────────────
+// ── Inputs · Weinstein stages ────────────────────────────────────────────
 // The flat band is the load-bearing number: it is what separates "rising"
 // from "flat", and therefore where every stage boundary falls. The default
 // is not a guess — it was picked by running the classifier across the whole
 // Nifty 500 at nine widths and choosing the least-churning non-degenerate
 // one (scripts/calibrate_stage_band.py). Change it and you are choosing a
 // different classifier; re-run that script rather than eyeballing a chart.
-bandPct    = input.float(1.0, "Flat band % (30-week MA slope tolerance)", minval=0.0, step=0.25,
+bandPct    = input.float(1.0, "Flat band % (30-week MA slope tolerance)", minval=0.0, step=0.25, group="Weinstein stages",
                          tooltip="How much the 150-day average must move over 25 sessions to count as rising or falling rather than flat. Calibrated against the Nifty 500 — see scripts/calibrate_stage_band.py.")
-slopeLag   = input.int(25, "Slope lookback (sessions)", minval=5,
+slopeLag   = input.int(25, "Slope lookback (sessions)", minval=5, group="Weinstein stages",
                          tooltip="Sessions back the average is compared against to judge its slope. Mirrors sma(150)[25] in the note.")
-priorLag   = input.int(100, "Prior-trend lookback (sessions)", minval=30,
+priorLag   = input.int(100, "Prior-trend lookback (sessions)", minval=30, group="Weinstein stages",
                          tooltip="Separates Stage 1 from Stage 3, which are identical in a snapshot and differ only in what came before. Mirrors sma(150)[100]. The Python side is capped near 105 by its data fetch; TradingView has more history, but raising it here alone breaks the mirror.")
-dryUpRatio = input.float(0.40, "Volume dry-up ratio (2·pivot)", minval=0.05, step=0.05,
-                         tooltip="volume_sma(5) / volume_sma(50) below this marks the quiet pivot zone inside Stage 2 — Minervini's sixth rule.")
+dryUpRatio = input.float(0.40, "Volume dry-up ratio (2·pivot)", minval=0.05, step=0.05, group="Weinstein stages",
+                         tooltip="volume_sma(5) / volume_sma(50) below this marks the quiet pivot zone inside Stage 2 — and is also Minervini's sixth rule. One number, shared by both, exactly as the two notes share it.")
 
+// ── Inputs · Minervini SEPA ──────────────────────────────────────────────
+// These are PUBLISHED CRITERIA, not calibrated parameters. They are inputs
+// only so scripts/crosscheck_stage_pine.py can read them back and assert they
+// still match the note. Tuning them is choosing a different template, and the
+// note records what happened last time one of them was wrong.
+sepaNearHigh  = input.float(0.75, "Within % of 52-week high", minval=0.1, maxval=1.0, step=0.05, group="Minervini SEPA",
+                            tooltip="close >= high(252) * 0.75 — within 25% of the 52-week high. Published criterion; do not tune.")
+sepaOffLow    = input.float(1.25, "Above 52-week low, multiple", minval=1.0, step=0.05, group="Minervini SEPA",
+                            tooltip="close >= low(252) * 1.25 — at least 25% above the 52-week low. Published criterion. This read 2.00 in the note until 2026-08-14 and silently voided the whole template; see the note before changing it.")
+sepaMaSlopeLag = input.int(20, "200-day slope lookback (sessions)", minval=5, group="Minervini SEPA",
+                            tooltip="sma(200) > sma(200)[20] — the 200-day higher than roughly one month ago.")
+sepaRsMin     = input.float(70.0, "Minimum RS rating", minval=0.0, maxval=99.0, step=1.0, group="Minervini SEPA",
+                            tooltip="rs_rating >= 70. See the RS rating input below — this cannot be computed from one symbol's bars.")
+
+// The one rule Pine cannot compute for itself. rs_rating is CROSS-SECTIONAL:
+// it ranks this stock against a population, and a chart script sees one
+// symbol. The Python side has the same problem and solves it by injection —
+// the momentum shortlist supplies a percentile of its 52-week-high ranking.
+//
+// So this is an input you paste, and 0 means "not supplied". When it is not
+// supplied the verdict is INSUFFICIENT_DATA, never PASS, exactly as
+// core/vault/auditor.py's _verdict_of does with an unevaluated rule. Five of
+// six rules holding is not a pass, and displaying it as one would be the
+// single most misleading thing this indicator could do.
+rsRating = input.float(0.0, "RS rating from QuantOS shortlist (0 = not supplied)", minval=0.0, maxval=99.0, step=1.0, group="Minervini SEPA",
+                       tooltip="Paste the rs_rating the momentum shortlist reports for this symbol. Left at 0 the SEPA verdict is INSUFFICIENT_DATA, which is the honest answer, not a failure. Note this is NOT IBD's RS Rating — different measure, different population — so the >= 70 threshold is directional rather than equivalent.")
+
+cmpSymbol = input.symbol("NSE:NIFTY", "Relative-strength comparison index", group="Minervini SEPA",
+                         tooltip="Used ONLY for the informational RS-vs-index ratio in the panel. It is not rs_rating and is never fed into the verdict.")
+
+// ── Inputs · display ─────────────────────────────────────────────────────
 showBg     = input.bool(true,  "Shade background by stage", group="Display")
 showMa     = input.bool(true,  "Plot the 30-week average",  group="Display")
 showLabels = input.bool(true,  "Label stage transitions",   group="Display")
 showTable  = input.bool(true,  "Show the status panel",     group="Display")
+showSepa   = input.bool(true,  "Show the SEPA checklist",   group="Display")
 
 c1 = input.color(color.new(#5B8DEF, 88), "Stage 1 — Basing",    group="Colours")
 c2 = input.color(color.new(#2E9E5B, 88), "Stage 2 — Advancing", group="Colours")
@@ -79,17 +134,34 @@ band = bandPct / 100.0
 // would let the slope test and the prior-trend test disagree about what "now"
 // means. lookahead_off is not optional — lookahead_on would let today's chart
 // see a daily close that had not happened yet.
-[dClose, dSma, dSmaSlope, dSmaPrior, dVol5, dVol50] = request.security(
+//
+// dBars is the daily bar count, carried out of the security context because
+// the chart's own bar_index counts chart bars, not daily ones, and the SEPA
+// warm-up test below needs the daily figure.
+[dClose, dSma150, dSma150Slope, dSma150Prior, dVol5, dVol50, dSma50, dSma200, dSma200Prior, dHigh252, dLow252, dClose252, dBars] = request.security(
      syminfo.tickerid, "D",
      [close,
       ta.sma(close, 150),
       ta.sma(close, 150)[slopeLag],
       ta.sma(close, 150)[priorLag],
       ta.sma(volume, 5),
-      ta.sma(volume, 50)],
+      ta.sma(volume, 50),
+      ta.sma(close, 50),
+      ta.sma(close, 200),
+      ta.sma(close, 200)[sepaMaSlopeLag],
+      ta.highest(high, 252),
+      ta.lowest(low, 252),
+      close[252],
+      bar_index],
      lookahead=barmerge.lookahead_off)
 
-// ── The classifier ───────────────────────────────────────────────────────
+// Separate call, unavoidably: a different symbol cannot ride in the tuple
+// above. It feeds the informational ratio only, never the verdict, so a
+// partial-session resolution difference here cannot change a rule outcome.
+idxClose    = request.security(cmpSymbol, "D", close,      lookahead=barmerge.lookahead_off)
+idxClose252 = request.security(cmpSymbol, "D", close[252], lookahead=barmerge.lookahead_off)
+
+// ── The stage classifier ─────────────────────────────────────────────────
 // Clause order below is the note's clause order, and it is load-bearing:
 // the block is first-match-wins because the stages are mutually exclusive.
 // Reordering these branches changes answers. Keep them in the note's order
@@ -101,12 +173,12 @@ band = bandPct / 100.0
 // run. A warm-up failure must never fall through to a later clause: that
 // would let a declining stock be reported as advancing, which is the exact
 // failure this project keeps designing against.
-warmedSlope = not na(dSma) and not na(dSmaSlope)
-warmedPrior = not na(dSmaPrior)
-rising      = warmedSlope and dSma > dSmaSlope * (1.0 + band)
-falling     = warmedSlope and dSma < dSmaSlope * (1.0 - band)
+warmedSlope = not na(dSma150) and not na(dSma150Slope)
+warmedPrior = not na(dSma150Prior)
+rising      = warmedSlope and dSma150 > dSma150Slope * (1.0 + band)
+falling     = warmedSlope and dSma150 < dSma150Slope * (1.0 - band)
 dryUp       = not na(dVol5) and not na(dVol50) and dVol50 > 0 and dVol5 / dVol50 < dryUpRatio
-priorUp     = warmedPrior and dSmaPrior > 0 and dSmaSlope > dSmaPrior
+priorUp     = warmedPrior and dSma150Prior > 0 and dSma150Slope > dSma150Prior
 
 int    stage = 0
 string phase = ""
@@ -121,7 +193,7 @@ else if rising
     stage := 2
     // pivot beats pullback, matching the note's line order — a name can be
     // both quiet and below its average, and the note calls that the pivot.
-    phase := dryUp ? "pivot" : (dClose < dSma ? "pullback" : "")
+    phase := dryUp ? "pivot" : (dClose < dSma150 ? "pullback" : "")
 else if not warmedPrior
     // Flat band reached, but the prior-trend test cannot run. Unclassified,
     // NOT the Stage 1 default — a stock without enough history is unknown,
@@ -131,6 +203,74 @@ else if priorUp
     stage := 3
 else
     stage := 1
+
+// ── The SEPA trend template ──────────────────────────────────────────────
+// Six rules, transcribed in the note's own order. Each resolves to one of
+// three states, not two:
+//
+//     1  holds
+//     0  fails
+//    -1  could not be evaluated
+//
+// The third state is the whole point. core/vault/facts.py refuses a partial
+// window — a "52-week high" computed from 30 bars is not a 52-week high, and
+// reporting one would understate the level every comparison is made against.
+// Pine's ta.highest() has no such scruple and will happily average whatever
+// it has, so the warm-up is enforced explicitly here rather than trusted to
+// the built-ins. Without that, this file would report PASS on a six-month-old
+// listing where the Python reports INSUFFICIENT_DATA.
+SEPA_WARMUP = 252
+sepaWarm = not na(dBars) and dBars >= SEPA_WARMUP
+
+ruleCode(bool ok, bool evaluable) => not evaluable ? -1 : (ok ? 1 : 0)
+
+// 1 · Trend stage — the Stage 2 stack, read as one chained comparison
+ev1 = sepaWarm and not na(dSma50) and not na(dSma150) and not na(dSma200)
+r1  = ruleCode(dClose > dSma50 and dSma50 > dSma150 and dSma150 > dSma200, ev1)
+
+// 2 · MA trajectory — the 200-day higher than ~1 month (20 sessions) ago
+ev2 = sepaWarm and not na(dSma200) and not na(dSma200Prior)
+r2  = ruleCode(dSma200 > dSma200Prior, ev2)
+
+// 3 · Proximity to highs — within 25% of the 52-week high
+ev3 = sepaWarm and not na(dHigh252) and dHigh252 > 0
+r3  = ruleCode(dClose >= dHigh252 * sepaNearHigh, ev3)
+
+// 4 · Distance from lows — at least 25% above the 52-week low
+ev4 = sepaWarm and not na(dLow252) and dLow252 > 0
+r4  = ruleCode(dClose >= dLow252 * sepaOffLow, ev4)
+
+// 5 · Relative strength — injected, never computed. See the input above.
+ev5 = rsRating > 0.0
+r5  = ruleCode(rsRating >= sepaRsMin, ev5)
+
+// 6 · Volume dry-up — the same expression the stage classifier calls the
+//     pivot. Shared deliberately: the two notes write the identical rule,
+//     so two copies of it here could disagree.
+ev6 = not na(dVol5) and not na(dVol50) and dVol50 > 0
+r6  = ruleCode(dryUp, ev6)
+
+// Reduce to one verdict, mirroring core/vault/auditor.py's _verdict_of.
+// The ORDER matters and is easy to get backwards: unevaluated rules are
+// checked BEFORE failures. A note with one unsupplied fact and one genuine
+// failure reports INSUFFICIENT_DATA, not FAIL — because the audit did not
+// actually happen, and calling that a rejection would be a claim the data
+// does not support.
+nUneval = (r1 == -1 ? 1 : 0) + (r2 == -1 ? 1 : 0) + (r3 == -1 ? 1 : 0) + (r4 == -1 ? 1 : 0) + (r5 == -1 ? 1 : 0) + (r6 == -1 ? 1 : 0)
+nFailed = (r1 ==  0 ? 1 : 0) + (r2 ==  0 ? 1 : 0) + (r3 ==  0 ? 1 : 0) + (r4 ==  0 ? 1 : 0) + (r5 ==  0 ? 1 : 0) + (r6 ==  0 ? 1 : 0)
+nPassed = 6 - nUneval - nFailed
+
+string sepaVerdict = nUneval > 0 ? "INSUFFICIENT_DATA" : nFailed > 0 ? "FAIL" : "PASS"
+sepaPass = sepaVerdict == "PASS"
+
+// Informational only. This is a relative-strength RATIO against the chosen
+// index over 252 sessions — 1.20 means the stock outran the index by 20%.
+// It is NOT rs_rating, which is a cross-sectional percentile against a
+// population, and it is deliberately not wired into r5. Two different
+// measures with similar names is exactly how a number ends up trusted for
+// something it never measured.
+rsRatioOk = not na(dClose252) and not na(idxClose252) and dClose252 > 0 and idxClose252 > 0
+rsRatio   = rsRatioOk ? (dClose / dClose252) / (idxClose / idxClose252) : na
 
 // ── Bars in the current stage ────────────────────────────────────────────
 var int barsInStage = 0
@@ -145,13 +285,18 @@ bgcolor(showBg ? stageColour : na, title="Stage")
 // The average is drawn in its SLOPE state, not the stage colour, so the
 // instrument and the verdict it produces stay visually distinguishable.
 maColour = rising ? #2E9E5B : falling ? #D6455D : #808A94
-plot(showMa ? dSma : na, "30-week MA (150d)", color=maColour, linewidth=2)
+plot(showMa ? dSma150 : na, "30-week MA (150d)", color=maColour, linewidth=2)
 
 stageName(int s) =>
     s == 1 ? "Basing" : s == 2 ? "Advancing" : s == 3 ? "Topping" : s == 4 ? "Declining" : "Unclassified"
 
 stageLabel(int s, string p) =>
     s == 0 ? "Stage ?" : "Stage " + str.tostring(s) + (p == "" ? "" : " · " + p)
+
+// A tick, a cross, or a question mark — the third glyph carries the third
+// state, so an unevaluated rule never reads as a passing one at a glance.
+mark(int c) => c == 1 ? "✓" : c == 0 ? "✗" : "?"
+markCol(int c) => c == 1 ? #2E9E5B : c == 0 ? #D6455D : #808A94
 
 if showLabels and changed and barstate.isconfirmed
     label.new(bar_index, high,
@@ -162,7 +307,10 @@ if showLabels and changed and barstate.isconfirmed
          size=size.small)
 
 if showTable and barstate.islast
-    var table panel = table.new(position.top_right, 2, 4, border_width=1)
+    // Sized once, on the first bar this runs. showSepa is an input and so is
+    // constant for the life of the script — without this the panel renders
+    // nine empty bordered cells whenever the checklist is switched off.
+    var table panel = table.new(position.top_right, 2, showSepa ? 13 : 4, border_width=1)
     table.cell(panel, 0, 0, "Stage",   text_color=chart.fg_color, text_size=size.small)
     table.cell(panel, 1, 0, stageLabel(stage, phase), text_color=chart.fg_color, text_size=size.small,
                bgcolor=color.new(stageColour, 60))
@@ -173,18 +321,55 @@ if showTable and barstate.islast
                text_color=chart.fg_color, text_size=size.small)
     table.cell(panel, 0, 3, "30-week slope", text_color=chart.fg_color, text_size=size.small)
     table.cell(panel, 1, 3, not warmedSlope ? "—" :
-               str.tostring((dSma / dSmaSlope - 1.0) * 100.0, "#.##") + "% / " + str.tostring(slopeLag) + "d",
+               str.tostring((dSma150 / dSma150Slope - 1.0) * 100.0, "#.##") + "% / " + str.tostring(slopeLag) + "d",
                text_color=chart.fg_color, text_size=size.small)
 
+    if showSepa
+        verdictCol = sepaVerdict == "PASS" ? #2E9E5B : sepaVerdict == "FAIL" ? #D6455D : #808A94
+        table.cell(panel, 0, 4, "SEPA", text_color=chart.fg_color, text_size=size.small,
+                   bgcolor=color.new(chart.fg_color, 92))
+        table.cell(panel, 1, 4, str.tostring(nPassed) + "/6 rules", text_color=chart.fg_color, text_size=size.small,
+                   bgcolor=color.new(chart.fg_color, 92))
+        table.cell(panel, 0, 5, "Verdict", text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 5, sepaVerdict, text_color=chart.fg_color, text_size=size.small,
+                   bgcolor=color.new(verdictCol, 60))
+
+        table.cell(panel, 0, 6, "1 · Trend stack",   text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 6, mark(r1), text_color=markCol(r1), text_size=size.small)
+        table.cell(panel, 0, 7, "2 · 200d rising",   text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 7, mark(r2), text_color=markCol(r2), text_size=size.small)
+        table.cell(panel, 0, 8, "3 · Near 52w high", text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 8, mark(r3), text_color=markCol(r3), text_size=size.small)
+        table.cell(panel, 0, 9, "4 · Off 52w low",   text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 9, mark(r4), text_color=markCol(r4), text_size=size.small)
+        table.cell(panel, 0, 10, "5 · RS rating",    text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 10, r5 == -1 ? "? not supplied" : mark(r5) + " " + str.tostring(rsRating, "#"),
+                   text_color=markCol(r5), text_size=size.small)
+        table.cell(panel, 0, 11, "6 · Volume dry-up", text_color=chart.fg_color, text_size=size.small)
+        table.cell(panel, 1, 11, mark(r6), text_color=markCol(r6), text_size=size.small)
+
+        // Labelled as a ratio, never as a rating, and visually separated from
+        // the numbered rules above it so it cannot be read as a seventh one.
+        table.cell(panel, 0, 12, "RS vs index (info)", text_color=#808A94, text_size=size.small)
+        table.cell(panel, 1, 12, na(rsRatio) ? "—" : str.tostring(rsRatio, "#.##") + "×",
+                   text_color=#808A94, text_size=size.small)
+
 // ── Alerts ───────────────────────────────────────────────────────────────
-// A state change, not a trade instruction. Deliberately no webhook payload
-// and no alert() call: this indicator has no counterpart on the QuantOS
-// cloud side, and giving it one would make a descriptive label look like an
+// State changes, not trade instructions. Deliberately no webhook payload and
+// no alert() call: this indicator has no counterpart on the QuantOS cloud
+// side, and giving it one would make a descriptive label look like an
 // executable signal.
 alertcondition(stage != stage[1] and stage == 2, "Entered Stage 2", "{{ticker}} entered Stage 2 (Advancing)")
 alertcondition(stage != stage[1] and stage == 3, "Entered Stage 3", "{{ticker}} entered Stage 3 (Topping)")
 alertcondition(stage != stage[1] and stage == 4, "Entered Stage 4", "{{ticker}} entered Stage 4 (Declining)")
 alertcondition(stage != stage[1], "Any stage change", "{{ticker}} changed stage")
+
+// Fires only on a real PASS, which requires rs_rating to have been supplied.
+// A chart left at the default never fires this, and that is correct: the
+// template was never fully evaluated.
+alertcondition(sepaPass and not sepaPass[1], "SEPA now passes", "{{ticker}} now satisfies the SEPA trend template")
+alertcondition(not sepaPass and sepaPass[1], "SEPA no longer passes", "{{ticker}} no longer satisfies the SEPA trend template")
+alertcondition(sepaPass and not sepaPass[1] and stage == 2, "SEPA passes in Stage 2", "{{ticker}} satisfies SEPA while in Stage 2 (Advancing)")
 
 // ── The journey, as a readable series ────────────────────────────────────
 // Data-window only, deliberately. This is an overlay indicator, so plotting
@@ -199,3 +384,10 @@ alertcondition(stage != stage[1], "Any stage change", "{{ticker}} changed stage"
 // path on the price chart itself, which is why that is the default.
 plot(stage == 0 ? na : stage, "Stage number", color=color.new(stageColour, 0),
      style=plot.style_stepline, linewidth=2, display=display.data_window)
+
+// Same treatment for the SEPA tally, so hovering any historical bar reads
+// back how many of the six held at the time. -1 marks bars where the
+// template could not be evaluated at all, keeping "unknown" distinct from
+// "zero rules held".
+plot(sepaWarm ? nPassed : -1, "SEPA rules passing", color=#808A94,
+     style=plot.style_stepline, linewidth=1, display=display.data_window)

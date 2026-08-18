@@ -57,6 +57,7 @@ logger = logging.getLogger("crosscheck_stage_pine")
 
 PINE_PATH = Path("pine/weinstein_stage_journey.pine")
 NOTE_PATH = Path("obsidian_vault/QuantOS/brain/Stan_Weinstein_Stage_Analysis.md")
+SEPA_NOTE_PATH = Path("obsidian_vault/QuantOS/brain/Mark_Minervini_VCP_Strategy.md")
 
 
 # ── The Pine indicator's logic, transcribed back ─────────────────────────
@@ -120,6 +121,12 @@ def pine_defaults() -> dict:
         ("slope_lag", r"slopeLag\s*=\s*input\.int\((\d+)"),
         ("prior_lag", r"priorLag\s*=\s*input\.int\((\d+)"),
         ("dry_up_ratio", r"dryUpRatio\s*=\s*input\.float\(([\d.]+)"),
+        # SEPA. These are published criteria rather than calibrated ones, and
+        # are inputs in the .pine precisely so they can be read back here.
+        ("sepa_near_high", r"sepaNearHigh\s*=\s*input\.float\(([\d.]+)"),
+        ("sepa_off_low", r"sepaOffLow\s*=\s*input\.float\(([\d.]+)"),
+        ("sepa_ma_slope_lag", r"sepaMaSlopeLag\s*=\s*input\.int\((\d+)"),
+        ("sepa_rs_min", r"sepaRsMin\s*=\s*input\.float\(([\d.]+)"),
     ):
         match = re.search(pattern, source)
         if not match:
@@ -128,6 +135,7 @@ def pine_defaults() -> dict:
     out["band"] /= 100.0
     out["slope_lag"] = int(out["slope_lag"])
     out["prior_lag"] = int(out["prior_lag"])
+    out["sepa_ma_slope_lag"] = int(out["sepa_ma_slope_lag"])
     return out
 
 
@@ -164,6 +172,80 @@ def assert_pine_matches_note(defaults: dict) -> None:
     logger.info("Pine defaults match the note: band=%.2f%% slope=[%d] prior=[%d] dryUp=%.2f",
                 defaults["band"] * 100, defaults["slope_lag"],
                 defaults["prior_lag"], defaults["dry_up_ratio"])
+
+
+def assert_pine_matches_sepa_note(defaults: dict) -> None:
+    """The Pine's SEPA constants must reproduce the Minervini note's.
+
+    This check is not hypothetical housekeeping. The note records that its
+    distance-from-lows threshold read 2.00 until 2026-08-14 — demanding the
+    stock had already doubled off its 52-week low, which rejected names in
+    exactly the condition the rest of the checklist selects for, and silently
+    voided the whole template. RADICO passed every other price rule and failed
+    on that line alone.
+
+    A constant being wrong is the cheapest possible bug to catch and the most
+    expensive to leave, because nothing about the output looks broken. So each
+    threshold is asserted against the note's own rule text rather than against
+    a number retyped here, which would just move the same risk.
+    """
+    note = parse_note(SEPA_NOTE_PATH)
+    expressions = " ".join(r.expression or "" for r in note.rules)
+
+    checks = (
+        ("near-52w-high", r"close >= high\(252\) \* ([\d.]+)", "sepa_near_high"),
+        ("off-52w-low", r"close >= low\(252\) \* ([\d.]+)", "sepa_off_low"),
+        ("rs-rating floor", r"rs_rating >= ([\d.]+)", "sepa_rs_min"),
+    )
+    for label, pattern, key in checks:
+        found = {float(x) for x in re.findall(pattern, expressions)}
+        if not found:
+            raise SystemExit(
+                f"{label}: no matching rule in {SEPA_NOTE_PATH.name}. Either the "
+                f"note's rule block was reworded or the Pine is mirroring a rule "
+                f"that no longer exists."
+            )
+        if defaults[key] not in found:
+            raise SystemExit(
+                f"{label} mismatch — pine uses {defaults[key]}, note uses "
+                f"{sorted(found)}. One of the two was edited without the other."
+            )
+
+    lags = {int(n) for n in re.findall(r"sma\(200\)\[(\d+)\]", expressions)}
+    if lags and defaults["sepa_ma_slope_lag"] not in lags:
+        raise SystemExit(
+            f"200-day slope lag mismatch — pine uses "
+            f"[{defaults['sepa_ma_slope_lag']}], note uses {sorted(lags)}"
+        )
+
+    # The dry-up ratio appears in BOTH notes and the Pine holds exactly one
+    # copy of it, shared between the stage classifier's pivot phase and SEPA's
+    # sixth rule. If the two notes ever disagree, one shared input cannot
+    # mirror both, and that has to surface here rather than as a chart that is
+    # quietly wrong against one of them.
+    sepa_ratios = {float(x) for x in re.findall(
+        r"volume_sma\(5\) / volume_sma\(50\) < ([\d.]+)", expressions)}
+    if sepa_ratios and defaults["dry_up_ratio"] not in sepa_ratios:
+        raise SystemExit(
+            f"dry-up ratio mismatch against {SEPA_NOTE_PATH.name} — pine "
+            f"{defaults['dry_up_ratio']}, note {sorted(sepa_ratios)}. Note the "
+            f"Pine shares ONE input between both notes' copies of this rule."
+        )
+
+    rule_count = len(note.rules)
+    if rule_count != 6:
+        raise SystemExit(
+            f"{SEPA_NOTE_PATH.name} now has {rule_count} rules; the Pine "
+            f"transcribes exactly 6 (r1..r6) and its verdict arithmetic is "
+            f"hard-coded to that count. Update both together."
+        )
+
+    logger.info(
+        "Pine SEPA constants match the note: nearHigh=%.2f offLow=%.2f "
+        "maSlopeLag=[%d] rsMin=%.0f dryUp=%.2f (6 rules)",
+        defaults["sepa_near_high"], defaults["sepa_off_low"],
+        defaults["sepa_ma_slope_lag"], defaults["sepa_rs_min"],
+        defaults["dry_up_ratio"])
 
 
 # ── The comparison ───────────────────────────────────────────────────────
@@ -260,6 +342,7 @@ def main() -> int:
 
     defaults = pine_defaults()
     assert_pine_matches_note(defaults)
+    assert_pine_matches_sepa_note(defaults)
 
     clauses = parse_note(NOTE_PATH).stage_clauses
     if not clauses:
