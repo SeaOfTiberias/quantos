@@ -1,3 +1,28 @@
+# ══════════════════════════════════════════════════════════════════════
+# DISABLED ON THE VM 2026-08-18 — deliberately, do not re-enable casually.
+#
+# S8-3's +8pt alpha over Nifty was survivorship bias. The point-in-time
+# corrected re-run (2026-07-23) has it LOSING 15.6pts to Nifty 500 and
+# 64.6pts to Nifty Alpha 50. The dry run was left going afterwards as a
+# "user's call" loose end; this closes it.
+#
+# It had also been failing every Monday since week 30 on `code -8 token
+# expired` (02:00 UTC is ahead of the interactive refresh) and firing a
+# Telegram POST /rotation/failed each time — a weekly alert for a strategy
+# already known not to work. It was NOT wired into
+# quantos-token-refreshed.target for exactly that reason: making a dead
+# strategy fire reliably is the wrong fix.
+#
+# Nothing here is deleted, only unhooked:
+#   sudo systemctl enable --now quantos-rotation.timer
+# brings it back, and `rotation.enabled`/`dry_run` in the VM's config.yaml
+# are untouched (still true/true — it never traded real money).
+#
+# NOT to be confused with quantos-rotation-pilot.*, which is candidate 11's
+# real-capital pilot and stays live. They share core/rotation/ranker.py but
+# are different strategies.
+# ══════════════════════════════════════════════════════════════════════
+
 [Unit]
 Description=QuantOS S8-3 Weekly Rotation (standalone -- does not run agent/main.py or Darvas)
 After=network-online.target

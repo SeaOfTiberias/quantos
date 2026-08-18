@@ -57,6 +57,14 @@ single day*, and the only visible symptom was three permanently-red units that
 looked like background noise. Each timer is kept as a fallback for a day the
 inotify watch misses.
 
+**Not in the batch, on purpose:** `quantos-rotation` (S8-3 weekly) was
+*disabled* on 2026-08-18 rather than wired in. Its alpha was survivorship bias
+(corrected re-run 2026-07-23: −15.6pts vs Nifty 500), and it had been failing
+every Monday on the same expired token while firing a Telegram
+`POST /rotation/failed` each week. Making a dead strategy fire reliably is the
+wrong fix. Re-enable with `sudo systemctl enable --now quantos-rotation.timer`
+if it is ever revived. It is *not* `quantos-rotation-pilot`, which stays live.
+
 To confirm a morning went through:
 
 ```bash
