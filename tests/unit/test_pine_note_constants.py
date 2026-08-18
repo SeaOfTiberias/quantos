@@ -20,6 +20,8 @@ is for, and TradingView will not hand a script its series over an API, so
 neither can verify the rendered result.
 """
 
+from pathlib import Path
+
 import pytest
 
 from scripts.crosscheck_stage_pine import (
@@ -84,3 +86,64 @@ def test_a_wrong_constant_actually_fails(defaults):
     broken["sepa_off_low"] = 2.00
     with pytest.raises(SystemExit, match="off-52w-low mismatch"):
         assert_pine_matches_sepa_note(broken)
+
+
+# ── Pine syntax the notes cannot catch ──────────────────────────────────────
+
+PINE_DIR = Path("pine")
+
+
+def _illegal_continuation_indents(path: Path) -> list[tuple[int, int, str]]:
+    """Wrapped lines indented by a multiple of four.
+
+    Pine uses four-space multiples to denote local blocks, so a continuation
+    line indented that way is read as the start of a block instead and the
+    compiler reports "end of line without line continuation" against the line
+    ABOVE — which is why this is easy to misdiagnose by eye.
+
+    Paren depth is tracked crudely (string-aware, comment-stripped), which is
+    enough for these files and keeps the check dependency-free.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    depth, bad = 0, []
+    for number, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if depth > 0 and stripped and not stripped.startswith("//"):
+            indent = len(line) - len(line.lstrip(" "))
+            if indent > 0 and indent % 4 == 0:
+                bad.append((number, indent, stripped[:60]))
+        code = "" if stripped.startswith("//") else line.split("//")[0]
+        in_string = False
+        for ch in code:
+            if ch == '"':
+                in_string = not in_string
+            elif not in_string:
+                if ch in "([":
+                    depth += 1
+                elif ch in ")]":
+                    depth -= 1
+        depth = max(depth, 0)
+    return bad
+
+
+@pytest.mark.parametrize(
+    "pine_file",
+    sorted(PINE_DIR.glob("*.pine")),
+    ids=lambda p: p.name,
+)
+def test_no_continuation_line_is_indented_by_a_multiple_of_four(pine_file):
+    """Caught a real compile failure on 2026-08-19.
+
+    The four SEPA tooltip continuations were indented 28 spaces to align under
+    `input.float(`, which reads beautifully and does not compile. TradingView
+    reported `Syntax error at input 'end of line without line continuation'`
+    at line 91 — the line *before* the offending one.
+
+    Nothing local can compile Pine, so every check that removes a round-trip
+    to the TradingView editor is worth having. This is the cheapest one.
+    """
+    offenders = _illegal_continuation_indents(pine_file)
+    assert not offenders, "\n".join(
+        f"{pine_file}:{n} indented {i} spaces (a multiple of 4) — use 4n±1: {t}"
+        for n, i, t in offenders
+    )

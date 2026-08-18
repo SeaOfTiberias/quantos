@@ -89,13 +89,13 @@ dryUpRatio = input.float(0.40, "Volume dry-up ratio (2·pivot)", minval=0.05, st
 // still match the note. Tuning them is choosing a different template, and the
 // note records what happened last time one of them was wrong.
 sepaNearHigh  = input.float(0.75, "Within % of 52-week high", minval=0.1, maxval=1.0, step=0.05, group="Minervini SEPA",
-                            tooltip="close >= high(252) * 0.75 — within 25% of the 52-week high. Published criterion; do not tune.")
+                             tooltip="close >= high(252) * 0.75 — within 25% of the 52-week high. Published criterion; do not tune.")
 sepaOffLow    = input.float(1.25, "Above 52-week low, multiple", minval=1.0, step=0.05, group="Minervini SEPA",
-                            tooltip="close >= low(252) * 1.25 — at least 25% above the 52-week low. Published criterion. This read 2.00 in the note until 2026-08-14 and silently voided the whole template; see the note before changing it.")
+                             tooltip="close >= low(252) * 1.25 — at least 25% above the 52-week low. Published criterion. This read 2.00 in the note until 2026-08-14 and silently voided the whole template; see the note before changing it.")
 sepaMaSlopeLag = input.int(20, "200-day slope lookback (sessions)", minval=5, group="Minervini SEPA",
-                            tooltip="sma(200) > sma(200)[20] — the 200-day higher than roughly one month ago.")
+                             tooltip="sma(200) > sma(200)[20] — the 200-day higher than roughly one month ago.")
 sepaRsMin     = input.float(70.0, "Minimum RS rating", minval=0.0, maxval=99.0, step=1.0, group="Minervini SEPA",
-                            tooltip="rs_rating >= 70. See the RS rating input below — this cannot be computed from one symbol's bars.")
+                             tooltip="rs_rating >= 70. See the RS rating input below — this cannot be computed from one symbol's bars.")
 
 // The one rule Pine cannot compute for itself. rs_rating is CROSS-SECTIONAL:
 // it ranks this stock against a population, and a chart script sees one
