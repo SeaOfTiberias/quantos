@@ -72,6 +72,27 @@ systemctl list-units 'quantos*' --all          # nothing should be `failed`
 journalctl -u quantos-token-refreshed.target -n 20
 ```
 
+**Read the failures by timestamp, not by colour.** The fallback timers fire at
+fixed UTC clocks that are *ahead* of a realistic interactive refresh, so a unit
+that failed `code -8 token expired` at 02:05 and then succeeded at 02:19 shows
+up as `failed` in `list-units` — that is the fallback losing the race, not the
+morning being dead. Compare each failure's timestamp against the token's:
+
+```bash
+ls -l --time-style=full-iso ~/.quantos/fyers_token
+```
+
+**The path unit must read `waiting`, not `running`:**
+
+```bash
+systemctl list-units 'quantos-token-refreshed.*'
+```
+
+`running` means the watch is disarmed and the refresh will trigger nothing —
+the failure mode fixed on 2026-08-24 by `StopWhenUnneeded=yes` on the target.
+If it ever reads `running` with the batch long finished, the target is stuck
+active again: `sudo systemctl stop quantos-token-refreshed.target` re-arms it.
+
 ⚠️ `ssh`/`scp` are not on plain PowerShell's PATH — they ship with Git at
 `C:\Program Files\Git\usr\bin\`. Use the full path or Git Bash.
 

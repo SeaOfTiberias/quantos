@@ -22,3 +22,21 @@ Wants=quantos-orb-spread-probe.service
 Wants=quantos-rotation-pilot.service
 Wants=quantos-paper-momentum.service
 Wants=quantos-momentum-shortlist.service
+
+# A target has no processes, so once started it stays active forever unless
+# something stops it -- and a systemd .path unit only watches while it is in
+# `waiting`. The moment it triggers, it moves to `running` and STAYS there
+# until the triggered unit goes inactive. So the first fire on 2026-08-20
+# 05:37 UTC left this target permanently active and the path permanently
+# disarmed: every refresh from 08-21 onward triggered nothing, and the only
+# runs were the fallback timers, which fire ahead of the interactive refresh
+# and so failed `code -8 token expired` again -- the exact failure this whole
+# mechanism was built on 2026-08-18 to end, silently reintroduced.
+#
+# StopWhenUnneeded drops the target back to inactive as soon as nothing needs
+# it, which re-arms the path for tomorrow. Nothing else pulls this target in
+# (there is no [Install]; the path unit's Triggers= is not a Wants=), so it
+# becomes unneeded immediately -- that is fine and deliberate. Wants= is a
+# start-time dependency only, so the four jobs, already queued and ordered by
+# their own After= chain, run to completion after the target has gone away.
+StopWhenUnneeded=yes
