@@ -304,9 +304,17 @@ class TestAutoRegisterManualOptionsPositions:
         assert positions == {}
 
     def test_skips_underlying_already_tracked(self, monkeypatch):
-        existing = OptionsPosition(signal_id="SIG-1", underlying="TVSMOTOR",
-                                   strategy="manual_single_leg", expiry="2026-08-25",
-                                   legs=[{"symbol": "NSE:TVSMOTOR25AUG4300CE"}])
+        # Expiry is relative, not a literal. It was hardcoded to 2026-08-25
+        # and started failing on 2026-08-26 — has_open_position deliberately
+        # stops blocking once a contract has settled (core/options/positions
+        # .py:70-79), so a fixed date turns this into a time bomb that fires
+        # the day it passes and looks like a regression in the auto-register
+        # path rather than a stale fixture.
+        existing = OptionsPosition(
+            signal_id="SIG-1", underlying="TVSMOTOR",
+            strategy="manual_single_leg",
+            expiry=(date.today() + timedelta(days=7)).isoformat(),
+            legs=[{"symbol": "NSE:TVSMOTOR25AUG4300CE"}])
         broker = MagicMock()
         broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 1000)]
         monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
@@ -316,6 +324,25 @@ class TestAutoRegisterManualOptionsPositions:
         main._auto_register_manual_options_positions(broker, positions)
         # Untouched — not overwritten with the newly-seen position.
         assert positions["TVSMOTOR"] is existing
+
+    def test_expired_tracked_position_does_not_block_auto_register(self, monkeypatch):
+        """The other half of the rule above, pinned so it cannot rot into an
+        accident of the calendar: once the contract has settled at the broker,
+        a newly-seen manual position for that underlying IS registered."""
+        expired = OptionsPosition(
+            signal_id="SIG-1", underlying="TVSMOTOR",
+            strategy="manual_single_leg",
+            expiry=(date.today() - timedelta(days=1)).isoformat(),
+            legs=[{"symbol": "NSE:TVSMOTOR25AUG4300CE"}])
+        broker = MagicMock()
+        broker.get_positions.return_value = [self._position("TVSMOTOR25AUG4350CE", 1000)]
+        monkeypatch.setattr(main.options_symbol_master, "resolve_symbol_to_option",
+                            lambda symbol, **k: self._resolved())
+
+        positions = {"TVSMOTOR": expired}
+        main._auto_register_manual_options_positions(broker, positions)
+        assert positions["TVSMOTOR"] is not expired
+        assert positions["TVSMOTOR"].signal_id.startswith("MANUAL-TVSMOTOR-")
 
     def test_skips_lot_size_mismatch_without_raising(self, monkeypatch):
         broker = MagicMock()
