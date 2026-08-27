@@ -301,3 +301,21 @@ def test_backfill_does_not_carry_a_bucket_across_a_universe_boundary():
     )
     sessions = parse_journal(text.splitlines())
     assert ("2026-08-27", "alpha50") not in sessions
+
+
+def test_backfill_second_run_of_a_day_replaces_the_first_board():
+    """The service can fire twice in one day (both triggers, or a forced
+    re-run). 2026-08-17 did exactly that and the journal holds two complete
+    nifty500 boards under one date. Appending them would produce a session
+    with every symbol twice and ranks numbered past the size of the universe,
+    so the later board supersedes the earlier one."""
+    from scripts.backfill_shortlist_history import parse_journal
+
+    second = JOURNAL.replace("01:31:55", "03:31:55").replace(
+        "01:42:28", "03:42:28").replace("JSWSTEEL", "TATASTEEL")
+    sessions = parse_journal((JOURNAL + second).splitlines())
+
+    entries = sessions[("2026-08-27", "nifty500")]
+    assert len(entries) == 3, "both boards were merged instead of superseded"
+    assert "JSWSTEEL" not in [e["symbol"] for e in entries]
+    assert [e["momentum_rank"] for e in entries] == [1, 2, 3]

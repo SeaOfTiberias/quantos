@@ -154,6 +154,14 @@ def parse_journal(lines) -> dict:
             # always follows, and carrying the previous universe's bucket
             # across the boundary would mislabel its first rows.
             bucket = None
+            # It also SUPERSEDES anything already collected for this universe
+            # today. The service can run twice in a day -- 2026-08-17 did,
+            # logging two complete boards -- and appending merges them into
+            # one impossible session: every symbol twice, and _assign_ranks
+            # numbering 1..100 over a 50-name universe. Last complete run
+            # wins, which is the same rule _sql_replace_day applies.
+            if day is not None:
+                sessions.pop((day, universe), None)
             continue
 
         b = _BUCKET.search(line)
