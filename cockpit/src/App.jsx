@@ -1085,13 +1085,43 @@ function Metric({ label, value, sub, color = C.white }) {
   );
 }
 
+// One row per scheduled timer. `last fired` is deliberate wording: this reads
+// systemd, which knows the schedule ran, not whether the work inside it was
+// any good — the shortlist's own updated_at is the check for that.
+function JobRow({ job }) {
+  const color = job.ok ? C.green : job.failed ? C.red : C.gold;
+  return (
+    <div style={{
+      display: "flex", alignItems: "baseline", gap: 10,
+      padding: "5px 0", borderBottom: `1px solid ${C.panel}`,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      <span style={{ fontSize: 12, color: C.white, minWidth: 108, fontWeight: 600 }}>
+        {job.label}
+      </span>
+      <span style={{ fontSize: 11, color: C.mid, minWidth: 92 }}>
+        {job.age_seconds != null ? fmtAge(job.age_seconds) : "never"}
+      </span>
+      <span style={{ fontSize: 10, color, minWidth: 58 }}>{job.result}</span>
+      <span style={{ fontSize: 10, color: C.muted, flex: 1 }} title={job.note}>
+        {job.why}
+      </span>
+    </div>
+  );
+}
+
 function SystemHealthPanel({ obs, error }) {
-  const hb = obs?.heartbeat;
+  // `obs.heartbeat` is still in the payload but is not read here: it tracked
+  // the retired quantos-agent and has been null since 2026-07-27.
+  const jobs = obs?.scheduled_jobs;
+  const jobList = jobs?.jobs ?? [];
+  const okCount = jobs?.ok_count ?? 0;
+  const allOk = jobs?.available && jobList.length > 0 && okCount === jobList.length;
   const counts = obs?.signal_counts_today ?? {};
   const wl = obs?.webhook_latency ?? {};
   const cl = obs?.claude_latency ?? {};
   const spend = obs?.claude_spend_today ?? {};
-  const hbColor = !hb || hb.stale ? C.red : C.green;
+  const hbColor = allOk ? C.green : jobs?.available ? C.gold : C.muted;
 
   return (
     <Card>
@@ -1099,17 +1129,17 @@ function SystemHealthPanel({ obs, error }) {
         <Label color={C.accent}>System Health</Label>
         <span style={{ fontSize: 10, color: hbColor, fontWeight: 600 }}>
           {error ? "offline"
-            : !hb || hb.last_contact == null ? "agent never synced"
-            : `agent ${hb.stale ? "STALE" : "live"} · ${fmtAge(hb.age_seconds)}`}
+            : !jobs?.available ? "job status unavailable"
+            : `${okCount}/${jobList.length} scheduled jobs healthy`}
         </span>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
         <Metric
-          label="Agent Heartbeat"
-          value={!hb || hb.stale ? "STALE" : "LIVE"}
+          label="Daily Jobs"
+          value={jobs?.available ? `${okCount}/${jobList.length}` : "—"}
           color={hbColor}
-          sub={hb?.last_contact ? fmtAge(hb.age_seconds) : "no sync yet"}
+          sub={jobs?.available ? "firing on schedule" : "systemd not readable"}
         />
         <Metric
           label="Signals Today"
@@ -1133,6 +1163,28 @@ function SystemHealthPanel({ obs, error }) {
           sub={`${spend.calls ?? 0} calls · est.`}
         />
       </div>
+
+      {jobList.length > 0 && (
+        <>
+          <Divider />
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <Label>Scheduled Jobs</Label>
+            <span style={{ fontSize: 9, color: C.muted }}>
+              last fired · systemd result · verdict
+            </span>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            {jobList.map(j => <JobRow key={j.key} job={j} />)}
+          </div>
+        </>
+      )}
+
+      {jobs && !jobs.available && (
+        <>
+          <Divider />
+          <div style={{ fontSize: 11, color: C.muted }}>{jobs.reason}</div>
+        </>
+      )}
 
       {Object.keys(counts).length > 0 && (
         <>
@@ -1159,14 +1211,21 @@ function SystemHealthPanel({ obs, error }) {
 
 // ─── Top bar ──────────────────────────────────────────────────────────────
 
-function TopBar({ lastRefresh, heartbeat, obsError }) {
-  // The LIVE indicator is now real: green only when the agent's most recent
-  // sync (regime/watchlist) is within the heartbeat window (S5-6 dead-man).
-  const stale = obsError || !heartbeat || heartbeat.stale || heartbeat.last_contact == null;
-  const dotColor = stale ? C.red : C.green;
+function TopBar({ lastRefresh, jobs, obsError }) {
+  // Reads the scheduled timers, not the retired agent's heartbeat. This said
+  // "NO AGENT" in red continuously from 2026-07-27 — when quantos-agent was
+  // mothballed and nothing replaced its sync — while four timers ran the
+  // daily work. A permanently red light is one nobody reads.
+  const list = jobs?.jobs ?? [];
+  const okCount = jobs?.ok_count ?? 0;
+  const stale = obsError || !jobs?.available || okCount < list.length;
+  const dotColor = obsError || (jobs?.available && okCount === 0) ? C.red
+    : stale ? C.gold : C.green;
   const statusText = obsError ? "API DOWN"
-    : !heartbeat || heartbeat.last_contact == null ? "NO AGENT"
-    : heartbeat.stale ? "AGENT STALE" : "LIVE";
+    : !jobs?.available ? "JOBS UNKNOWN"
+    : list.length === 0 ? "NO JOBS"
+    : okCount === list.length ? "LIVE"
+    : `${okCount}/${list.length} JOBS`;
   return (
     <div style={{
       background: C.panel, borderBottom: `1px solid ${C.border}`,
@@ -1359,7 +1418,7 @@ export default function QuantOSCockpit() {
         .qs-symbol-link:hover { color: ${C.accent}; text-decoration: underline; }
       `}</style>
 
-      <TopBar lastRefresh={lastRefresh} heartbeat={obs?.heartbeat} obsError={obsError} />
+      <TopBar lastRefresh={lastRefresh} jobs={obs?.scheduled_jobs} obsError={obsError} />
 
       <div style={{ padding: "20px 24px" }}>
         {/* Row 0: System health (real data — S5-6 observability) */}

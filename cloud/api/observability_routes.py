@@ -9,7 +9,10 @@ data instead of mock panels:
   • webhook_latency — /webhook/tradingview round-trip p50/p95/last (S5-6 middleware)
   • claude_latency  — Claude pre-trade call p50/p95/last
   • claude_spend    — today's estimated Claude cost + token counts
-  • heartbeat       — freshest agent contact (regime/watchlist sync
+  • scheduled_jobs  — per-timer health for the daily automation (last fire,
+                      next fire, last result), judged against each job's own
+                      cadence. This is what System Health renders.
+  • heartbeat       — LEGACY, permanently null. Freshest agent contact (regime/watchlist sync
                       timestamps) + a stale flag. Doubles as the S4-2
                       dead-man display: when the agent stops syncing, the
                       heartbeat visibly goes stale.
@@ -33,6 +36,7 @@ from fastapi import APIRouter
 
 from cloud.api import metrics
 from cloud.api.db import get_db
+from cloud.api.job_health import scheduled_jobs
 from cloud.api.discovery_routes import get_last_synced_at as discovery_synced_at
 from cloud.api.market_snapshot_routes import get_last_synced_at as market_snapshot_synced_at
 from cloud.api.regime_routes import get_last_synced_at as regime_synced_at
@@ -106,5 +110,12 @@ async def observability():
         "claude_latency":      snap["claude_latency"],
         "claude_spend_today":  snap["claude_spend_today"],
         "heartbeat":           _heartbeat(),
+        # What the cockpit's System Health panel actually renders now. The
+        # heartbeat above is kept because it is a documented field of this
+        # endpoint, but it has read last_contact=None since quantos-agent was
+        # mothballed on 2026-07-27 and nothing else ever set those sync
+        # timestamps -- so on its own it reported a permanently dead system
+        # that was in fact running four timers a day.
+        "scheduled_jobs":      await scheduled_jobs(),
         "timestamp":           datetime.now(timezone.utc).isoformat(),
     }
