@@ -151,6 +151,23 @@ try {
         & python -m pytest tests/unit -q -p no:warnings @deselect
         if ($LASTEXITCODE -ne 0) { Fail "Unit tests failed (exit $LASTEXITCODE). Fix them, or re-run with -SkipTests if genuinely unrelated." }
         Ok "unit suite passed"
+
+        # The Python suite never loads the JSX, so it cannot see a cockpit
+        # that will not render. On 2026-08-27 an undefined identifier built
+        # clean, deployed, and blanked the whole dashboard; `no-undef` catches
+        # that class and this is where it gets to.
+        $cockpitDir = Join-Path $repo "cockpit"
+        if (-not (Test-Path (Join-Path $cockpitDir "node_modules"))) {
+            Warn "cockpit/node_modules missing; lint skipped (run: npm install in cockpit/)"
+        } else {
+            Write-Host "  running: npm run lint (cockpit)"
+            Push-Location $cockpitDir
+            & npm run lint --silent
+            $lintExit = $LASTEXITCODE
+            Pop-Location
+            if ($lintExit -ne 0) { Fail "Cockpit lint failed (exit $lintExit). Fix it -- an undefined identifier here blanks the entire dashboard at runtime." }
+            Ok "cockpit lint passed"
+        }
     }
 
     # ─── 3. Preflight: VM ─────────────────────────────────────────────────

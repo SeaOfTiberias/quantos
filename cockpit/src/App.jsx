@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { Component, useState, useEffect, useMemo } from "react";
 
 // ─── Design tokens (Bloomberg dark terminal aesthetic) ─────────────────────
 const C = {
@@ -133,24 +133,36 @@ function useMomentumShortlist(universe, setState) {
 // the server caches that per (universe, scan_date) so repeat polls are free,
 // there is no reason to hammer an endpoint whose data changes once a day.
 function useShortlistBrief(universe) {
-  const [state, setState] = useState({ brief: null, loading: true, error: false });
+  // The universe this state belongs to is stored WITH it. The obvious version
+  // resets the state synchronously at the top of the effect, which triggers a
+  // cascading render and, for one frame, shows the previous universe's brief
+  // under the newly-selected universe's heading. Deriving staleness during
+  // render instead means the switch is correct on the first frame.
+  const [state, setState] = useState({
+    brief: null, universe: null, loading: true, error: false,
+  });
   useEffect(() => {
     let cancelled = false;
-    setState({ brief: null, loading: true, error: false });
     const load = async () => {
       try {
         const res = await fetch(`${CLOUD_API_URL}/discovery/shortlist-brief/${universe}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setState({ brief: data, loading: false, error: false });
+        if (!cancelled) setState({ brief: data, universe, loading: false, error: false });
       } catch {
-        if (!cancelled) setState(d => ({ ...d, loading: false, error: true }));
+        if (!cancelled) {
+          setState(d => ({ ...d, universe, loading: false, error: true }));
+        }
       }
     };
     load();
     const id = setInterval(load, 300000);
     return () => { cancelled = true; clearInterval(id); };
   }, [universe]);
+
+  if (state.universe !== universe) {
+    return { brief: null, loading: true, error: false };
+  }
   return state;
 }
 
@@ -188,6 +200,58 @@ function Card({ children, style = {}, className = "" }) {
       {children}
     </div>
   );
+}
+
+// ─── Panel error boundary ──────────────────────────────────────────────────
+// One panel throwing used to take the whole dashboard with it: on 2026-08-27
+// the Morning Brief called a helper that did not exist, React unmounted the
+// entire tree, and System Health, the regime card, the signal feed and all
+// three shortlist tabs went blank alongside it. Nothing about those panels
+// was broken -- they were collateral.
+//
+// A boundary per panel makes a crash local. The failed panel says so and
+// names the error; every other panel keeps rendering its own data. This is
+// deliberately NOT one boundary around the whole grid, which would restore
+// the same all-or-nothing behaviour with a nicer message.
+//
+// Must be a class: getDerivedStateFromError/componentDidCatch have no hook
+// equivalent. Boundaries also only catch errors thrown while RENDERING a
+// descendant -- an event handler or an async fetch rejection is not caught,
+// which is fine here because those already have their own error states.
+class PanelBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    // Keep the stack in the console -- the fallback below is deliberately
+    // terse, and without this the detail is gone.
+    console.error(`Panel "${this.props.name}" crashed:`, error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <Card>
+        <Label color={C.red}>{this.props.name} unavailable</Label>
+        <div style={{ fontSize: 12, color: C.mid, marginTop: 10, lineHeight: 1.7 }}>
+          This panel hit an error and was isolated so the rest of the
+          dashboard keeps working. The other panels are unaffected.
+        </div>
+        <div style={{
+          fontSize: 11, color: C.muted, marginTop: 8,
+          fontFamily: "ui-monospace, monospace", wordBreak: "break-word",
+        }}>
+          {String(this.state.error?.message || this.state.error)}
+        </div>
+      </Card>
+    );
+  }
 }
 
 function Label({ children, color = C.muted }) {
@@ -1132,6 +1196,8 @@ function TopBar({ lastRefresh, heartbeat, obsError }) {
 
 export default function QuantOSCockpit() {
   const [lastRefresh, setLastRefresh] = useState(null);
+  // Wall clock as state, so anything deriving an age stays pure.
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [marketSnapshot, setMarketSnapshot] = useState({ ...MOCK_MARKET_SNAPSHOT, error: false });
   const [signals, setSignals] = useState({ list: [], error: false });
   const [shortlistAlpha50, setShortlistAlpha50] = useState({ entries: [], updatedAt: null, error: false });
@@ -1183,12 +1249,17 @@ export default function QuantOSCockpit() {
       .filter(Boolean).map(t => new Date(t).getTime());
     if (timestamps.length === 0) return { live: false, label: null };
     const freshest = Math.max(...timestamps);
-    const ageSeconds = (Date.now() - freshest) / 1000;
+    const ageSeconds = (nowMs - freshest) / 1000;
     return {
       live: ageSeconds < 36 * 3600,
       label: `last scan ${fmtAge(ageSeconds)}`,
     };
-  }, [shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt, shortlistNifty500.updatedAt]);
+    // `nowMs` is a dependency, not decoration: this read Date.now() during
+    // render, which meant the memo only recomputed when a shortlist timestamp
+    // CHANGED -- so "last scan 2m ago" stayed frozen at 2m for the rest of the
+    // day. Ticking it off the same 60s clock the header uses makes the label
+    // count up the way it always claimed to.
+  }, [nowMs, shortlistAlpha50.updatedAt, shortlistMomentum30.updatedAt, shortlistNifty500.updatedAt]);
   const [obs, setObs] = useState(null);
   const [obsError, setObsError] = useState(false);
 
@@ -1196,7 +1267,10 @@ export default function QuantOSCockpit() {
     const fmt = new Intl.DateTimeFormat("en-IN", {
       hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
     });
-    const tick = () => setLastRefresh(fmt.format(new Date()));
+    const tick = () => {
+      setLastRefresh(fmt.format(new Date()));
+      setNowMs(Date.now());
+    };
     tick();
     const id = setInterval(tick, 60000);
     return () => clearInterval(id);
@@ -1290,7 +1364,9 @@ export default function QuantOSCockpit() {
       <div style={{ padding: "20px 24px" }}>
         {/* Row 0: System health (real data — S5-6 observability) */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
-          <SystemHealthPanel obs={obs} error={obsError} />
+          <PanelBoundary name="System Health">
+            <SystemHealthPanel obs={obs} error={obsError} />
+          </PanelBoundary>
         </div>
 
         {/* Row 1: Market Snapshot · Greeks */}
@@ -1299,12 +1375,16 @@ export default function QuantOSCockpit() {
           gridTemplateColumns: "1fr 1fr",
           gap: 16, marginBottom: 16,
         }}>
-          <MarketSnapshotPanel
-            snapshot={marketSnapshot}
-            error={marketSnapshot.error}
-            shortlistFreshness={shortlistFreshness}
-          />
-          <GreeksPanel />
+          <PanelBoundary name="Market Snapshot">
+            <MarketSnapshotPanel
+              snapshot={marketSnapshot}
+              error={marketSnapshot.error}
+              shortlistFreshness={shortlistFreshness}
+            />
+          </PanelBoundary>
+          <PanelBoundary name="Greeks">
+            <GreeksPanel />
+          </PanelBoundary>
         </div>
 
         {/* Row 2: Signals · Morning Shortlist */}
@@ -1313,8 +1393,12 @@ export default function QuantOSCockpit() {
           gridTemplateColumns: "1fr 1fr",
           gap: 16, marginBottom: 16,
         }}>
-          <SignalFeed signals={signals.list} error={signals.error} />
-          <ScreenerPanel candidates={screener} />
+          <PanelBoundary name="Signal Feed">
+            <SignalFeed signals={signals.list} error={signals.error} />
+          </PanelBoundary>
+          <PanelBoundary name="Morning Shortlist">
+            <ScreenerPanel candidates={screener} />
+          </PanelBoundary>
         </div>
 
         {/* Row 3: Momentum + Base Quality Shortlist (discretionary review) —
@@ -1323,10 +1407,12 @@ export default function QuantOSCockpit() {
             universes (Alpha 50 / Momentum 30 / Nifty 500), tabbed instead of
             stacked as of 2026-08-05. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-          <MomentumShortlistTabs
-            tabs={shortlistTabs} active={shortlistTab} onSelect={setShortlistTab}
-            briefUniverse={briefUniverse} onBriefUniverse={setBriefUniverse}
-          />
+          <PanelBoundary name="Momentum Shortlist">
+            <MomentumShortlistTabs
+              tabs={shortlistTabs} active={shortlistTab} onSelect={setShortlistTab}
+              briefUniverse={briefUniverse} onBriefUniverse={setBriefUniverse}
+            />
+          </PanelBoundary>
         </div>
       </div>
     </div>
