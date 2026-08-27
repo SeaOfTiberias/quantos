@@ -127,6 +127,33 @@ function useMomentumShortlist(universe, setState) {
   }, [universe]);
 }
 
+// Morning Brief — see cloud/api/momentum_shortlist_routes.py::get_shortlist_brief.
+// Polled at 5 minutes rather than the 30s the shortlist panels use: the
+// response can trigger one Claude call for the generated note, and although
+// the server caches that per (universe, scan_date) so repeat polls are free,
+// there is no reason to hammer an endpoint whose data changes once a day.
+function useShortlistBrief(universe) {
+  const [state, setState] = useState({ brief: null, loading: true, error: false });
+  useEffect(() => {
+    let cancelled = false;
+    setState({ brief: null, loading: true, error: false });
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/discovery/shortlist-brief/${universe}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setState({ brief: data, loading: false, error: false });
+      } catch {
+        if (!cancelled) setState(d => ({ ...d, loading: false, error: true }));
+      }
+    };
+    load();
+    const id = setInterval(load, 300000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [universe]);
+  return state;
+}
+
 const fmt = (n, dp = 2) => n?.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp }) ?? "—";
 const fmtINR = n => n != null ? `₹${fmt(n, 0)}` : "—";
 
@@ -468,10 +495,313 @@ const bucketMeta = {
   WATCH:             { label: "Watch",               color: C.muted },
 };
 
+// ─── Morning Brief ─────────────────────────────────────────────────────────
+// What changed on the board overnight. The three universe tabs above show a
+// ranked position; this shows a MOVE, which a ranked table cannot — a name
+// that went IN BOX -> NEAR on a tight base looks identical to one that sat
+// still until you diff two sessions.
+//
+// Two layers, and the order is load-bearing. The flags are computed by
+// core/discovery/shortlist_brief.py and are the signal. The paragraph at the
+// bottom is written by Claude from those same flags (never from the raw
+// board) and is labelled as commentary, because it is. If the note is
+// missing the tab is still complete.
+
+const FLAG_META = {
+  NEW_BREAKOUT:   { label: "Broke out",    color: C.green,  weight: 700 },
+  NEW_LEADER:     { label: "New leader",   color: C.green,  weight: 700 },
+  TURNED_NEAR:    { label: "Turned NEAR",  color: C.accent, weight: 600 },
+  NEW_BULL_CROSS: { label: "50/200 BULL",  color: C.accent, weight: 600 },
+  LOST_LEADER:    { label: "Lost leader",  color: C.red,    weight: 600 },
+  VAULT_IMPROVED: { label: "Rules gained", color: C.mid,    weight: 500 },
+  VAULT_WEAKENED: { label: "Rules lost",   color: C.mid,    weight: 500 },
+  NEW_ENTRY:      { label: "New entry",    color: C.purple, weight: 500 },
+  DROPPED:        { label: "Dropped",      color: C.muted,  weight: 500 },
+};
+
+// Signed numbers, sign always shown, and a null rendered as an em dash rather
+// than a zero — "did not move" and "no previous session to compare against"
+// are different facts (see shortlist_brief.diff_entry) and a panel that draws
+// them identically is lying to the reader.
+function Delta({ value, dp = 1 }) {
+  if (value == null) return <span style={{ color: C.muted }}>—</span>;
+  if (value === 0) return <span style={{ color: C.muted }}>0</span>;
+  return (
+    <span style={{ color: value > 0 ? C.green : C.red }}>
+      {value > 0 ? "+" : ""}{value.toFixed(dp)}
+    </span>
+  );
+}
+
+function BriefCensus({ census }) {
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+      {census.map(c => {
+        const meta = bucketMeta[c.bucket] ?? { label: c.bucket, color: C.muted };
+        return (
+          <div key={c.bucket} style={{
+            background: C.panel, border: `1px solid ${C.border}`,
+            borderRadius: 6, padding: "6px 10px", minWidth: 108,
+          }}>
+            <div style={{
+              fontSize: 9, color: meta.color, fontWeight: 600,
+              textTransform: "uppercase", letterSpacing: 0.6,
+            }}>
+              {meta.label}
+            </div>
+            <div style={{ fontSize: 16, color: C.white, fontVariantNumeric: "tabular-nums" }}>
+              {c.count}
+              <span style={{ fontSize: 11, marginLeft: 6 }}>
+                <Delta value={c.delta} dp={0} />
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BriefFlags({ flags }) {
+  if (flags.length === 0) {
+    return (
+      <div style={{ fontSize: 12, color: C.mid, marginTop: 14 }}>
+        No transitions since the previous session — the board did not move.
+      </div>
+    );
+  }
+  // Preserve the server's ordering (most important first) while grouping, so
+  // a breakout can never be rendered below a lost rule.
+  const groups = [];
+  for (const f of flags) {
+    const last = groups[groups.length - 1];
+    if (last && last.kind === f.kind) last.items.push(f);
+    else groups.push({ kind: f.kind, items: [f] });
+  }
+  return (
+    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+      {groups.map(g => {
+        const meta = FLAG_META[g.kind] ?? { label: g.kind, color: C.mid, weight: 500 };
+        return (
+          <div key={g.kind} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 0.8,
+              textTransform: "uppercase", color: meta.color,
+              minWidth: 96, flexShrink: 0,
+            }}>
+              {meta.label}
+            </span>
+            <span style={{ fontSize: 12, color: C.mid, lineHeight: 1.7 }}>
+              {g.items.map((f, i) => (
+                <span key={f.symbol + i}>
+                  {i > 0 && <span style={{ color: C.border }}> · </span>}
+                  <a href={tvUrl(f.symbol)} target="_blank" rel="noreferrer"
+                     style={{ color: C.white, fontWeight: meta.weight, textDecoration: "none" }}>
+                    {f.symbol}
+                  </a>
+                  <span style={{ color: C.muted, fontSize: 11 }}> ({f.detail})</span>
+                </span>
+              ))}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BriefNote({ note, error }) {
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Label color={C.purple}>Generated commentary</Label>
+        <span style={{ fontSize: 9, color: C.muted }}>
+          written by Claude from the flags above — not a signal, not advice
+        </span>
+      </div>
+      {note ? (
+        <div style={{ fontSize: 12, color: C.mid, marginTop: 8, lineHeight: 1.75 }}>
+          {note}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+          {error ? "Unavailable (" + error + ")." : "Not generated for this session."}
+          {" The computed flags above are unaffected."}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BRIEF_UNIVERSES = [
+  { key: "alpha50", label: "Alpha 50" },
+  { key: "nifty200momentum30", label: "Momentum 30" },
+  { key: "nifty500", label: "Nifty 500" },
+];
+
+const BRIEF_COLUMNS = [
+  "Symbol", "Bucket", "Momentum", "Mom Δ", "Rank Δ",
+  "Breakout", "Was", "50/200", "Width", "Vault",
+];
+
+function MorningBrief({ universe, onUniverse }) {
+  const { brief, loading, error } = useShortlistBrief(universe);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: C.muted, marginRight: 4, letterSpacing: 1 }}>
+          UNIVERSE
+        </span>
+        {BRIEF_UNIVERSES.map(u => (
+          <button key={u.key} onClick={() => onUniverse(u.key)} style={{
+            background: u.key === universe ? C.panel : "none",
+            border: `1px solid ${u.key === universe ? C.accent : C.border}`,
+            color: u.key === universe ? C.accent : C.muted,
+            borderRadius: 5, padding: "3px 10px", fontSize: 11,
+            cursor: "pointer", fontWeight: 600,
+          }}>
+            {u.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 14 }}>Loading brief…</div>
+      )}
+      {error && !loading && (
+        <div style={{ fontSize: 12, color: C.red, marginTop: 14 }}>
+          Could not reach cloud API.
+        </div>
+      )}
+      {brief && !brief.available && (
+        <div style={{ fontSize: 12, color: C.mid, marginTop: 14, lineHeight: 1.7 }}>
+          {brief.reason}
+        </div>
+      )}
+
+      {brief && brief.available && (
+        <>
+          <div style={{ fontSize: 10, color: C.muted, marginTop: 12, lineHeight: 1.7 }}>
+            Scan <span style={{ color: C.white }}>{brief.scan_date}</span>
+            {brief.prev_scan_date
+              ? <> compared against <span style={{ color: C.white }}>{brief.prev_scan_date}</span></>
+              : <> — no previous session on record, so nothing is diffed yet</>}
+            {" · "}{brief.counts.ranked} ranked, {brief.counts.focus} on tight bases
+            {" · store "}{brief.backend}
+          </div>
+
+          <BriefCensus census={brief.census} />
+          <BriefFlags flags={brief.flags} />
+
+          {brief.entries.length > 0 && (
+            <table style={{ width: "100%", marginTop: 16, borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {BRIEF_COLUMNS.map(h => (
+                    <th key={h} style={{
+                      textAlign: h === "Symbol" || h === "Bucket" ? "left" : "right",
+                      padding: "6px", fontSize: 9, color: C.muted,
+                      borderBottom: `1px solid ${C.border}`,
+                      textTransform: "uppercase", letterSpacing: 0.6,
+                    }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {brief.entries.map(e => {
+                  const meta = bucketMeta[e.bucket] ?? { label: e.bucket, color: C.muted };
+                  const moved = e.breakout_state !== e.prev_breakout_state;
+                  return (
+                    <tr key={e.symbol} style={{ borderBottom: `1px solid ${C.panel}` }}>
+                      <td style={{ padding: "7px 6px" }}>
+                        <a href={tvUrl(e.symbol)} target="_blank" rel="noreferrer"
+                           style={{ color: C.white, fontWeight: 600, textDecoration: "none", fontSize: 12 }}>
+                          {e.symbol}
+                        </a>
+                        {e.is_new && (
+                          <span style={{ color: C.purple, fontSize: 9, marginLeft: 6 }}>NEW</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "7px 6px", fontSize: 10, color: meta.color }}>
+                        {meta.label}
+                      </td>
+                      <td style={{
+                        padding: "7px 6px", textAlign: "right", fontSize: 12,
+                        color: C.white, fontVariantNumeric: "tabular-nums",
+                      }}>
+                        {e.momentum_pct != null ? e.momentum_pct.toFixed(1) + "%" : "—"}
+                      </td>
+                      <td style={{
+                        padding: "7px 6px", textAlign: "right", fontSize: 11,
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        <Delta value={e.momentum_delta} dp={1} />
+                      </td>
+                      <td style={{
+                        padding: "7px 6px", textAlign: "right", fontSize: 11,
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        <Delta value={e.rank_delta} dp={0} />
+                      </td>
+                      <td style={{
+                        padding: "7px 6px", textAlign: "right", fontSize: 11,
+                        color: moved ? C.accent : C.mid, fontWeight: moved ? 700 : 400,
+                      }}>
+                        {e.breakout_state ?? "—"}
+                      </td>
+                      <td style={{ padding: "7px 6px", textAlign: "right", fontSize: 10, color: C.muted }}>
+                        {moved ? (e.prev_breakout_state ?? "—") : ""}
+                      </td>
+                      <td style={{ padding: "7px 6px", textAlign: "right", fontSize: 10, color: C.mid }}>
+                        {e.ma_cross ?? "—"}{e.ma_cross_days != null ? " " + e.ma_cross_days + "d" : ""}
+                      </td>
+                      <td style={{
+                        padding: "7px 6px", textAlign: "right", fontSize: 11, color: C.mid,
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        {e.box_width_pct != null ? e.box_width_pct.toFixed(1) + "%" : "—"}
+                      </td>
+                      <td style={{ padding: "7px 6px", textAlign: "right", fontSize: 10 }}>
+                        {/* Per note, never summed — the same rule the tables
+                            above follow. A Minervini rule and a Weinstein rule
+                            are not interchangeable units, so there is no
+                            single number here to show. */}
+                        {(e.vault_moves ?? []).length === 0
+                          ? <span style={{ color: C.muted }}>—</span>
+                          : e.vault_moves.map(m => (
+                              <span key={m.label} style={{ marginLeft: 8, whiteSpace: "nowrap" }}>
+                                <span style={{ color: C.muted }}>{m.label.slice(0, 4)} </span>
+                                <span style={{ color: C.mid }}>{m.rules_passed}/{m.rules_total}</span>
+                                {m.delta != null && m.delta !== 0 && (
+                                  <span style={{ color: m.delta > 0 ? C.green : C.red, marginLeft: 3 }}>
+                                    {m.delta > 0 ? "▲" : "▼"}
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          <BriefNote note={brief.note} error={brief.note_error} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // One Card with a tab strip instead of three stacked panels — same three
 // feeds (see scripts/run_momentum_shortlist.py's DEFAULT_UNIVERSE_FILES),
 // just switched instead of scrolled past.
-function MomentumShortlistTabs({ tabs, active, onSelect }) {
+function MomentumShortlistTabs({ tabs, active, onSelect,
+                                 briefUniverse, onBriefUniverse }) {
   const current = tabs.find(t => t.key === active) ?? tabs[0];
   const { entries, error } = current;
   const vaultCols = useMemo(() => vaultColumns(entries), [entries]);
@@ -509,6 +839,10 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
         })}
       </div>
 
+      {current.kind === "brief" ? (
+        <MorningBrief universe={briefUniverse} onUniverse={onBriefUniverse} />
+      ) : (
+      <>
       <div style={{ fontSize: 10, color: C.muted, marginTop: 10 }}>
         {current.universeName}, ranked by 52-week-high proximity, overlaid with
         each name's Darvas weekly base state — a "tight" base only
@@ -660,6 +994,8 @@ function MomentumShortlistTabs({ tabs, active, onSelect }) {
           </tbody>
         </table>
       )}
+      </>
+      )}
     </Card>
   );
 }
@@ -810,6 +1146,11 @@ export default function QuantOSCockpit() {
     [shortlistNifty500.entries],
   );
   const [shortlistTab, setShortlistTab] = useState("alpha50");
+  // The brief's universe is separate from the tab strip's selection: the strip
+  // picks WHICH VIEW, and inside the brief view its own row of buttons picks
+  // which universe to diff. Folding them together would have made the brief a
+  // fourth universe, which it is not.
+  const [briefUniverse, setBriefUniverse] = useState("nifty500");
   const shortlistTabs = useMemo(() => ([
     {
       key: "alpha50", label: "Alpha 50", universeName: "Nifty Alpha 50",
@@ -823,6 +1164,16 @@ export default function QuantOSCockpit() {
       key: "nifty500", label: "Nifty 500 (Top 10)",
       universeName: "Nifty 500, full 500-symbol scan truncated to the top 10 by rank",
       entries: nifty500Top10, updatedAt: shortlistNifty500.updatedAt, error: shortlistNifty500.error,
+    },
+    // Not a fourth universe — a different question about the same three.
+    // The tabs above answer "where does each name rank today"; this one
+    // answers "what moved since the last session", which no ranked table can
+    // show. `entries: []` because it renders its own body (see the
+    // current.kind === "brief" branch) and never touches the shared table.
+    {
+      key: "brief", kind: "brief", label: "Morning Brief",
+      universeName: "Day-over-day transitions",
+      entries: [], updatedAt: null, error: false,
     },
   ]), [shortlistAlpha50, shortlistMomentum30, nifty500Top10, shortlistNifty500.updatedAt, shortlistNifty500.error]);
   // Same 36h daily-cadence window cloud/api/observability_routes.py's
@@ -972,7 +1323,10 @@ export default function QuantOSCockpit() {
             universes (Alpha 50 / Momentum 30 / Nifty 500), tabbed instead of
             stacked as of 2026-08-05. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-          <MomentumShortlistTabs tabs={shortlistTabs} active={shortlistTab} onSelect={setShortlistTab} />
+          <MomentumShortlistTabs
+            tabs={shortlistTabs} active={shortlistTab} onSelect={setShortlistTab}
+            briefUniverse={briefUniverse} onBriefUniverse={setBriefUniverse}
+          />
         </div>
       </div>
     </div>

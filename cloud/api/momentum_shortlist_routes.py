@@ -36,6 +36,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from cloud.api.auth import require_cloud_secret
+from cloud.api.shortlist_history import get_history
+from core.discovery.shortlist_brief import build_brief
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/discovery", tags=["discovery"])
@@ -191,9 +193,19 @@ async def sync_momentum_shortlist(universe: str, payload: ShortlistSyncRequest,
     _shortlist_store[universe] = [e.model_dump() for e in payload.entries]
     _last_synced_at[universe] = datetime.now(timezone.utc)
     _save_cache()
-    logger.info("Momentum shortlist synced (%s): %d entries",
-                universe, len(_shortlist_store[universe]))
-    return {"universe": universe, "synced": len(_shortlist_store[universe])}
+
+    # Append today's board to the day-over-day history the Morning Brief tab
+    # reads. Deliberately after _save_cache(): the cache is what the existing
+    # three panels render, and a history problem must not delay or endanger
+    # it. record_snapshot() swallows its own failures for the same reason.
+    history = await get_history()
+    recorded = await history.record_snapshot(universe,
+                                             _shortlist_store[universe])
+
+    logger.info("Momentum shortlist synced (%s): %d entries, %d recorded to history",
+                universe, len(_shortlist_store[universe]), recorded)
+    return {"universe": universe, "synced": len(_shortlist_store[universe]),
+            "history_rows": recorded}
 
 
 @router.get("/momentum-shortlist/{universe}")
@@ -204,4 +216,78 @@ async def get_momentum_shortlist(universe: str):
     return {
         "entries": entries,
         "updated_at": updated_at.isoformat() if updated_at else None,
+    }
+
+
+@router.get("/shortlist-brief/{universe}")
+async def get_shortlist_brief(universe: str, note: bool = True):
+    """The Morning Brief: today's tight-base board with per-name overnight
+    deltas, the ranked transition flags, and (optionally) a generated
+    paragraph of commentary underneath.
+
+    `note=false` skips the Claude call entirely and returns only computed
+    output — used by the cockpit's manual refresh so re-reading the tab can
+    never spend money, and available to anyone who wants the deterministic
+    half on its own.
+
+    The generated note NEVER blocks the response: any failure to produce one
+    is reported in `note_error` and the computed brief is returned regardless.
+    The flags are the signal; the prose is commentary and the cockpit labels
+    it as such.
+    """
+    history = await get_history()
+
+    dates = await history.session_dates(universe, limit=1)
+    if not dates:
+        return {
+            "universe": universe, "available": False,
+            "reason": ("No scan history recorded yet for this universe. "
+                       "History starts accumulating from the first sync after "
+                       "2026-08-27; run scripts/backfill_shortlist_history.py "
+                       "to load past sessions out of journald."),
+        }
+
+    scan_date = dates[0]
+    prev_date = await history.previous_session_date(universe, scan_date)
+    today = await history.fetch_session(universe, scan_date)
+    prev = await history.fetch_session(universe, prev_date) if prev_date else []
+
+    brief = build_brief(today, prev, scan_date=scan_date,
+                        prev_scan_date=prev_date)
+    brief["universe"] = universe
+    brief["available"] = True
+    brief["backend"] = history.backend
+
+    # Cached notes are free to serve, so hand one back even when note=false.
+    from cloud.analyst.shortlist_note import cached_note, generate_note, NoteUnavailable
+
+    cached = cached_note(universe, scan_date)
+    if cached is not None:
+        brief["note"] = cached
+    elif note:
+        try:
+            brief["note"] = await generate_note(universe, brief)
+        except NoteUnavailable as e:
+            brief["note"] = None
+            brief["note_error"] = str(e)
+        except Exception as e:  # noqa: BLE001 — see docstring: never blocks
+            logger.warning("Shortlist note generation failed (%s): %s",
+                           type(e).__name__, e)
+            brief["note"] = None
+            brief["note_error"] = f"{type(e).__name__}"
+    else:
+        brief["note"] = None
+
+    return brief
+
+
+@router.get("/shortlist-history/{universe}")
+async def get_shortlist_history_dates(universe: str, limit: int = 30):
+    """Scan dates held for this universe, newest first — lets the cockpit show
+    how much history the brief is actually working from."""
+    history = await get_history()
+    return {
+        "universe": universe,
+        "backend": history.backend,
+        "dates": await history.session_dates(universe, limit=limit),
     }

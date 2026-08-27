@@ -140,6 +140,17 @@ async def _init_signal_db():
     await db.connect()
 
 
+@app.on_event("startup")
+async def _init_shortlist_history():
+    # Same contract as _init_signal_db: bootstrap the shortlist_history table
+    # if a real backend is reachable, else log and fall back to memory. Kept
+    # as its own hook rather than folded into the one above so a failure here
+    # can never stop the signals table from coming up.
+    from cloud.api.shortlist_history import get_history
+    history = await get_history()
+    await history.connect()
+
+
 # How often to retry Postgres once the startup connect() has failed
 # (2026-07-27/28: confirmed DATABASE_URL pointed at a dead host —
 # ConnectionRefusedError — most likely a stale Railway service reference).
