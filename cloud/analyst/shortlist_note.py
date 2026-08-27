@@ -18,8 +18,8 @@ pathway unsound, and prompts/shortlist_note_system.md forbids recommending
 an action in as many words. This is a description of a board, and the
 shortlist has no execution path for it to influence.
 
-Cost shape: one call per universe per morning, a few thousand input tokens
-against a small output cap. Cached per (universe, scan_date) so a cockpit
+Cost shape: one call per universe per morning, ~8-10k input tokens against
+a 4k ceiling that covers thinking as well as the prose. Cached per (universe, scan_date) so a cockpit
 left open all day, or ten refreshes in a row, cost exactly one call.
 """
 
@@ -47,7 +47,21 @@ _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""),
 # to bring it in line with the others if that inconsistency ever bites.
 MODEL = os.getenv("SHORTLIST_NOTE_MODEL", "claude-opus-5")
 
-MAX_TOKENS = 400
+# Opus 5 runs adaptive thinking BY DEFAULT (unlike Opus 4.8/4.7, where omitting
+# the parameter meant no thinking), and thinking is spent out of max_tokens
+# before any prose is written. This was 400: the first live call spent 364 of
+# them thinking and had 36 left for the note, which truncated mid-word and
+# surfaced as the thoroughly misleading "Claude returned no text". The ceiling
+# has to cover thinking PLUS the paragraph, so depth is controlled by effort
+# below rather than by starving the budget.
+MAX_TOKENS = 4000
+
+# The note describes flags that have already been computed; it is not deriving
+# them. That is what low effort is for -- it cuts thinking tokens, and the
+# money, on a call that runs three times every morning. Thinking stays ON:
+# disabling it on Opus 5 is documented to leak reasoning into the visible
+# answer, which is the one thing a paragraph shown to a human must not do.
+EFFORT = os.getenv("SHORTLIST_NOTE_EFFORT", "low")
 
 # (universe, scan_date) -> note. The scan writes once a day, so a hit here is
 # the overwhelmingly common case and a miss means a genuinely new board.
@@ -57,6 +71,24 @@ _note_cache: dict[tuple[str, str], str] = {}
 class NoteUnavailable(Exception):
     """The note could not be generated. Never fatal — the caller renders the
     computed flags without it."""
+
+
+# Dropped from every prompt row. `close`, `stage` and `vault_verdict` are
+# always null on a journald-backfilled row and carry nothing when present;
+# `source` is a provenance flag for the reader, not a fact about the stock;
+# and `vault_notes` is strictly contained in `vault_moves`, which adds the
+# previous score. Sending all five taught the model nothing and was billed
+# forty times per call.
+_PROMPT_DROP = ("close", "stage", "vault_verdict", "source", "vault_notes")
+
+
+def _slim(entry: dict) -> dict:
+    # Named keys only -- a null is NOT dropped as though it were noise. A null
+    # momentum_delta means "no previous session to compare against", which is
+    # a different fact from "did not move" (see shortlist_brief.diff_entry and
+    # the cockpit's Delta component), and silently omitting it would invite
+    # exactly the conflation the flags are built to avoid.
+    return {k: v for k, v in entry.items() if k not in _PROMPT_DROP}
 
 
 def _trim_for_prompt(brief: dict) -> dict:
@@ -75,7 +107,7 @@ def _trim_for_prompt(brief: dict) -> dict:
              or e.get("breakout_state") != e.get("prev_breakout_state")
              or e.get("vault_changed")]
     head = [e for e in entries[:15] if e not in moved]
-    keep = (moved + head)[:40]
+    keep = [_slim(e) for e in (moved + head)[:40]]
     return {**brief, "entries": keep,
             "entries_note": (f"{len(keep)} of {len(entries)} focus rows shown "
                              f"(all that changed, plus the top of the board)")}
@@ -99,7 +131,11 @@ async def generate_note(universe: str, brief: dict) -> str:
         universe=universe,
         scan_date=scan_date,
         prev_scan_date=brief.get("prev_scan_date") or "no previous session",
-        brief_json=json.dumps(_trim_for_prompt(brief), indent=2, default=str),
+        # Compact separators, not indent=2: the pretty-printing was
+        # roughly half the payload and the model does not read the
+        # whitespace.
+        brief_json=json.dumps(_trim_for_prompt(brief),
+                              separators=(",", ":"), default=str),
     )
 
     started = time.perf_counter()
@@ -108,6 +144,8 @@ async def generate_note(universe: str, brief: dict) -> str:
         response = await _claude.messages.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
+            thinking={"type": "adaptive"},
+            output_config={"effort": EFFORT},
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -131,6 +169,13 @@ async def generate_note(universe: str, brief: dict) -> str:
     blocks = [b.text for b in response.content
               if getattr(b, "type", None) == "text"]
     note = "\n".join(blocks).strip()
+
+    # Checked before the emptiness test so the budget failure names
+    # itself. It first presented as "returned no text", which points at
+    # the model rather than at MAX_TOKENS, where the fault actually was.
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise NoteUnavailable(
+            f"note hit the {MAX_TOKENS}-token ceiling before finishing")
     if not note:
         raise NoteUnavailable("Claude returned no text")
 
