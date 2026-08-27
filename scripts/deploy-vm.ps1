@@ -70,12 +70,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 # strict gate stays usable instead of being permanently red. Keep this list
 # SHORT and always say why + what clears it. Anything not listed here that
 # fails will block the deploy.
-$KnownFailures = @(
-    # Date-expired fixture, not a regression: asserts date(2026,7,21) is a
-    # future NIFTY expiry, which stopped being true on 2026-07-22.
-    # Remove this entry once the test is rewritten against a relative date.
-    "tests/unit/test_fyers_symbol_master.py::TestListExpiries::test_lists_only_future_or_today_expiries"
-)
+$KnownFailures = @()
 
 function Section($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Ok($text)      { Write-Host "  [ok]   $text" -ForegroundColor Green }
