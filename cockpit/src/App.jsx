@@ -595,7 +595,7 @@ function BriefFlags({ flags }) {
               {g.items.map((f, i) => (
                 <span key={f.symbol + i}>
                   {i > 0 && <span style={{ color: C.border }}> · </span>}
-                  <a href={tvUrl(f.symbol)} target="_blank" rel="noreferrer"
+                  <a href={tradingViewUrl(f.symbol)} target="_blank" rel="noreferrer"
                      style={{ color: C.white, fontWeight: meta.weight, textDecoration: "none" }}>
                     {f.symbol}
                   </a>
@@ -717,7 +717,7 @@ function MorningBrief({ universe, onUniverse }) {
                   return (
                     <tr key={e.symbol} style={{ borderBottom: `1px solid ${C.panel}` }}>
                       <td style={{ padding: "7px 6px" }}>
-                        <a href={tvUrl(e.symbol)} target="_blank" rel="noreferrer"
+                        <a href={tradingViewUrl(e.symbol)} target="_blank" rel="noreferrer"
                            style={{ color: C.white, fontWeight: 600, textDecoration: "none", fontSize: 12 }}>
                           {e.symbol}
                         </a>
