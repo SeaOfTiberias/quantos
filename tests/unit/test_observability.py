@@ -66,6 +66,34 @@ class TestMetrics:
         assert snap["claude_spend_today"]["calls"] == 1
         assert snap["claude_spend_today"]["est_usd"] == 0.0
 
+    def test_each_model_is_priced_at_its_own_rate(self):
+        # 2026-08-27: shortlist_note.py calls Opus 5 ($5/$25) but the metrics
+        # module priced every call at the blended default ($3/$15, Sonnet's
+        # rate) — the first live Opus call recorded $0.056 for what actually
+        # cost ~$0.094. A day mixing an Opus and a Sonnet call must price each
+        # at its own rate, not one shared rate for the whole day.
+        metrics.record_claude(1000.0, model="claude-opus-5",
+                              input_tokens=1_000_000, output_tokens=1_000_000)
+        metrics.record_claude(1000.0, model="claude-sonnet-4-6",
+                              input_tokens=1_000_000, output_tokens=1_000_000)
+        spend = metrics.snapshot()["claude_spend_today"]
+        # Opus: 1M*$5 + 1M*$25 = $30. Sonnet: 1M*$3 + 1M*$15 = $18. Total $48 —
+        # not $36, which is what a single blended $3/$15 rate would give both.
+        assert spend["est_usd"] == pytest.approx(48.0, abs=0.01)
+        assert spend["by_model"]["claude-opus-5"]["est_usd"] == pytest.approx(30.0, abs=0.01)
+        assert spend["by_model"]["claude-sonnet-4-6"]["est_usd"] == pytest.approx(18.0, abs=0.01)
+
+    def test_a_call_with_no_model_falls_back_to_the_default_price(self):
+        metrics.record_claude(1000.0, input_tokens=500_000, output_tokens=500_000)
+        spend = metrics.snapshot()["claude_spend_today"]
+        assert spend["by_model"]["_unpriced"]["est_usd"] == pytest.approx(1.5 + 7.5, abs=0.01)
+
+    def test_an_untracked_model_id_also_falls_back_rather_than_pricing_at_zero(self):
+        metrics.record_claude(1000.0, model="claude-some-future-model",
+                              input_tokens=500_000, output_tokens=500_000)
+        spend = metrics.snapshot()["claude_spend_today"]
+        assert spend["by_model"]["claude-some-future-model"]["est_usd"] > 0
+
 
 # ─── SignalDB counts_by_status_today ───────────────────────────────────────────
 

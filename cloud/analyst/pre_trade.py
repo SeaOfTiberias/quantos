@@ -94,6 +94,7 @@ async def analyse_signal(signal: dict) -> float:
         usage = getattr(response, "usage", None) if response is not None else None
         record_claude(
             (time.perf_counter() - started) * 1000.0,
+            model=MODEL,
             input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
             output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
         )
