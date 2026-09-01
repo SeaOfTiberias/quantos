@@ -9,10 +9,12 @@ from core.orb_scalping.backtest import (  # noqa: E402
     BANKNIFTY_LOT_SIZE,
     NIFTY_LOT_SIZE,
     group_by_day,
+    is_banknifty_monthly_expiry_day,
     resolve_banknifty_expiry,
     resolve_nifty_expiry,
     run_index_backtest,
 )
+from core.orb_scalping.expiry import is_nifty_weekly_expiry_day  # noqa: E402
 from core.orb_scalping.signal import OPENING_RANGE_CANDLES  # noqa: E402
 
 SESSION_START = datetime(2024, 1, 2, 3, 45, tzinfo=timezone.utc)  # 09:15 IST
@@ -81,7 +83,7 @@ def test_run_index_backtest_produces_one_trade_per_variant_per_signal_day():
 
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
 
-    clean, stressed, harsh, real_spread, sampled_spread = run_index_backtest(
+    clean, stressed, harsh, real_spread, sampled_spread, stratified = run_index_backtest(
         candles, vix_candles, underlying="NIFTY",
     )
 
@@ -90,14 +92,16 @@ def test_run_index_backtest_produces_one_trade_per_variant_per_signal_day():
     assert len(harsh) == 1
     assert len(real_spread) == 1
     assert len(sampled_spread) == 1
+    assert len(stratified) == 1
     assert clean[0].qty == NIFTY_LOT_SIZE
-    # Same gross profit, different (higher) cost under Stressed/Harsh/RealSpread/SampledSpread.
+    # Same gross profit, different (higher) cost under every stressed variant.
     assert (clean[0].profit == stressed[0].profit == harsh[0].profit
-            == real_spread[0].profit == sampled_spread[0].profit)
+            == real_spread[0].profit == sampled_spread[0].profit == stratified[0].profit)
     assert stressed[0].costs > clean[0].costs
     assert harsh[0].costs > clean[0].costs
     assert real_spread[0].costs > clean[0].costs
     assert sampled_spread[0].costs > clean[0].costs
+    assert stratified[0].costs > clean[0].costs
 
 
 def test_run_index_backtest_uses_banknifty_lot_size():
@@ -109,7 +113,7 @@ def test_run_index_backtest_uses_banknifty_lot_size():
         candles.append(bar(day1, i, 50100.0))
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
 
-    clean, _, _, _, _ = run_index_backtest(candles, vix_candles, underlying="BANKNIFTY")
+    clean, _, _, _, _, _ = run_index_backtest(candles, vix_candles, underlying="BANKNIFTY")
     assert len(clean) == 1
     assert clean[0].qty == BANKNIFTY_LOT_SIZE
 
@@ -121,19 +125,21 @@ def test_run_index_backtest_skips_days_missing_vix():
     for i in range(OPENING_RANGE_CANDLES + 1, OPENING_RANGE_CANDLES + 60):
         candles.append(bar(day1, i, 24030.0))
 
-    clean, stressed, harsh, real_spread, sampled_spread = run_index_backtest(candles, [], underlying="NIFTY")
+    clean, stressed, harsh, real_spread, sampled_spread, stratified = run_index_backtest(
+        candles, [], underlying="NIFTY")
     assert clean == []
     assert stressed == []
     assert harsh == []
     assert real_spread == []
     assert sampled_spread == []
+    assert stratified == []
 
 
 def test_run_index_backtest_no_breakout_produces_no_trades():
     day1 = date(2024, 1, 2)
     candles = flat_day(day1, 80, price=24000.0)  # never breaks out
     vix_candles = [bar(day1, i, 15.0) for i in range(len(candles))]
-    clean, stressed, harsh, real_spread, sampled_spread = run_index_backtest(
+    clean, stressed, harsh, real_spread, sampled_spread, stratified = run_index_backtest(
         candles, vix_candles, underlying="NIFTY",
     )
     assert clean == []
@@ -141,9 +147,62 @@ def test_run_index_backtest_no_breakout_produces_no_trades():
     assert harsh == []
     assert real_spread == []
     assert sampled_spread == []
+    assert stratified == []
 
 
 def test_run_index_backtest_rejects_unknown_underlying():
     import pytest
     with pytest.raises(ValueError):
         run_index_backtest([], [], underlying="SENSEX")
+
+
+# ─── Expiry-day predicates (stratification) ────────────────────────────────
+
+def test_is_nifty_weekly_expiry_day_true_on_the_expiry_itself():
+    trading_days = {date(2026, 7, 22), date(2026, 7, 28)}
+    assert is_nifty_weekly_expiry_day(date(2026, 7, 28), trading_days) is True
+    assert is_nifty_weekly_expiry_day(date(2026, 7, 22), trading_days) is False
+
+
+def test_is_banknifty_monthly_expiry_day_true_on_the_expiry_itself():
+    trading_days = {date(2026, 7, 1), date(2026, 7, 28)}
+    assert is_banknifty_monthly_expiry_day(date(2026, 7, 28), trading_days) is True
+    assert is_banknifty_monthly_expiry_day(date(2026, 7, 1), trading_days) is False
+
+
+def test_run_index_backtest_prices_an_expiry_day_trade_at_the_wider_stratified_rate():
+    """A trade entered ON NIFTY's own weekly expiry day must be costed using
+    STRATIFIED_SPREAD_SLIPPAGE_BPS's expiry-day rate, not the ordinary-day
+    one -- real sampled data showed expiry-day spread roughly double the
+    ordinary-day rate (core/orb_scalping/costs.py). Entering on the expiry
+    day itself also triggers the DTE-floor roll (0 days < the 2-day floor),
+    so this does NOT compare against a different simulated day, whose
+    premium reconstruction would run at a different DTE and confound the
+    comparison -- instead it recomputes the same trade's cost at both flags
+    directly against core/orb_scalping/costs.py, the source of truth."""
+    from core.orb_scalping.costs import stratified_spread_trade_cost
+
+    expiry_day = date(2026, 7, 28)     # Tuesday NIFTY weekly expiry
+    candles = flat_day(expiry_day, OPENING_RANGE_CANDLES, price=24000.0)
+    candles.append(bar(expiry_day, OPENING_RANGE_CANDLES, 24030.0))
+    for i in range(OPENING_RANGE_CANDLES + 1, OPENING_RANGE_CANDLES + 60):
+        candles.append(bar(expiry_day, i, 24030.0))
+    vix_candles = [bar(expiry_day, i, 15.0) for i in range(len(candles))]
+
+    *_, stratified = run_index_backtest(candles, vix_candles, underlying="NIFTY")
+    assert len(stratified) == 1
+    trade = stratified[0]
+
+    as_ordinary = stratified_spread_trade_cost(
+        trade.entry_price, trade.exit_price, trade.qty, expiry_day,
+        "NIFTY", is_expiry_day=False,
+    ).total
+    as_expiry = stratified_spread_trade_cost(
+        trade.entry_price, trade.exit_price, trade.qty, expiry_day,
+        "NIFTY", is_expiry_day=True,
+    ).total
+    assert as_expiry > as_ordinary, "expiry-day rate must exceed the ordinary-day rate"
+    # And the backtest actually used the expiry-day rate for this trade,
+    # proving is_expiry_day was correctly detected and threaded through --
+    # not just that the two rates differ in the abstract.
+    assert trade.costs == as_expiry

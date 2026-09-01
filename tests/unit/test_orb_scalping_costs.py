@@ -8,11 +8,13 @@ from core.orb_scalping.costs import (  # noqa: E402
     HARSH_NEXT_WEEK_SLIPPAGE_BPS,
     REAL_SPREAD_SLIPPAGE_BPS,
     SAMPLED_SPREAD_SLIPPAGE_BPS,
+    STRATIFIED_SPREAD_SLIPPAGE_BPS,
     STRESSED_SLIPPAGE_BPS,
     clean_trade_cost,
     harsh_trade_cost,
     real_spread_trade_cost,
     sampled_spread_trade_cost,
+    stratified_spread_trade_cost,
     stressed_trade_cost,
 )
 
@@ -143,3 +145,46 @@ def test_sampled_spread_rejects_unknown_underlying():
     import pytest
     with pytest.raises(ValueError):
         sampled_spread_trade_cost(100.0, 120.0, 65, date(2026, 1, 15), underlying="SENSEX")
+
+
+# ─── Stratified (post-hoc, LOCKED FINAL, expiry-day vs ordinary-day) ──────
+
+def test_stratified_expiry_day_charges_more_than_ordinary_day():
+    # The whole reason this variant exists: real sampled data (2026-08-31,
+    # 240 rows / 19 days / 4 expiry days) showed expiry-day spread roughly
+    # DOUBLE the ordinary-day rate on both indices, unlike Sampled-spread's
+    # single blended rate which couldn't see the difference.
+    entry_date = date(2026, 1, 15)
+    nifty_ordinary = stratified_spread_trade_cost(
+        100.0, 120.0, 65, entry_date, underlying="NIFTY", is_expiry_day=False)
+    nifty_expiry = stratified_spread_trade_cost(
+        100.0, 120.0, 65, entry_date, underlying="NIFTY", is_expiry_day=True)
+    banknifty_ordinary = stratified_spread_trade_cost(
+        100.0, 120.0, 30, entry_date, underlying="BANKNIFTY", is_expiry_day=False)
+    banknifty_expiry = stratified_spread_trade_cost(
+        100.0, 120.0, 30, entry_date, underlying="BANKNIFTY", is_expiry_day=True)
+    assert nifty_expiry.total > nifty_ordinary.total
+    assert banknifty_expiry.total > banknifty_ordinary.total
+
+
+def test_stratified_slippage_matches_documented_rate_per_bucket():
+    entry_date = date(2026, 1, 15)
+    lot_size = 65
+    entry_premium, exit_premium = 100.0, 120.0
+    for is_expiry_day in (False, True):
+        result = stratified_spread_trade_cost(
+            entry_premium, exit_premium, lot_size, entry_date,
+            underlying="NIFTY", is_expiry_day=is_expiry_day,
+        )
+        expected_slippage = (
+            (entry_premium * lot_size + exit_premium * lot_size)
+            * STRATIFIED_SPREAD_SLIPPAGE_BPS[("NIFTY", is_expiry_day)] / 10_000.0
+        )
+        assert round(result.slippage, 6) == round(expected_slippage, 6)
+
+
+def test_stratified_rejects_unknown_underlying():
+    import pytest
+    with pytest.raises(ValueError):
+        stratified_spread_trade_cost(
+            100.0, 120.0, 65, date(2026, 1, 15), underlying="SENSEX", is_expiry_day=False)

@@ -25,9 +25,14 @@ from core.orb_scalping.costs import (
     harsh_trade_cost,
     real_spread_trade_cost,
     sampled_spread_trade_cost,
+    stratified_spread_trade_cost,
     stressed_trade_cost,
 )
-from core.orb_scalping.expiry import next_nifty_weekly_expiry, nifty_weekly_expiry
+from core.orb_scalping.expiry import (
+    is_nifty_weekly_expiry_day,
+    next_nifty_weekly_expiry,
+    nifty_weekly_expiry,
+)
 from core.orb_scalping.premium import reconstruct_premium
 from core.orb_scalping.signal import simulate_day
 from scripts.gutcheck_expiry_day_effect import adjust_for_holiday, calendar_expiry_date
@@ -66,6 +71,16 @@ def resolve_banknifty_expiry(entry_date: date, trading_days: set) -> tuple:
     return adjust_for_holiday(calendar_expiry_date(year, month), trading_days), "front_week"
 
 
+def is_banknifty_monthly_expiry_day(trade_date: date, trading_days: set) -> bool:
+    """True iff `trade_date` is itself BankNifty's own (holiday-adjusted)
+    monthly expiry date — the BankNifty counterpart to
+    core/orb_scalping/expiry.py's is_nifty_weekly_expiry_day, same
+    reasoning: a market-wide condition used to stratify spread cost."""
+    return adjust_for_holiday(
+        calendar_expiry_date(trade_date.year, trade_date.month), trading_days,
+    ) == trade_date
+
+
 def resolve_nifty_expiry(entry_date: date, trading_days: set) -> tuple:
     """Nearest NIFTY weekly expiry on/after entry_date, with the
     methodology doc's DTE floor applied: if the nearest weekly's own
@@ -84,13 +99,14 @@ def resolve_nifty_expiry(entry_date: date, trading_days: set) -> tuple:
 def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: float,
                         exit_premium: float, lot_size: int, trade_num: int,
                         bars_held: int, variant: str, liquidity_tier: str = "front_week",
-                        underlying: str = "") -> BacktestTrade:
+                        underlying: str = "", is_expiry_day: bool = False) -> BacktestTrade:
     """Every trade here is a BUY-to-open (long option, CALL or PUT alike —
     both are a long premium position), so profit = (exit - entry) *
     lot_size, same as candidate 15. `variant`: "clean" | "stressed" |
-    "harsh" | "real_spread" | "sampled_spread" (all but "clean" post-hoc —
-    see costs.py); `liquidity_tier` only matters for "harsh", `underlying`
-    only for "real_spread"/"sampled_spread"."""
+    "harsh" | "real_spread" | "sampled_spread" | "stratified" (all but
+    "clean" post-hoc — see costs.py); `liquidity_tier` only matters for
+    "harsh", `underlying` for "real_spread"/"sampled_spread"/"stratified",
+    `is_expiry_day` only for "stratified"."""
     profit = (exit_premium - entry_premium) * lot_size
     notional = entry_premium * lot_size
     profit_pct = (profit / notional * 100) if notional else 0.0
@@ -105,6 +121,10 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
         costs = real_spread_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date(), underlying).total
     elif variant == "sampled_spread":
         costs = sampled_spread_trade_cost(entry_premium, exit_premium, lot_size, entry_dt.date(), underlying).total
+    elif variant == "stratified":
+        costs = stratified_spread_trade_cost(
+            entry_premium, exit_premium, lot_size, entry_dt.date(), underlying, is_expiry_day,
+        ).total
     else:
         raise ValueError(f"unsupported variant: {variant!r}")
 
@@ -120,18 +140,22 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
 def run_index_backtest(
     index_candles: list[OHLCV], vix_candles: list[OHLCV], *, underlying: str,
 ) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade], list[BacktestTrade],
-           list[BacktestTrade]]:
+           list[BacktestTrade], list[BacktestTrade]]:
     """Full per-day simulation for ONE index (underlying: "NIFTY" |
     "BANKNIFTY") across an already-fetched index + India VIX 5m candle
     set. Returns (clean_trades, stressed_trades, harsh_trades,
-    real_spread_trades, sampled_spread_trades) — the same day's
-    IndexTrade/PremiumTrade, costed five ways."""
+    real_spread_trades, sampled_spread_trades, stratified_trades) — the
+    same day's IndexTrade/PremiumTrade, costed six ways. `stratified` is
+    the locked-final variant (see costs.py) and is what any go/no-go
+    decision should read."""
     if underlying == "NIFTY":
         lot_size, strike_interval = NIFTY_LOT_SIZE, NIFTY_STRIKE_INTERVAL
         resolve_expiry = resolve_nifty_expiry
+        is_expiry_day_fn = is_nifty_weekly_expiry_day
     elif underlying == "BANKNIFTY":
         lot_size, strike_interval = BANKNIFTY_LOT_SIZE, BANKNIFTY_STRIKE_INTERVAL
         resolve_expiry = resolve_banknifty_expiry
+        is_expiry_day_fn = is_banknifty_monthly_expiry_day
     else:
         raise ValueError(f"unsupported underlying: {underlying!r}")
 
@@ -144,6 +168,7 @@ def run_index_backtest(
     harsh_trades: list[BacktestTrade] = []
     real_spread_trades: list[BacktestTrade] = []
     sampled_spread_trades: list[BacktestTrade] = []
+    stratified_trades: list[BacktestTrade] = []
     trade_num = 0
 
     for day in sorted(idx_by_day):
@@ -157,6 +182,10 @@ def run_index_backtest(
             continue
 
         expiry, liquidity_tier = resolve_expiry(day, trading_days)
+        # Whether the ENTRY DAY ITSELF is an expiry day — a market-wide
+        # spread condition, independent of liquidity_tier (which describes
+        # which CONTRACT this trade holds, e.g. NIFTY's DTE-floor roll).
+        is_expiry_day = is_expiry_day_fn(day, trading_days)
         premium_trade = reconstruct_premium(
             index_trade, day_candles, vix_day_candles, expiry, strike_interval,
         )
@@ -173,5 +202,8 @@ def run_index_backtest(
         harsh_trades.append(_to_backtest_trade(**common, variant="harsh", liquidity_tier=liquidity_tier))
         real_spread_trades.append(_to_backtest_trade(**common, variant="real_spread", underlying=underlying))
         sampled_spread_trades.append(_to_backtest_trade(**common, variant="sampled_spread", underlying=underlying))
+        stratified_trades.append(_to_backtest_trade(
+            **common, variant="stratified", underlying=underlying, is_expiry_day=is_expiry_day))
 
-    return clean_trades, stressed_trades, harsh_trades, real_spread_trades, sampled_spread_trades
+    return (clean_trades, stressed_trades, harsh_trades, real_spread_trades,
+            sampled_spread_trades, stratified_trades)

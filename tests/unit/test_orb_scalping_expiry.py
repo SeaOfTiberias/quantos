@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core.orb_scalping.expiry import (  # noqa: E402
+    is_nifty_weekly_expiry_day,
     next_nifty_weekly_expiry,
     nifty_weekly_expiry,
     nifty_weekly_expiry_unadjusted,
@@ -75,3 +76,19 @@ def test_next_weekly_expiry_across_thursday_tuesday_cutover():
     trading_days = {date(2025, 8, 28), date(2025, 9, 2)}
     nxt = next_nifty_weekly_expiry(date(2025, 8, 28), trading_days)
     assert nxt == date(2025, 9, 2)
+
+
+def test_is_nifty_weekly_expiry_day_true_only_on_the_expiry_date():
+    trading_days = {date(2026, 7, 1), date(2026, 7, 7)}
+    assert is_nifty_weekly_expiry_day(date(2026, 7, 7), trading_days) is True
+    assert is_nifty_weekly_expiry_day(date(2026, 7, 1), trading_days) is False
+
+
+def test_is_nifty_weekly_expiry_day_uses_the_holiday_adjusted_calendar():
+    # Same fixture as test_holiday_adjustment_rolls_earlier above: the 7th
+    # is a holiday, so the adjusted expiry rolls to the 6th. The predicate
+    # must agree: the 6th reads as the expiry day, the raw calendar Tuesday
+    # (7th) does not.
+    trading_days = {date(2026, 7, 6)}
+    assert is_nifty_weekly_expiry_day(date(2026, 7, 6), trading_days) is True
+    assert is_nifty_weekly_expiry_day(date(2026, 7, 7), trading_days) is False

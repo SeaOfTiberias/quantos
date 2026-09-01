@@ -87,6 +87,45 @@ REAL_SPREAD_SLIPPAGE_BPS = {"NIFTY": 107.5, "BANKNIFTY": 65.0}
 # more sessions.
 SAMPLED_SPREAD_SLIPPAGE_BPS = {"NIFTY": 9.8, "BANKNIFTY": 11.8}
 
+# ── Stratified (post-hoc, THE recheck Fable's 2026-07-31 review required,
+#    ran 2026-08-31) ─────────────────────────────────────────────────────
+# The whole reason Sampled-spread above was not trustworthy: its 2-day
+# window (2026-07-29/30) contained ZERO expiry-day samples, so its blended
+# rate was a non-expiry-day-only rate by accident. By 2026-08-31 the timer
+# had accumulated a full month -- 240 rows, 19 distinct IST calendar days,
+# spanning 2+ NIFTY weeklies and a BankNifty monthly, 4 of those days
+# themselves an expiry day for the sampled underlying (scripts/
+# analyze_orb_spread_samples.py's is_expiry_day flag). That analysis is
+# what produced the four numbers below.
+#
+# The stratification vindicates Fable's concern: expiry-day spread is
+# roughly DOUBLE the non-expiry-day rate on both indices, not the same
+# rate the blended Sampled-spread variant implied.
+#   NIFTY:     non-expiry n=47/leg  mean CE 0.209%/PE 0.235% -> blended 0.222% -> bps=11.1
+#              expiry-day n=13/leg  mean CE 0.322%/PE 0.499% -> blended 0.410% -> bps=20.5
+#   BANKNIFTY: non-expiry n=57/leg  mean CE 0.254%/PE 0.289% -> blended 0.272% -> bps=13.6
+#              expiry-day n=3/leg   mean CE 0.403%/PE 0.346% -> blended 0.375% -> bps=18.7
+# (conversion identical to every prior spread variant: slippage_bps is
+# charged on both legs, so round-trip spread_pct = 2*slippage_bps/100.)
+#
+# THIS IS THE LOCKED FINAL COST VARIANT. Fable's review named the exact
+# failure mode of the four variants before it (Clean -> Stressed -> Harsh
+# -> Real-spread -> Sampled-spread): each was individually well-motivated,
+# but the series had no pre-registered stopping rule and happened to stop
+# exactly when the number turned favorable, which has the same shape as
+# parameter-fitting even without touching a signal parameter. Fable's
+# prescribed fix was a properly-sized, stratified variant locked as final —
+# this is that variant. No further cost-model variant should be added
+# after this one; if the verdict below needs revisiting, the right move is
+# a fresh, larger sample under this SAME stratified methodology, not a
+# sixth variant.
+STRATIFIED_SPREAD_SLIPPAGE_BPS = {
+    ("NIFTY", False):     11.1,   # non-expiry-day
+    ("NIFTY", True):      20.5,   # expiry-day
+    ("BANKNIFTY", False): 13.6,
+    ("BANKNIFTY", True):  18.7,
+}
+
 
 def _model(entry_date: date, slippage_bps: float, brokerage_pct: float = 0.0003) -> CostModel:
     return CostModel(
@@ -160,4 +199,22 @@ def sampled_spread_trade_cost(entry_premium: float, exit_premium: float, lot_siz
         raise ValueError(f"unsupported underlying: {underlying!r}")
     return _model(
         entry_date, SAMPLED_SPREAD_SLIPPAGE_BPS[underlying], brokerage_pct=HARSH_BROKERAGE_PCT,
+    ).round_trip(buy_price=entry_premium, sell_price=exit_premium, quantity=lot_size)
+
+
+def stratified_spread_trade_cost(entry_premium: float, exit_premium: float, lot_size: float,
+                                  entry_date: date, underlying: str,
+                                  is_expiry_day: bool) -> CostBreakdown:
+    """THE LOCKED FINAL COST VARIANT (2026-08-31) — see module docstring
+    above `STRATIFIED_SPREAD_SLIPPAGE_BPS`. Same rate-lookup pattern as
+    Real-spread/Sampled-spread, but keyed by (underlying, is_expiry_day)
+    instead of underlying alone: whether ENTRY_DATE ITSELF is a NIFTY
+    weekly / BankNifty monthly expiry day (a market-wide condition, not
+    which contract this particular trade holds — see
+    core/orb_scalping/backtest.py's is_expiry_day computation)."""
+    key = (underlying, bool(is_expiry_day))
+    if key not in STRATIFIED_SPREAD_SLIPPAGE_BPS:
+        raise ValueError(f"unsupported (underlying, is_expiry_day): {key!r}")
+    return _model(
+        entry_date, STRATIFIED_SPREAD_SLIPPAGE_BPS[key], brokerage_pct=HARSH_BROKERAGE_PCT,
     ).round_trip(buy_price=entry_premium, sell_price=exit_premium, quantity=lot_size)

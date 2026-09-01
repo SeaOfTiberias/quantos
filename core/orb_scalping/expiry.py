@@ -57,3 +57,15 @@ def next_nifty_weekly_expiry(expiry: date, trading_days: set) -> date:
     days_to_expiry on the nearest weekly is <2, roll to this contract
     instead."""
     return nifty_weekly_expiry(expiry + timedelta(days=1), trading_days)
+
+
+def is_nifty_weekly_expiry_day(trade_date: date, trading_days: set) -> bool:
+    """True iff `trade_date` is itself NIFTY's own (holiday-adjusted) weekly
+    expiry date — a market-wide condition (every NIFTY contract trading that
+    day sees it, not only the one this backtest happens to hold), used to
+    stratify option spread cost by expiry-day vs ordinary-day. See
+    core/orb_scalping/costs.py's stratified_spread_trade_cost, which is the
+    reason this predicate exists: scripts/analyze_orb_spread_samples.py
+    found expiry-day round-trip spreads roughly DOUBLE the ordinary-day
+    rate on real sampled data."""
+    return nifty_weekly_expiry(trade_date, trading_days) == trade_date
