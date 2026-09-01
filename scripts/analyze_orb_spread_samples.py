@@ -34,7 +34,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -46,6 +46,20 @@ IST_OFFSET = timedelta(hours=5, minutes=30)
 DEFAULT_CSV = Path("data_cache/orb_scalping_spread_samples.csv")
 MIN_SAMPLE_FOR_MEAN = 3  # below this, report the raw values instead of a misleading mean
 
+# Fable's adversarial review (2026-09-01) of the Stratified cost variant found
+# two rows -- 2026-08-04 02:10 UTC (07:40 IST) and 2026-07-30 02:55 UTC
+# (08:25 IST) -- sitting inside the accumulated sample set despite predating
+# market open (09:15 IST). Neither matches the timer's own OnCalendar fires
+# (04:05/06:30/09:45 UTC); both are leftover manual/hand-fired test runs from
+# earlier sessions (one already traced via journalctl, see the module's git
+# history). Their quotes are 10-15x every legitimate intraday sample and
+# single-handedly manufactured the "expiry-day spread is roughly DOUBLE"
+# finding for NIFTY -- the strategy only ever executes 09:35-15:20 IST, so an
+# object filter on session hours removes them regardless of how they got
+# there, rather than trying to enumerate every possible off-schedule cause.
+SESSION_START_UTC = time(3, 45)   # 09:15 IST
+SESSION_END_UTC = time(10, 0)     # 15:30 IST
+
 
 def ist_date(sampled_at_utc: str) -> date:
     """`sampled_at_utc` is an ISO-8601 UTC timestamp (as written by
@@ -55,6 +69,16 @@ def ist_date(sampled_at_utc: str) -> date:
     if dt_utc.tzinfo is None:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
     return (dt_utc + IST_OFFSET).date()
+
+
+def is_in_session(sampled_at_utc: str) -> bool:
+    """True iff the sample's UTC wall-clock time falls inside the NSE
+    trading session (09:15-15:30 IST). A pre-open or post-close quote is not
+    a tradeable spread and must not enter any mean."""
+    dt_utc = datetime.fromisoformat(sampled_at_utc)
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    return SESSION_START_UTC <= dt_utc.time() < SESSION_END_UTC
 
 
 def is_nifty_weekly_expiry_day(d: date) -> bool:
@@ -77,14 +101,18 @@ def _blended_bps(pcts: list[float]) -> float:
 
 
 def load_rows(csv_path: Path) -> list[dict]:
-    rows = list(csv.DictReader(csv_path.open(newline="", encoding="utf-8")))
-    for r in rows:
+    """Returns (in-session rows used for every mean, discarded out-of-session
+    rows -- reported, never silently swallowed)."""
+    all_rows = list(csv.DictReader(csv_path.open(newline="", encoding="utf-8")))
+    rows, discarded = [], []
+    for r in all_rows:
         r["_ist_date"] = ist_date(r["sampled_at_utc"])
         r["_is_expiry_day"] = (
             is_nifty_weekly_expiry_day(r["_ist_date"]) if r["underlying"] == "NIFTY"
             else is_banknifty_monthly_expiry_day(r["_ist_date"])
         )
-    return rows
+        (rows if is_in_session(r["sampled_at_utc"]) else discarded).append(r)
+    return rows, discarded
 
 
 def _report_bucket(label: str, pcts: list[float]) -> None:
@@ -100,11 +128,18 @@ def _report_bucket(label: str, pcts: list[float]) -> None:
           f"max={max(pcts):.3f}%  -> slippage_bps={_blended_bps(pcts):.1f}")
 
 
-def analyze(rows: list[dict]) -> None:
+def analyze(rows: list[dict], discarded: list[dict]) -> None:
     distinct_days = {r["_ist_date"] for r in rows}
     expiry_days = {r["_ist_date"] for r in rows if r["_is_expiry_day"]}
-    print(f"{len(rows)} total rows, {len(distinct_days)} distinct IST calendar days "
-          f"({len(expiry_days)} of those are an expiry day for the sampled underlying).\n")
+    print(f"{len(rows)} in-session rows, {len(distinct_days)} distinct IST calendar days "
+          f"({len(expiry_days)} of those are an expiry day for the sampled underlying).")
+    if discarded:
+        print(f"{len(discarded)} row(s) discarded as out-of-session (before 09:15 or at/after "
+              f"15:30 IST -- not a tradeable spread):")
+        for r in discarded:
+            print(f"    {r['sampled_at_utc']}  {r['underlying']} {r['option_type']}  "
+                  f"spread={r.get('spread_pct_of_mid', '?')}%")
+    print()
 
     for underlying in ("NIFTY", "BANKNIFTY"):
         print(f"=== {underlying} ===")
@@ -142,7 +177,8 @@ def main() -> int:
         print(f"No log yet at {args.csv} -- nothing to analyze.")
         return 1
 
-    analyze(load_rows(args.csv))
+    rows, discarded = load_rows(args.csv)
+    analyze(rows, discarded)
     return 0
 
 
