@@ -119,11 +119,13 @@ def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spr
         f"the sampled round-trip bid-ask spread "
         f"(PF {sampled_spread_metrics.profit_factor:.2f}, Sharpe {sampled_spread_metrics.sharpe_ratio:.2f}).",
         "",
-        f"**Stratified read (post-hoc, LOCKED FINAL variant, 2026-08-31, 240 samples / 19 "
-        f"IST days / 2+ NIFTY weeklies + 1 BankNifty monthly, 4 expiry days sampled — this is "
-        f"the recheck Fable's 2026-07-31 review required before the Sampled-spread PASS could "
-        f"be trusted, and it prices expiry-day spread separately from ordinary-day spread "
-        f"instead of blending them)**: "
+        f"**Stratified read (post-hoc, LOCKED FINAL variant, first computed 2026-08-31, "
+        f"CORRECTED 2026-09-01/02 after Fable's review found two pre-market rows had "
+        f"contaminated the expiry-day mean -- 244 in-session samples / 20 IST days / 2+ "
+        f"NIFTY weeklies + 1 BankNifty monthly, 5 expiry days sampled -- this is the recheck "
+        f"Fable's 2026-07-31 review required before the Sampled-spread PASS could be trusted, "
+        f"and it prices expiry-day spread separately from ordinary-day spread instead of "
+        f"blending them; see core/orb_scalping/costs.py's module docstring for the correction)**: "
         f"{'still clears' if stratified_metrics.has_positive_edge else 'FAILS'} the same bar under "
         f"the expiry-day-stratified sampled spread "
         f"(PF {stratified_metrics.profit_factor:.2f}, Sharpe {stratified_metrics.sharpe_ratio:.2f}). "
@@ -148,7 +150,7 @@ def summarize(
         "BankNifty reported independently below -- never pooled.",
         "",
         "**Harsh, Real-spread, Sampled-spread, and Stratified are POST-HOC "
-        "additional stress tests** (added 2026-07-28 through 2026-08-31, "
+        "additional stress tests** (added 2026-07-28 through 2026-09-02, "
         "`core/orb_scalping/costs.py`) — NONE are part of the pre-"
         "registered methodology doc's pass/fail bar, which gates on "
         "Stressed alone and never changes retroactively. Stratified is "
@@ -161,8 +163,15 @@ def summarize(
         "recheck Fable's review prescribed as the fix, using a full "
         "month of `deploy/systemd/quantos-orb-spread-probe.timer` samples "
         "(`data_cache/orb_scalping_spread_samples.csv`) split by whether "
-        "the sample's own calendar day was itself an expiry day. No "
-        "further cost-model variant is planned after this one.",
+        "the sample's own calendar day was itself an expiry day. A second "
+        "Fable review of that recheck (2026-09-01) found two pre-market "
+        "rows had contaminated the expiry-day mean, manufacturing a false "
+        "\"expiry-day spread roughly doubles\" finding for NIFTY; the "
+        "sample is now filtered to trading-session hours and the rates "
+        "corrected (`core/orb_scalping/costs.py`'s module docstring has "
+        "the full before/after). No further cost-model VARIANT is "
+        "planned after this one — a correction within it, caught by "
+        "inspection, is not the same failure mode.",
         "",
         f"NIFTY window: {nifty_window[0]} to {nifty_window[1]} "
         f"({len(nifty_clean)} trades). BankNifty window: {banknifty_window[0]} to "
