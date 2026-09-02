@@ -88,42 +88,63 @@ REAL_SPREAD_SLIPPAGE_BPS = {"NIFTY": 107.5, "BANKNIFTY": 65.0}
 SAMPLED_SPREAD_SLIPPAGE_BPS = {"NIFTY": 9.8, "BANKNIFTY": 11.8}
 
 # ── Stratified (post-hoc, THE recheck Fable's 2026-07-31 review required,
-#    ran 2026-08-31) ─────────────────────────────────────────────────────
+#    first computed 2026-08-31, CORRECTED 2026-09-01/02) ───────────────────
 # The whole reason Sampled-spread above was not trustworthy: its 2-day
 # window (2026-07-29/30) contained ZERO expiry-day samples, so its blended
 # rate was a non-expiry-day-only rate by accident. By 2026-08-31 the timer
-# had accumulated a full month -- 240 rows, 19 distinct IST calendar days,
-# spanning 2+ NIFTY weeklies and a BankNifty monthly, 4 of those days
-# themselves an expiry day for the sampled underlying (scripts/
-# analyze_orb_spread_samples.py's is_expiry_day flag). That analysis is
-# what produced the four numbers below.
+# had accumulated a full month, and the first stratified rates below
+# (11.1/20.5 NIFTY, 13.6/18.7 BANKNIFTY) claimed expiry-day spread was
+# "roughly DOUBLE" the ordinary-day rate on both indices.
 #
-# The stratification vindicates Fable's concern: expiry-day spread is
-# roughly DOUBLE the non-expiry-day rate on both indices, not the same
-# rate the blended Sampled-spread variant implied.
-#   NIFTY:     non-expiry n=47/leg  mean CE 0.209%/PE 0.235% -> blended 0.222% -> bps=11.1
-#              expiry-day n=13/leg  mean CE 0.322%/PE 0.499% -> blended 0.410% -> bps=20.5
-#   BANKNIFTY: non-expiry n=57/leg  mean CE 0.254%/PE 0.289% -> blended 0.272% -> bps=13.6
-#              expiry-day n=3/leg   mean CE 0.403%/PE 0.346% -> blended 0.375% -> bps=18.7
+# THAT CLAIM WAS WRONG. Fable's adversarial review of the recheck
+# (2026-09-01) found two rows in the accumulated dataset that predate
+# market open — 2026-08-04 02:10 UTC (07:40 IST) and 2026-07-30 02:55 UTC
+# (08:25 IST), neither matching the probe timer's own 04:05/06:30/09:45 UTC
+# fires (leftover manual test runs) — and NIFTY's CE/PE spreads on the
+# pre-open row were 10-15x every legitimate intraday sample (1.528%/3.368%
+# vs a normal 0.1-0.4%). That single row, sitting inside an n=13 expiry-day
+# stratum, single-handedly manufactured the "roughly DOUBLE" finding.
+# scripts/analyze_orb_spread_samples.py now filters to the 09:15-15:30 IST
+# trading session before computing any mean (is_in_session()), and the
+# numbers below are the corrected re-run against the same (now larger, 244
+# in-session rows / 20 days / 5 expiry days) CSV.
+#
+# Corrected finding: NIFTY's expiry-day rate is now statistically
+# INDISTINGUISHABLE from its ordinary-day rate (11.8 vs 11.0 bps) — the
+# "expiry days are riskier" concern does not hold up for NIFTY once the
+# contaminated row is removed. BankNifty's expiry-day stratum (n=3, all
+# from the single 2026-08-25 monthly expiry) is unaffected by this specific
+# bug and still reads meaningfully wider (18.7 vs 13.2), but Fable flagged a
+# SEPARATE, still-open concern about it: real probe data shows BankNifty's
+# own DTE-floor-style roll actually triggers on/around its monthly expiry
+# (DTE 0-1), contradicting the methodology doc's claim that BankNifty
+# "never triggers" a DTE floor — meaning the BN expiry-day rate may have
+# been measured on a different contract tier than the one the backtest
+# actually holds on that day, and Black-Scholes premium reconstruction at
+# DTE=0 needs its own check. NOT yet resolved; tracked in project memory,
+# not silently assumed fine.
+#   NIFTY:     non-expiry n=46/leg  mean CE 0.206%/PE 0.235% -> blended 0.221% -> bps=11.0
+#              expiry-day n=15/leg  mean CE 0.202%/PE 0.271% -> blended 0.237% -> bps=11.8
+#   BANKNIFTY: non-expiry n=58/leg  mean CE 0.251%/PE 0.276% -> blended 0.264% -> bps=13.2
+#              expiry-day n=3/leg   mean CE 0.403%/PE 0.346% -> blended 0.375% -> bps=18.7 (unchanged, see above)
 # (conversion identical to every prior spread variant: slippage_bps is
 # charged on both legs, so round-trip spread_pct = 2*slippage_bps/100.)
 #
-# THIS IS THE LOCKED FINAL COST VARIANT. Fable's review named the exact
-# failure mode of the four variants before it (Clean -> Stressed -> Harsh
-# -> Real-spread -> Sampled-spread): each was individually well-motivated,
-# but the series had no pre-registered stopping rule and happened to stop
-# exactly when the number turned favorable, which has the same shape as
-# parameter-fitting even without touching a signal parameter. Fable's
-# prescribed fix was a properly-sized, stratified variant locked as final —
-# this is that variant. No further cost-model variant should be added
-# after this one; if the verdict below needs revisiting, the right move is
-# a fresh, larger sample under this SAME stratified methodology, not a
-# sixth variant.
+# THIS IS STILL THE LOCKED FINAL COST VARIANT — the 2026-09-01/02 update is
+# a CORRECTION within it (a data-quality bug fix), not a sixth variant.
+# Fable was explicit that a genuine correction, found by inspecting the
+# same locked methodology more carefully, is not the same failure mode as
+# the earlier four-variant progression (Clean -> Stressed -> Harsh ->
+# Real-spread -> Sampled-spread), which had no pre-registered stopping rule
+# and happened to stop exactly when the number turned favorable. If this
+# verdict needs revisiting again, the right move is a fresh, larger sample
+# under this SAME stratified-and-session-filtered methodology, not a new
+# cost-model tier.
 STRATIFIED_SPREAD_SLIPPAGE_BPS = {
-    ("NIFTY", False):     11.1,   # non-expiry-day
-    ("NIFTY", True):      20.5,   # expiry-day
-    ("BANKNIFTY", False): 13.6,
-    ("BANKNIFTY", True):  18.7,
+    ("NIFTY", False):     11.0,   # non-expiry-day
+    ("NIFTY", True):      11.8,   # expiry-day
+    ("BANKNIFTY", False): 13.2,
+    ("BANKNIFTY", True):  18.7,   # unchanged -- see BankNifty caveat above, still open
 }
 
 
