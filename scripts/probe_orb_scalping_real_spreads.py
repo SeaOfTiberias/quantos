@@ -18,11 +18,22 @@ instead of trusting a single point. Each run APPENDS a row per leg to
 `data_cache/orb_scalping_spread_samples.csv` (gitignored, like every other
 data_cache/ path in this repo) rather than overwriting it.
 
-Skips the expiry expiring TODAY (if any) for NIFTY/BankNifty, since a
-same-day expiry is nearly worthless/illiquid by definition and not
-representative of what the strategy actually trades (entries happen at
-09:15-09:30, with the DTE floor already excluding <2-day contracts) —
-uses the same DTE floor the live strategy would apply.
+Skips a near-expiry contract for NIFTY (entries happen at 09:15-09:30, with
+the DTE floor already excluding <2-day contracts) — uses the same DTE
+floor the live strategy actually applies.
+
+**BankNifty does NOT get this floor** (fixed 2026-09-02, after Fable's
+adversarial review of the Stratified cost variant found it had been applied
+here unconditionally to both underlyings since this script was written).
+core/orb_scalping/backtest.py's resolve_banknifty_expiry() has no DTE floor
+— BankNifty entries on/adjacent to its own monthly expiry genuinely trade
+the current month's contract at DTE 0-1, same as any real trader would see.
+Applying NIFTY's floor to BankNifty here meant every BankNifty sample taken
+near its own monthly expiry measured the WRONG contract (next month, DTE
+~30) instead of the one the backtest actually holds — invalidating the
+n=3 "expiry-day" BankNifty rate that fed core/orb_scalping/costs.py's
+STRATIFIED_SPREAD_SLIPPAGE_BPS. See that module's docstring for the
+disclosed consequence and current status.
 
 Usage:
     python scripts/probe_orb_scalping_real_spreads.py
@@ -87,24 +98,39 @@ def _report_leg(label: str, record: dict):
         print("    bid/ask both 0 -- no live two-sided quote available right now")
 
 
-def probe(broker, underlying: str, spot_symbol: str, writer) -> list:
+def select_expiry(expiries: list, today: date, dte_floor_days: int):
+    """The nearest expiry on/after `today` whose days-to-expiry clears
+    `dte_floor_days`, or None if every listed expiry is too close. Pure and
+    broker-free so this selection rule is independently testable — it is
+    the exact piece that had the 2026-09-02 bug (a shared floor silently
+    applied to both underlyings)."""
+    for e in expiries:
+        if (e - today).days < dte_floor_days:
+            continue
+        return e
+    return None
+
+
+def probe(broker, underlying: str, spot_symbol: str, writer, *, dte_floor_days: int) -> list:
+    """`dte_floor_days`: minimum days-to-expiry the chosen contract must
+    clear, matching whatever the real backtest applies for this underlying
+    — 2 for NIFTY (core/orb_scalping/backtest.py's resolve_nifty_expiry),
+    0 for BankNifty (resolve_banknifty_expiry has no floor at all). Passing
+    the same value for both was the 2026-09-02 bug: it silently measured
+    BankNifty's spread on a different, longer-dated contract than the one
+    the backtest actually holds near BankNifty's own monthly expiry."""
     print(f"\n=== {underlying} ===")
     spot = broker.get_ltp([spot_symbol]).get(spot_symbol)
     print(f"Spot LTP: {spot}")
 
     expiries = sm.list_expiries(underlying)
     today = date.today()
-    chosen = None
-    for e in expiries:
-        if (e - today).days < DTE_FLOOR_DAYS:
-            continue
-        chosen = e
-        break
+    chosen = select_expiry(expiries, today, dte_floor_days)
     if chosen is None:
         print("No suitable expiry found.")
         return []
     dte = (chosen - today).days
-    print(f"Using expiry: {chosen} (DTE={dte})")
+    print(f"Using expiry: {chosen} (DTE={dte}, floor={dte_floor_days})")
 
     expiry_epoch = sm.get_expiry_epoch(underlying, chosen)
     raw_chain = broker.get_option_chain(underlying, expiry_epoch)
@@ -168,8 +194,8 @@ def main() -> int:
         writer = csv.DictWriter(f, fieldnames=LOG_FIELDS)
         if is_new:
             writer.writeheader()
-        probe(broker, "NIFTY", "NIFTY 50", writer)
-        probe(broker, "BANKNIFTY", "NIFTY BANK", writer)
+        probe(broker, "NIFTY", "NIFTY 50", writer, dte_floor_days=DTE_FLOOR_DAYS)
+        probe(broker, "BANKNIFTY", "NIFTY BANK", writer, dte_floor_days=0)
     print(f"\nAppended to {LOG_PATH}")
     return 0
 

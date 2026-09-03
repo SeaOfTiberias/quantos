@@ -112,17 +112,33 @@ SAMPLED_SPREAD_SLIPPAGE_BPS = {"NIFTY": 9.8, "BANKNIFTY": 11.8}
 # Corrected finding: NIFTY's expiry-day rate is now statistically
 # INDISTINGUISHABLE from its ordinary-day rate (11.8 vs 11.0 bps) — the
 # "expiry days are riskier" concern does not hold up for NIFTY once the
-# contaminated row is removed. BankNifty's expiry-day stratum (n=3, all
-# from the single 2026-08-25 monthly expiry) is unaffected by this specific
-# bug and still reads meaningfully wider (18.7 vs 13.2), but Fable flagged a
-# SEPARATE, still-open concern about it: real probe data shows BankNifty's
-# own DTE-floor-style roll actually triggers on/around its monthly expiry
-# (DTE 0-1), contradicting the methodology doc's claim that BankNifty
-# "never triggers" a DTE floor — meaning the BN expiry-day rate may have
-# been measured on a different contract tier than the one the backtest
-# actually holds on that day, and Black-Scholes premium reconstruction at
-# DTE=0 needs its own check. NOT yet resolved; tracked in project memory,
-# not silently assumed fine.
+# contaminated row is removed.
+#
+# BankNifty's expiry-day stratum (n=3, all from the single 2026-08-25
+# monthly expiry) is unaffected by the session-time bug but IS invalidated
+# by a second, separate bug: `scripts/probe_orb_scalping_real_spreads.py`
+# had been applying NIFTY's DTE<2 floor to BankNifty's contract selection
+# too, so every sample taken near BankNifty's own monthly expiry measured
+# the WRONG contract (next month, ~30 DTE) instead of the current month's
+# contract `resolve_banknifty_expiry()` (backtest.py) actually holds there
+# (DTE 0-1 — that function applies no floor at all). ROOT CAUSE CONFIRMED
+# 2026-09-02: docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md's claim that
+# "BankNifty's monthly contracts never trigger this" was simply false on
+# the expiry day itself and the day before — corrected there as a disclosed
+# erratum. The probe is fixed (BankNifty now gets dte_floor_days=0), but the
+# EXISTING n=3 samples cannot be retroactively corrected — they measured a
+# more liquid, longer-dated contract, and a near-expiry ATM option's spread
+# as a fraction of its collapsing premium is typically WIDER than a
+# longer-dated one's, so 18.7bps most likely UNDERSTATES the real cost of
+# this ~1/21-of-BankNifty-trading-days subset (anti-conservative — the
+# error harms the strategy's true number, same direction as the session-
+# time bug's error did before correction). Kept as a clearly-labeled
+# placeholder below pending fresh, same-contract samples; not presented as
+# validated. Separately confirmed NOT an issue: `reconstruct_premium()`
+# floors days_to_expiry at 1 (core/orb_scalping/premium.py), so the
+# backtest never actually reaches `compute_greeks()`'s degenerate T=0
+# intrinsic-value fallback — the premium MATH is fine, only the BankNifty
+# expiry-day SPREAD SAMPLE is wrong.
 #   NIFTY:     non-expiry n=46/leg  mean CE 0.206%/PE 0.235% -> blended 0.221% -> bps=11.0
 #              expiry-day n=15/leg  mean CE 0.202%/PE 0.271% -> blended 0.237% -> bps=11.8
 #   BANKNIFTY: non-expiry n=58/leg  mean CE 0.251%/PE 0.276% -> blended 0.264% -> bps=13.2
@@ -144,7 +160,7 @@ STRATIFIED_SPREAD_SLIPPAGE_BPS = {
     ("NIFTY", False):     11.0,   # non-expiry-day
     ("NIFTY", True):      11.8,   # expiry-day
     ("BANKNIFTY", False): 13.2,
-    ("BANKNIFTY", True):  18.7,   # unchanged -- see BankNifty caveat above, still open
+    ("BANKNIFTY", True):  18.7,   # KNOWN wrong-contract sample, likely understated -- see docstring above
 }
 
 

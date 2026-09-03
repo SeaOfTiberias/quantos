@@ -141,10 +141,34 @@ record of what was probed and why it was abandoned, not as a fallback.
   contract, roll selection to the **next** weekly contract instead. This
   directly closes the "weaker justification" gap flagged below under
   Premium reconstruction — the undiscounted-theta assumption is only
-  defensible with at least a couple of days of remaining life. BankNifty's
-  monthly contracts never trigger this (always well clear of 2 DTE), so
-  the rule is NIFTY-only, applied uniformly across the whole window (not
-  conditionally invoked only where it happens to help).
+  defensible with at least a couple of days of remaining life. **The rule
+  is NIFTY-only** — `core/orb_scalping/backtest.py`'s
+  `resolve_banknifty_expiry()` applies no floor and always resolves to the
+  current calendar month's contract.
+  <br><br>
+  **Erratum (2026-09-02)**: this section previously claimed "BankNifty's
+  monthly contracts never trigger this (always well clear of 2 DTE)". That
+  is false — BankNifty entries taken ON its own monthly expiry day (DTE=0)
+  or the day before (DTE=1) genuinely hold the current month's contract at
+  under 2 DTE, exactly the case the floor exists to avoid for NIFTY. The
+  claim was only ever true for MOST of the month, not the last two trading
+  days of it. The error was caught by Fable's adversarial review of the
+  Stratified cost variant (2026-09-01), which found `scripts/
+  probe_orb_scalping_real_spreads.py` had (incorrectly, since the script
+  was written) applied NIFTY's floor to BankNifty's sampling too — every
+  spread sample taken near BankNifty's own monthly expiry had measured the
+  WRONG (next-month, ~30 DTE) contract instead of the one the backtest
+  actually holds. The probe is fixed (`dte_floor_days=0` for BankNifty);
+  see `core/orb_scalping/costs.py`'s module docstring for the consequence
+  to `STRATIFIED_SPREAD_SLIPPAGE_BPS`'s BankNifty expiry-day rate, which
+  remains an unresolved, likely-understated placeholder pending re-sampled
+  same-contract data. Separately: `core/orb_scalping/premium.py`'s
+  `reconstruct_premium()` floors `days_to_expiry` at a minimum of 1 (never
+  0) when computing Black-Scholes premiums, so a BankNifty entry on its own
+  expiry day is priced as if a full day remained rather than hitting the
+  degenerate intrinsic-value-only path `core/options/greeks.py`'s
+  `compute_greeks()` falls back to at `days_to_expiry<=0` — a disclosed
+  approximation, not a crash or garbage output.
 - **Strike**: nearest-strike ATM at the moment of entry, for both indices
   — fixed at entry, never re-struck if price runs (same as candidate 15).
   Strike interval and lot size: BankNifty confirmed (100pt / lot 30, from
