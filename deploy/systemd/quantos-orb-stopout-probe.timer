@@ -2,15 +2,25 @@
 Description=Fires the candidate 18 stop-out spread probe every minute during NSE market hours
 
 [Timer]
-# Every minute, 09:15-15:30 IST -- three OnCalendar lines because systemd's
-# calendar spec doesn't let a single expression range hours AND minutes
-# together across a partial-hour boundary. 09:15-09:59, then a full-hour
-# block 10:00-14:59, then the partial final hour 15:00-15:30 (15:20 IST is
-# the strategy's own session-flatten time; the extra 10 minutes is slack
-# for a stop that trails right up to flatten).
-OnCalendar=Mon..Fri *-*-* 09:15..59:00
-OnCalendar=Mon..Fri *-*-* 10..14:*:00
-OnCalendar=Mon..Fri *-*-* 15:00..30:00
+# Every minute, 09:15-15:30 IST = 03:45-10:00 UTC -- the VM runs in
+# Etc/UTC (confirmed via timedatectl), and OnCalendar is evaluated in the
+# system's local timezone, NOT the ExecCondition guard's explicit
+# TZ=Asia/Kolkata -- same UTC-conversion convention as quantos-orb-spread-
+# probe.timer's own OnCalendar entries. Getting this wrong doesn't cause
+# a wrong-time FIRE (the .service's ExecCondition independently re-checks
+# real IST wall-clock and would just skip an off-hours fire) -- it would
+# silently collect zero real data forever instead, which is exactly the
+# bug this comment is here to prevent from recurring.
+#
+# Three OnCalendar lines because systemd's calendar spec doesn't let a
+# single expression range hours AND minutes together across a partial-
+# hour boundary: 03:45-03:59 UTC, then a full-hour block 04:00-09:59 UTC,
+# then 10:00 UTC exactly (== 15:30 IST, ten minutes of slack past the
+# strategy's own 15:20 IST session-flatten, for a stop that trails right
+# up to flatten).
+OnCalendar=Mon..Fri *-*-* 03:45..59:00
+OnCalendar=Mon..Fri *-*-* 04..09:*:00
+OnCalendar=Mon..Fri *-*-* 10:00:00
 
 # A missed fire is harmless and self-healing (see the .service file) --
 # same reasoning as quantos-orb-spread-probe.timer, no catch-up needed.
