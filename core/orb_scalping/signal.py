@@ -90,7 +90,10 @@ def simulate_day(day_candles: list[OHLCV],
     return None
 
 
-def _trail_arm_level(direction: str, entry_price: float, range_width: float) -> float:
+def trail_arm_level(direction: str, entry_price: float, range_width: float) -> float:
+    """Public (not module-private): core.orb_scalping.live_state reuses this
+    exact arithmetic for the live-monitor's arm check, single source of
+    truth for the formula shared by both the backtest and the live probe."""
     return entry_price + range_width if direction == "CALL" else entry_price - range_width
 
 
@@ -106,7 +109,7 @@ def _manage_position(
     n = len(day_candles)
     stop = initial_stop
     armed = False
-    arm_level = _trail_arm_level(direction, entry_price, range_width)
+    arm_level = trail_arm_level(direction, entry_price, range_width)
 
     for t in range(entry_index + 1, n):
         candle = day_candles[t]

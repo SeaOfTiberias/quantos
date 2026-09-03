@@ -1,0 +1,40 @@
+[Unit]
+Description=QuantOS Candidate 18 Event-Triggered Stop-Out Spread Probe (read-only, no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/probe_orb_scalping_stopout_spreads.py
+Environment=HOME=/home/ubuntu
+
+# Fires every ~1 minute during market hours (see the .timer) -- much
+# tighter than quantos-orb-spread-probe.timer's 3x/day fixed clock,
+# because this probe's whole purpose is to catch the REAL bid-ask spread
+# at the instant a stop-out condition fires, which by nature happens
+# during fast-market moments a 3x/day clock never observes. Deliberately
+# a stateless oneshot fired often, not a second always-on process: this
+# VM OOM-killed itself twice on 2026-07-15 (see quantos-agent.service's
+# own MemoryMax comment / [[quantos_vm_oom_incident]]), and every job on
+# it since has been a cheap, fail-silent oneshot rather than a standing
+# process. Chosen explicitly over a tighter always-on poller with the
+# user 2026-09-03 -- ~30-60s fidelity on the catch, zero new standing-
+# process risk, for a tool that gates no capital decision.
+#
+# Same weekday+market-hours guard as quantos-orb-spread-probe.service,
+# same reasoning: outside 09:15-15:30 IST the script would either see a
+# stale "today" candle set or no live quotes at all, and firing anyway
+# would just log noise (or, worse here, silently starve — this script's
+# CSV IS its own cross-fire memory, so a stray off-hours fire risks
+# writing a bogus "entry" row that then blocks real capture the next
+# trading day if the dedup key ever collided, though trade_date already
+# guards against that specific case).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+
+# Read-only market-data fetch only -- no broker orders, no capital at
+# risk, ever. No Restart= (matches quantos-orb-spread-probe.service): a
+# failed fire (stale token, no quote, transient API error) is harmless
+# and self-healing on the next fire a minute later. Relies on the same
+# daily Fyers token refresh the user already does each morning.

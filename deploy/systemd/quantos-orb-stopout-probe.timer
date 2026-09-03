@@ -1,0 +1,20 @@
+[Unit]
+Description=Fires the candidate 18 stop-out spread probe every minute during NSE market hours
+
+[Timer]
+# Every minute, 09:15-15:30 IST -- three OnCalendar lines because systemd's
+# calendar spec doesn't let a single expression range hours AND minutes
+# together across a partial-hour boundary. 09:15-09:59, then a full-hour
+# block 10:00-14:59, then the partial final hour 15:00-15:30 (15:20 IST is
+# the strategy's own session-flatten time; the extra 10 minutes is slack
+# for a stop that trails right up to flatten).
+OnCalendar=Mon..Fri *-*-* 09:15..59:00
+OnCalendar=Mon..Fri *-*-* 10..14:*:00
+OnCalendar=Mon..Fri *-*-* 15:00..30:00
+
+# A missed fire is harmless and self-healing (see the .service file) --
+# same reasoning as quantos-orb-spread-probe.timer, no catch-up needed.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
