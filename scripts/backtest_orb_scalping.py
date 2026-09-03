@@ -106,11 +106,16 @@ def _section(underlying: str, clean: list, stressed: list, harsh: list, real_spr
         f"Rs20/leg brokerage + liquidity-tiered slippage on the DTE-floor-rolled subset "
         f"(PF {harsh_metrics.profit_factor:.2f}, Sharpe {harsh_metrics.sharpe_ratio:.2f}).",
         "",
-        f"**Real-spread read (post-hoc, ONE live bid-ask snapshot 2026-07-28, "
-        f"NOT a rigorously sampled rate)**: "
+        f"**Real-spread read (post-hoc, ONE live bid-ask snapshot 2026-07-28 18:03 IST, "
+        f"ROOT-CAUSED 2026-09-03 as a post-close quote and, for BankNifty, also a "
+        f"wrong-contract one -- see core/orb_scalping/costs.py's module docstring; "
+        f"kept unchanged as a historical record, NOT a rigorously sampled rate)**: "
         f"{'still clears' if real_spread_metrics.has_positive_edge else 'FAILS'} the same bar under "
         f"the actual measured round-trip bid-ask spread "
-        f"(PF {real_spread_metrics.profit_factor:.2f}, Sharpe {real_spread_metrics.sharpe_ratio:.2f}).",
+        f"(PF {real_spread_metrics.profit_factor:.2f}, Sharpe {real_spread_metrics.sharpe_ratio:.2f}). "
+        f"**This FAIL should not be read as evidence the strategy's real-world cost is "
+        f"8-10x the sampled mean** -- it is the known-contaminated single reading, not an "
+        f"independent adverse signal.",
         "",
         f"**Sampled-spread read (post-hoc, 2026-07-29 to 2026-07-30, n=7 fires/leg, "
         f"SUPERSEDED by Stratified below — it had zero expiry-day samples, so its blended "

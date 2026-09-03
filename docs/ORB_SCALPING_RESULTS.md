@@ -31,7 +31,7 @@ NIFTY window: 2022-06-01 to 2026-09-01 (1036 trades). BankNifty window: 2021-06-
 
 **Harsh read (post-hoc, NOT part of the pre-registered pass/fail bar)**: still clears the same bar under a flat Rs20/leg brokerage + liquidity-tiered slippage on the DTE-floor-rolled subset (PF 1.20, Sharpe 0.80).
 
-**Real-spread read (post-hoc, ONE live bid-ask snapshot 2026-07-28, NOT a rigorously sampled rate)**: FAILS the same bar under the actual measured round-trip bid-ask spread (PF 1.04, Sharpe 0.12).
+**Real-spread read (post-hoc, ONE live bid-ask snapshot 2026-07-28 18:03 IST, ROOT-CAUSED 2026-09-03 as a post-close quote and, for BankNifty, also a wrong-contract one -- see core/orb_scalping/costs.py's module docstring; kept unchanged as a historical record, NOT a rigorously sampled rate)**: FAILS the same bar under the actual measured round-trip bid-ask spread (PF 1.04, Sharpe 0.12). **This FAIL should not be read as evidence the strategy's real-world cost is 8-10x the sampled mean** -- it is the known-contaminated single reading, not an independent adverse signal.
 
 **Sampled-spread read (post-hoc, 2026-07-29 to 2026-07-30, n=7 fires/leg, SUPERSEDED by Stratified below — it had zero expiry-day samples, so its blended rate was a non-expiry-day-only rate by accident)**: still clears the same bar under the sampled round-trip bid-ask spread (PF 1.23, Sharpe 0.89).
 
@@ -63,7 +63,7 @@ NIFTY window: 2022-06-01 to 2026-09-01 (1036 trades). BankNifty window: 2021-06-
 
 **Harsh read (post-hoc, NOT part of the pre-registered pass/fail bar)**: still clears the same bar under a flat Rs20/leg brokerage + liquidity-tiered slippage on the DTE-floor-rolled subset (PF 1.16, Sharpe 0.94).
 
-**Real-spread read (post-hoc, ONE live bid-ask snapshot 2026-07-28, NOT a rigorously sampled rate)**: still clears the same bar under the actual measured round-trip bid-ask spread (PF 1.04, Sharpe 0.56).
+**Real-spread read (post-hoc, ONE live bid-ask snapshot 2026-07-28 18:03 IST, ROOT-CAUSED 2026-09-03 as a post-close quote and, for BankNifty, also a wrong-contract one -- see core/orb_scalping/costs.py's module docstring; kept unchanged as a historical record, NOT a rigorously sampled rate)**: still clears the same bar under the actual measured round-trip bid-ask spread (PF 1.04, Sharpe 0.56). **This near-pass should not be read as a reliable measurement** -- it is the known-contaminated single reading, not an independent signal.
 
 **Sampled-spread read (post-hoc, 2026-07-29 to 2026-07-30, n=7 fires/leg, SUPERSEDED by Stratified below — it had zero expiry-day samples, so its blended rate was a non-expiry-day-only rate by accident)**: still clears the same bar under the sampled round-trip bid-ask spread (PF 1.16, Sharpe 0.96).
 

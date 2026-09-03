@@ -114,6 +114,24 @@ def test_real_spread_rejects_unknown_underlying():
         real_spread_trade_cost(100.0, 120.0, 65, date(2026, 1, 15), underlying="SENSEX")
 
 
+def test_2026_07_28_was_simultaneously_both_underlyings_own_expiry_day():
+    """Pins the fact behind REAL_SPREAD_SLIPPAGE_BPS's root-cause explanation
+    (module docstring, 2026-09-03): the single Real-spread snapshot's date
+    was NIFTY's own weekly expiry AND BankNifty's own monthly expiry at the
+    same time -- which is why NIFTY's DTE floor correctly rolled forward
+    (as designed) while the same floor, wrongly applied to BankNifty by the
+    probe script at the time, rolled it a full month forward instead of the
+    few days a same-underlying roll would give. If this ever stops being
+    true (e.g. the calendar helpers change), the docstring's explanation
+    needs re-deriving, not silently left stale."""
+    from core.orb_scalping.expiry import nifty_weekly_expiry_unadjusted
+    from scripts.gutcheck_expiry_day_effect import calendar_expiry_date
+
+    snapshot_date = date(2026, 7, 28)
+    assert nifty_weekly_expiry_unadjusted(snapshot_date) == snapshot_date
+    assert calendar_expiry_date(2026, 7) == snapshot_date
+
+
 # ─── Sampled-spread (post-hoc, multi-session timer average) ──────────────
 
 def test_sampled_spread_charges_less_than_real_spread_single_snapshot():

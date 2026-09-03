@@ -67,6 +67,41 @@ HARSH_NEXT_WEEK_SLIPPAGE_BPS = 30.0    # double, for the DTE-floor-rolled (less 
 # (round-trip spread_pct = 2 * slippage_bps / 100, since CostModel charges
 # slippage_bps on BOTH the buy and sell leg's own turnover -- see
 # core/risk/costs.py's _slippage()/round_trip().)
+#
+# ROOT-CAUSED 2026-09-03 (Fable's 2026-09-01 review named this the one
+# unexplained item -- the only variant that FAILS the pre-registered bar,
+# 8-10x every later month-long mean, "must be explained, not shelved").
+# Two independent, complete explanations, both now confirmed rather than
+# guessed:
+#
+# 1. It is a POST-CLOSE quote. 18:03 IST is 2.5 hours after the 15:30 IST
+#    market close -- the script's own docstring always disclosed "LIVE (or
+#    last-close, outside market hours)" as a possibility, and the commit
+#    that recorded this reading (3863765) landed at 18:11 IST the same
+#    evening. A stale/illiquid after-close quote is the exact same failure
+#    class the in-session filter (scripts/analyze_orb_spread_samples.py's
+#    is_in_session(), added 2026-09-02) was built to catch for the
+#    ACCUMULATING sample -- but this one-off snapshot predates that CSV
+#    entirely (logging was added later, eb4aea4) and was never itself
+#    logged as a row the filter could reach.
+#
+# 2. 2026-07-28 was SIMULTANEOUSLY NIFTY's own weekly expiry AND
+#    BankNifty's own monthly expiry (calendar_expiry_date(2026, 7) ==
+#    nifty_weekly_expiry_unadjusted(date(2026,7,28)) == 2026-07-28,
+#    confirmed directly). The script's DTE floor correctly skipped NIFTY's
+#    0-DTE contract and measured the following week's (~7 DTE) -- as
+#    designed. For BankNifty, the SAME floor was (wrongly, per the
+#    STRATIFIED_SPREAD_SLIPPAGE_BPS root-cause above) also applied, so it
+#    ALSO skipped the 0-DTE current-month contract and measured NEXT
+#    MONTH's (~29-30 DTE) instead -- a different, far less liquid contract
+#    than the one the real backtest holds on BankNifty's own expiry day.
+#
+# Net: this snapshot's FAIL was never evidence the strategy's real-world
+# cost is 8-10x the sampled mean. It was an out-of-session quote, and for
+# BankNifty a wrong-contract one on top. Retained here UNCHANGED as a
+# historical record of what was actually measured that evening -- not
+# recomputed, not deleted -- same "disclosed, not silently edited"
+# discipline as every other correction in this module.
 REAL_SPREAD_SLIPPAGE_BPS = {"NIFTY": 107.5, "BANKNIFTY": 65.0}
 
 # ── Sampled-spread (post-hoc, 3x/day timer, 2026-07-29 to 2026-07-30) ──────
@@ -215,9 +250,11 @@ def real_spread_trade_cost(entry_premium: float, exit_premium: float, lot_size: 
                             entry_date: date, underlying: str) -> CostBreakdown:
     """POST-HOC, rough directional estimate (2026-07-28) — uses a real,
     live-measured option bid-ask spread instead of an assumed slippage
-    rate. See module docstring: this is ONE snapshot, not a sampled
-    average, so treat this as a sanity check on Harsh's assumption, not a
-    fourth rigorously pre-registered tier."""
+    rate. See module docstring: this is ONE POST-CLOSE snapshot (18:03
+    IST), root-caused 2026-09-03 as an out-of-session quote and, for
+    BankNifty, also a wrong-contract one — treat this as a historical
+    record of one bad reading, not a sampled average or a fourth
+    rigorously pre-registered tier."""
     if underlying not in REAL_SPREAD_SLIPPAGE_BPS:
         raise ValueError(f"unsupported underlying: {underlying!r}")
     return _model(
