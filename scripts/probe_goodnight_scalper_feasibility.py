@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -54,14 +55,49 @@ from core.options import fyers_symbol_master as sm  # noqa: E402
 
 UNIVERSE_PATH = "agent/universe_nifty200momentum30.txt"
 
-# Same ladder/window shape as scripts/probe_1min_depth.py, for direct
-# comparability with candidate 18's own finding.
-PROBE_DAYS_AGO = [7, 10, 13, 16, 19, 22, 25, 28, 30, 35, 45, 60, 90]
+# Tightened around candidate 18's own confirmed ~28-29 day wall for NIFTY/
+# BankNifty/VIX (scripts/probe_1min_depth.py) rather than re-exploring the
+# full range up to 365 days blind -- fewer anchors means fewer live calls,
+# which matters a lot here (see the rate-limit handling below: this
+# probe's first run, 2026-09-03, hit Fyers' 429 "request limit reached"
+# almost immediately with NO delay between calls across 30 symbols).
+PROBE_DAYS_AGO = [15, 20, 25, 28, 30, 33, 36, 40, 50, 70]
 WINDOW_DAYS = 3
 
 OPEN_TIME_UTC = time(3, 45)   # 09:15 IST
 RECENT_DAYS_FOR_OPEN_CHECK = 10   # comfortably inside even a ~28-day wall
 NEAR_MISS_TOLERANCE_PCT = 0.05    # within 0.05% of open counts as a "near miss"
+
+# Fyers' rate limit turned out to be much tighter than scripts/backtest_
+# dow_theory_trend.py's fetch_chunked_intraday assumed (0.5s delay, no
+# issue there because that script fetches ONE symbol's full history in a
+# handful of large chunks; this probe makes many small calls across 30
+# symbols in quick succession). Same retry shape (exponential-ish
+# backoff), tuned slower after the first live run hit 429 on nearly every
+# call with zero delay.
+SLEEP_BETWEEN_CALLS_SECS = 2.0
+MAX_RETRIES = 4
+RETRY_BASE_WAIT_SECS = 6.0
+
+
+def _call_with_retry(fn, *args, **kwargs):
+    """Wraps a live broker call with the same throttle+backoff discipline
+    scripts/backtest_dow_theory_trend.py's fetch_chunked_intraday uses,
+    adapted synchronously (this probe has no need for asyncio's
+    concurrency -- sequential is safer for a tight rate limit anyway)."""
+    last_exc = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            result = fn(*args, **kwargs)
+            time_module.sleep(SLEEP_BETWEEN_CALLS_SECS)
+            return result
+        except Exception as e:
+            last_exc = e
+            if attempt < MAX_RETRIES - 1:
+                wait = RETRY_BASE_WAIT_SECS * (attempt + 1)
+                print(f"    retrying in {wait:.0f}s after: {e}")
+                time_module.sleep(wait)
+    raise last_exc
 
 
 def probe_1min_depth(broker, symbol: str) -> int | None:
@@ -71,7 +107,7 @@ def probe_1min_depth(broker, symbol: str) -> int | None:
         to_dt = now - timedelta(days=days_ago)
         from_dt = to_dt - timedelta(days=WINDOW_DAYS)
         try:
-            candles = broker.get_historical_data(symbol, "1m", from_dt, to_dt)
+            candles = _call_with_retry(broker.get_historical_data, symbol, "1m", from_dt, to_dt)
         except Exception as e:
             print(f"    {days_ago:>3}d ago: ERROR {e}")
             break
@@ -85,7 +121,7 @@ def probe_open_price_pattern(broker, symbol: str) -> dict:
     now = datetime.now(timezone.utc)
     from_dt = now - timedelta(days=RECENT_DAYS_FOR_OPEN_CHECK)
     try:
-        candles = broker.get_historical_data(symbol, "1m", from_dt, now)
+        candles = _call_with_retry(broker.get_historical_data, symbol, "1m", from_dt, now)
     except Exception as e:
         return {"error": str(e)}
     by_day: dict[date, list] = {}
@@ -127,8 +163,8 @@ def probe_liquidity(broker, underlying: str) -> dict:
             return {"error": "no expiries listed"}
         expiry = expiries[0]
         expiry_epoch = sm.get_expiry_epoch(underlying, expiry)
-        spot = broker.get_ltp([underlying]).get(underlying)
-        raw_chain = broker.get_option_chain(underlying, expiry_epoch)
+        spot = _call_with_retry(broker.get_ltp, [underlying]).get(underlying)
+        raw_chain = _call_with_retry(broker.get_option_chain, underlying, expiry_epoch)
     except Exception as e:
         return {"error": str(e)}
     rows = raw_chain.get("optionsChain", [])
