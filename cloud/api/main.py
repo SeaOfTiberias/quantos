@@ -53,6 +53,7 @@ from cloud.api.analyst_routes import router as analyst_router
 from cloud.api.observability_routes import router as observability_router
 from cloud.api.reconciliation_routes import router as reconciliation_router
 from cloud.api.rotation_routes import router as rotation_router
+from cloud.api.fyers_auth_routes import router as fyers_auth_router
 from cloud.api import metrics
 from core import prompts
 from cloud.api.notifier import (
@@ -90,6 +91,7 @@ app.include_router(analyst_router)
 app.include_router(observability_router)
 app.include_router(reconciliation_router)
 app.include_router(rotation_router)
+app.include_router(fyers_auth_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1205,7 +1205,121 @@ function SystemHealthPanel({ obs, error }) {
           </div>
         </>
       )}
+
+      <Divider />
+      <FyersTokenRefresh />
     </Card>
+  );
+}
+
+// Fyers has no refresh-token flow — the daily login on Fyers' own page
+// (username/password/2FA) is irreducible and stays manual, but this
+// replaces the old "SSH in, run a script, paste a code into a terminal"
+// flow with two calls to cloud/api/fyers_auth_routes.py, added 2026-09-03
+// so the token refresh + the existing quantos-token-refreshed.path batch
+// it triggers can be kicked off from here instead. See that module's
+// docstring for exactly what is/isn't automated and why.
+function FyersTokenRefresh() {
+  const [authUrl, setAuthUrl] = useState(null);
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | starting | awaiting_code | completing | success | error
+  const [message, setMessage] = useState("");
+
+  const start = async () => {
+    setStatus("starting");
+    setMessage("");
+    try {
+      const res = await fetch(`${CLOUD_API_URL}/auth/fyers/start`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `start failed (${res.status})`);
+      setAuthUrl(data.auth_url);
+      window.open(data.auth_url, "_blank", "noopener,noreferrer");
+      setStatus("awaiting_code");
+    } catch (e) {
+      setStatus("error");
+      setMessage(String(e.message || e));
+    }
+  };
+
+  const complete = async () => {
+    if (!code.trim()) return;
+    setStatus("completing");
+    setMessage("");
+    try {
+      const res = await fetch(`${CLOUD_API_URL}/auth/fyers/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `complete failed (${res.status})`);
+      setStatus("success");
+      setMessage(data.agent_restarted
+        ? "Token saved and agent restarted."
+        : `Token saved, but the agent restart failed (${data.restart_detail}) — restart it manually.`);
+      setCode("");
+      setAuthUrl(null);
+    } catch (e) {
+      setStatus("error");
+      setMessage(String(e.message || e));
+    }
+  };
+
+  const busy = status === "starting" || status === "completing";
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Label>Fyers Token</Label>
+        {status === "success" && (
+          <span style={{ fontSize: 10, color: C.green, fontWeight: 600 }}>refreshed</span>
+        )}
+      </div>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+        <button
+          onClick={start}
+          disabled={busy}
+          style={{
+            alignSelf: "flex-start", fontSize: 11, fontWeight: 600, padding: "6px 12px",
+            borderRadius: 4, border: `1px solid ${C.accent}`, background: "transparent",
+            color: C.accent, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {status === "starting" ? "Opening Fyers login…" : "Refresh Fyers Token"}
+        </button>
+
+        {authUrl && status === "awaiting_code" && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="After logging in, paste the redirect URL or code here"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              style={{
+                flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 4,
+                border: `1px solid ${C.panel}`, background: C.bg, color: C.white,
+              }}
+            />
+            <button
+              onClick={complete}
+              disabled={!code.trim() || status === "completing"}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 4,
+                border: `1px solid ${C.green}`, background: "transparent", color: C.green,
+                cursor: (!code.trim() || status === "completing") ? "default" : "pointer",
+                opacity: (!code.trim() || status === "completing") ? 0.6 : 1,
+              }}
+            >
+              {status === "completing" ? "Saving…" : "Submit"}
+            </button>
+          </div>
+        )}
+
+        {message && (
+          <div style={{ fontSize: 10, color: status === "error" ? C.red : C.mid }}>{message}</div>
+        )}
+      </div>
+    </>
   );
 }
 

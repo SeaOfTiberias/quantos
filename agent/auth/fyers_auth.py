@@ -7,6 +7,14 @@ a Fyers access token and persist it locally at ~/.quantos/fyers_token.
 Fyers has no refresh-token-only flow for third-party apps: you must
 re-run this script whenever the token expires (typically once per day).
 
+generate_auth_url()/exchange_auth_code()/save_token() are factored out
+of main() (2026-09-03) so cloud/api/fyers_auth_routes.py can drive the
+same OAuth exchange from a dashboard button instead of this CLI script —
+same session-creation/token-exchange/parsing logic either way, single
+source of truth. The daily Fyers LOGIN itself (username/password/2FA on
+Fyers' own page) stays irreducibly manual either way; Fyers offers no
+silent server-side re-auth, by design.
+
 Usage:
     python agent/auth/fyers_auth.py
     python agent/auth/fyers_auth.py --config agent/config.yaml
@@ -40,6 +48,66 @@ def _is_loopback(redirect_uri: str) -> bool:
     return host in ("127.0.0.1", "localhost", "::1")
 
 
+def _build_session(config: dict):
+    from fyers_apiv3 import fyersModel
+
+    creds = config["credentials"]
+    return fyersModel.SessionModel(
+        client_id=creds["api_key"],
+        secret_key=creds["api_secret"],
+        redirect_uri=creds["redirect_uri"],
+        response_type="code",
+        grant_type="authorization_code",
+        state="quantos",
+    )
+
+
+def generate_auth_url(config: dict) -> str:
+    """Pure(ish) -- one call to the Fyers SDK, no I/O beyond that. Shared
+    by the CLI flow below and cloud/api/fyers_auth_routes.py's
+    POST /auth/fyers/start."""
+    return _build_session(config).generate_authcode()
+
+
+def parse_auth_code(pasted: str) -> str:
+    """Accepts either a raw auth_code, or the full URL Fyers redirects to
+    (which contains auth_code=... or code=... in the query string) --
+    the exact two shapes a user could plausibly paste, whether from a
+    terminal prompt or a dashboard form field."""
+    pasted = pasted.strip()
+    if "auth_code=" in pasted or "code=" in pasted:
+        qs = parse_qs(urlparse(pasted).query)
+        auth_code = qs.get("auth_code", [None])[0] or qs.get("code", [None])[0]
+        if auth_code:
+            return auth_code
+    if pasted:
+        return pasted
+    raise ValueError("No auth code provided.")
+
+
+def exchange_auth_code(config: dict, pasted: str) -> str:
+    """Turns a pasted auth_code/URL into a real Fyers access token. Raises
+    ValueError/RuntimeError on any failure (no auth code parseable, or
+    Fyers rejects the exchange) -- callers (CLI and the API route) decide
+    how to surface that."""
+    auth_code = parse_auth_code(pasted)
+    session = _build_session(config)
+    session.set_token(auth_code)
+    response = session.generate_token()
+    if response.get("s") != "ok" or "access_token" not in response:
+        raise RuntimeError(f"Token exchange failed: {response}")
+    return response["access_token"]
+
+
+def save_token(access_token: str) -> None:
+    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TOKEN_PATH.write_text(access_token)
+    try:
+        TOKEN_PATH.chmod(0o600)
+    except OSError:
+        pass  # chmod is a no-op on Windows filesystems without POSIX perms
+
+
 def capture_auth_code_manually() -> str:
     """
     Used when redirect_uri is a public URL we don't control (e.g. Fyers'
@@ -52,19 +120,12 @@ def capture_auth_code_manually() -> str:
         "\nAfter logging in, your browser will land on a Fyers page whose "
         "URL contains 'auth_code=...' (or 'code=...').\n"
         "Paste that full URL (or just the code value) here: "
-    ).strip()
-
-    if "auth_code=" in pasted or "code=" in pasted:
-        qs = parse_qs(urlparse(pasted).query)
-        auth_code = qs.get("auth_code", [None])[0] or qs.get("code", [None])[0]
-        if auth_code:
-            return auth_code
-    # Not a URL — assume the user pasted the raw code value directly.
-    if pasted:
-        return pasted
-
-    print("No auth code provided.")
-    sys.exit(1)
+    )
+    try:
+        return parse_auth_code(pasted)
+    except ValueError as e:
+        print(str(e))
+        sys.exit(1)
 
 
 def capture_auth_code(redirect_uri: str) -> str:
@@ -115,23 +176,9 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    creds = config["credentials"]
-    app_id = creds["api_key"]
-    secret_key = creds["api_secret"]
-    redirect_uri = creds["redirect_uri"]
+    redirect_uri = config["credentials"]["redirect_uri"]
 
-    from fyers_apiv3 import fyersModel
-
-    session = fyersModel.SessionModel(
-        client_id=app_id,
-        secret_key=secret_key,
-        redirect_uri=redirect_uri,
-        response_type="code",
-        grant_type="authorization_code",
-        state="quantos",
-    )
-
-    auth_url = session.generate_authcode()
+    auth_url = generate_auth_url(config)
     print("Opening Fyers login in your browser...")
     print(auth_url)
     webbrowser.open(auth_url)
@@ -141,22 +188,13 @@ def main():
     else:
         auth_code = capture_auth_code_manually()
 
-    session.set_token(auth_code)
-    response = session.generate_token()
-
-    if response.get("s") != "ok" or "access_token" not in response:
-        print(f"Token exchange failed: {response}")
+    try:
+        access_token = exchange_auth_code(config, auth_code)
+    except (ValueError, RuntimeError) as e:
+        print(str(e))
         sys.exit(1)
 
-    access_token = response["access_token"]
-
-    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_PATH.write_text(access_token)
-    try:
-        TOKEN_PATH.chmod(0o600)
-    except OSError:
-        pass  # chmod is a no-op on Windows filesystems without POSIX perms
-
+    save_token(access_token)
     print(f"Access token saved to {TOKEN_PATH}")
     print("Run `python agent/main.py` to connect.")
 
