@@ -111,6 +111,38 @@ data is a new, separately pre-registered follow-up, not an amendment here
   `resolve_nifty_expiry`/`resolve_banknifty_expiry`) bucketed as `0-1`,
   `2-4`, `5-9`, `10+` — four buckets, fixed before any result exists.
 
+### Which predicate is actually tested per condition (pinned before any code runs)
+
+The five features above are continuous or multi-valued; `evaluate_condition`
+needs a binary true/false predicate. Each one is fixed here, not decided
+while writing the extraction script, and not one predicate per possible
+value (testing all 5 weekdays or all 4 DTE buckets separately multiplies
+the number of chances to find a spurious pass on an already-modest sample
+— exactly the multiple-comparisons risk this project's own history warns
+about):
+
+- **Stage**: `stage is Stage.ADVANCING` (Stage 2) vs everything else
+  (including unclassified, which the predicate returns `None` for, per
+  the exclusion rule below).
+- **Day of week**: `Monday or Friday` vs `Tuesday–Thursday` — the two
+  days with an a priori market-microstructure story (Monday: weekend gap
+  risk; Friday: proximity to NIFTY's own weekly expiry), not a five-way
+  split of the whole week.
+- **Range width**: two SEPARATE conditions, `wide` (ratio > 1.25) and
+  `narrow` (ratio < 0.75) — symmetric bands around 1.0, each evaluated
+  and reported on its own, not combined.
+- **Gap at open**: `big gap`, `|gap_pct| > 0.3` — a round number close to
+  NIFTY's typical absolute gap size, picked before looking at any trade
+  outcome, not tuned to a distribution.
+- **DTE bucket**: two SEPARATE conditions, `0-1` (near expiry) and `10+`
+  (far from expiry) — the two ends with an a priori liquidity/theta
+  story. The middle buckets (`2-4`, `5-9`) are reported as context in the
+  raw extraction but are NOT evaluated as their own pass/fail hypothesis.
+
+Any predicate that cannot be evaluated for a trade (e.g. an unclassified
+stage) excludes that trade from BOTH the true and false subsets for that
+condition only — it stays in the unconditional baseline.
+
 ## Data extraction
 
 `run_index_backtest` (`core/orb_scalping/backtest.py`) is reused for its
