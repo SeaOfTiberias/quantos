@@ -95,6 +95,22 @@ set results.** A condition that occurs to someone after looking at the
 data is a new, separately pre-registered follow-up, not an amendment here
 — same rule candidate 18's own methodology doc holds itself to.
 
+### Exact parameters, pinned before any code runs
+
+- **Condition 1 (stage)**: `Stan_Weinstein_Stage_Analysis.md`'s existing
+  `quantos-stages` clauses (`obsidian_vault/QuantOS/brain/`), applied
+  unmodified to the index's own daily close/high/low/volume series — no
+  new clauses written for this exercise.
+- **Condition 3 (range width)**: today's opening-range width (high−low of
+  the first 3 five-minute candles, same window the signal itself uses)
+  divided by the trailing 20-trading-day average of that same day's-own
+  opening-range width, entry day excluded. Ratio > 1 = wider than usual.
+- **Condition 4 (gap)**: today's first 5-minute candle's open vs the prior
+  trading day's daily close, signed percentage.
+- **Condition 5 (DTE bucket)**: `days_to_expiry` (already computed by
+  `resolve_nifty_expiry`/`resolve_banknifty_expiry`) bucketed as `0-1`,
+  `2-4`, `5-9`, `10+` — four buckets, fixed before any result exists.
+
 ## Data extraction
 
 `run_index_backtest` (`core/orb_scalping/backtest.py`) is reused for its
