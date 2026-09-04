@@ -183,6 +183,25 @@ options:
                                      # deliberate scope decision so a future session doesn't assume
                                      # exits are being managed when they aren't.
 
+orb_scalping:
+  # Candidate 18 (Opening Range Breakout, NIFTY/BankNifty index options) --
+  # docs/ORB_EXECUTION_LAYER_DESIGN.md. Unlike options/rotation_pilot above,
+  # once dry_run:false is eventually set there is NO per-trade Telegram
+  # confirm -- entries/exits fire automatically, same no-veto precedent as
+  # the equity auto_exit stop-loss and rotation's carve-out (ORB's entry
+  # window is only a few minutes wide; a confirm round-trip could miss it
+  # entirely). Both flags stay at their safest setting until the design
+  # doc's go/no-go checklist clears AND you give a fresh, explicit
+  # capital go-ahead -- do NOT flip either casually.
+  enabled: false                    # Master switch. false = this never runs at all.
+  dry_run: true                     # true = compute what would be entered/trailed/exited and log
+                                     # it, without placing real orders. Watch at least one
+                                     # supervised dry-run cycle before setting false.
+  lots_per_trade: 1                 # Capital-at-risk decision -- do not raise without explicit
+                                     # confirmation each time, same rule as rotation's position_size.
+  nifty_dte_floor_days: 2           # core/orb_scalping/backtest.py's resolve_nifty_expiry
+  banknifty_dte_floor_days: 0       # resolve_banknifty_expiry has no floor
+
 # ── Obsidian vault: qualitative strategy memory (2026-08-14) ─────────────────
 # Audits symbols against the rule blocks written into your Obsidian strategy
 # notes (obsidian_vault/QuantOS/*.md) before they reach an execution path.

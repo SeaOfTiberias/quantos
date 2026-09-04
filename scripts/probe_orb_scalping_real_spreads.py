@@ -51,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.main import load_config  # noqa: E402
 from core.brokers import get_broker  # noqa: E402
 from core.options import fyers_symbol_master as sm  # noqa: E402
+from core.orb_scalping.contract_selection import select_expiry  # noqa: E402,F401
 from core.orb_scalping.costs import (  # noqa: E402
     HARSH_FRONT_WEEK_SLIPPAGE_BPS,
     HARSH_NEXT_WEEK_SLIPPAGE_BPS,
@@ -96,19 +97,6 @@ def _report_leg(label: str, record: dict):
               f"({record['ask']}, i.e. undefined/very wide in %% terms)")
     else:
         print("    bid/ask both 0 -- no live two-sided quote available right now")
-
-
-def select_expiry(expiries: list, today: date, dte_floor_days: int):
-    """The nearest expiry on/after `today` whose days-to-expiry clears
-    `dte_floor_days`, or None if every listed expiry is too close. Pure and
-    broker-free so this selection rule is independently testable — it is
-    the exact piece that had the 2026-09-02 bug (a shared floor silently
-    applied to both underlyings)."""
-    for e in expiries:
-        if (e - today).days < dte_floor_days:
-            continue
-        return e
-    return None
 
 
 def probe(broker, underlying: str, spot_symbol: str, writer, *, dte_floor_days: int) -> list:

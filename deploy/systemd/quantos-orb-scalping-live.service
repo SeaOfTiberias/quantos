@@ -1,0 +1,42 @@
+[Unit]
+Description=QuantOS Candidate 18 ORB Scalping -- Live Execution (layer 2, gated by agent/config.yaml orb_scalping.enabled/dry_run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_orb_scalping_live.py
+Environment=HOME=/home/ubuntu
+
+# NOT enabled on the VM as of this commit -- see docs/ORB_EXECUTION_LAYER_
+# DESIGN.md's go/no-go checklist. This unit file exists so it can be
+# copied by scripts/deploy-vm.ps1 (which never auto-enables a new unit)
+# and reviewed/tested ahead of time; `systemctl enable --now` is a
+# separate, deliberate future step, same as every other new timer in this
+# project's history.
+#
+# The script itself is doubly safe even if fired by mistake: it reads
+# agent/config.yaml's orb_scalping.enabled flag FIRST and exits
+# immediately (no broker connection, no orders) if that's false --
+# default false. Even once enabled, dry_run:true (also the default)
+# means every order-placing call logs its intended action instead of
+# calling the broker. Both flags must be deliberately flipped, and even
+# then the user's own fresh capital go-ahead
+# ([[feedback_confirm_before_scaling_capital]]) is the actual gate, not
+# this file.
+#
+# Same market-hours ExecCondition pattern as quantos-orb-stopout-probe.
+# service, and the same VM-is-UTC-not-IST lesson (see that file, and the
+# .timer here) -- deliberately every ~1 minute during market hours, same
+# fidelity tradeoff the stop-out probe already made explicit with the
+# user (a resting stop-loss order handles the fast reaction; this script
+# only needs to notice a fill / trail the index-level stop / flatten at
+# session end, none of which need sub-minute precision).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+
+# No Restart= -- a failed fire (stale token, transient API error) is
+# harmless and self-healing on the next fire a minute later, same as
+# every other probe/timer job on this VM. Relies on the same daily Fyers
+# token refresh the user already does each morning.

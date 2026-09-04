@@ -1,0 +1,28 @@
+[Unit]
+Description=Fires the candidate 18 ORB live execution script every minute during NSE market hours (unit not enabled by default -- see the .service comment)
+
+[Timer]
+# Every minute, 09:15-15:30 IST = 03:45-10:00 UTC -- the VM runs in
+# Etc/UTC (confirmed via timedatectl), and OnCalendar is evaluated in the
+# system's local timezone, NOT the .service's ExecCondition guard's
+# explicit TZ=Asia/Kolkata -- same UTC-conversion convention as
+# quantos-orb-stopout-probe.timer and quantos-orb-spread-probe.timer.
+# Getting this wrong doesn't cause a wrong-time FIRE (the ExecCondition
+# independently re-checks real IST wall-clock and would just skip an
+# off-hours fire) -- it would silently do nothing at all during real
+# market hours instead, which is exactly the bug class this comment (and
+# `systemd-analyze calendar` before ever enabling this) exists to catch.
+#
+# Three OnCalendar lines for the same reason as quantos-orb-stopout-
+# probe.timer: systemd's calendar spec doesn't let a single expression
+# range hours AND minutes together across a partial-hour boundary.
+OnCalendar=Mon..Fri *-*-* 03:45..59:00
+OnCalendar=Mon..Fri *-*-* 04..09:*:00
+OnCalendar=Mon..Fri *-*-* 10:00:00
+
+# A missed fire is harmless and self-healing (see the .service file) --
+# no catch-up needed.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

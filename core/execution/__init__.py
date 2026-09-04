@@ -7,8 +7,15 @@ core/backtest/parser.py's `has_positive_edge` bar — execution quality is
 measured as implementation shortfall in basis points against an unsliced
 baseline (see core/execution/slicing.simulate_execution).
 
-    core/execution/slicing.py   pure: depth in, slice decision out
-    core/execution/slicer.py    the loop: broker, orders, clock
+    core/execution/slicing.py       pure: depth in, slice decision out
+    core/execution/slicer.py        the loop: broker, orders, clock
+    core/execution/order_service.py position-lifecycle layer (entry, stop
+                                     trailing, reconciliation, flatten) --
+                                     a different concern from slicing: this
+                                     manages a position across its life,
+                                     slicing manages one order's fills.
+    core/execution/trade_intent.py  the "a trade should happen now" handoff
+                                     shape between a strategy and this layer
 
 Credit: the depth-aware slicing idea came from a derivatives-terminal design
 discussed publicly by Ankit Rai and Aniketh Dsouza. The participation-rate
@@ -16,12 +23,20 @@ approach is standard execution practice; this is an independent implementation
 against QuantOS's own broker interface.
 """
 
+from core.execution.order_service import (
+    EntryResult, ReconcileResult,
+    enter_position, flatten_position, reconcile_position, update_stop,
+)
 from core.execution.slicing import (
     BookWalk, ExecutionSimulation, SliceDecision, SlicingPolicy,
     available_depth, next_slice, simulate_execution, walk_book,
 )
+from core.execution.trade_intent import TradeIntent
 
 __all__ = [
     "BookWalk", "ExecutionSimulation", "SliceDecision", "SlicingPolicy",
     "available_depth", "next_slice", "simulate_execution", "walk_book",
+    "EntryResult", "ReconcileResult",
+    "enter_position", "flatten_position", "reconcile_position", "update_stop",
+    "TradeIntent",
 ]
