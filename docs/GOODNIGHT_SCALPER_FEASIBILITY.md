@@ -87,7 +87,7 @@ proper at-open reading could differ either direction), but it is the
 single most decision-relevant number this probe produced, and it wasn't
 even measured at the moment that matters most.
 
-## Bottom line
+## Bottom line (superseded by the real at-open reading below)
 
 Two of four checks (depth, hit-rate) came back better than the working
 assumption; one (expiry structure) is just a disclosed structural
@@ -96,3 +96,74 @@ a measurement taken AT the actual 09:15-09:18 IST entry window — not
 mid-session — before any pre-registered methodology doc should lock a
 backtest design around this strategy being viable. Next trading day's
 market open is the earliest that specific reading can be taken.
+
+## Real at-open window reading — 2026-09-04 (`scripts/probe_goodnight_openwindow.py`)
+
+The timer fired as scheduled (`deploy/systemd/quantos-goodnight-
+openwindow-probe.timer`), but only **2 of the 3 planned snapshots ran**,
+not 3: each run took ~2.5 minutes end-to-end (30 candle checks + 17
+symbols × 2 legs of throttled option-chain calls), so the 03:47:00 UTC
+fire was skipped while the first run was still busy and systemd started
+the third scheduled run (03:48:00 UTC) the instant the first one
+finished, at 03:48:53. Effective sample: **Run 1 ≈ 09:16:17-09:18:52
+IST, Run 2 ≈ 09:18:55-09:21:33 IST** — later fires within a run measure
+progressively later than the run's start, a real timing caveat worth
+keeping in mind before treating every row as simultaneous.
+
+**Setup detection**: 10/30 stocks qualified (ABCAPITAL CALL, ADANIENSOL
+PUT, BHARATFORG PUT, FEDERALBNK PUT, GLENMARK PUT, LTF CALL, NTPC PUT,
+POLYCAB PUT, SAIL PUT, VEDL PUT) — a 33% hit rate, matching the prior
+session's 10-day historical estimate almost exactly. Good corroboration
+that the earlier hit-rate read wasn't a fluke.
+
+**Liquidity — real spread IS wider at open than mid-session, confirming
+the concern**:
+
+| | n | mean (excl. SAIL) | median (excl. SAIL) | mean (all) |
+|---|---|---|---|---|
+| Run 1 (~09:16-09:19 IST) | 34 legs | **4.26%** | 2.02% | 12.43% |
+| Run 2 (~09:19-09:21 IST) | 34 legs | **1.95%** | 1.56% | 10.25% |
+| Combined | 68 legs | **3.11%** | 1.74% | 11.34% |
+
+Versus the prior session's mid-session read (~0.73%-2.06%, roughly
+1.2-1.3% mean): the real at-open reading is **materially wider**,
+especially in the first couple of minutes (Run 1's 4.26% mean is
+2-6x the mid-session read), and visibly tightens within just ~2-3
+minutes (Run 1 → Run 2 mean roughly halves) — consistent with "thinnest
+right at open" being real, not assumed. Both runs remain well above
+candidate 18's ~11-18bps (0.11-0.18%) index-option rate.
+
+**SAIL: a genuine, persistent near-zero-liquidity case, not a fluke.**
+Both runs read CE 106.4% / PE 179.6-179.7% round-trip spread on the same
+strike/expiry (bid 2.16/ask 7.07 CE, bid ~1.55/ask ~29 PE) — essentially
+no real two-sided market, confirmed twice ~3 minutes apart, not a
+one-off bad tick. This is exactly the kind of name a real entry would
+either refuse (per the spec's own 1%-of-premium liquidity filter — SAIL
+would be correctly rejected) or, if the filter were looser, get badly
+hurt by.
+
+**CUMMINSIND: a reminder that a SINGLE reading can be a noisy
+outlier.** Run 1 showed CE spread 24.14%; Run 2 (~3 min later) showed
+1.48% — a >16x swing on the same underlying, most likely a stale/wide
+quote at the exact instant of the first read rather than a real
+liquidity collapse. Same lesson this project already learned the hard
+way with candidate 18's single contaminated 2026-07-28 snapshot — one
+reading is not a rate, and this data now has two independent
+confirmations of that risk sitting side by side (SAIL's persistence vs.
+CUMMINSIND's noise).
+
+## Bottom line, updated
+
+The real at-open reading confirms rather than dispels the liquidity
+concern: 3.1% mean / 1.7% median round-trip spread (excluding one
+effectively-illiquid name) is still 10-30x candidate 18's index-option
+rate, and it's WIDER than the mid-session proxy reading, not narrower.
+A strategy targeting +10%/-15% on premium would have spread alone
+consuming a large fraction of its theoretical edge on a meaningful share
+of trades, before even reaching Setup C or a real backtest. This is a
+real, now twice-measured (mid-session + at-open) reason for skepticism,
+not yet a final verdict — a proper pre-registered methodology doc would
+need to either (a) accept this cost into the model explicitly and see if
+any edge survives it, or (b) gather more at-open sessions before
+concluding, same "don't stop on one favorable/unfavorable reading"
+discipline as every other candidate in this project.
