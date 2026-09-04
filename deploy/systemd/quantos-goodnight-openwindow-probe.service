@@ -10,15 +10,22 @@ WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/probe_goodnight_openwindow.py
 Environment=HOME=/home/ubuntu
 
-# One-off feasibility check, NOT a recurring production job -- see the
-# .timer for the 3 specific one-time fires. Depends on the VM's Fyers
-# token already being freshly refreshed before it fires (same daily
-# manual refresh every other morning job here relies on) -- a stale
-# token fails this run harmlessly (no orders, self-healing: just re-run
-# manually, or wait for a future trading day if this one is missed).
+# Recurring daily feasibility-gathering job (converted 2026-09-04 from a
+# one-time 3x-same-day design -- see the .timer for why) -- still not a
+# production/execution job, still read-only, no orders. Accumulates one
+# real at-open reading per trading morning into data_cache/goodnight_
+# openwindow_probe.csv until there's enough to actually decide anything
+# about candidate 20's liquidity (user's own framing: "gather a few more
+# at-open sessions" before drawing a conclusion, 2026-09-04).
+#
+# Depends on the VM's Fyers token already being freshly refreshed before
+# 09:16 IST -- same daily manual (now dashboard-assisted, see
+# [[quantos_dashboard_fyers_token_refresh]]) refresh every other morning
+# job here relies on. A stale token fails this run harmlessly (no
+# orders, self-healing: just misses that day's sample).
 #
 # No market-hours ExecCondition here (unlike quantos-orb-spread-probe.
-# service/quantos-orb-stopout-probe.service): the .timer's OnCalendar
-# entries are already absolute one-time timestamps pinned to a specific
-# real trading morning, not a recurring daily rule that needs its own
-# guard.
+# service/quantos-orb-stopout-probe.service, which fire many times across
+# a whole session): this is a single well-timed daily fire, and a holiday
+# or off-hours miss just produces an empty/harmless run, same tolerance
+# already disclosed in the probe script's own docstring.

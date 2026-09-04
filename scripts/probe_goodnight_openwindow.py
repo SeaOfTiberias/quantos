@@ -3,11 +3,18 @@
 QuantOS — "Good Night" Scalper: Real At-Open Window Probe (candidate 20, feasibility)
 ──────────────────────────────────────────────────────────────────────
 Read-only, no orders. docs/GOODNIGHT_SCALPER_FEASIBILITY.md's one open
-item: every liquidity number so far was read MID-SESSION, not at the
-strategy's actual 09:15:30-09:18:00 IST entry window where liquidity is
-thinnest. This is the properly-timed measurement -- designed to fire
-2-3 times across that exact window on a real trading morning (see
-deploy/systemd/quantos-goodnight-openwindow-probe.timer, one-time fires).
+item: every liquidity number before 2026-09-04 was read MID-SESSION, not
+at the strategy's actual 09:15:30-09:18:00 IST entry window where
+liquidity is thinnest. The first real at-open reading (2026-09-04)
+confirmed spread IS wider there -- user's own framing, same day: "gather
+a few more at-open sessions" before drawing any conclusion. This now
+fires once per trading morning (deploy/systemd/quantos-goodnight-
+openwindow-probe.timer, recurring Mon-Fri -- converted 2026-09-04 from a
+same-day 3x design that didn't actually work as intended: each run takes
+~2.5 minutes, so tightly-spaced same-day fires got skipped/coalesced,
+and two same-day snapshots ~3 minutes apart turned out highly
+correlated anyway. Days, not intra-window snapshots, is the axis that
+actually adds information).
 
 For each Nifty200 Momentum 30 symbol (agent/universe_nifty200momentum30.txt):
 1. Fetch TODAY's 09:15 1-minute candle (closed -- Fyers' history endpoint
@@ -22,23 +29,25 @@ For each Nifty200 Momentum 30 symbol (agent/universe_nifty200momentum30.txt):
    pattern), fetches the live ATM CE/PE option chain right now and logs
    the real bid-ask spread.
 
-Every row is timestamped and appended (not deduped) to
-data_cache/goodnight_openwindow_probe.csv -- multiple fires across the
-window are intentional here (unlike the stop-out probe's one-event-per-
-day design): they show whether spread is stable or moving within the
-strategy's own stated entry window.
+Every row is timestamped and appended (never deduped or overwritten) to
+data_cache/goodnight_openwindow_probe.csv -- the accumulating record
+across trading days.
 
 Depends on the VM's Fyers token already being freshly refreshed before
 this fires -- same as every other morning-scheduled job. A stale token
-fails this run harmlessly (no orders, self-healing next trading day).
+fails this run harmlessly (no orders, self-healing: just misses that
+day's sample).
 
 Usage:
     python scripts/probe_goodnight_openwindow.py
+    python scripts/probe_goodnight_openwindow.py --summarize
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
+import statistics
 import sys
 import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
@@ -125,7 +134,56 @@ def probe_liquidity(broker, symbol: str) -> dict:
     return {"expiry": expiry.isoformat(), "atm_strike": atm, "legs": legs}
 
 
+def summarize_log() -> int:
+    """Groups by trading day (the DATE portion of sampled_at_utc), so
+    "a few more sessions" has a concrete, checkable count -- accumulating
+    across days is the whole point of the 2026-09-04 switch to a
+    recurring daily timer, see this module's docstring."""
+    if not LOG_PATH.exists():
+        print(f"No log yet at {LOG_PATH} -- run without --summarize first.")
+        return 1
+    rows = list(csv.DictReader(LOG_PATH.open(newline="", encoding="utf-8")))
+    days = sorted({r["sampled_at_utc"][:10] for r in rows})
+    print(f"{len(rows)} total logged rows across {len(days)} trading day(s): {days}\n")
+
+    liquidity_rows = [r for r in rows if r["reason_checked"] and r["spread_pct_of_mid"]]
+    setup_rows = [r for r in rows if not r["reason_checked"] and r["setup"]]
+
+    print(f"Setup hit-rate: {len(setup_rows)} qualifying (symbol, day) observations "
+          f"out of {len([r for r in rows if not r['reason_checked']])} checked.\n")
+
+    by_day: dict[str, list[float]] = {}
+    for r in liquidity_rows:
+        by_day.setdefault(r["sampled_at_utc"][:10], []).append(float(r["spread_pct_of_mid"]))
+    print("Liquidity (spread_pct_of_mid) by day:")
+    for day, vals in sorted(by_day.items()):
+        print(f"  {day}: n={len(vals)}  mean={statistics.mean(vals):.2f}%  median={statistics.median(vals):.2f}%  "
+              f"min={min(vals):.2f}%  max={max(vals):.2f}%")
+
+    all_vals = [float(r["spread_pct_of_mid"]) for r in liquidity_rows]
+    if all_vals:
+        print(f"\nAll days combined: n={len(all_vals)}  mean={statistics.mean(all_vals):.2f}%  "
+              f"median={statistics.median(all_vals):.2f}%")
+
+    by_symbol: dict[str, list[float]] = {}
+    for r in liquidity_rows:
+        by_symbol.setdefault(r["symbol"], []).append(float(r["spread_pct_of_mid"]))
+    persistent_illiquid = {s: v for s, v in by_symbol.items() if len(v) >= 2 and min(v) > 20}
+    if persistent_illiquid:
+        print("\nPersistently wide spread (>20% on every reading, n>=2) -- likely genuinely illiquid, not noise:")
+        for s, v in sorted(persistent_illiquid.items()):
+            print(f"  {s}: {[round(x, 1) for x in v]}")
+    return 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--summarize", action="store_true", help="Print stats from the log so far, no live fetch.")
+    args = parser.parse_args()
+
+    if args.summarize:
+        return summarize_log()
+
     universe = _load_universe(UNIVERSE_PATH)
     print(f"Universe: {len(universe)} symbols from {UNIVERSE_PATH}")
 

@@ -1,31 +1,34 @@
 [Unit]
-Description=Fires the candidate 20 at-open window probe 3x across the strategy's real 09:15:30-09:18:00 IST entry window, once, on 2026-09-04
+Description=Fires the candidate 20 at-open window probe once daily, right after the real 09:15 IST candle closes
 
 [Timer]
-# Three ONE-TIME absolute UTC timestamps (NOT a recurring Mon..Fri rule --
-# this is a single feasibility check, not a production job). Same lesson
-# learned the hard way earlier this session (quantos-orb-stopout-probe.
-# timer): the VM's systemd clock runs in Etc/UTC (confirmed via
-# timedatectl), so these are written in UTC, not IST, despite the
-# strategy's own spec being IST-native.
+# Converted 2026-09-04 from a one-time 3x-same-day design to a recurring
+# daily one -- the original plan (3 snapshots across the 09:15:30-09:18:00
+# IST entry window) didn't actually happen as designed: each run takes
+# ~2.5 minutes (30 candle checks + ~17 symbols x 2 legs of throttled
+# option-chain calls), so the 2nd of 3 one-minute-apart fires got skipped
+# and systemd coalesced it into a 3rd run starting the instant the 1st
+# finished. Two same-day snapshots taken ~3 minutes apart turned out to be
+# highly correlated anyway (most legs barely moved between them) -- the
+# statistically useful axis is DAYS, not intra-window snapshots, so this
+# now fires once per trading morning and accumulates across sessions
+# instead (data_cache/goodnight_openwindow_probe.csv already appends,
+# never dedupes -- no code change needed there).
 #
 # 09:16:05 IST = 03:46:05 UTC -- just after the 09:15 1-minute candle has
-#   closed, close in spirit to the spec's "09:15:30" scan (Fyers' history
-#   endpoint has no access to a still-forming candle, so this is the
-#   earliest a CLOSED candle read is possible -- see the probe script's
-#   own docstring for this disclosed simplification).
-# 09:17:00 IST = 03:47:00 UTC -- mid-window.
-# 09:18:00 IST = 03:48:00 UTC -- the spec's own entry-window close.
+# closed (Fyers' history endpoint has no access to a still-forming candle,
+# so this is the earliest a CLOSED candle read is possible -- see the
+# probe script's own docstring). VM's systemd clock is Etc/UTC (confirmed
+# via timedatectl), so this is written in UTC despite the strategy's own
+# spec being IST-native -- same lesson learned the hard way earlier this
+# session on quantos-orb-stopout-probe.timer.
 #
-# Tomorrow (2026-09-04) is a Friday -- confirmed a weekday, NOT confirmed
-# against the NSE holiday calendar (core/reference/calendar.py's derived
-# window ends 2026-08-18, before this date -- see that module's own
-# DateOutOfRange discipline). A holiday fire is harmless: the probe finds
+# Fires daily regardless of NSE holidays -- not checked against
+# core/reference/calendar.py (its derived window ends 2026-08-18, before
+# any date this will fire on). A holiday fire is harmless: the probe finds
 # no real 09:15 candle data and logs nothing useful, same self-healing
 # tolerance every other probe in this project has for an off day.
-OnCalendar=2026-09-04 03:46:05
-OnCalendar=2026-09-04 03:47:00
-OnCalendar=2026-09-04 03:48:00
+OnCalendar=Mon..Fri *-*-* 03:46:05
 Persistent=false
 
 [Install]
