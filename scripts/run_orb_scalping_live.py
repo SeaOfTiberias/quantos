@@ -287,7 +287,16 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
     existing = get_position(positions, underlying, trade_date_iso)
 
     if existing is None:
-        if state.status != "in_position":
+        # Found 2026-09-10 in the first supervised dry_run cycle: compute_live_state()
+        # only flips to "flattened" once a CLOSED 5m candle timestamped past
+        # SESSION_FLATTEN_UTC exists -- up to ~5 minutes behind the wall clock. In that
+        # gap, a position force-exited this same fire cycle (or a prior one) by
+        # _manage_existing_position's wall-clock past_flatten check still reads
+        # state.status=="in_position" here and looks like a fresh entry, causing a
+        # flatten/re-enter/flatten oscillation. This wall-clock check closes that gap by
+        # refusing any new entry once the flatten window has begun, regardless of what
+        # the candle-lagged state says.
+        if state.status != "in_position" or now_utc.time() >= SESSION_FLATTEN_UTC:
             return
         _enter_new_position(broker, underlying, state, dte_floor_days, strike_interval,
                              lots_per_trade, dry_run, positions, trade_date_iso, now_utc)

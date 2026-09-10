@@ -202,6 +202,30 @@ def test_no_entry_before_breakout_confirmed(monkeypatch, tmp_path):
     assert broker.placed_orders == []
 
 
+def test_no_entry_once_past_wallclock_flatten_even_if_candle_state_lags(monkeypatch, tmp_path):
+    """Regression for the 2026-09-10 supervised dry_run cycle: compute_live_state()
+    only flips to status="flattened" once a CLOSED candle timestamped past
+    SESSION_FLATTEN_UTC exists -- up to ~5 minutes behind the wall clock. In that gap,
+    a position force-exited this fire (or a prior one) leaves `existing=None` while
+    state.status still reads "in_position", which used to look like a fresh breakout
+    and caused a flatten/re-enter/flatten oscillation live. No new entry must fire
+    once the wall clock itself is past the flatten window, regardless of candle lag."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)  # 09:15 IST, well before flatten
+    candles = _entry_candles(start)  # none of these candles individually crosses flatten_time
+    now_utc = datetime(2026, 9, 3, 9, 51, tzinfo=timezone.utc)  # 15:21 IST -- past SESSION_FLATTEN_UTC
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_utc))
+
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions = {}
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService())
+
+    assert positions == {}
+    assert broker.placed_orders == []
+
+
 # ─── Managing an existing position ──────────────────────────────────────
 
 def _existing_call_position(trade_date_iso="2026-09-03"):
