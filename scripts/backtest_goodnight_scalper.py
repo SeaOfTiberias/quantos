@@ -320,7 +320,13 @@ async def main_async(out_path: str) -> int:
             expiries = sm.list_expiries(symbol)
             nearest_expiry = select_expiry(expiries, today.date(), DTE_FLOOR_DAYS)
             lot_size = sm.get_lot_size(symbol)
-            strike_interval = _infer_strike_interval(broker, symbol, nearest_expiry) if nearest_expiry else None
+            # The one live call per symbol not already behind _fetch_1m_history's/
+            # fetch_chunked_daily's throttle -- explicit sleep either side so this
+            # loop's per-symbol option-chain fetch doesn't hammer Fyers back-to-back
+            # the way the feasibility probe's first run did before it was throttled.
+            async with sem:
+                strike_interval = _infer_strike_interval(broker, symbol, nearest_expiry) if nearest_expiry else None
+                await asyncio.sleep(SLEEP_BETWEEN_CALLS_SECS)
             if strike_interval is None:
                 print(f"  {symbol}: could not resolve a strike interval, skipping.")
                 continue
