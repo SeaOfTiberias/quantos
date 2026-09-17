@@ -247,3 +247,14 @@ vault:
                                      # quarterly pilot. This is the only path with
                                      # actual money behind it. Sells are NEVER
                                      # filtered — exits must not depend on the vault.
+
+  # ── Daily watch. Off by default, read-only even when on. ────────────────
+  # Does <symbol> currently pass <note>'s quantos-rules block? PASS sends a
+  # Telegram alert — no order, no position sizing, ever. `note` must name a
+  # note in brain/ (human-authored only) with a quantos-rules block. See
+  # docs/VAULT_DAILY_WATCH.md.
+  watch_enabled: false
+  watches: []
+  # - note: some_note_id
+  #   symbol: "NIFTY 50"
+  #   label: human-readable name for the Telegram message

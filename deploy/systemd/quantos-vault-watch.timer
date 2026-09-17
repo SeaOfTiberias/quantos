@@ -1,0 +1,18 @@
+[Unit]
+Description=Fires the vault daily watch once each trading morning
+
+[Timer]
+# 09:35 IST = 04:05 UTC -- after the goodnight probe (09:16 IST) and well
+# after NSE open (09:15 IST), so a gap-at-open-style condition in a future
+# brain/ note has a real today's-open to read, not a still-forming one.
+# VM's systemd clock is Etc/UTC (confirmed via timedatectl) -- same
+# UTC-not-IST convention as every other timer in this project.
+#
+# Fires daily regardless of NSE holidays or vault.watch_enabled being
+# false -- both are harmless no-ops the script itself checks first, same
+# self-healing tolerance as quantos-goodnight-openwindow-probe.timer.
+OnCalendar=Mon..Fri *-*-* 04:05:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,40 @@
+[Unit]
+Description=QuantOS Vault Daily Watch -- Telegram alert only, gated by agent/config.yaml vault.watch_enabled/watches
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+# TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID live here, not in the shell environment
+# -- cloud/api/notifier.py reads them from os.getenv() at import time, so
+# they must already be set before the script's first import runs. Same file
+# quantos-cloud-api.service already loads them from; this is a second,
+# independent reader of the same secrets, not a duplicate copy of them.
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_vault_daily_watch.py
+Environment=HOME=/home/ubuntu
+
+# NOT enabled on the VM as of this commit -- see docs/VAULT_DAILY_WATCH.md.
+# This unit exists so it can be copied by scripts/deploy-vm.ps1 (which never
+# auto-enables a new unit) and reviewed ahead of time; `systemctl enable
+# --now` is a separate, deliberate future step, same as every other new
+# timer in this project's history.
+#
+# The script itself is doubly safe even if fired by mistake: it reads
+# agent/config.yaml's vault.watch_enabled flag FIRST and exits immediately
+# (no broker connection, no Telegram call) if that's false -- default
+# false. Even once enabled, vault.watches defaults to an empty list, so
+# there is nothing to check until a human adds an entry pointing at a
+# brain/ note they wrote themselves. This script has no import of
+# core/execution/ or any order-placing code at all -- a PASS can only ever
+# send a Telegram message, never place an order.
+#
+# No market-hours ExecCondition here (unlike quantos-orb-scalping-live,
+# which fires every minute across a whole session): this is a single
+# well-timed daily fire (see the .timer), same shape and same tolerance as
+# quantos-goodnight-openwindow-probe -- a holiday or stale-token miss just
+# produces an empty/harmless run, self-healing on the next day's fire.
+# Depends on the VM's Fyers token already being freshly refreshed that
+# morning, same as every other morning job here.
