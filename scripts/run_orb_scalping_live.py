@@ -24,10 +24,13 @@ Per fire, for each underlying (NIFTY, BankNifty):
   1. Fetch today's closed 5m candles -> core/orb_scalping/live_state.py's
      compute_live_state() -- the same opening-range/breakout/arm/trail
      rules the backtest and the stop-out probe already use.
-  2. No tracked position + state says "in_position": resolve ATM strike
-     -> expiry -> tradeable symbol -> order_service.enter_position()
-     (places a MARKET entry + a real resting SL_M at the fixed 25%-of-
-     premium stop) -> persist an OrbOpenPosition.
+  2. No tracked position + state says "in_position" + this underlying hasn't
+     already had its one trade today (core/orb_scalping/live_positions.py's
+     ORB_TRADED_TODAY_PATH, checked independently of compute_live_state()'s own
+     candle-lagged status -- see has_traded_today()'s docstring for why): resolve
+     ATM strike -> expiry -> tradeable symbol -> order_service.enter_position()
+     (places a MARKET entry + a real resting SL_M at the fixed 25%-of-premium
+     stop) -> persist an OrbOpenPosition and mark the underlying traded for today.
   3. Tracked position: order_service.reconcile_position() first -- this
      is how a fill of the real resting 25%-premium stop is noticed (the
      broker closes it on its own; this script just needs to notice and
@@ -39,7 +42,10 @@ Per fire, for each underlying (NIFTY, BankNifty):
      order_service.flatten_position() when either fires.
   4. Any close (broker-side premium-stop fill, index-stop force-exit, or
      session-flatten) records a ClosedTrade via the existing
-     TradeHistoryService and removes the OrbOpenPosition.
+     TradeHistoryService and removes the OrbOpenPosition -- but NOT the
+     traded-today mark, which persists for the rest of the day (candidate 18
+     is "one trade per day, first breakout only", core/orb_scalping/signal.py's
+     simulate_day() docstring).
 
 Usage:
     python scripts/run_orb_scalping_live.py
@@ -78,7 +84,10 @@ from core.orb_scalping.live_positions import (  # noqa: E402
     OrbOpenPosition,
     add_position,
     get_position,
+    has_traded_today,
     load_open_positions,
+    load_traded_today,
+    mark_traded_today,
     remove_position,
     update_stops,
 )
@@ -114,7 +123,8 @@ def _exit_reason(*, past_flatten: bool, index_stop_hit: bool, candle_confirmed_s
 
 def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
                          strike_interval: float, lots_per_trade: int, dry_run: bool,
-                         positions: dict, trade_date_iso: str, now_utc: datetime) -> None:
+                         positions: dict, trade_date_iso: str, now_utc: datetime,
+                         traded_today: set) -> None:
     trade_date = now_utc.date()
     strike = atm_strike(state.entry_price, strike_interval)
     expiries = sm.list_expiries(underlying)
@@ -161,6 +171,7 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
         stop_order_id=entry_result.stop_order_id or "", trade_date=trade_date_iso,
     )
     add_position(positions, position)
+    mark_traded_today(traded_today, underlying, trade_date_iso)
     print(f"  {underlying}: ENTERED {state.direction} strike={strike} expiry={expiry} "
           f"premium={entry_premium} qty={quantity} dry_run={dry_run}")
 
@@ -269,7 +280,8 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
 
 def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days: int,
                         strike_interval: float, lots_per_trade: int, dry_run: bool,
-                        positions: dict, trade_history: TradeHistoryService) -> None:
+                        positions: dict, trade_history: TradeHistoryService,
+                        traded_today: set) -> None:
     now_utc = datetime.now(timezone.utc)
     trade_date = now_utc.date()
     trade_date_iso = trade_date.isoformat()
@@ -287,19 +299,22 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
     existing = get_position(positions, underlying, trade_date_iso)
 
     if existing is None:
-        # Found 2026-09-10 in the first supervised dry_run cycle: compute_live_state()
-        # only flips to "flattened" once a CLOSED 5m candle timestamped past
-        # SESSION_FLATTEN_UTC exists -- up to ~5 minutes behind the wall clock. In that
-        # gap, a position force-exited this same fire cycle (or a prior one) by
-        # _manage_existing_position's wall-clock past_flatten check still reads
-        # state.status=="in_position" here and looks like a fresh entry, causing a
-        # flatten/re-enter/flatten oscillation. This wall-clock check closes that gap by
-        # refusing any new entry once the flatten window has begun, regardless of what
-        # the candle-lagged state says.
-        if state.status != "in_position" or now_utc.time() >= SESSION_FLATTEN_UTC:
+        # core/orb_scalping/signal.py::simulate_day() is explicit: "one trade per day,
+        # first breakout only". This check enforces the same rule live, from a source
+        # of truth (ORB_TRADED_TODAY_PATH, set at entry) that a live-side force-exit
+        # can't invalidate -- unlike compute_live_state()'s own candle-close-only
+        # replay, which lags any live-LTP-speed exit (index-stop or session-flatten)
+        # by up to one candle and, without this check, briefly still reports
+        # "in_position" right after such an exit, letting the same breakout be
+        # re-entered as if it were new. Caught live 2026-09-10 (session-flatten path)
+        # and again 2026-09-11 (index-stop path) -- this replaces the narrower
+        # session-flatten-only wall-clock guard the first fix added, since that was a
+        # special case of this same rule.
+        if state.status != "in_position" or has_traded_today(traded_today, underlying, trade_date_iso):
             return
         _enter_new_position(broker, underlying, state, dte_floor_days, strike_interval,
-                             lots_per_trade, dry_run, positions, trade_date_iso, now_utc)
+                             lots_per_trade, dry_run, positions, trade_date_iso, now_utc,
+                             traded_today)
         return
 
     _manage_existing_position(broker, underlying, spot_symbol, state, existing, dry_run,
@@ -327,11 +342,13 @@ def main() -> int:
 
     trade_history = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
     positions = load_open_positions()
+    traded_today = load_traded_today()
 
     for underlying, spot_symbol, strike_interval in UNDERLYINGS:
         try:
             process_underlying(broker, underlying, spot_symbol, dte_floor_days[underlying],
-                                strike_interval, lots_per_trade, dry_run, positions, trade_history)
+                                strike_interval, lots_per_trade, dry_run, positions, trade_history,
+                                traded_today)
         except Exception as e:
             print(f"  {underlying}: fire failed ({e}) -- self-healing, will retry next fire.")
     return 0

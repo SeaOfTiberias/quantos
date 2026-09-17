@@ -131,6 +131,8 @@ class _FakeBroker:
 def _patch_common(monkeypatch, tmp_path):
     monkeypatch.setattr("core.orb_scalping.live_positions.ORB_OPEN_POSITIONS_PATH",
                          tmp_path / "orb_open_positions.json")
+    monkeypatch.setattr("core.orb_scalping.live_positions.ORB_TRADED_TODAY_PATH",
+                         tmp_path / "orb_traded_today.json")
     monkeypatch.setattr(mod.sm, "list_expiries", lambda underlying: [date(2026, 9, 29)])
     monkeypatch.setattr(mod.sm, "get_expiry_epoch", lambda *a, **k: "123")
     monkeypatch.setattr(
@@ -155,7 +157,7 @@ def test_enters_new_position_dry_run_places_no_orders(monkeypatch, tmp_path):
     trade_history = TradeHistoryService()
     positions = {}
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
-                            lots_per_trade=1, dry_run=True, positions=positions, trade_history=trade_history)
+                            lots_per_trade=1, dry_run=True, positions=positions, trade_history=trade_history, traded_today=set())
 
     assert broker.placed_orders == []
     pos = get_position(positions, "NIFTY", now_at_entry.date().isoformat())
@@ -177,7 +179,7 @@ def test_enters_new_position_live_places_entry_and_stop_orders(monkeypatch, tmp_
     trade_history = TradeHistoryService()
     positions = {}
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
-                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history)
+                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history, traded_today=set())
 
     assert len(broker.placed_orders) == 2
     pos = get_position(positions, "NIFTY", now_at_entry.date().isoformat())
@@ -197,33 +199,60 @@ def test_no_entry_before_breakout_confirmed(monkeypatch, tmp_path):
     positions = {}
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
                             lots_per_trade=1, dry_run=True, positions=positions,
-                            trade_history=TradeHistoryService())
+                            trade_history=TradeHistoryService(), traded_today=set())
     assert positions == {}
     assert broker.placed_orders == []
 
 
-def test_no_entry_once_past_wallclock_flatten_even_if_candle_state_lags(monkeypatch, tmp_path):
-    """Regression for the 2026-09-10 supervised dry_run cycle: compute_live_state()
-    only flips to status="flattened" once a CLOSED candle timestamped past
-    SESSION_FLATTEN_UTC exists -- up to ~5 minutes behind the wall clock. In that gap,
-    a position force-exited this fire (or a prior one) leaves `existing=None` while
-    state.status still reads "in_position", which used to look like a fresh breakout
-    and caused a flatten/re-enter/flatten oscillation live. No new entry must fire
-    once the wall clock itself is past the flatten window, regardless of candle lag."""
+def test_no_reentry_once_already_traded_today_even_if_candle_state_lags(monkeypatch, tmp_path):
+    """Regression for two bugs caught live via the supervised dry_run cycle:
+    compute_live_state() only reflects a force-exit once a CLOSED candle confirms it --
+    up to ~5 minutes behind whichever live-speed check actually triggered the exit
+    (the wall-clock SESSION_FLATTEN_UTC check, caught 2026-09-10; the live-LTP
+    index-stop check, caught 2026-09-11, even faster since it's checked every fire
+    with no candle-close wait at all). In the gap right after either kind of
+    force-exit, `existing=None` (the position was just removed) while state.status
+    still reads "in_position", which used to look like a fresh breakout and caused a
+    flatten/re-enter/flatten oscillation live -- twice, through two different doors.
+    has_traded_today() closes both at once: no new entry once this underlying has
+    already had its one trade today, regardless of why compute_live_state() still
+    thinks a position is open."""
     _patch_common(monkeypatch, tmp_path)
-    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)  # 09:15 IST, well before flatten
-    candles = _entry_candles(start)  # none of these candles individually crosses flatten_time
-    now_utc = datetime(2026, 9, 3, 9, 51, tzinfo=timezone.utc)  # 15:21 IST -- past SESSION_FLATTEN_UTC
-    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_utc))
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)  # state.status will read "in_position"
+    now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions = {}  # the earlier position was already force-exited and removed
+    traded_today = {"NIFTY:2026-09-03"}  # ...but it did happen, so this is marked
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=traded_today)
+
+    assert positions == {}
+    assert broker.placed_orders == []
+
+
+def test_reentry_allowed_same_day_once_traded_today_is_unmarked(monkeypatch, tmp_path):
+    """Sanity check for the fix above: an empty traded_today must not accidentally
+    block ordinary first entries -- only an underlying/date already marked traded
+    blocks re-entry."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
 
     broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
     positions = {}
+    traded_today = set()
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
                             lots_per_trade=1, dry_run=True, positions=positions,
-                            trade_history=TradeHistoryService())
+                            trade_history=TradeHistoryService(), traded_today=traded_today)
 
-    assert positions == {}
-    assert broker.placed_orders == []
+    assert get_position(positions, "NIFTY", "2026-09-03") is not None
+    assert "NIFTY:2026-09-03" in traded_today
 
 
 # ─── Managing an existing position ──────────────────────────────────────
@@ -254,7 +283,7 @@ def test_dry_run_index_stop_exit_removes_position_without_recording_trade(monkey
     trade_history = TradeHistoryService()
 
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
-                            lots_per_trade=1, dry_run=True, positions=positions, trade_history=trade_history)
+                            lots_per_trade=1, dry_run=True, positions=positions, trade_history=trade_history, traded_today=set())
 
     assert get_position(positions, "NIFTY", "2026-09-03") is None
     assert trade_history.get_trade_history() == []
@@ -280,7 +309,7 @@ def test_live_index_stop_exit_flattens_and_records_trade(monkeypatch, tmp_path):
     trade_history = TradeHistoryService()
 
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
-                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history)
+                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history, traded_today=set())
 
     assert get_position(positions, "NIFTY", "2026-09-03") is None
     assert broker.cancelled_order_ids == ["SL-1"]
@@ -314,7 +343,7 @@ def test_live_reconcile_finds_premium_stop_fill_records_trade_as_premium_stop(mo
     trade_history = TradeHistoryService()
 
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
-                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history)
+                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history, traded_today=set())
 
     assert get_position(positions, "NIFTY", "2026-09-03") is None
     history = trade_history.get_trade_history()
@@ -343,7 +372,7 @@ def test_still_open_refreshes_persisted_trailing_stop(monkeypatch, tmp_path):
     trade_history = TradeHistoryService()
 
     mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
-                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history)
+                            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history, traded_today=set())
 
     pos = get_position(positions, "NIFTY", "2026-09-03")
     assert pos is not None  # still open, not force-exited

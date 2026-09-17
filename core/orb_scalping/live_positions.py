@@ -32,6 +32,20 @@ from typing import Optional
 
 ORB_OPEN_POSITIONS_PATH = Path.home() / ".quantos" / "orb_open_positions.json"
 
+# Separate from ORB_OPEN_POSITIONS_PATH deliberately: that store's dedup key
+# (underlying:trade_date) stops protecting against re-entry the moment a
+# position is removed on exit, which is exactly what let a live-side force-exit
+# (index-stop or session-flatten, both faster than compute_live_state()'s
+# close-only candle replay) get immediately re-entered as a "fresh" breakout --
+# caught live 2026-09-10 (session-flatten) and again 2026-09-11 (index stop).
+# core/orb_scalping/signal.py::simulate_day() is explicit: "one trade per day,
+# first breakout only" -- a rule with no natural home in a store whose whole
+# purpose is tracking what's currently OPEN. This tiny sibling instead persists
+# "underlying already had its one trade today", set at entry and never cleared
+# intraday, so the entry check has a source of truth independent of whatever
+# compute_live_state()'s own (slower) replay currently reports.
+ORB_TRADED_TODAY_PATH = Path.home() / ".quantos" / "orb_traded_today.json"
+
 
 @dataclass
 class OrbOpenPosition:
@@ -104,3 +118,22 @@ def update_stops(positions: dict[str, OrbOpenPosition], underlying: str, trade_d
 def remove_position(positions: dict[str, OrbOpenPosition], underlying: str, trade_date: str) -> None:
     positions.pop(_key(underlying, trade_date), None)
     _save(positions)
+
+
+def load_traded_today() -> set[str]:
+    if not ORB_TRADED_TODAY_PATH.exists():
+        return set()
+    try:
+        return set(json.loads(ORB_TRADED_TODAY_PATH.read_text()))
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+
+def has_traded_today(traded: set[str], underlying: str, trade_date: str) -> bool:
+    return _key(underlying, trade_date) in traded
+
+
+def mark_traded_today(traded: set[str], underlying: str, trade_date: str) -> None:
+    traded.add(_key(underlying, trade_date))
+    ORB_TRADED_TODAY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ORB_TRADED_TODAY_PATH.write_text(json.dumps(sorted(traded)))

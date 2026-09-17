@@ -13,7 +13,10 @@ from core.orb_scalping.live_positions import (  # noqa: E402
     OrbOpenPosition,
     add_position,
     get_position,
+    has_traded_today,
     load_open_positions,
+    load_traded_today,
+    mark_traded_today,
     remove_position,
     update_stops,
 )
@@ -119,3 +122,51 @@ def test_load_returns_empty_dict_on_corrupt_json(tmp_path, monkeypatch):
     path.write_text("{not valid json")
     monkeypatch.setattr(mod, "ORB_OPEN_POSITIONS_PATH", path)
     assert load_open_positions() == {}
+
+
+# ─── "already traded today" (one trade per day, first breakout only) ───────
+
+def test_mark_and_has_traded_today_round_trip(tmp_path, monkeypatch):
+    import core.orb_scalping.live_positions as mod
+    monkeypatch.setattr(mod, "ORB_TRADED_TODAY_PATH", tmp_path / "orb_traded_today.json")
+
+    traded = set()
+    assert has_traded_today(traded, "NIFTY", "2026-09-11") is False
+    mark_traded_today(traded, "NIFTY", "2026-09-11")
+    assert has_traded_today(traded, "NIFTY", "2026-09-11") is True
+
+
+def test_traded_today_underlyings_and_dates_are_independent(tmp_path, monkeypatch):
+    import core.orb_scalping.live_positions as mod
+    monkeypatch.setattr(mod, "ORB_TRADED_TODAY_PATH", tmp_path / "orb_traded_today.json")
+
+    traded = set()
+    mark_traded_today(traded, "NIFTY", "2026-09-11")
+    assert has_traded_today(traded, "BANKNIFTY", "2026-09-11") is False
+    assert has_traded_today(traded, "NIFTY", "2026-09-12") is False
+
+
+def test_traded_today_persists_to_disk_and_reloads(tmp_path, monkeypatch):
+    import core.orb_scalping.live_positions as mod
+    path = tmp_path / "orb_traded_today.json"
+    monkeypatch.setattr(mod, "ORB_TRADED_TODAY_PATH", path)
+
+    mark_traded_today(set(), "NIFTY", "2026-09-11")
+    assert path.exists()
+
+    reloaded = load_traded_today()
+    assert has_traded_today(reloaded, "NIFTY", "2026-09-11") is True
+
+
+def test_load_traded_today_returns_empty_set_when_file_missing(tmp_path, monkeypatch):
+    import core.orb_scalping.live_positions as mod
+    monkeypatch.setattr(mod, "ORB_TRADED_TODAY_PATH", tmp_path / "does_not_exist.json")
+    assert load_traded_today() == set()
+
+
+def test_load_traded_today_returns_empty_set_on_corrupt_json(tmp_path, monkeypatch):
+    import core.orb_scalping.live_positions as mod
+    path = tmp_path / "orb_traded_today.json"
+    path.write_text("{not valid json")
+    monkeypatch.setattr(mod, "ORB_TRADED_TODAY_PATH", path)
+    assert load_traded_today() == set()
