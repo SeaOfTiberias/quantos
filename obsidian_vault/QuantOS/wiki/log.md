@@ -1,0 +1,66 @@
+---
+tags:
+  - meta/log
+quantos:
+  layer: wiki
+  generated: true
+---
+
+# Compile log
+
+Append-only. `compile` reads this to skip sources it has already seen.
+
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-10-10-breakout-on-banknifty-options-methodology-pre-committe]] -> [[breakout-1010-banknifty-candidate-15]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-10-10-breakout-on-banknifty-options-backtest-results-candida]] -> [[breakout-1010-banknifty-candidate-15]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-candidate-15-10-10-breakout-option-intraday-data-feasibility]] -> [[breakout-1010-banknifty-candidate-15]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-candle-confirm-momentum-gut-check-methodology-candidate-19]] -> [[candle-confirm-momentum-gutcheck-candidate-19]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-candle-confirm-momentum-gut-check-results-candidate-19]] -> [[candle-confirm-momentum-gutcheck-candidate-19]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-dow-theory-market-structure-trend-following-backtest-results]] -> [[dow-theory-trend-candidate-14]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-dow-theory-market-structure-trend-following-nifty-methodolog]] -> [[dow-theory-trend-candidate-14]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-f-o-monthly-expiry-day-effect-gut-check-methodology-pre-comm]] -> [[expiry-day-effect-gutcheck-candidate-13]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-f-o-monthly-expiry-day-effect-gut-check]] -> [[expiry-day-effect-gutcheck-candidate-13]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-good-night-open-price-stock-options-scalper-candidate-20-fea]] -> [[goodnight-scalper-candidate-20]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-good-night-scalper-backtest-results-candidate-20]] -> [[goodnight-scalper-candidate-20]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-good-night-stock-options-scalper-methodology-pre-committed-2]] -> [[goodnight-scalper-candidate-20]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-iv-minus-rv-vol-spread-methodology-pre-committed-2026-07-24]] -> [[iv-minus-rv-vol-spread]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-known-event-proximity-vs-forward-realized-vol-methodology-pr]] -> [[event-proximity-vol]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-mean-reversion-nifty-alpha-50-gut-check]] -> [[mean-reversion-alpha50-gutcheck-s2]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-ml-multi-factor-stock-ranking-backtest-results-candidate-16]] -> [[ml-factor-combination-candidate-16]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-ml-multi-factor-stock-ranking-methodology-pre-committed-2026]] -> [[ml-factor-combination-candidate-16]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-momentum-turnover-ablation-follow-up-diagnostics-pre-committ]] -> [[momentum-turnover-candidate-11]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-momentum-turnover-ablation-follow-up-diagnostics]] -> [[momentum-turnover-candidate-11]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-momentum-turnover-ablation-methodology-pre-committed-2026-07]] -> [[momentum-turnover-candidate-11]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-momentum-turnover-ablation-results]] -> [[momentum-turnover-candidate-11]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-momentum-turnover-walk-forward-methodology-pre-committed-202]] -> [[momentum-turnover-candidate-11]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-nifty-banknifty-atm-iv-term-structure-methodology-pre-commit]] -> [[atm-iv-term-structure]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-nifty-option-skew-banknifty-addendum-pre-committed-2026-07-2]] -> [[nifty-banknifty-option-skew]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-nifty-option-skew-methodology-pre-committed-2026-07-25-befor]] -> [[nifty-banknifty-option-skew]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-opening-range-breakout-options-scalping-methodology-pre-comm]] -> [[orb-options-scalping-candidate-18]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-options-vrp-variance-risk-premium-backtest-methodology-pre-c]] -> [[vrp-short-strangle]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-orb-condition-mining-results]] -> [[orb-options-scalping-candidate-18]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-orb-options-scalping-backtest-results-candidate-18]] -> [[orb-options-scalping-candidate-18]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-orb-options-scalping-condition-mining-methodology-pre-commit]] -> [[orb-options-scalping-candidate-18]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-orb-options-scalping-event-triggered-stop-out-spread-probe-s]] -> [[orb-options-scalping-candidate-18]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-pairs-trading-backtest-results-candidate-12]] -> [[pairs-trading-candidate-12]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-pairs-trading-v2-backtest-results-candidate-17]] -> [[pairs-trading-v2-candidate-17]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-pairs-trading-v2-roll-adjustment-corporate-action-fix-pre-co]] -> [[pairs-trading-v2-candidate-17]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-regime-filtered-dual-momentum-methodology-pre-committed-2026]] -> [[regime-filtered-dual-momentum-s1]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s7-3-backtest-results-go-no-go-verdict]] -> [[darvas-sepa-s7-3]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s8-3-52-week-high-rs-momentum-backtest]] -> [[rs-momentum-rotation-s8-3]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s8-3-momentum-backtest-methodology-pre-committed-2026-07-19]] -> [[rs-momentum-rotation-s8-3]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s8-3-rotation-real-capital-tracked-equity-curve]] -> [[rs-momentum-rotation-s8-3]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s8-4-nifty-ema9-21-options-strategy-backtest]] -> [[nifty-ema-options-s8-4]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-sector-cointegrated-stock-futures-pairs-trading-methodology]] -> [[pairs-trading-candidate-12]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-strategy-1-regime-filtered-dual-momentum-backtest]] -> [[regime-filtered-dual-momentum-s1]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-vrp-iv-conditional-gut-check-results-exploratory-not-pre-reg]] -> [[vrp-short-strangle]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-vrp-short-strangle-backtest-gross-vs-net-result]] -> [[vrp-short-strangle]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-nifty-known-event-proximity-validation]] -> [[event-proximity-vol]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-banknifty-known-event-proximity-validation]] -> [[event-proximity-vol]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s8-1-regime-classifier-validation]] -> [[regime-classifier-s8-1]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s7-3-backtest-sample-pre-committed-2026-07-16-before-any-res]] -> [[darvas-sepa-s7-3]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-s8-2-fyers-automation-trade-history-retrospective]] -> [[nifty-ema-options-s8-4]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-nifty-option-skew-validation]] -> [[nifty-banknifty-option-skew]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-banknifty-option-skew-validation]] -> [[nifty-banknifty-option-skew]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-iv-minus-rv-vol-spread-validation]] -> [[iv-minus-rv-vol-spread]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-nifty-atm-iv-term-structure-validation]] -> [[atm-iv-term-structure]]
+- 2026-09-17T00:00:00+00:00 — compiled [[2026-09-17-banknifty-atm-iv-term-structure-validation]] -> [[atm-iv-term-structure]]
