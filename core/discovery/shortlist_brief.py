@@ -53,6 +53,7 @@ _BREAKOUT_LADDER = {
 # can never be buried under "a name lost one Weinstein rule".
 FLAG_ORDER = (
     "NEW_BREAKOUT",
+    "NEW_STAGE2",
     "NEW_LEADER",
     "TURNED_NEAR",
     "NEW_BULL_CROSS",
@@ -183,6 +184,22 @@ def compute_flags(today: list[dict], prev: list[dict]) -> list[dict]:
                     f"moved up to NEAR from {was_state}",
                     breakout_state=now_state, prev_breakout_state=was_state,
                     box_width_pct=entry.get("box_width_pct")))
+
+        # ── stage transition (Weinstein Stage 2 entry) ────────────────────
+        # Independently-sourced breakout event, same "fresh today" shape as
+        # NEW_BREAKOUT above but from core/vault/stages.py's classifier
+        # rather than Darvas — a name can trigger either, both, or neither.
+        # Only the day-over-day CHANGE counts: a name sitting in Stage 2 for
+        # months is not a breakout, it's a state, and the shortlist already
+        # shows that via the `stage` column on every ranked row.
+        now_stage, was_stage = entry.get("stage"), before.get("stage")
+        if now_stage == 2 and was_stage != 2:
+            prev_label = f"Stage {was_stage}" if was_stage else "unclassified"
+            flags.append(_flag(
+                "NEW_STAGE2", symbol,
+                f"entered Stage 2 (was {prev_label})",
+                stage=now_stage, prev_stage=was_stage,
+                stage_phase=entry.get("stage_phase")))
 
         # ── bucket promotion / demotion ──────────────────────────────────
         was_bucket = before.get("bucket")

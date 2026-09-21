@@ -573,6 +573,7 @@ const bucketMeta = {
 
 const FLAG_META = {
   NEW_BREAKOUT:   { label: "Broke out",    color: C.green,  weight: 700 },
+  NEW_STAGE2:     { label: "Stage 2",      color: C.accent, weight: 700 },
   NEW_LEADER:     { label: "New leader",   color: C.green,  weight: 700 },
   TURNED_NEAR:    { label: "Turned NEAR",  color: C.accent, weight: 600 },
   NEW_BULL_CROSS: { label: "50/200 BULL",  color: C.accent, weight: 600 },
@@ -671,6 +672,79 @@ function BriefFlags({ flags }) {
         );
       })}
     </div>
+  );
+}
+
+// ─── Breakout Candidates ─────────────────────────────────────────────────
+// Both breakout families (Darvas box, Weinstein Stage 2) in one place, so a
+// fresh setup doesn't require opening the Morning Brief tab and scanning
+// past every other flag kind (VAULT_IMPROVED, LOST_LEADER, ...) to find it.
+// Pinned to Nifty 500 — the broadest scanned universe — independent of the
+// Morning Brief tab's own universe selector, so this always shows everything
+// regardless of which tab is open elsewhere. Same daily scan, same flags
+// (core/discovery/shortlist_brief.py), just filtered and surfaced on their
+// own. Discretionary aid only: no alert, no order — open the chart and
+// decide, same as every other shortlist panel.
+const CANDIDATE_FLAG_KINDS = new Set(["NEW_BREAKOUT", "NEW_STAGE2"]);
+
+function BreakoutCandidatesPanel() {
+  const { brief, loading, error } = useShortlistBrief("nifty500");
+  const candidates = (brief?.flags ?? []).filter(f => CANDIDATE_FLAG_KINDS.has(f.kind));
+
+  return (
+    <Card>
+      <Label color={C.accent}>Breakout Candidates</Label>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+        Darvas box breakouts + fresh Weinstein Stage 2 entries, Nifty 500, today
+        vs. the previous session — discretionary review, open the chart yourself
+        before acting.
+      </div>
+      {loading && (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>Loading…</div>
+      )}
+      {error && !loading && (
+        <div style={{ fontSize: 12, color: C.red, marginTop: 10 }}>
+          Could not reach cloud API.
+        </div>
+      )}
+      {!loading && !error && brief && !brief.available && (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
+          {brief.reason}
+        </div>
+      )}
+      {!loading && !error && brief?.available && candidates.length === 0 && (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
+          No new Darvas or Stage 2 breakouts since the previous session.
+        </div>
+      )}
+      {!loading && !error && candidates.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+          {candidates.map((f, i) => {
+            const meta = FLAG_META[f.kind] ?? { label: f.kind, color: C.mid };
+            return (
+              <div key={f.symbol + f.kind + i} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 10px", background: C.bg, borderRadius: 6,
+                border: `1px solid ${C.border}`,
+              }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 0.8,
+                  textTransform: "uppercase", color: meta.color,
+                  minWidth: 72, flexShrink: 0,
+                }}>
+                  {meta.label}
+                </span>
+                <a href={tradingViewUrl(f.symbol)} target="_blank" rel="noreferrer"
+                   style={{ color: C.white, fontWeight: 700, textDecoration: "none" }}>
+                  {f.symbol}
+                </a>
+                <span style={{ fontSize: 11, color: C.muted }}>{f.detail}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -1571,6 +1645,14 @@ export default function QuantOSCockpit() {
           </PanelBoundary>
           <PanelBoundary name="Morning Shortlist">
             <ScreenerPanel candidates={screener} />
+          </PanelBoundary>
+        </div>
+
+        {/* Row 2.5: Breakout Candidates — Darvas + Weinstein Stage 2, both
+            breakout families in one place (see the component's own comment). */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
+          <PanelBoundary name="Breakout Candidates">
+            <BreakoutCandidatesPanel />
           </PanelBoundary>
         </div>
 

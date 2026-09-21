@@ -16,7 +16,7 @@ from core.discovery.shortlist_brief import (  # noqa: E402
 
 def entry(symbol, *, bucket="LEADER_TIGHT_BASE", momentum=90.0, rank=1,
           breakout="IN BOX", cross="BULL", cross_days=None, width=10.0,
-          minervini=3, weinstein=2, trend_up=True):
+          minervini=3, weinstein=2, trend_up=True, stage=None, stage_phase=None):
     notes = []
     if minervini is not None:
         notes.append({"label": "Minervini", "rules_passed": minervini, "rules_total": 6})
@@ -26,7 +26,7 @@ def entry(symbol, *, bucket="LEADER_TIGHT_BASE", momentum=90.0, rank=1,
         "symbol": symbol, "bucket": bucket, "momentum_pct": momentum,
         "momentum_rank": rank, "breakout_state": breakout, "trend_up": trend_up,
         "ma_cross": cross, "ma_cross_days": cross_days, "box_width_pct": width,
-        "rr_ratio": 4.0, "vault_notes": notes,
+        "rr_ratio": 4.0, "vault_notes": notes, "stage": stage, "stage_phase": stage_phase,
     }
 
 
@@ -81,6 +81,38 @@ def test_out_drifting_is_not_a_new_breakout():
     """Still above the ceiling from days ago is not today's event."""
     flags = compute_flags([entry("A", breakout="OUT")], [entry("A", breakout="OUT")])
     assert not any(f["kind"] == "NEW_BREAKOUT" for f in flags)
+
+
+# ── stage transition (Weinstein Stage 2) ────────────────────────────────────
+
+def test_entering_stage_2_is_flagged():
+    flags = compute_flags([entry("A", stage=2)], [entry("A", stage=1)])
+    assert ("NEW_STAGE2", "A") in kinds(flags)
+
+
+def test_entering_stage_2_from_unclassified_is_flagged():
+    flags = compute_flags([entry("A", stage=2)], [entry("A", stage=None)])
+    assert ("NEW_STAGE2", "A") in kinds(flags)
+
+
+def test_sitting_in_stage_2_for_a_second_day_is_not_a_new_flag():
+    """A name that has been in Stage 2 for months is a state, not an event —
+    the ranked table's own `stage` column already shows that."""
+    flags = compute_flags([entry("A", stage=2)], [entry("A", stage=2)])
+    assert not any(f["kind"] == "NEW_STAGE2" for f in flags)
+
+
+def test_leaving_stage_2_is_not_flagged_as_an_entry():
+    flags = compute_flags([entry("A", stage=3)], [entry("A", stage=2)])
+    assert not any(f["kind"] == "NEW_STAGE2" for f in flags)
+
+
+def test_stage2_and_darvas_breakout_can_both_fire_for_the_same_name():
+    """Independently-sourced flags — a name can trigger either, both, or
+    neither in the same session."""
+    flags = compute_flags([entry("A", breakout="FRESH", stage=2)],
+                          [entry("A", breakout="NEAR", stage=1)])
+    assert {"NEW_BREAKOUT", "NEW_STAGE2"} <= {f["kind"] for f in flags if f["symbol"] == "A"}
 
 
 # ── buckets ────────────────────────────────────────────────────────────────
