@@ -16,6 +16,7 @@ from core.brokers.base import OHLCV  # noqa: E402
 from core.orb_scalping.signal import (  # noqa: E402
     OPENING_RANGE_CANDLES,
     simulate_day,
+    trail_arm_level,
 )
 
 SESSION_START = datetime(2024, 1, 2, 3, 45, tzinfo=timezone.utc)  # 09:15 IST
@@ -243,6 +244,42 @@ def test_armed_trade_reports_armed_true():
     trade = simulate_day(candles)
     assert trade.armed is True
     assert trade.max_favorable_points == 22.0
+
+
+# ─── arm_multiplier (docs/ORB_ARM_THRESHOLD_METHODOLOGY.md) ─────────────
+# Default 1.0 must reproduce every test above byte-for-byte (they all omit
+# the parameter); these test the non-default path only.
+
+def test_default_multiplier_matches_the_original_1x_arm_level():
+    assert trail_arm_level("CALL", 100.0, 20.0) == 120.0
+    assert trail_arm_level("CALL", 100.0, 20.0, multiplier=1.0) == 120.0
+
+
+def test_multiplier_scales_the_arm_level():
+    assert trail_arm_level("CALL", 100.0, 20.0, multiplier=0.5) == 110.0
+    assert trail_arm_level("PUT", 100.0, 20.0, multiplier=0.5) == 90.0
+
+
+def test_lower_multiplier_arms_on_a_move_the_default_would_not():
+    """The exact scenario test_never_armed_trade_reports_armed_false_and_its_
+    real_mfe uses (a 12pt rally against a 20pt range, never arms at 1.0x) --
+    at 0.5x the same rally (arm level 100 + 10 = 110) DOES arm."""
+    candles = flat_bars(80, price=24000.0)
+    candles = with_opening_range(candles, range_high=24010.0, range_low=23990.0)  # 20pt range
+    breakout_i = OPENING_RANGE_CANDLES + 2
+    candles[breakout_i] = bar(breakout_i, 24000, 24025, 23995, 24020)  # CALL
+    entry_i = breakout_i + 1
+    entry_price = candles[entry_i].open
+    peak_i = entry_i + 1
+    candles[peak_i] = bar(peak_i, entry_price, entry_price + 12, entry_price - 1, entry_price + 10)
+    for i in range(peak_i + 1, len(candles)):
+        candles[i] = bar(i, entry_price, entry_price + 1, entry_price - 1, entry_price)
+
+    default_trade = simulate_day(candles)
+    assert default_trade.armed is False
+
+    lower_threshold_trade = simulate_day(candles, arm_multiplier=0.5)
+    assert lower_threshold_trade.armed is True
 
 
 def test_stop_out_before_arming_still_reports_its_mfe():

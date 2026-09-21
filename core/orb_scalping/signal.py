@@ -53,7 +53,8 @@ class IndexTrade:
 
 
 def simulate_day(day_candles: list[OHLCV],
-                  flatten_time: time = SESSION_FLATTEN_UTC) -> Optional[IndexTrade]:
+                  flatten_time: time = SESSION_FLATTEN_UTC,
+                  arm_multiplier: float = 1.0) -> Optional[IndexTrade]:
     """Simulate one trading day's ORB per
     docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md. No cross-day state — caller
     passes exactly one day's 5-minute candles, already sorted ascending by
@@ -61,7 +62,15 @@ def simulate_day(day_candles: list[OHLCV],
     + 1 candles (a shortened session — skipped, not approximated) or if no
     breakout occurs by session flatten. One trade per day, first breakout
     only, execution at the next candle's open after the signal candle's
-    close (no same-bar execution)."""
+    close (no same-bar execution).
+
+    `arm_multiplier` (default 1.0, the locked-final methodology's own value
+    — every existing caller is byte-for-byte unchanged unless it passes a
+    different value) scales how many range-widths of favorable move are
+    needed to arm the trailing stop. See
+    docs/ORB_ARM_THRESHOLD_METHODOLOGY.md — the only sanctioned use of a
+    non-default value is that pre-registered grid backtest; nothing live
+    passes anything but the default."""
     n = len(day_candles)
     if n <= OPENING_RANGE_CANDLES:
         return None
@@ -86,6 +95,7 @@ def simulate_day(day_candles: list[OHLCV],
                 day_candles, entry_index=t, entry_price=entry_price,
                 direction=direction, initial_stop=initial_stop,
                 range_width=range_width, flatten_time=flatten_time,
+                arm_multiplier=arm_multiplier,
             )
 
         # 2) Look for the day's first breakout, on candle close.
@@ -98,26 +108,31 @@ def simulate_day(day_candles: list[OHLCV],
     return None
 
 
-def trail_arm_level(direction: str, entry_price: float, range_width: float) -> float:
+def trail_arm_level(direction: str, entry_price: float, range_width: float,
+                    multiplier: float = 1.0) -> float:
     """Public (not module-private): core.orb_scalping.live_state reuses this
     exact arithmetic for the live-monitor's arm check, single source of
-    truth for the formula shared by both the backtest and the live probe."""
-    return entry_price + range_width if direction == "CALL" else entry_price - range_width
+    truth for the formula shared by both the backtest and the live probe.
+    `multiplier` — see simulate_day's docstring; default reproduces the
+    original 1-range-width rule exactly."""
+    move = range_width * multiplier
+    return entry_price + move if direction == "CALL" else entry_price - move
 
 
 def _manage_position(
     day_candles: list[OHLCV], entry_index: int, entry_price: float,
     direction: str, initial_stop: float, range_width: float, flatten_time: time,
+    arm_multiplier: float = 1.0,
 ) -> IndexTrade:
     """Walk forward from the entry candle: check the current stop, arm
-    trailing once price has moved one range-width in favor (on close), then
-    recompute the trailing stop from the prior TRAIL_LOOKBACK_CANDLES
+    trailing once price has moved `arm_multiplier` range-widths in favor,
+    then recompute the trailing stop from the prior TRAIL_LOOKBACK_CANDLES
     candles (never loosening it), flattening at session close if nothing
     else has triggered."""
     n = len(day_candles)
     stop = initial_stop
     armed = False
-    arm_level = trail_arm_level(direction, entry_price, range_width)
+    arm_level = trail_arm_level(direction, entry_price, range_width, multiplier=arm_multiplier)
     # Diagnostic only -- see IndexTrade.max_favorable_points. mfe is seeded
     # here (not just inside the loop) so the entry_index == n - 1 edge case
     # below (entry executes on the day's last available candle, nothing left

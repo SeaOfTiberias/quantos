@@ -139,6 +139,7 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
 
 def run_index_backtest(
     index_candles: list[OHLCV], vix_candles: list[OHLCV], *, underlying: str,
+    arm_multiplier: float = 1.0,
 ) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade], list[BacktestTrade],
            list[BacktestTrade], list[BacktestTrade]]:
     """Full per-day simulation for ONE index (underlying: "NIFTY" |
@@ -147,7 +148,12 @@ def run_index_backtest(
     real_spread_trades, sampled_spread_trades, stratified_trades) — the
     same day's IndexTrade/PremiumTrade, costed six ways. `stratified` is
     the locked-final variant (see costs.py) and is what any go/no-go
-    decision should read."""
+    decision should read.
+
+    `arm_multiplier` (default 1.0, unchanged behaviour) — see
+    core/orb_scalping/signal.py::simulate_day and
+    docs/ORB_ARM_THRESHOLD_METHODOLOGY.md. Only the pre-registered grid
+    backtest passes a non-default value."""
     if underlying == "NIFTY":
         lot_size, strike_interval = NIFTY_LOT_SIZE, NIFTY_STRIKE_INTERVAL
         resolve_expiry = resolve_nifty_expiry
@@ -177,7 +183,7 @@ def run_index_backtest(
         if not vix_day_candles:
             continue
 
-        index_trade = simulate_day(day_candles)
+        index_trade = simulate_day(day_candles, arm_multiplier=arm_multiplier)
         if index_trade is None:
             continue
 
