@@ -42,6 +42,14 @@ class IndexTrade:
     exit_price:     float   # index level at exit
     initial_stop:   float   # opposite side of the opening range
     exit_reason:    str     # "stop" | "trailing_stop" | "session_flatten"
+    # Diagnostic only (added 2026-09-21) -- neither field feeds a trading
+    # decision anywhere; they exist so a post-hoc analysis can ask "how much
+    # of a trade's best-ever paper profit survived to the exit" without
+    # re-deriving the whole candle walk. armed=False + a session_flatten exit
+    # means the trade never moved a full range-width in its favor, so nothing
+    # ever protected whatever intraday gain it built and gave back.
+    armed:                    bool = False
+    max_favorable_points:     float = 0.0   # best paper move in direction's favor, entry to exit
 
 
 def simulate_day(day_candles: list[OHLCV],
@@ -110,9 +118,19 @@ def _manage_position(
     stop = initial_stop
     armed = False
     arm_level = trail_arm_level(direction, entry_price, range_width)
+    # Diagnostic only -- see IndexTrade.max_favorable_points. mfe is seeded
+    # here (not just inside the loop) so the entry_index == n - 1 edge case
+    # below (entry executes on the day's last available candle, nothing left
+    # to walk) still returns a defined value instead of an unbound name.
+    best_favorable = entry_price
+    mfe = 0.0
 
     for t in range(entry_index + 1, n):
         candle = day_candles[t]
+        best_favorable = (max(best_favorable, candle.high) if direction == "CALL"
+                          else min(best_favorable, candle.low))
+        mfe = (best_favorable - entry_price if direction == "CALL"
+              else entry_price - best_favorable)
 
         hit_stop = candle.low <= stop if direction == "CALL" else candle.high >= stop
         if hit_stop:
@@ -120,6 +138,7 @@ def _manage_position(
                 direction=direction, entry_index=entry_index, entry_price=entry_price,
                 exit_index=t, exit_price=stop, initial_stop=initial_stop,
                 exit_reason="trailing_stop" if armed else "stop",
+                armed=armed, max_favorable_points=mfe,
             )
 
         if not armed:
@@ -140,14 +159,18 @@ def _manage_position(
                 direction=direction, entry_index=entry_index, entry_price=entry_price,
                 exit_index=t, exit_price=candle.close, initial_stop=initial_stop,
                 exit_reason="session_flatten",
+                armed=armed, max_favorable_points=mfe,
             )
 
     # Safety net: data ends before any candle reached flatten_time (a
     # truncated/short data day) — force-close at the last available close
-    # rather than silently dropping an open position.
+    # rather than silently dropping an open position. best_favorable/mfe
+    # already reflect every candle through day_candles[-1] from the loop
+    # above (its last iteration was t == n - 1).
     last = day_candles[-1]
     return IndexTrade(
         direction=direction, entry_index=entry_index, entry_price=entry_price,
         exit_index=n - 1, exit_price=last.close, initial_stop=initial_stop,
         exit_reason="session_flatten",
+        armed=armed, max_favorable_points=mfe,
     )

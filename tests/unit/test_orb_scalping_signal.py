@@ -196,3 +196,66 @@ def test_session_flatten_when_nothing_else_triggers():
     trade = simulate_day(candles)
     assert trade.exit_reason == "session_flatten"
     assert trade.exit_index == flatten_index
+
+
+# ─── Diagnostic-only fields: armed / max_favorable_points ────────────────
+# Neither field feeds a trading decision -- see IndexTrade's own docstring.
+# These exist purely so a post-hoc analysis can measure how much of a
+# trade's best-ever paper profit survived to the exit.
+
+def test_never_armed_trade_reports_armed_false_and_its_real_mfe():
+    """A rally that falls short of a full range-width must not arm, and the
+    diagnostic MFE must reflect the real peak even though nothing protected
+    it -- this is the exact "gave back the gain" shape."""
+    candles = flat_bars(80, price=24000.0)
+    candles = with_opening_range(candles, range_high=24010.0, range_low=23990.0)  # 20pt range
+    breakout_i = OPENING_RANGE_CANDLES + 2
+    candles[breakout_i] = bar(breakout_i, 24000, 24025, 23995, 24020)  # CALL
+    entry_i = breakout_i + 1
+    entry_price = candles[entry_i].open
+
+    # Rallies 12pts (short of the 20pt arm level), then fully round-trips
+    # back to entry by the close -- never touches the initial stop either.
+    peak_i = entry_i + 1
+    candles[peak_i] = bar(peak_i, entry_price, entry_price + 12, entry_price - 1, entry_price + 10)
+    for i in range(peak_i + 1, len(candles)):
+        candles[i] = bar(i, entry_price, entry_price + 1, entry_price - 1, entry_price)
+
+    trade = simulate_day(candles)
+    assert trade.exit_reason == "session_flatten"
+    assert trade.armed is False
+    assert trade.max_favorable_points == 12.0
+
+
+def test_armed_trade_reports_armed_true():
+    candles = flat_bars(80, price=24000.0)
+    candles = with_opening_range(candles, range_high=24010.0, range_low=23990.0)  # 20pt range
+    breakout_i = OPENING_RANGE_CANDLES + 2
+    candles[breakout_i] = bar(breakout_i, 24000, 24025, 23995, 24020)  # CALL
+    entry_i = breakout_i + 1
+    entry_price = candles[entry_i].open
+
+    a = entry_i + 1
+    candles[a] = bar(a, entry_price, entry_price + 22, entry_price + 5, entry_price + 20)  # arms
+    for i in range(a + 1, len(candles)):
+        candles[i] = bar(i, entry_price + 20, entry_price + 21, entry_price + 19, entry_price + 20)
+
+    trade = simulate_day(candles)
+    assert trade.armed is True
+    assert trade.max_favorable_points == 22.0
+
+
+def test_stop_out_before_arming_still_reports_its_mfe():
+    candles = flat_bars(80, price=24000.0)
+    candles = with_opening_range(candles, range_high=24010.0, range_low=23990.0)
+    breakout_i = OPENING_RANGE_CANDLES + 2
+    candles[breakout_i] = bar(breakout_i, 24000, 24025, 23995, 24020)  # CALL
+    entry_i = breakout_i + 1
+    entry_price = candles[entry_i].open
+    # Ticks up 3pts, then crashes through the initial stop.
+    candles[entry_i + 1] = bar(entry_i + 1, entry_price, entry_price + 3, 23985, 23988)
+
+    trade = simulate_day(candles)
+    assert trade.exit_reason == "stop"
+    assert trade.armed is False
+    assert trade.max_favorable_points == 3.0
