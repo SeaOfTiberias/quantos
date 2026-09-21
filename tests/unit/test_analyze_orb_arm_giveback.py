@@ -17,8 +17,10 @@ from scripts.analyze_orb_arm_giveback import (  # noqa: E402
     ARMED,
     NEVER_ARMED_FLATTEN,
     NEVER_ARMED_STOPPED,
+    TradeRow,
     _classify,
     _final_move,
+    _pct_of_mfe_kept,
     collect_trades,
 )
 
@@ -129,3 +131,30 @@ def test_collect_trades_reports_multiple_days_independently():
     rows = collect_trades({"day1": make_day(5), "day2": make_day(8)})
     assert len(rows) == 2
     assert {r.mfe_points for r in rows} == {5.0, 8.0}
+
+
+# ─── _pct_of_mfe_kept: aggregate ratio, not a mean of noisy per-trade ratios ─
+
+def row(mfe, final_move):
+    return TradeRow(entry_date="d", bucket=NEVER_ARMED_FLATTEN, mfe_points=mfe,
+                    mfe_pct=0.0, final_move_points=final_move,
+                    given_back_points=mfe - final_move)
+
+
+def test_pct_kept_is_the_aggregate_ratio_not_a_mean_of_per_trade_ratios():
+    """The regression this guards: a tiny-MFE trade with a large loss produces
+    a per-trade ratio in the thousands of percent (final/mfe blows up as mfe
+    -> 0). Averaging that against well-behaved trades manufactured a
+    nonsensical -233% headline in this script's own first real run. The
+    aggregate (sum of final moves / sum of MFE) stays sane."""
+    rows = [row(mfe=1.0, final_move=-50.0)] + [row(mfe=100.0, final_move=80.0)] * 9
+    text = _pct_of_mfe_kept(rows)
+    # sum(final) = -50 + 9*80 = 670; sum(mfe) = 1 + 900 = 901 -> ~74%, not a
+    # deeply negative number a naive per-trade mean would have produced.
+    assert "Kept 74%" in text
+
+
+def test_pct_kept_handles_an_all_zero_mfe_bucket_without_dividing_by_zero():
+    rows = [row(mfe=0.0, final_move=0.0), row(mfe=0.0, final_move=-5.0)]
+    text = _pct_of_mfe_kept(rows)
+    assert "0%" in text

@@ -129,19 +129,15 @@ def _section(underlying: str, rows: list[TradeRow]) -> str:
     if flatten_never_armed:
         given_back = [r.given_back_points for r in flatten_never_armed]
         final_moves = [r.final_move_points for r in flatten_never_armed]
-        pct_mfe_kept = [
-            (r.final_move_points / r.mfe_points * 100.0) if r.mfe_points > 0 else 100.0
-            for r in flatten_never_armed
-        ]
         net_losers = sum(1 for m in final_moves if m < 0)
+        pct_kept = _pct_of_mfe_kept(flatten_never_armed)
         lines += [
             f"**The exact shape 2026-09-21's live BankNifty trade showed** — "
             f"never armed, rode to the 15:20 flatten: {len(flatten_never_armed)} of "
             f"{len(rows)} trades ({len(flatten_never_armed) / len(rows) * 100:.1f}%).",
             "",
             f"- Given back: {_fmt(given_back)} points.",
-            f"- Of the peak (MFE) reached, on average this bucket's final exit kept "
-            f"{statistics.mean(pct_mfe_kept):.0f}% of it (median {statistics.median(pct_mfe_kept):.0f}%).",
+            f"- {pct_kept}",
             f"- {net_losers} of {len(flatten_never_armed)} ({net_losers / len(flatten_never_armed) * 100:.0f}%) "
             f"closed net NEGATIVE despite having been in profit intraday.",
             f"- Total points given back across this bucket: {sum(given_back):+.1f} "
@@ -151,19 +147,38 @@ def _section(underlying: str, rows: list[TradeRow]) -> str:
 
     armed_trades = by_bucket.get(ARMED, [])
     if armed_trades:
-        pct_mfe_kept_armed = [
-            (r.final_move_points / r.mfe_points * 100.0) if r.mfe_points > 0 else 100.0
-            for r in armed_trades
-        ]
         lines += [
-            f"**Contrast — trades that DID arm**: kept "
-            f"{statistics.mean(pct_mfe_kept_armed):.0f}% of their MFE on average "
-            f"(median {statistics.median(pct_mfe_kept_armed):.0f}%), vs. the never-armed-flatten "
-            f"bucket above.",
+            f"**Contrast — trades that DID arm**: {_pct_of_mfe_kept(armed_trades)}",
             "",
         ]
 
     return "\n".join(lines)
+
+
+def _pct_of_mfe_kept(rows: list[TradeRow]) -> str:
+    """How much of the bucket's peak profit survived to the exit.
+
+    Reports the AGGREGATE ratio (sum of final moves / sum of MFE across the
+    whole bucket), not a mean of each trade's own %-kept: a trade with a
+    1-point MFE followed by a 50-point loss has a per-trade ratio of -5000%,
+    and averaging that against 300 well-behaved trades produces a headline
+    number driven entirely by a handful of near-zero-MFE outliers (this
+    script's own first run reported -233% for one bucket this way, which is
+    correctly discarded as a statistical artifact, not a real finding — see
+    quantos_fable_rationale_review-style precedent for exactly this class of
+    "the mean lied, check the aggregate/median too" trap in this project).
+    The per-trade MEDIAN is reported alongside as a second, more robust cut.
+    """
+    total_mfe = sum(r.mfe_points for r in rows)
+    total_final = sum(r.final_move_points for r in rows)
+    aggregate_pct = (total_final / total_mfe * 100.0) if total_mfe else 0.0
+    per_trade_pct = [
+        (r.final_move_points / r.mfe_points * 100.0) for r in rows if r.mfe_points > 0
+    ]
+    median_pct = statistics.median(per_trade_pct) if per_trade_pct else 0.0
+    return (f"Kept {aggregate_pct:.0f}% of total peak profit in aggregate "
+            f"(per-trade median {median_pct:.0f}% — no per-trade mean reported, "
+            f"see this function's docstring for why that statistic is meaningless here).")
 
 
 def summarize(nifty_rows: list[TradeRow], banknifty_rows: list[TradeRow],
@@ -188,15 +203,20 @@ def summarize(nifty_rows: list[TradeRow], banknifty_rows: list[TradeRow],
         "",
         "\"Given back\" is MFE minus the trade's own final signed move -- 0 for a "
         "trade that closed at its own best moment, positive for one that pulled "
-        "back before exit. A NEVER-ARMED trade that stops out has already, by "
-        "construction, given back little (the stop caps the loss near the "
-        "initial level) -- the bucket that matters for \"are we leaving money "
-        "on the table\" is NEVER-ARMED + session_flatten, reported above with "
-        "its own detail. This does not by itself say the 1-range-width arm "
-        "threshold is wrong -- the whole historical sample using this exact "
-        "rule already cleared the pre-registered PF/Sharpe bar (see "
-        "docs/ORB_SCALPING_RESULTS.md) -- only how much of the strategy's real "
-        "profile this specific behaviour accounts for.",
+        "back before exit. A NEVER-ARMED trade that stops out is NOT automatically "
+        "a small given-back number -- its downside is bounded by the initial stop "
+        "in absolute points, but if its own MFE was tiny (a brief wiggle before "
+        "reversing hard), the round-trip from that tiny peak down to the stop can "
+        "read as a LARGE given-back number despite the trade's total loss being "
+        "capped. The two buckets' given-back figures are answering different "
+        "questions and should not be read as \"stopped is safer than flatten\" "
+        "without checking which one it is per index above. The bucket that most "
+        "directly matches \"is the arm threshold leaving intraday profit on the "
+        "table\" is NEVER-ARMED + session_flatten, reported with its own detail. "
+        "This does not by itself say the 1-range-width arm threshold is wrong -- "
+        "the whole historical sample using this exact rule already cleared the "
+        "pre-registered PF/Sharpe bar (see docs/ORB_SCALPING_RESULTS.md) -- only "
+        "how much of the strategy's real profile this specific behaviour accounts for.",
     ])
 
 
