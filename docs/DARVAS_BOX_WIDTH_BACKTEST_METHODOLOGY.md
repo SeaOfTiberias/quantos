@@ -112,13 +112,14 @@ without relying on undocumented pre-2023 extrapolation.
 **Time-based, not random** — a random split lets a later trade's outcome
 leak into an earlier one's regime context, same reasoning
 `ORB_CONDITION_MINING_METHODOLOGY.md` gives for its own split. Cutoff fixed
-here, before any code runs: **earliest 80% of the window by breakout date
-(2023-09-22 to 2026-01-14) is the mining set; most recent 20%
-(2026-01-14 to 2026-09-22) is the holdout set.** This is a genuinely
-untouched split, not the gut-check's own already-seen window re-read as if
-it were fresh — this pull is wider (full point-in-time universe, not the
-73-symbol sample) and longer (3 years, not 2), so neither sub-window is
-identical to anything already analyzed.
+here, before any code runs: the window is exactly 1096 days
+(2023-09-22 to 2026-09-22); 80% of that is 877 days, giving a split date of
+**2026-02-15**. **Earliest 80% of the window by breakout date (2023-09-22 to
+2026-02-15) is the mining set; most recent 20% (2026-02-15 to 2026-09-22) is
+the holdout set.** This is a genuinely untouched split, not the gut-check's
+own already-seen window re-read as if it were fresh — this pull is wider
+(full point-in-time universe, not the 73-symbol sample) and longer (3 years,
+not 2), so neither sub-window is identical to anything already analyzed.
 
 ## Signal (unchanged from the gut-check)
 
