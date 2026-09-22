@@ -1,0 +1,18 @@
+[Unit]
+Description=Fires candidate 18's entry-filtered sibling every minute during NSE market hours (unit not enabled by default -- see the .service comment)
+
+[Timer]
+# Identical schedule to quantos-orb-scalping-live.timer, same UTC-not-IST
+# reasoning (the VM runs in Etc/UTC; OnCalendar is evaluated in the
+# system's local timezone, not the .service's ExecCondition's explicit
+# TZ=Asia/Kolkata). Every minute, 09:15-15:30 IST = 03:45-10:00 UTC.
+OnCalendar=Mon..Fri *-*-* 03:45..59:00
+OnCalendar=Mon..Fri *-*-* 04..09:*:00
+OnCalendar=Mon..Fri *-*-* 10:00:00
+
+# A missed fire is harmless and self-healing (see the .service file) --
+# no catch-up needed.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

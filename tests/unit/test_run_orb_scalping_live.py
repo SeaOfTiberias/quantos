@@ -381,6 +381,207 @@ def test_still_open_refreshes_persisted_trailing_stop(monkeypatch, tmp_path):
     assert trade_history.get_trade_history() == []
 
 
+# ─── docs/ORB_ENTRY_FILTER_METHODOLOGY.md's entry_filter gate ─────────────
+
+def test_entry_filter_returning_false_blocks_entry(monkeypatch, tmp_path):
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions = {}
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=set(),
+                            entry_filter=lambda trade_date, first_open: False)
+
+    assert positions == {}
+    assert broker.placed_orders == []
+
+
+def test_entry_filter_returning_true_allows_entry(monkeypatch, tmp_path):
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions = {}
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=set(),
+                            entry_filter=lambda trade_date, first_open: True)
+
+    assert get_position(positions, "NIFTY", now_at_entry.date().isoformat()) is not None
+
+
+def test_entry_filter_receives_the_days_first_candle_open(monkeypatch, tmp_path):
+    """Proves the wiring, not just that a bool gates entry -- the filter
+    must see the SAME opening value docs/ORB_CONDITION_MINING_RESULTS.md's
+    big_gap condition was mined against (today's first 5m candle's open)."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+    seen = {}
+
+    def spy_filter(trade_date, first_open):
+        seen["trade_date"] = trade_date
+        seen["first_open"] = first_open
+        return True
+
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions={},
+                            trade_history=TradeHistoryService(), traded_today=set(),
+                            entry_filter=spy_filter)
+
+    assert seen["first_open"] == candles[0].open
+    assert seen["trade_date"] == now_at_entry.date()
+
+
+def test_no_entry_filter_reproduces_unfiltered_behaviour():
+    """entry_filter=None (the default, and what --variant unfiltered
+    always passes) must never be called and must never block -- covered
+    implicitly by every pre-existing test in this file never passing it."""
+    import inspect
+    assert inspect.signature(mod.process_underlying).parameters["entry_filter"].default is None
+
+
+# ─── _fetch_prior_daily_close ───────────────────────────────────────────────
+
+def test_fetch_prior_daily_close_picks_the_most_recent_bar_before_today():
+    class _Broker:
+        def get_historical_data(self, symbol, timeframe, from_date, to_date):
+            return [
+                _bar_daily(date(2026, 9, 18), 100.0),
+                _bar_daily(date(2026, 9, 21), 105.0),  # most recent before "today"
+            ]
+
+    close = mod._fetch_prior_daily_close(_Broker(), "NIFTY BANK", date(2026, 9, 22))
+    assert close == 105.0
+
+
+def test_fetch_prior_daily_close_excludes_todays_own_bar():
+    class _Broker:
+        def get_historical_data(self, symbol, timeframe, from_date, to_date):
+            return [_bar_daily(date(2026, 9, 21), 100.0), _bar_daily(date(2026, 9, 22), 999.0)]
+
+    close = mod._fetch_prior_daily_close(_Broker(), "NIFTY BANK", date(2026, 9, 22))
+    assert close == 100.0
+
+
+def test_fetch_prior_daily_close_returns_none_with_no_prior_bars():
+    class _Broker:
+        def get_historical_data(self, symbol, timeframe, from_date, to_date):
+            return []
+
+    assert mod._fetch_prior_daily_close(_Broker(), "NIFTY BANK", date(2026, 9, 22)) is None
+
+
+def test_fetch_prior_daily_close_returns_none_on_broker_error_rather_than_raising():
+    class _Broker:
+        def get_historical_data(self, symbol, timeframe, from_date, to_date):
+            raise RuntimeError("history fetch failed")
+
+    assert mod._fetch_prior_daily_close(_Broker(), "NIFTY BANK", date(2026, 9, 22)) is None
+
+
+def _bar_daily(day, close):
+    return OHLCV(timestamp=datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc),
+                 open=close, high=close, low=close, close=close, volume=1000)
+
+
+# ─── --variant CLI wiring: config key + position-store selection ───────────
+# broker/candle-level behaviour is exercised via process_underlying above;
+# these check main() itself picks the right config block, paths, and builds
+# an entry_filter only for the filtered variant -- load_config/get_broker
+# are faked so no real file or network is touched.
+
+def _patch_main_deps(monkeypatch, orb_cfg=None, orb_cfg_filtered=None):
+    calls = []
+
+    class _StubBroker:
+        def connect(self):
+            return True
+
+        def get_historical_data(self, *a, **k):
+            return []  # only reached by --variant filtered's daily-close fetch
+
+    monkeypatch.setattr(mod, "load_config", lambda path: {
+        "broker": "stub",
+        "orb_scalping": orb_cfg if orb_cfg is not None else {"enabled": False},
+        "orb_scalping_filtered": orb_cfg_filtered if orb_cfg_filtered is not None else {"enabled": False},
+    })
+    monkeypatch.setattr(mod, "get_broker", lambda config: _StubBroker())
+
+    def spy_process_underlying(broker, underlying, spot_symbol, dte_floor_days, strike_interval,
+                                lots_per_trade, dry_run, positions, trade_history, traded_today,
+                                entry_filter=None, positions_path=None, traded_today_path=None,
+                                dry_run_log_path=None):
+        calls.append(dict(underlying=underlying, entry_filter=entry_filter,
+                           positions_path=positions_path, traded_today_path=traded_today_path,
+                           dry_run_log_path=dry_run_log_path, dry_run=dry_run))
+
+    monkeypatch.setattr(mod, "process_underlying", spy_process_underlying)
+    return calls
+
+
+def test_unfiltered_variant_is_the_default_and_uses_default_paths(monkeypatch, tmp_path):
+    calls = _patch_main_deps(monkeypatch, orb_cfg={"enabled": True, "dry_run": True})
+    monkeypatch.setattr(mod, "load_open_positions", lambda path=None: {})
+    monkeypatch.setattr(mod, "load_traded_today", lambda path=None: set())
+
+    assert mod.main([]) == 0
+    assert len(calls) == 2  # NIFTY, BANKNIFTY
+    for c in calls:
+        assert c["entry_filter"] is None
+        assert c["positions_path"] is None
+        assert c["traded_today_path"] is None
+        assert c["dry_run_log_path"] is None
+
+
+def test_filtered_variant_uses_its_own_config_block_and_paths(monkeypatch):
+    calls = _patch_main_deps(monkeypatch, orb_cfg={"enabled": True},
+                              orb_cfg_filtered={"enabled": True, "dry_run": True})
+    monkeypatch.setattr(mod, "load_open_positions", lambda path=None: {})
+    monkeypatch.setattr(mod, "load_traded_today", lambda path=None: set())
+
+    assert mod.main(["--variant", "filtered"]) == 0
+    assert len(calls) == 2
+    for c in calls:
+        assert c["entry_filter"] is not None
+        assert c["positions_path"] == mod.ORB_OPEN_POSITIONS_FILTERED_PATH
+        assert c["traded_today_path"] == mod.ORB_TRADED_TODAY_FILTERED_PATH
+        assert c["dry_run_log_path"] == mod.ORB_DRY_RUN_LOG_FILTERED_PATH
+
+
+def test_filtered_variant_disabled_by_default_config_does_nothing(monkeypatch):
+    """agent/config.yaml.example ships orb_scalping_filtered.enabled: false
+    -- the same safe-default gate unfiltered candidate 18 already has."""
+    calls = _patch_main_deps(monkeypatch, orb_cfg={"enabled": True},
+                              orb_cfg_filtered={"enabled": False})
+    assert mod.main(["--variant", "filtered"]) == 0
+    assert calls == []
+
+
+def test_unfiltered_variant_never_reads_the_filtered_config_block(monkeypatch):
+    """Turning orb_scalping_filtered on must never affect what the default
+    --variant does -- the two are independent switches."""
+    calls = _patch_main_deps(monkeypatch, orb_cfg={"enabled": True, "dry_run": True},
+                              orb_cfg_filtered={"enabled": True, "dry_run": False})
+    monkeypatch.setattr(mod, "load_open_positions", lambda path=None: {})
+    monkeypatch.setattr(mod, "load_traded_today", lambda path=None: set())
+
+    assert mod.main([]) == 0
+    assert all(c["dry_run"] is True for c in calls)  # read from orb_scalping, not _filtered
+
+
 class _FrozenDatetime:
     """Stands in for the `datetime` class inside run_orb_scalping_live so
     datetime.now(timezone.utc) returns a fixed instant while combine/

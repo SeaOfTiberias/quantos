@@ -1,0 +1,44 @@
+[Unit]
+Description=QuantOS Candidate 18 ORB Scalping -- Entry-Filtered Sibling (docs/ORB_ENTRY_FILTER_METHODOLOGY.md, gated by agent/config.yaml orb_scalping_filtered.enabled/dry_run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_orb_scalping_live.py --variant filtered
+Environment=HOME=/home/ubuntu
+
+# Runs ALONGSIDE quantos-orb-scalping-live.service, never instead of it --
+# same signal, gated to NIFTY Monday/Friday and BankNifty big-gap-day
+# entries only (docs/ORB_CONDITION_MINING_RESULTS.md, replicated twice).
+# Its own position store, traded-today mark, and dry-run log
+# (core/orb_scalping/live_positions.py's _FILTERED constants,
+# core/orb_scalping/dry_run_log.py's _FILTERED path) so the two processes
+# never share or clobber state.
+#
+# NOT enabled on the VM as of this commit -- see docs/ORB_ENTRY_FILTER_
+# METHODOLOGY.md's prospective-verdict gate (N>=20 new trades per index
+# AND >=8 weeks elapsed since enabling, before any conclusion). This unit
+# file exists so it can be copied by scripts/deploy-vm.ps1 (which never
+# auto-enables a new unit); `systemctl enable --now` is a separate,
+# deliberate future step.
+#
+# Doubly safe even if fired by mistake, same pattern as the unfiltered
+# sibling: agent/config.yaml's orb_scalping_filtered.enabled defaults to
+# false (script exits immediately, no broker connection), and even once
+# enabled, dry_run:true (also the default) means every order-placing call
+# only logs its intended action. Both flags must be deliberately flipped,
+# and the user's own fresh capital go-ahead
+# ([[feedback_confirm_before_scaling_capital]]) is the actual gate for
+# dry_run:false regardless of what this file or a passing prospective
+# result says.
+#
+# Same market-hours ExecCondition + ~1-minute fidelity as the unfiltered
+# sibling -- the entry filter only changes WHETHER a breakout is acted
+# on, not how fast a reaction needs to be.
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+
+# No Restart= -- a failed fire is harmless and self-healing on the next
+# fire a minute later, same as every other probe/timer job on this VM.

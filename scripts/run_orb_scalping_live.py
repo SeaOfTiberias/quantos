@@ -53,10 +53,11 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import sys
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -80,7 +81,18 @@ from core.orb_scalping.contract_selection import (  # noqa: E402
     fetch_chain_row_near_strike,
     select_expiry,
 )
+from core.orb_scalping.dry_run_log import (  # noqa: E402
+    DryRunTrade,
+    ORB_DRY_RUN_LOG_FILTERED_PATH,
+    append_dry_run_trade,
+)
+from core.orb_scalping.entry_filter import (  # noqa: E402
+    banknifty_entry_allowed,
+    nifty_entry_allowed,
+)
 from core.orb_scalping.live_positions import (  # noqa: E402
+    ORB_OPEN_POSITIONS_FILTERED_PATH,
+    ORB_TRADED_TODAY_FILTERED_PATH,
     OrbOpenPosition,
     add_position,
     get_position,
@@ -105,6 +117,15 @@ UNDERLYINGS = [
 TRADE_HISTORY_PATH = Path.home() / ".quantos" / "trade_history.json"
 SESSION_OPEN_UTC = time(3, 45)   # 09:15 IST -- same convention as the two spread probes
 
+# Type of the per-underlying entry gate docs/ORB_ENTRY_FILTER_METHODOLOGY.md
+# adds for the `--variant filtered` sibling: (trade_date, today's first 5m
+# candle's open) -> allowed. Uniform shape across both mined predicates so
+# process_underlying/(_enter_new_position) never need to know which
+# underlying they belong to -- NIFTY's ignores the open, BankNifty's
+# (built as a closure in main(), prior_daily_close already captured)
+# ignores the date.
+EntryFilter = Callable[[date, float], bool]
+
 
 def _exit_reason(*, past_flatten: bool, index_stop_hit: bool, candle_confirmed_stop: bool,
                   candle_exit_reason: Optional[str], armed: bool) -> Optional[str]:
@@ -124,7 +145,8 @@ def _exit_reason(*, past_flatten: bool, index_stop_hit: bool, candle_confirmed_s
 def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
                          strike_interval: float, lots_per_trade: int, dry_run: bool,
                          positions: dict, trade_date_iso: str, now_utc: datetime,
-                         traded_today: set) -> None:
+                         traded_today: set, positions_path: Optional[Path] = None,
+                         traded_today_path: Optional[Path] = None) -> None:
     trade_date = now_utc.date()
     strike = atm_strike(state.entry_price, strike_interval)
     expiries = sm.list_expiries(underlying)
@@ -170,19 +192,19 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
         armed=state.armed, entry_order_id=entry_result.entry_order_id or "",
         stop_order_id=entry_result.stop_order_id or "", trade_date=trade_date_iso,
     )
-    add_position(positions, position)
-    mark_traded_today(traded_today, underlying, trade_date_iso)
+    add_position(positions, position, path=positions_path)
+    mark_traded_today(traded_today, underlying, trade_date_iso, path=traded_today_path)
     print(f"  {underlying}: ENTERED {state.direction} strike={strike} expiry={expiry} "
           f"premium={entry_premium} qty={quantity} dry_run={dry_run}")
 
 
 def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[float],
                 exit_timestamp, reason: str, positions: dict,
-                trade_history: TradeHistoryService) -> None:
+                trade_history: TradeHistoryService, positions_path: Optional[Path] = None) -> None:
     if exit_price is None:
         print(f"  {underlying}: position closed but no exit price could be determined "
               f"(reason={reason}) -- removing from tracking without a ClosedTrade record.")
-        remove_position(positions, underlying, existing.trade_date)
+        remove_position(positions, underlying, existing.trade_date, path=positions_path)
         return
     if isinstance(exit_timestamp, str):
         exit_timestamp = datetime.fromisoformat(exit_timestamp)
@@ -199,13 +221,15 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
         strategy="orb_scalping",
     )
     trade_history.record_closed_trade(trade)
-    remove_position(positions, underlying, existing.trade_date)
+    remove_position(positions, underlying, existing.trade_date, path=positions_path)
     print(f"  {underlying}: CLOSED reason={reason} exit_price={exit_price} pnl={trade.pnl:.2f}")
 
 
 def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
                                existing: OrbOpenPosition, dry_run: bool, positions: dict,
-                               trade_history: TradeHistoryService, now_utc: datetime) -> None:
+                               trade_history: TradeHistoryService, now_utc: datetime,
+                               positions_path: Optional[Path] = None,
+                               dry_run_log_path: Optional[Path] = None) -> None:
     """Reconciles the tracked position against the broker first -- this is
     how a fill of the real resting 25%-of-premium SL_M order is noticed
     (see enter_position(): that order is placed once at entry and never
@@ -233,7 +257,7 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
         if not reconcile.still_open:
             reason = "premium_stop" if reconcile.exit_reason == "sl_fill" else (reconcile.exit_reason or "unknown")
             _close_out(underlying, existing, reconcile.exit_price, reconcile.exit_timestamp or now_utc,
-                       reason, positions, trade_history)
+                       reason, positions, trade_history, positions_path=positions_path)
             return
 
     past_flatten = now_utc.time() >= SESSION_FLATTEN_UTC
@@ -262,12 +286,27 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
             # No real fill price exists to record -- log and stop tracking
             # without writing a fabricated ClosedTrade into trade_history
             # (that history feeds real Kelly sizing; a dry_run guess has no
-            # place in it).
+            # place in it). A best-effort live quote is still captured for
+            # core/orb_scalping/dry_run_log.py's own separate, lower-stakes
+            # record -- observability only, never fed into sizing -- since
+            # otherwise a dry-run close leaves no queryable price at all.
+            exit_premium = None
+            try:
+                exit_premium = broker.get_ltp([existing.option_symbol]).get(existing.option_symbol)
+            except Exception as e:
+                print(f"  {underlying}: could not fetch exit quote for the dry-run log ({e}).")
+            append_dry_run_trade(DryRunTrade(
+                underlying=underlying, direction=existing.direction,
+                entry_timestamp=existing.entry_timestamp, entry_premium=existing.entry_premium,
+                exit_timestamp=now_utc.isoformat(), exit_reason=reason,
+                quantity=existing.quantity, exit_premium=exit_premium,
+            ), path=dry_run_log_path)
             print(f"  {underlying}: [dry_run] would exit reason={reason} -- "
                   f"removing from tracking, no ClosedTrade recorded.")
-            remove_position(positions, underlying, existing.trade_date)
+            remove_position(positions, underlying, existing.trade_date, path=positions_path)
         else:
-            _close_out(underlying, existing, flat_result.fill_price, now_utc, reason, positions, trade_history)
+            _close_out(underlying, existing, flat_result.fill_price, now_utc, reason, positions,
+                       trade_history, positions_path=positions_path)
         return
 
     # Still open, nothing forced this fire -- refresh the persisted
@@ -275,13 +314,17 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
     # broker call, see the docstring above).
     if state.status == "in_position" and state.current_stop is not None:
         update_stops(positions, underlying, existing.trade_date,
-                     current_index_stop=state.current_stop, armed=state.armed)
+                     current_index_stop=state.current_stop, armed=state.armed,
+                     path=positions_path)
 
 
 def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days: int,
                         strike_interval: float, lots_per_trade: int, dry_run: bool,
                         positions: dict, trade_history: TradeHistoryService,
-                        traded_today: set) -> None:
+                        traded_today: set, entry_filter: Optional[EntryFilter] = None,
+                        positions_path: Optional[Path] = None,
+                        traded_today_path: Optional[Path] = None,
+                        dry_run_log_path: Optional[Path] = None) -> None:
     now_utc = datetime.now(timezone.utc)
     trade_date = now_utc.date()
     trade_date_iso = trade_date.isoformat()
@@ -312,20 +355,71 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
         # special case of this same rule.
         if state.status != "in_position" or has_traded_today(traded_today, underlying, trade_date_iso):
             return
+        # docs/ORB_ENTRY_FILTER_METHODOLOGY.md's --variant filtered gate --
+        # None (unfiltered candidate 18, the only variant that has ever
+        # placed a real order) always allows, reproducing every existing
+        # caller's behaviour exactly. `closed` is guaranteed non-empty here:
+        # state.status == "in_position" requires a breakout after the
+        # opening range, which itself requires OPENING_RANGE_CANDLES closed
+        # bars to exist.
+        if entry_filter is not None and not entry_filter(trade_date, closed[0].open):
+            print(f"  {underlying}: entry filtered out for {trade_date_iso} "
+                  f"(docs/ORB_ENTRY_FILTER_METHODOLOGY.md)")
+            return
         _enter_new_position(broker, underlying, state, dte_floor_days, strike_interval,
                              lots_per_trade, dry_run, positions, trade_date_iso, now_utc,
-                             traded_today)
+                             traded_today, positions_path=positions_path,
+                             traded_today_path=traded_today_path)
         return
 
     _manage_existing_position(broker, underlying, spot_symbol, state, existing, dry_run,
-                               positions, trade_history, now_utc)
+                               positions, trade_history, now_utc, positions_path=positions_path,
+                               dry_run_log_path=dry_run_log_path)
 
 
-def main() -> int:
+def _fetch_prior_daily_close(broker, spot_symbol: str, today: date) -> Optional[float]:
+    """Most recent daily close strictly before `today`. A small (14
+    calendar-day) window comfortably covers any run of holidays/weekends
+    -- this is the SAME data core/orb_scalping/conditions.py::gap_pct was
+    mined against, fetched fresh each fire since only --variant filtered
+    calls this at all, and only for BankNifty (NIFTY's filter needs no
+    daily data). Returns None (never raises past this point) if the
+    fetch fails or returns nothing usable -- see
+    core/orb_scalping/entry_filter.py::banknifty_entry_allowed for why a
+    missing prior close means "not a gap day", not a crash."""
+    try:
+        from_dt = datetime.combine(today - timedelta(days=14), datetime.min.time(), tzinfo=timezone.utc)
+        to_dt = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+        daily = broker.get_historical_data(spot_symbol, "1d", from_dt, to_dt)
+    except Exception as e:
+        print(f"  could not fetch prior daily close for {spot_symbol} ({e}) -- "
+              f"gap filter will treat today as not a gap day.")
+        return None
+    prior = [c for c in daily if c.timestamp.date() < today]
+    if not prior:
+        return None
+    return sorted(prior, key=lambda c: c.timestamp)[-1].close
+
+
+def main(argv: Optional[list] = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--variant", choices=["unfiltered", "filtered"], default="unfiltered",
+        help="'unfiltered' (default) is candidate 18 exactly as pre-registered -- the only "
+             "variant that has ever placed a real order. 'filtered' is "
+             "docs/ORB_ENTRY_FILTER_METHODOLOGY.md's sibling: same signal, gated to NIFTY "
+             "Monday/Friday and BankNifty big-gap-day entries only, its own config block "
+             "(orb_scalping_filtered), its own position store and dry-run log -- it runs "
+             "ALONGSIDE unfiltered candidate 18, never in place of it.",
+    )
+    args = parser.parse_args(argv)
+    filtered = args.variant == "filtered"
+
     config = load_config("agent/config.yaml")
-    orb_cfg = config.get("orb_scalping", {})
+    config_key = "orb_scalping_filtered" if filtered else "orb_scalping"
+    orb_cfg = config.get(config_key, {})
     if not orb_cfg.get("enabled", False):
-        print("orb_scalping.enabled is false in agent/config.yaml -- nothing to do.")
+        print(f"{config_key}.enabled is false in agent/config.yaml -- nothing to do.")
         return 0
 
     dry_run = bool(orb_cfg.get("dry_run", True))
@@ -340,15 +434,42 @@ def main() -> int:
         print("ERROR: broker connect() failed -- check the Fyers token.")
         return 1
 
+    positions_path = ORB_OPEN_POSITIONS_FILTERED_PATH if filtered else None
+    traded_today_path = ORB_TRADED_TODAY_FILTERED_PATH if filtered else None
+    dry_run_log_path = ORB_DRY_RUN_LOG_FILTERED_PATH if filtered else None
+
+    # trade_history.json stays shared/unparametrized: dry_run never writes to
+    # it (see _manage_existing_position's dry_run branch), and this project's
+    # standing gate means neither variant will flip dry_run:false without a
+    # fresh, separate go-ahead -- if that ever happens the shared file
+    # becomes a real question, not one this document needs to answer today.
     trade_history = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
-    positions = load_open_positions()
-    traded_today = load_traded_today()
+    positions = load_open_positions(path=positions_path)
+    traded_today = load_traded_today(path=traded_today_path)
+
+    # Fetched ONCE per fire, not per underlying -- NIFTY's filter needs no
+    # daily data at all, and BankNifty needs at most one prior close.
+    prior_banknifty_close = (
+        _fetch_prior_daily_close(broker, "NIFTY BANK", datetime.now(timezone.utc).date())
+        if filtered else None
+    )
 
     for underlying, spot_symbol, strike_interval in UNDERLYINGS:
+        entry_filter: Optional[EntryFilter] = None
+        if filtered:
+            if underlying == "NIFTY":
+                entry_filter = lambda trade_date, _open: nifty_entry_allowed(trade_date)  # noqa: E731
+            else:
+                entry_filter = (
+                    lambda _trade_date, first_open, _prior=prior_banknifty_close:
+                    banknifty_entry_allowed(first_open, _prior)
+                )  # noqa: E731
         try:
             process_underlying(broker, underlying, spot_symbol, dte_floor_days[underlying],
                                 strike_interval, lots_per_trade, dry_run, positions, trade_history,
-                                traded_today)
+                                traded_today, entry_filter=entry_filter,
+                                positions_path=positions_path, traded_today_path=traded_today_path,
+                                dry_run_log_path=dry_run_log_path)
         except Exception as e:
             print(f"  {underlying}: fire failed ({e}) -- self-healing, will retry next fire.")
     return 0

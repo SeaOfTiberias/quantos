@@ -202,6 +202,25 @@ orb_scalping:
   nifty_dte_floor_days: 2           # core/orb_scalping/backtest.py's resolve_nifty_expiry
   banknifty_dte_floor_days: 0       # resolve_banknifty_expiry has no floor
 
+orb_scalping_filtered:
+  # docs/ORB_ENTRY_FILTER_METHODOLOGY.md's entry-filtered sibling of
+  # candidate 18 above -- SAME signal, gated to NIFTY Monday/Friday and
+  # BankNifty big-gap-day entries only (docs/ORB_CONDITION_MINING_RESULTS.md,
+  # replicated twice). Runs ALONGSIDE orb_scalping, never instead of it --
+  # its own position store, traded-today mark, and dry-run log
+  # (core/orb_scalping/live_positions.py's _FILTERED constants,
+  # core/orb_scalping/dry_run_log.py), invoked via
+  # `run_orb_scalping_live.py --variant filtered`. Independent switch from
+  # orb_scalping above: flipping one does not affect the other. Stays off
+  # until the methodology doc's own prospective gate (N>=20 new trades per
+  # index AND >=8 weeks) has something to say, same
+  # capital-decision discipline as every other flag in this file.
+  enabled: false
+  dry_run: true
+  lots_per_trade: 1
+  nifty_dte_floor_days: 2
+  banknifty_dte_floor_days: 0
+
 # ── Obsidian vault: qualitative strategy memory (2026-08-14) ─────────────────
 # Audits symbols against the rule blocks written into your Obsidian strategy
 # notes (obsidian_vault/QuantOS/*.md) before they reach an execution path.

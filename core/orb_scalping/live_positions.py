@@ -46,6 +46,12 @@ ORB_OPEN_POSITIONS_PATH = Path.home() / ".quantos" / "orb_open_positions.json"
 # compute_live_state()'s own (slower) replay currently reports.
 ORB_TRADED_TODAY_PATH = Path.home() / ".quantos" / "orb_traded_today.json"
 
+# docs/ORB_ENTRY_FILTER_METHODOLOGY.md's filtered sibling runs alongside
+# (never instead of) unfiltered candidate 18 -- separate files so the two
+# processes' open positions and one-trade-per-day marks never collide.
+ORB_OPEN_POSITIONS_FILTERED_PATH = Path.home() / ".quantos" / "orb_open_positions_filtered.json"
+ORB_TRADED_TODAY_FILTERED_PATH = Path.home() / ".quantos" / "orb_traded_today_filtered.json"
+
 
 @dataclass
 class OrbOpenPosition:
@@ -72,26 +78,37 @@ def _key(underlying: str, trade_date: str) -> str:
     return f"{underlying}:{trade_date}"
 
 
-def load_open_positions() -> dict[str, OrbOpenPosition]:
-    if not ORB_OPEN_POSITIONS_PATH.exists():
+def load_open_positions(path: Optional[Path] = None) -> dict[str, OrbOpenPosition]:
+    """`path` (added 2026-09-22 for docs/ORB_ENTRY_FILTER_METHODOLOGY.md's
+    filtered sibling, which needs its own store so it can run alongside
+    unfiltered candidate 18 without sharing state) resolves
+    ORB_OPEN_POSITIONS_PATH at CALL time, not as a bound default -- a
+    default of `path: Path = ORB_OPEN_POSITIONS_PATH` would capture the
+    module attribute's value at function-definition time, which is exactly
+    the value every existing test's `monkeypatch.setattr(mod,
+    "ORB_OPEN_POSITIONS_PATH", ...)` would then have no effect on."""
+    path = path or ORB_OPEN_POSITIONS_PATH
+    if not path.exists():
         return {}
     try:
-        raw = json.loads(ORB_OPEN_POSITIONS_PATH.read_text())
+        raw = json.loads(path.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
     return {key: OrbOpenPosition(**data) for key, data in raw.items()}
 
 
-def _save(positions: dict[str, OrbOpenPosition]) -> None:
-    ORB_OPEN_POSITIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ORB_OPEN_POSITIONS_PATH.write_text(
+def _save(positions: dict[str, OrbOpenPosition], path: Optional[Path] = None) -> None:
+    path = path or ORB_OPEN_POSITIONS_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps({key: asdict(p) for key, p in positions.items()}, indent=2)
     )
 
 
-def add_position(positions: dict[str, OrbOpenPosition], position: OrbOpenPosition) -> None:
+def add_position(positions: dict[str, OrbOpenPosition], position: OrbOpenPosition,
+                  path: Optional[Path] = None) -> None:
     positions[_key(position.underlying, position.trade_date)] = position
-    _save(positions)
+    _save(positions, path)
 
 
 def get_position(positions: dict[str, OrbOpenPosition], underlying: str,
@@ -102,7 +119,7 @@ def get_position(positions: dict[str, OrbOpenPosition], underlying: str,
 def update_stops(positions: dict[str, OrbOpenPosition], underlying: str, trade_date: str,
                   *, current_index_stop: Optional[float] = None,
                   current_premium_stop: Optional[float] = None,
-                  armed: Optional[bool] = None) -> None:
+                  armed: Optional[bool] = None, path: Optional[Path] = None) -> None:
     key = _key(underlying, trade_date)
     if key not in positions:
         return
@@ -112,19 +129,21 @@ def update_stops(positions: dict[str, OrbOpenPosition], underlying: str, trade_d
         positions[key].current_premium_stop = current_premium_stop
     if armed is not None:
         positions[key].armed = armed
-    _save(positions)
+    _save(positions, path)
 
 
-def remove_position(positions: dict[str, OrbOpenPosition], underlying: str, trade_date: str) -> None:
+def remove_position(positions: dict[str, OrbOpenPosition], underlying: str, trade_date: str,
+                     path: Optional[Path] = None) -> None:
     positions.pop(_key(underlying, trade_date), None)
-    _save(positions)
+    _save(positions, path)
 
 
-def load_traded_today() -> set[str]:
-    if not ORB_TRADED_TODAY_PATH.exists():
+def load_traded_today(path: Optional[Path] = None) -> set[str]:
+    path = path or ORB_TRADED_TODAY_PATH
+    if not path.exists():
         return set()
     try:
-        return set(json.loads(ORB_TRADED_TODAY_PATH.read_text()))
+        return set(json.loads(path.read_text()))
     except (json.JSONDecodeError, OSError):
         return set()
 
@@ -133,7 +152,9 @@ def has_traded_today(traded: set[str], underlying: str, trade_date: str) -> bool
     return _key(underlying, trade_date) in traded
 
 
-def mark_traded_today(traded: set[str], underlying: str, trade_date: str) -> None:
+def mark_traded_today(traded: set[str], underlying: str, trade_date: str,
+                       path: Optional[Path] = None) -> None:
     traded.add(_key(underlying, trade_date))
-    ORB_TRADED_TODAY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ORB_TRADED_TODAY_PATH.write_text(json.dumps(sorted(traded)))
+    path = path or ORB_TRADED_TODAY_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(traded)))
