@@ -117,6 +117,60 @@ spread probe's own pre-registered N/time gate.
   the only way to isolate the filter's own effect from whatever the
   market did generically over that window.
 
+## Addendum, pre-registered 2026-09-22 (same day as enabling, before any
+## 18b trade has closed): a ₹50,000 base-capital equity narrative, IN
+## ADDITION to the PF/Sharpe check above
+
+User's explicit ask: track what a ₹50,000 starting account would have
+grown to by 2026-11-17 — a rupee-terms complement to the statistical
+pass/fail bar, not a replacement for it. Fixed here, before any 18b trade
+exists to peek at:
+
+- **One combined ₹50,000 account for Candidate 18b as a whole** — NOT
+  ₹50,000 per index. A real trader running 18b would fund it from one
+  pot covering both the NIFTY and BankNifty legs, so the equity curve
+  pools both indices' closed trades by exit order into a single running
+  total. This is a deliberate departure from the "never pool NIFTY/
+  BankNifty" rule used everywhere else in this document — that rule
+  governs the STATISTICAL verdict (is there an edge, which must stay
+  per-index to mean anything), not a capital-growth narrative, which is
+  inherently about one account. The per-index PF/Sharpe pass/fail bar
+  above is completely unaffected by this and stays per-index.
+- **Reported strictly as of 2026-11-17** — the same date the ≥8-week
+  half of the PF/Sharpe gate clears (2026-09-22 + 8 weeks = 2026-11-17,
+  exactly). Unlike the PF/Sharpe verdict, this figure is NOT additionally
+  gated on N≥20 per index — it is an honest answer to "how much would
+  ₹50,000 have become by this date," not a significance test, and stays
+  meaningful (with an honest small-sample caveat) even if one leg fired
+  fewer than 20 times by then.
+- **Realized P&L only**, computed from `core/orb_scalping/dry_run_log.py`'s
+  closed-trade records (both variants' logs already exist for exactly
+  this purpose): `(exit_premium − entry_premium) × quantity` per closed
+  trade, Stressed-cost-adjusted (`core/orb_scalping/costs.py`'s
+  `stressed_trade_cost` — chosen over the full Stratified expiry-day
+  stratification for simplicity here; the PF/Sharpe verdict above still
+  uses Stratified). A trade whose `exit_premium` is `None` (the dry-run
+  log's own live-quote-fetch failure case) is excluded from the equity
+  sum and its count reported separately — never treated as a zero-P&L
+  trade.
+- Equity path: ₹50,000 plus the running cumulative Stressed-cost-adjusted
+  P&L, ordered by exit timestamp across both indices. Report the final
+  value, the total return %, and each leg's own contribution (NIFTY vs.
+  BankNifty P&L, disclosed even though the account itself is pooled) so
+  a reader can see which leg drove the result.
+- **No peeking before 2026-11-17** — same discipline as the PF/Sharpe
+  gate: an interim check may confirm the dry-run log is accumulating
+  correctly (row count, no malformed lines), but must not report the
+  running rupee total or a partial return % before the date. Reporting a
+  running total early and letting it influence whether the gate date gets
+  moved would be exactly the "stop when favorable" pattern this
+  project's whole post-hoc-analysis discipline exists to prevent.
+- This is a DESCRIPTIVE figure, not a second pass/fail bar. It does not
+  override, and is not overridden by, the per-index PF/Sharpe verdict —
+  both are reported side by side. A strong equity number with a failing
+  PF/Sharpe (or vice versa) is a real, reportable outcome, not a
+  contradiction to resolve by picking whichever looks better.
+
 ## What this does NOT produce, even in the best case
 
 Turning `entry_filter_enabled: true` on is a **paper-trading configuration
