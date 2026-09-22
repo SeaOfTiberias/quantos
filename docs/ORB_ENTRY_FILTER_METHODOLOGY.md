@@ -1,4 +1,12 @@
-# ORB Options Scalping — Entry-Filter Methodology, Pre-Committed 2026-09-22 Before Any New Result Exists
+# Candidate 18b — ORB Entry-Filter Methodology, Pre-Committed 2026-09-22 Before Any New Result Exists
+
+Named "18b" rather than the next open number (21) at the user's explicit
+request 2026-09-22: this is a distinct strategy in its own right — its
+own live process, its own position store, its own dry-run log, its own
+prospective verdict — not a parameter tweak inside candidate 18. The "b"
+records that it's a direct, disclosed descendant of 18 (same signal,
+same options mechanics, an entry gate layered on top) rather than an
+unrelated idea starting fresh, the way 19/20 did.
 
 ## Why this exists
 

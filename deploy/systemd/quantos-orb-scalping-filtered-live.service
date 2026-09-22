@@ -1,5 +1,5 @@
 [Unit]
-Description=QuantOS Candidate 18 ORB Scalping -- Entry-Filtered Sibling (docs/ORB_ENTRY_FILTER_METHODOLOGY.md, gated by agent/config.yaml orb_scalping_filtered.enabled/dry_run)
+Description=QuantOS Candidate 18b -- ORB Entry-Filtered Strategy (docs/ORB_ENTRY_FILTER_METHODOLOGY.md, gated by agent/config.yaml orb_scalping_filtered.enabled/dry_run)
 After=network-online.target
 Wants=network-online.target
 

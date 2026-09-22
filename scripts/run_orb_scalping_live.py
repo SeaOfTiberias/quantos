@@ -2,11 +2,19 @@
 """
 QuantOS — Candidate 18 ORB Scalping: Live Execution (layer 2)
 ──────────────────────────────────────────────────────────────────────
+Also runs Candidate 18b via `--variant filtered`
+(docs/ORB_ENTRY_FILTER_METHODOLOGY.md) -- 18b is 18's own signal with an
+entry gate layered on top, a distinct strategy in its own right (own
+config block, own position store, own dry-run log), ALONGSIDE unfiltered
+18, never instead of it. Default `--variant unfiltered` is candidate 18
+exactly as pre-registered, unchanged.
+
 docs/ORB_EXECUTION_LAYER_DESIGN.md's layer 2: the ORB-specific tactics
 that tell layer 1 (core/execution/order_service.py) when and what to
 trade, and feed it exit conditions. Gated by agent/config.yaml's
-`orb_scalping.{enabled,dry_run}` -- both default to the safest setting
-(enabled: false, dry_run: true) and stay there until the design doc's
+`orb_scalping.{enabled,dry_run}` (18) / `orb_scalping_filtered.
+{enabled,dry_run}` (18b) -- both blocks default to the safest setting
+(enabled: false, dry_run: true) and stay there until each strategy's own
 go/no-go checklist clears AND the user gives a fresh, explicit capital
 go-ahead ([[feedback_confirm_before_scaling_capital]]). Nothing in this
 script overrides that gate.
@@ -406,8 +414,8 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument(
         "--variant", choices=["unfiltered", "filtered"], default="unfiltered",
         help="'unfiltered' (default) is candidate 18 exactly as pre-registered -- the only "
-             "variant that has ever placed a real order. 'filtered' is "
-             "docs/ORB_ENTRY_FILTER_METHODOLOGY.md's sibling: same signal, gated to NIFTY "
+             "variant that has ever placed a real order. 'filtered' is CANDIDATE 18b "
+             "(docs/ORB_ENTRY_FILTER_METHODOLOGY.md): same signal, gated to NIFTY "
              "Monday/Friday and BankNifty big-gap-day entries only, its own config block "
              "(orb_scalping_filtered), its own position store and dry-run log -- it runs "
              "ALONGSIDE unfiltered candidate 18, never in place of it.",

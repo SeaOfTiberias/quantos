@@ -203,8 +203,9 @@ orb_scalping:
   banknifty_dte_floor_days: 0       # resolve_banknifty_expiry has no floor
 
 orb_scalping_filtered:
-  # docs/ORB_ENTRY_FILTER_METHODOLOGY.md's entry-filtered sibling of
-  # candidate 18 above -- SAME signal, gated to NIFTY Monday/Friday and
+  # Candidate 18b (docs/ORB_ENTRY_FILTER_METHODOLOGY.md) -- a distinct
+  # strategy in its own right, named "b" for its direct lineage from
+  # candidate 18 above: SAME signal, gated to NIFTY Monday/Friday and
   # BankNifty big-gap-day entries only (docs/ORB_CONDITION_MINING_RESULTS.md,
   # replicated twice). Runs ALONGSIDE orb_scalping, never instead of it --
   # its own position store, traded-today mark, and dry-run log

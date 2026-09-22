@@ -2,7 +2,7 @@
 QuantOS — ORB dry-run trade log (observability only)
 ──────────────────────────────────────────────────────
 Neither variant of the live ORB script (unfiltered candidate 18 or
-docs/ORB_ENTRY_FILTER_METHODOLOGY.md's filtered sibling) places a real
+candidate 18b, docs/ORB_ENTRY_FILTER_METHODOLOGY.md) places a real
 order in dry_run, so a closed dry-run position previously left no
 queryable record of what would have happened — only a printed line in
 journalctl (this is how every number in this project's live ORB tracking

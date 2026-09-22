@@ -1,5 +1,5 @@
 [Unit]
-Description=Fires candidate 18's entry-filtered sibling every minute during NSE market hours (unit not enabled by default -- see the .service comment)
+Description=Fires Candidate 18b (ORB entry-filtered strategy) every minute during NSE market hours
 
 [Timer]
 # Identical schedule to quantos-orb-scalping-live.timer, same UTC-not-IST
