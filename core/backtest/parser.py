@@ -300,8 +300,6 @@ def _compute_metrics(trades: list[BacktestTrade]) -> BacktestMetrics:
     net_loss_sum   = abs(sum(t.net_profit for t in losses))
     profit_factor = net_profit_sum / net_loss_sum if net_loss_sum > 0 else float("inf")
 
-    returns = [t.net_profit_pct / 100 for t in trades]
-    sharpe  = _sharpe_ratio(returns)
     max_dd  = _max_drawdown(trades)
     net_pct = sum(t.net_profit_pct for t in trades)
 
@@ -309,6 +307,14 @@ def _compute_metrics(trades: list[BacktestTrade]) -> BacktestMetrics:
 
     days_span = max(1, (trades[-1].exit_date - trades[0].entry_date).days)
     tpm = len(trades) / (days_span / 30.44)
+
+    # Annualise Sharpe using THIS trade set's own observed frequency, not an
+    # assumed one -- a fixed 12/month assumption silently overstates Sharpe
+    # for a slower-trading strategy and understates it for a faster one
+    # (found by Fable reviewing the Darvas ATR-stop backtest, 2026-09-24).
+    trades_per_year = len(trades) / (days_span / 365.25)
+    returns = [t.net_profit_pct / 100 for t in trades]
+    sharpe  = _sharpe_ratio(returns, periods_per_year=trades_per_year)
 
     return BacktestMetrics(
         total_trades=len(trades),
@@ -325,8 +331,20 @@ def _compute_metrics(trades: list[BacktestTrade]) -> BacktestMetrics:
     )
 
 
-def _sharpe_ratio(returns: list[float], risk_free: float = 0.0) -> float:
-    """Annualised Sharpe ratio from a list of per-trade returns."""
+def _sharpe_ratio(returns: list[float], risk_free: float = 0.0,
+                   periods_per_year: float = 144.0) -> float:
+    """Annualised Sharpe ratio from a list of per-trade returns.
+
+    `periods_per_year` should be the trade set's own observed frequency
+    (trades per year) whenever the caller knows it -- `_compute_metrics`
+    always passes this explicitly, derived from the actual entry/exit date
+    span. The 144/yr (~12/month) default exists only for callers with no
+    date information (e.g. this function called directly on a bare list of
+    returns); using it for a real trade set silently overstates Sharpe for
+    a strategy that trades less often than monthly-times-12 and understates
+    it for one that trades more often -- confirmed to matter in practice:
+    it moved a real candidate's Sharpe from 0.68 to ~0.53 once corrected to
+    its actual ~7 trades/month (found by Fable's review, 2026-09-24)."""
     if len(returns) < 2:
         return 0.0
     mean = sum(returns) / len(returns)
@@ -334,8 +352,7 @@ def _sharpe_ratio(returns: list[float], risk_free: float = 0.0) -> float:
     std = math.sqrt(variance)
     if std < 1e-9:
         return 0.0
-    # Annualise assuming ~12 trades per month = 144/yr (rough for swing trading)
-    return (mean - risk_free) / std * math.sqrt(144)
+    return (mean - risk_free) / std * math.sqrt(periods_per_year)
 
 
 def _max_drawdown(trades: list[BacktestTrade]) -> float:
