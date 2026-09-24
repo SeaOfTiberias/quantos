@@ -198,18 +198,29 @@ def summarize(
     return "\n".join(lines)
 
 
-# ─── Orchestration ────────────────────────────────────────────────────────
+# ─── Shared fetch/backtest (reused by scripts/simulate_orb_scalping_*.py) ──
 
-async def main_async(args) -> int:
-    config = load_config(args.config)
-    from core.brokers import get_broker
-    broker = get_broker(config)
-    print(f"Connecting to broker: {config.get('broker')} ...")
-    if not broker.connect():
-        print("ERROR: broker connect() returned False -- check the Fyers token "
-              "(python agent/auth/fyers_auth.py).")
-        return 1
+VARIANT_NAMES = ("clean", "stressed", "harsh", "real_spread", "sampled_spread", "stratified")
 
+
+class OrbScalpingDataError(Exception):
+    """Raised by fetch_and_run_both when candle/trade data comes back empty."""
+
+
+async def fetch_and_run_both(broker) -> dict:
+    """Fetches NIFTY/BankNifty/India VIX 5m candles over each index's own
+    confirmed-safe window and runs both indices' six-way-costed backtests.
+    Shared by every script that needs candidate 18's raw trade lists (this
+    script's own report, and the real-capital equity-curve/capital-
+    allocation adapters in scripts/simulate_orb_scalping_*.py) so the
+    fetch/backtest logic -- and its Fyers rate-limit-respecting chunking --
+    lives in exactly one place, never duplicated per caller.
+
+    Returns a dict: `nifty_trades`/`banknifty_trades` (each a dict of
+    variant name -> list[BacktestTrade], keys = VARIANT_NAMES),
+    `nifty_by_day`/`banknifty_by_day` (date -> candles), `nifty_window`/
+    `banknifty_window` ((min_date, max_date) tuples), and `trading_days`
+    (sorted union of both indices' trading calendars)."""
     to_dt = datetime.now(timezone.utc)
     nifty_from_dt = datetime.combine(NIFTY_WINDOW_START, datetime.min.time(), tzinfo=timezone.utc)
     banknifty_from_dt = datetime.combine(BANKNIFTY_WINDOW_START, datetime.min.time(), tzinfo=timezone.utc)
@@ -229,37 +240,56 @@ async def main_async(args) -> int:
     print(f"  {len(vix_candles)} candles fetched")
 
     if not nifty_candles or not banknifty_candles or not vix_candles:
-        print("ERROR: one or more series returned zero candles.")
-        return 1
+        raise OrbScalpingDataError("one or more series returned zero candles")
 
     print("Running NIFTY backtest ...")
-    (nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread, nifty_sampled_spread,
-     nifty_stratified) = run_index_backtest(
-        nifty_candles, vix_candles, underlying="NIFTY",
-    )
-    print(f"  {len(nifty_clean)} NIFTY trades")
+    nifty_variants = run_index_backtest(nifty_candles, vix_candles, underlying="NIFTY")
+    print(f"  {len(nifty_variants[0])} NIFTY trades")
 
     print("Running BankNifty backtest ...")
-    (banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread,
-     banknifty_sampled_spread, banknifty_stratified) = run_index_backtest(
-        banknifty_candles, vix_candles, underlying="BANKNIFTY",
-    )
-    print(f"  {len(banknifty_clean)} BankNifty trades")
+    banknifty_variants = run_index_backtest(banknifty_candles, vix_candles, underlying="BANKNIFTY")
+    print(f"  {len(banknifty_variants[0])} BankNifty trades")
 
-    if not nifty_clean and not banknifty_clean:
-        print("ERROR: zero trades generated for both indices -- check data/logic before trusting an empty result.")
-        return 1
+    if not nifty_variants[0] and not banknifty_variants[0]:
+        raise OrbScalpingDataError("zero trades generated for both indices")
 
     nifty_by_day = group_by_day(nifty_candles)
     banknifty_by_day = group_by_day(banknifty_candles)
-    nifty_window = (min(nifty_by_day), max(nifty_by_day))
-    banknifty_window = (min(banknifty_by_day), max(banknifty_by_day))
 
+    return {
+        "nifty_trades": dict(zip(VARIANT_NAMES, nifty_variants)),
+        "banknifty_trades": dict(zip(VARIANT_NAMES, banknifty_variants)),
+        "nifty_by_day": nifty_by_day,
+        "banknifty_by_day": banknifty_by_day,
+        "nifty_window": (min(nifty_by_day), max(nifty_by_day)),
+        "banknifty_window": (min(banknifty_by_day), max(banknifty_by_day)),
+        "trading_days": sorted(set(nifty_by_day) | set(banknifty_by_day)),
+    }
+
+
+# ─── Orchestration ────────────────────────────────────────────────────────
+
+async def main_async(args) -> int:
+    config = load_config(args.config)
+    from core.brokers import get_broker
+    broker = get_broker(config)
+    print(f"Connecting to broker: {config.get('broker')} ...")
+    if not broker.connect():
+        print("ERROR: broker connect() returned False -- check the Fyers token "
+              "(python agent/auth/fyers_auth.py).")
+        return 1
+
+    try:
+        data = await fetch_and_run_both(broker)
+    except OrbScalpingDataError as e:
+        print(f"ERROR: {e}.")
+        return 1
+
+    nt, bt = data["nifty_trades"], data["banknifty_trades"]
     report = summarize(
-        nifty_clean, nifty_stressed, nifty_harsh, nifty_real_spread, nifty_sampled_spread, nifty_stratified,
-        banknifty_clean, banknifty_stressed, banknifty_harsh, banknifty_real_spread, banknifty_sampled_spread,
-        banknifty_stratified,
-        nifty_window, banknifty_window,
+        nt["clean"], nt["stressed"], nt["harsh"], nt["real_spread"], nt["sampled_spread"], nt["stratified"],
+        bt["clean"], bt["stressed"], bt["harsh"], bt["real_spread"], bt["sampled_spread"], bt["stratified"],
+        data["nifty_window"], data["banknifty_window"],
     )
     out_path = Path(args.out)
     out_path.write_text(report + "\n", encoding="utf-8")

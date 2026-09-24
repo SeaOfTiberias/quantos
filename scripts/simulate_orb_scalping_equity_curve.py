@@ -31,10 +31,9 @@ of both indices' trading calendars), not just days with a trade -- a real
 account sitting in cash on a no-trade day is a real (zero-return) day in
 the Sharpe/CAGR calculation, not a gap.
 
-Fetch layer: reuses scripts/backtest_orb_scalping.py's own windows/symbols
-and scripts/backtest_dow_theory_trend.py's fetch_chunked_intraday verbatim
--- no new fetch logic, no new signal logic, this is purely a capital-
-tracking adapter on top of already-existing trade generation.
+Fetch layer: reuses scripts/backtest_orb_scalping.py's own `fetch_and_run_both`
+verbatim -- no new fetch logic, no new signal logic, this is purely a
+capital-tracking adapter on top of already-existing trade generation.
 
 Usage
 ─────
@@ -53,11 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.main import load_config  # noqa: E402
 from core.backtest.equity_curve import Account, EquityCurveResult  # noqa: E402
 from core.backtest.parser import BacktestTrade  # noqa: E402
-from core.orb_scalping.backtest import group_by_day, run_index_backtest  # noqa: E402
-from scripts.backtest_dow_theory_trend import fetch_chunked_intraday  # noqa: E402
-from scripts.backtest_orb_scalping import (  # noqa: E402
-    BANKNIFTY_SYMBOL, BANKNIFTY_WINDOW_START, NIFTY_SYMBOL, NIFTY_WINDOW_START, VIX_SYMBOL,
-)
+from scripts.backtest_orb_scalping import OrbScalpingDataError, fetch_and_run_both  # noqa: E402
 
 DEFAULT_CAPITALS = [50_000.0]
 
@@ -199,44 +194,17 @@ async def main_async(args) -> int:
               "(python agent/auth/fyers_auth.py).")
         return 1
 
-    to_dt = datetime.now(timezone.utc)
-    nifty_from_dt = datetime.combine(NIFTY_WINDOW_START, datetime.min.time(), tzinfo=timezone.utc)
-    banknifty_from_dt = datetime.combine(BANKNIFTY_WINDOW_START, datetime.min.time(), tzinfo=timezone.utc)
-    sem = asyncio.Semaphore(2)
-
-    print(f"Fetching NIFTY 5m candles {nifty_from_dt.date()} -> {to_dt.date()} (chunked) ...")
-    nifty_candles = await fetch_chunked_intraday(broker, NIFTY_SYMBOL, nifty_from_dt, to_dt, sem)
-    print(f"  {len(nifty_candles)} candles fetched")
-
-    print(f"Fetching BankNifty 5m candles {banknifty_from_dt.date()} -> {to_dt.date()} (chunked) ...")
-    banknifty_candles = await fetch_chunked_intraday(broker, BANKNIFTY_SYMBOL, banknifty_from_dt, to_dt, sem)
-    print(f"  {len(banknifty_candles)} candles fetched")
-
-    print(f"Fetching India VIX 5m candles {banknifty_from_dt.date()} -> {to_dt.date()} (chunked) ...")
-    vix_candles = await fetch_chunked_intraday(broker, VIX_SYMBOL, banknifty_from_dt, to_dt, sem)
-    print(f"  {len(vix_candles)} candles fetched")
-
-    if not nifty_candles or not banknifty_candles or not vix_candles:
-        print("ERROR: one or more series returned zero candles.")
+    try:
+        data = await fetch_and_run_both(broker)
+    except OrbScalpingDataError as e:
+        print(f"ERROR: {e}.")
         return 1
 
-    print("Running NIFTY backtest ...")
-    (*_nifty_others, nifty_stratified) = run_index_backtest(nifty_candles, vix_candles, underlying="NIFTY")
-    print(f"  {len(nifty_stratified)} NIFTY signals")
-
-    print("Running BankNifty backtest ...")
-    (*_bn_others, banknifty_stratified) = run_index_backtest(banknifty_candles, vix_candles, underlying="BANKNIFTY")
-    print(f"  {len(banknifty_stratified)} BankNifty signals")
-
-    if not nifty_stratified and not banknifty_stratified:
-        print("ERROR: zero trades generated for both indices.")
-        return 1
-
-    nifty_by_day = group_by_day(nifty_candles)
-    banknifty_by_day = group_by_day(banknifty_candles)
-    nifty_window = (min(nifty_by_day), max(nifty_by_day))
-    banknifty_window = (min(banknifty_by_day), max(banknifty_by_day))
-    trading_days = sorted(set(nifty_by_day) | set(banknifty_by_day))
+    nifty_stratified = data["nifty_trades"]["stratified"]
+    banknifty_stratified = data["banknifty_trades"]["stratified"]
+    nifty_window = data["nifty_window"]
+    banknifty_window = data["banknifty_window"]
+    trading_days = data["trading_days"]
 
     results_by_capital = {}
     for capital in args.capital:
