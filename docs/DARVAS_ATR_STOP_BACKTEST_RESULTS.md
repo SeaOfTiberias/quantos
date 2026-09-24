@@ -41,3 +41,19 @@ Errored symbols (excluded): ABLBL, ACMESOLAR, AEGISVOPAK, AFCONS, AGARWALEYE, AN
 
 **CLEARS ITS BAR -- ATR-scaled stop recovers the edge trailing alone didn't.**
 
+**Verified settled 2026-09-24, after fixing a real bug Fable's review found** (the
+target-trail update wasn't properly gated by whether the ATR stop actually
+improved, `scripts/backtest_darvas_atr_stop.py` commit `cf870c6`). Re-ran the
+full 648-symbol backtest with the fix and diffed every one of the 2280
+trades (all 277 in Bucket B specifically) against the pre-fix run:
+**zero trades changed exit price or exit reason.** The bug was real, but the
+scenario it could have affected never actually altered an outcome in this
+dataset -- the numbers above are unchanged and were never contaminated by
+it. Fable's separate statistical caution (mining vs. holdout Sharpe moving
+in opposite directions when trailing switched to ATR-scaling, both landing
+just above the 0.5 bar -- consistent with two noisy estimates regressing
+toward a threshold, not a uniformly stronger mechanism) is untouched by
+this verification and still applies: read this as "real enough for a
+discretionary panel, not yet proven for capital," not as a fully
+settled edge.
+
