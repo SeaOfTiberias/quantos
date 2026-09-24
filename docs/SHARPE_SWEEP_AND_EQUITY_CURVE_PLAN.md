@@ -147,15 +147,26 @@ target. A brand-new module (e.g. `core/backtest/equity_curve.py`, generic)
 is cleaner than bending the rotation-specific one.
 
 **Suggested phase order**:
-1. Design the shared `Account` core in isolation, with unit tests, no
-   strategy-specific logic yet (cash, positions, mark-to-market, CAGR/
-   Sharpe/max-drawdown on genuine equity levels — same guarantees S8-3's
-   version has, generalized).
-2. Wire candidate 18 in first (it's the one with a real, pending
-   question attached — "what does ₹50k become"). Answer that concretely.
+1. ~~Design the shared `Account` core in isolation, with unit tests, no
+   strategy-specific logic yet~~ **DONE 2026-09-24** — `core/backtest/equity_curve.py`
+   (commit `95408e7`), 21 unit tests in `tests/unit/test_generic_equity_curve.py`.
+2. ~~Wire candidate 18 in first~~ **DONE 2026-09-24** —
+   `scripts/simulate_orb_scalping_equity_curve.py` (commit `ad1093a`,
+   adapter + 7 unit tests) plus a live run against real Fyers data,
+   written to `docs/ORB_SCALPING_EQUITY_CURVE_RESULTS.md`. **Answer:
+   ₹50,000 is NOT viable — it's wiped to ~₹2,000 (97.7% max DD), while
+   ₹55,000 (just 10% more) ends near ₹513,000.** The failure is a cliff,
+   not a slope: single-lot premium cost runs ₹7k-25k/trade, and once an
+   early drawdown pushes cash below that floor the account is locked out
+   of the very trades that would let it recover. See that doc's
+   "Interpretation" section for the full mechanism and caveats (in
+   particular: exact rupee figures aren't reproducible bit-for-bit on a
+   later re-run, since this pulled live intraday data mid-session — the
+   cliff's existence and rough location are the finding, not the precise
+   numbers).
 3. Wire the Darvas ATR-stop candidate in second, if it's still relevant
    by then (depends on whether the discretionary panel got built, and
-   what Track 1 says about the 0.5 bar's reliability).
+   what Track 1 says about the 0.5 bar's reliability). NOT STARTED.
 4. Stop there unless a specific new candidate needs it — resist
    generalizing further without a concrete question driving it, same
    discipline as every other piece of infra this project has built.
