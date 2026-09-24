@@ -183,6 +183,89 @@ is cleaner than bending the rotation-specific one.
   correction note, never edit the line in place** — even for a
   legitimate metrics-methodology fix, not just a re-litigated result.
 
+## Track 1 status: Phase 1a + 1b DONE 2026-09-24 — no doc-level verdict changes, one flagged fragile flip
+
+**Key methodological finding that collapsed Phase 1a/1b into one pass**: the
+fix is an exact multiplicative rescale, not a re-run-dependent one.
+`_sharpe_ratio` is `mean(returns)/std(returns) * sqrt(periods_per_year)`, and
+the fix only changed `periods_per_year` from a hardcoded 144 to each trade
+set's own `len(trades) / (days_span/365.25)`. Mean/std of per-trade returns
+are untouched. So for any already-committed result:
+
+```
+corrected_sharpe = old_sharpe * sqrt(actual_trades_per_year / 144)
+```
+
+This can be computed from each doc's own reported trade count + date window
+— **no re-run, no Fyers pull, no API budget spent**. Verified against
+`core/backtest/parser.py` directly before trusting it.
+
+**Top-priority check (Strategy 1 dual-momentum) — resolved as not
+applicable.** The "0.45 < 0.5" number this plan flagged as highest priority
+(`docs/S1_DUAL_MOMENTUM_BACKTEST_RESULTS.md`, Coverage-clean sub-period) is
+the **"Sharpe (equity-curve daily returns)"** line — computed via
+`core/rotation/equity_curve.py`'s daily-returns `sqrt(252)` annualization,
+a completely different code path from `core.backtest.parser._sharpe_ratio`.
+The September fix never touched it; it was never affected. The line this
+bug *does* touch — the doc's own stated verdict basis, "pooled-trade
+`has_positive_edge`" Sharpe — was already a comfortable PASS (0.51 for
+Coverage-clean) and gets more comfortable corrected (0.700). No change
+either way for this candidate.
+
+**No doc-level headline verdict flips anywhere.** Every closed candidate's
+overall PASS/FAIL stands: candidates 14, 15, 17(v1), 18, 20, S7-3, Darvas
+box-width, Darvas trailing-stop. In every gating row, either PF was already
+<1.0 (PF is untouched by this bug) or the Sharpe margin was too large to
+cross 0.5.
+
+**One real but fragile non-headline flip found**: Pairs trading v2
+(candidate 17) pooled Sharpe -0.17→~~0.14~~ → **~0.556** under the
+correction (PF 1.04, so this technically crosses FAIL→PASS on the
+mechanical bar). Caveat: the window used (2024-07-01→2026-07-01) is
+approximated from fold-boundary dates, not the trade set's literal
+first-entry/last-exit dates (doc doesn't report those directly) — if the
+true span is shorter, corrected Sharpe would be *higher* still (reinforces
+the flip, doesn't reverse it), but treat 0.556 as an estimate. Candidate 17
+was closed 2026-07-27 on a substantive finding independent of this number
+("fold collapse is real regime shift" — see memory
+`quantos_pairs_trading_v2_status`), so this is reported per the plan's
+"report plainly and stop" rule, not treated as license to reopen the
+methodology. **Open follow-up if it ever matters**: get the exact
+first-entry/last-exit dates from a cached local run (no API call expected —
+pairs trading uses NSE bhavcopy, not live Fyers pulls) to firm up the 0.556
+estimate.
+
+**Handful of non-gating sub-row flips** (none change any doc's official
+verdict — all are supplementary/Clean-only or margin-over-baseline splits
+that were never the gating row): Darvas trailing-stop's ≤35% Holdout-Clean
+(0.30→0.595, FAIL→PASS) and 50-100% Holdout-Clean (0.70→0.470, PASS→FAIL);
+ORB arm-threshold's BankNifty 0.25x/0.50x Mining rows (0.49→0.770,
+0.50→0.785, both FAIL→PASS on the row-level bar, but Holdout still fails
+PF so "not adoptable" stands); ORB condition-mining's BankNifty
+monday_or_friday Mining (0.60→0.490, PASS→FAIL, doesn't change "Informative:
+no" — it already failed on margin-over-baseline).
+
+**Cannot be corrected**: `docs/S7_3_BACKTEST_RESULTS.md` — no date window
+recoverable anywhere in the doc, the sample doc, or the repo (source is
+per-symbol TradingView CSV exports in `data/s73_backtests/`, not committed).
+Doesn't matter for the verdict: the realistic-cost row's PF (0.75) already
+fails on its own regardless of Sharpe.
+
+**Confirmed out of scope entirely** (don't touch `core.backtest.parser`,
+or report no Sharpe at all): `MOMENTUM_TURNOVER_ABLATION_RESULTS.md` +
+its diagnostics doc (daily equity-curve or unannualized bespoke calc),
+`CANDLE_CONFIRM_MOMENTUM_GUTCHECK_RESULTS.md` and
+`DARVAS_BOX_WIDTH_SENSITIVITY_RESULTS.md` (no Sharpe/PF reported at all).
+
+Full per-row extraction (every split, every doc) done by a subagent and
+verified spot-check by the parent session — not re-transcribed here to
+keep this doc a living summary, not a data dump; re-derivable from the
+formula above plus each doc's own committed trade counts/windows if ever
+needed again.
+
+**Track 1 is effectively closed** unless the user wants candidate 17's
+window firmed up. Not spending further API budget on it without asking.
+
 ## How to resume this in a later session
 
 Check git log for commits touching `docs/SHARPE_SWEEP_AND_EQUITY_CURVE_PLAN.md`
