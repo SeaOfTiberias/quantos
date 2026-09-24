@@ -179,6 +179,34 @@ is cleaner than bending the rotation-specific one.
    generalizing further without a concrete question driving it, same
    discipline as every other piece of infra this project has built.
 
+**Extension (same day, user asked for the "optimum capital allocation",
+not just a fixed-lot survival check) — DONE 2026-09-24**:
+`scripts/simulate_orb_scalping_capital_allocation.py` (commit `0a79fb2`,
+13 unit tests) adds equity-proportional position sizing (lots scale with
+current equity, not fixed at 1) and a Kelly-fraction-based, mining/holdout-
+validated way to choose the sizing rule — deliberately NOT a sweep for
+whichever fraction backtested best (that would fit the one historical
+path this project has). Results in
+`docs/ORB_SCALPING_CAPITAL_ALLOCATION_RESULTS.md`:
+
+- Mining-derived Kelly fraction: 31% of equity/trade (full), 15.5% (half),
+  7.75% (quarter).
+- On the untouched HOLDOUT window: Quarter Kelly is the most consistently
+  reasonable policy above ₹100,000 (Sharpe up to 1.25, max DD 16-26%).
+  Full Kelly has a positive Sharpe but 74-93% drawdowns even out of
+  sample — the classic reason nobody trades full Kelly in practice.
+  ₹50,000 has no good option among any of the four policies tested
+  (either too small to execute the fractional policies at all, or stuck
+  with fixed-lot's already-documented cliff) — this independently
+  reconfirms ₹50,000 is undersized for this strategy.
+- The full-window numbers (some in the hundreds of millions of % return)
+  are explicitly flagged as an in-sample compounding artifact, NOT a
+  forecast — included only to show the mechanics, with a prominent
+  warning in the doc against reading them at face value.
+- Practical recommendation as currently evidenced: ~8-16% of equity per
+  trade (quarter-to-half Kelly), ₹100,000+ starting capital, ₹500,000
+  showing the cleanest risk-adjusted profile of everything tested.
+
 ## Known operational lessons to carry forward (both tracks)
 
 - **Background long-running Fyers pulls can silently die on machine
