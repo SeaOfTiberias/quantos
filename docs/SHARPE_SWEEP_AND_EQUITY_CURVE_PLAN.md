@@ -163,7 +163,15 @@ is cleaner than bending the rotation-specific one.
    particular: exact rupee figures aren't reproducible bit-for-bit on a
    later re-run, since this pulled live intraday data mid-session — the
    cliff's existence and rough location are the finding, not the precise
-   numbers).
+   numbers). **Follow-up (same day, user asked about ₹500,000 as a
+   higher-capital option)**: re-ran at ₹500k — it clears the cliff safely
+   (identical 2,335/2,335 trades taken, same behavior as ₹60k+), but earns
+   the exact same ~₹523,389 absolute profit as every tier from ₹60k up,
+   because sizing is fixed at 1 lot/trade regardless of capital. CAGR
+   actually gets WORSE at higher capital (100k: 41.1% → 500k: 14.4%) since
+   the same fixed profit is diluted over a bigger idle base. ₹500k buys
+   safety, not more return, under the current sizing policy — scaling lot
+   count with capital would be a new, not-yet-built design decision.
 3. Wire the Darvas ATR-stop candidate in second, if it's still relevant
    by then (depends on whether the discretionary panel got built, and
    what Track 1 says about the 0.5 bar's reliability). NOT STARTED.
