@@ -6,6 +6,8 @@ Methodology: docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md. NIFTY and BankNifty repor
 
 NIFTY window: 2022-06-01 to 2026-09-01 (1036 trades). BankNifty window: 2021-06-01 to 2026-09-01 (1268 trades).
 
+**Sharpe annualization correction (2026-09-24)**: `core/backtest/parser.py::_sharpe_ratio` hardcoded a 12-trades/month (144/yr) annualization factor regardless of a strategy's actual trade frequency -- found by Fable's review of an unrelated candidate (the Darvas ATR-stop backtest), then fixed project-wide (commit `d8c1293`) to annualize each trade set by its OWN observed frequency. This candidate trades far MORE often than 12/month (roughly 20/month for NIFTY, ~1051 trades over the window), so the old formula was UNDERSTATING its Sharpe, not overstating it. Re-run same day (script and methodology unchanged, just the corrected shared metrics function, plus a few more days of live data accrued since the original 2026-09-01 run): Stressed Sharpe rises from 1.03 to **1.42** (NIFTY) and 1.06 to **1.42** (BankNifty); Stratified Sharpe rises similarly (0.88->1.21 NIFTY, 0.95->1.27 BankNifty). PF is unaffected (annualization only touches Sharpe). **Both PASS verdicts below stand and are now MORE comfortable, not less** -- this is a metrics-correctness fix, not a re-litigation of the original pre-registered result, so the verdict lines below are left as originally written per this doc's own "never changes retroactively" rule; read them together with this note for the current, correct Sharpe.
+
 ## NIFTY
 
 | Variant | Trades | Win rate | Profit factor | Sharpe | Net P&L % | Max DD % |
