@@ -85,8 +85,8 @@ def _simulate_exit_atr(symbol: str, daily: list[OHLCV], entry_idx: int,
             if new_stop > stop:
                 stop = new_stop
                 seen_ceiling = result.box_ceiling
-            if result.mm_target and result.mm_target > target:
-                target = result.mm_target
+                if result.mm_target and result.mm_target > target:
+                    target = result.mm_target
     return n - 1, daily[n - 1].close, "still-open"
 
 
