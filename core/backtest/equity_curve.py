@@ -249,6 +249,61 @@ def _sharpe(daily_returns: list[float], risk_free: float = 0.0) -> float:
     return (mean - risk_free) / std * math.sqrt(252)
 
 
+def kelly_fraction(returns: list[float], step: float = 0.001, max_fraction: float = 1.0) -> float:
+    """Numerically finds the fixed fraction `f` in [0, max_fraction] of the
+    capital ALLOCATED TO EACH TRADE (not total account equity) that
+    maximizes long-run geometric growth: mean(log(1 + f * r)) over
+    `returns`, each trade's own fractional return on what was risked in
+    it (e.g. a BacktestTrade's net_profit_pct / 100).
+
+    This is the generalized Kelly criterion for an arbitrary sequence of
+    realized per-trade returns, not the textbook binary win/loss formula
+    (f* = p/a - q/b) -- that formula is the special case where every
+    `returns` entry is either +b or -a; this grid search recovers the
+    same optimum for that case (see this module's own tests) while also
+    working for a real strategy's messy, non-binary return distribution
+    without assuming one.
+
+    Every `returns` entry must be >= -1.0 (can't lose more than 100% of
+    what was allocated to a single trade -- true for a long option or a
+    long equity position, the only two position types this project's
+    Account needs); a smaller value raises ValueError since it would make
+    `log(1 + f * r)` undefined for some f in [0, max_fraction].
+
+    This is a THEORETICALLY-motivated fixed fraction, derived by
+    maximizing expected log-growth (not by trying many fractions against
+    a full equity curve and picking whichever one happened to look best
+    in hindsight -- that would be fitting the one historical path this
+    project only has one of). Any caller applying this fraction OUT OF
+    SAMPLE (computed on a mining window, applied to a holdout window) is
+    following this project's own established mining/holdout discipline
+    (see docs/ORB_CONDITION_MINING_METHODOLOGY.md); computing it on the
+    same data it's then evaluated on is in-sample and should be labeled
+    as such, not presented as a validated result."""
+    if any(r < -1.0 for r in returns):
+        raise ValueError("a per-trade return below -100% is not representable by this model")
+    if not returns:
+        return 0.0
+
+    best_f, best_growth = 0.0, 0.0
+    n = len(returns)
+    f = step
+    while f <= max_fraction + 1e-9:
+        # A fraction that would zero out (or invert) the account on any
+        # single historical trade (1 + f*r <= 0, only reachable when a
+        # -100% return exists and f approaches 1.0) is excluded outright
+        # -- infinite/undefined log-growth, never a real candidate.
+        bases = [1 + f * r for r in returns]
+        if any(b <= 0 for b in bases):
+            f += step
+            continue
+        growth = sum(math.log(b) for b in bases) / n
+        if growth > best_growth:
+            best_growth, best_f = growth, f
+        f += step
+    return round(best_f, 4)
+
+
 def _max_drawdown(curve: list[EquityCurvePoint]) -> tuple[float, float]:
     """Returns (drawdown_pct, drawdown_rs), bounded to [0, 100]% by
     construction since this walks real equity levels."""

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.backtest.equity_curve import (
-    Account, InsufficientCash, _max_drawdown, _sharpe,
+    Account, InsufficientCash, kelly_fraction, _max_drawdown, _sharpe,
 )
 
 
@@ -197,6 +197,39 @@ class TestFinalize:
         result = acct.finalize()
         assert result.max_drawdown_pct == pytest.approx((150_000 - 90_000) / 150_000 * 100)
         assert result.max_drawdown_rs == pytest.approx(60_000.0)
+
+
+class TestKellyFraction:
+    def test_matches_classical_double_or_nothing_formula(self):
+        # Classical Kelly for a bet that either doubles the stake (r=+1.0)
+        # with probability p or loses it entirely (r=-1.0) otherwise has a
+        # closed-form optimum f* = 2p - 1. p=0.6 -> f*=0.2.
+        p = 0.6
+        returns = [1.0] * 60 + [-1.0] * 40
+        assert kelly_fraction(returns, step=0.001) == pytest.approx(2 * p - 1, abs=0.01)
+
+    def test_unfavorable_bet_has_zero_kelly_fraction(self):
+        # p=0.4 on the same double-or-nothing bet has negative expectancy
+        # for any long-only fraction -- optimal is to not bet at all.
+        returns = [1.0] * 40 + [-1.0] * 60
+        assert kelly_fraction(returns) == 0.0
+
+    def test_empty_returns_is_zero(self):
+        assert kelly_fraction([]) == 0.0
+
+    def test_rejects_a_return_worse_than_total_loss(self):
+        with pytest.raises(ValueError):
+            kelly_fraction([0.1, -1.5, 0.2])
+
+    def test_exact_total_loss_is_allowed(self):
+        # -1.0 (100% loss of what was allocated) is the worst real outcome
+        # for a long option/equity position -- must not raise.
+        assert kelly_fraction([0.5, -1.0, 0.3]) >= 0.0
+
+    def test_higher_win_probability_yields_higher_fraction(self):
+        low_p = kelly_fraction([1.0] * 55 + [-1.0] * 45)
+        high_p = kelly_fraction([1.0] * 70 + [-1.0] * 30)
+        assert high_p > low_p
 
 
 class TestSharpeAndDrawdownHelpers:
