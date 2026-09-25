@@ -1,0 +1,545 @@
+// ============================================================
+//  DARVAS BOX SYSTEM - Nicholas Darvas Method  [Visual+]
+//  Visual Scanner for TradingView (Daily Chart)
+//  HTF: Weekly candles define Box Ceiling and Floor
+//
+//  2026-09-26: engine and trade rules aligned with the ONLY validated
+//  QuantOS Darvas variant — ATR-stop, Bucket B (35% < width <= 50%),
+//  docs/DARVAS_ATR_STOP_BACKTEST_RESULTS.md (mining PF 1.15 / Sharpe 0.68,
+//  holdout PF 1.16 / Sharpe 0.62). Same verified engine as
+//  darvas_breakout_strategy.pine / darvas_breakout_alert.pine — keep the
+//  three in sync. Visuals from v2 kept.
+//
+//  What changed vs the previous v2 logic:
+//    - Weekly box engine = exact port of weekly_discovery._detect_box
+//      (runs on daily bars; no request.security, so no historical-vs-live
+//      repaint; always resets after a confirmation; pending ceiling/floor
+//      track the NEW week after a confirmation, as Python does).
+//    - Breakout must be FRESH (previous close <= ceiling) and is classed by
+//      width; by default only Bucket B (35-50%) signals.
+//    - Stop = ceiling - 2 x ATR(14) at the breakout, trailing up ONLY when a
+//      higher box confirms (was: ceiling - 2%, or close - 2 ATR daily).
+//    - Target (measured move) is a real exit and trails with the box.
+//    - Entry = next bar's open (was: breakout close). The "close back below
+//      ceiling - 2%" exit is gone — not part of the validated rule.
+//    - "Box Formed" alert fires once per box, not every bar.
+//    - 52-week-high "Add" signal kept as an option, OFF by default (untested).
+//
+//  The VM's 18:00 IST scan is the systematic filter for the Nifty 500;
+//  this indicator is for looking at any stock, including outside it.
+//  Cross-check: ZYDUSLIFE 2026-09-25 -> Bucket B breakout, width 41.4%,
+//  stop 1124.27, target 1527.50.
+// ============================================================
+//@version=5
+indicator(
+     title            = "Darvas Box System [Visual+]",
+     shorttitle       = "DarvasBox V7",
+     overlay          = true,
+     max_lines_count  = 500,
+     max_boxes_count  = 500,
+     max_labels_count = 500)
+
+// ─────────────────────────────────────────────
+//  1. USER INPUTS  (defaults = the validated values)
+// ─────────────────────────────────────────────
+grp_box  = "📦 Box Settings"
+grp_sig  = "⚡ Signal Settings"
+grp_sl   = "🛡️ Stop Loss"
+grp_vol  = "📊 Volume"
+grp_vis  = "🎨 Visual Enhancements"
+grp_disp = "🖥️ Display"
+
+// Box
+boxLookback   = input.int  (3,    "Weekly Bars for Ceiling", minval=1, maxval=10, group=grp_box,
+                             tooltip="Consecutive weekly bars NOT making a new high to confirm Box Ceiling.")
+floorBars     = input.int  (3,    "Weekly Bars for Floor",   minval=1, maxval=10, group=grp_box,
+                             tooltip="Consecutive weekly bars NOT making a new low to confirm Box Floor.")
+
+// Signal
+atrMult_bo    = input.float(0.1,  "ATR Filter - Breakout",  minval=0.0, step=0.05, group=grp_sig,
+                             tooltip="Close must exceed ceiling by this many ATRs to confirm breakout.")
+signalMode    = input.string("Bucket B only (validated)", "Signal on",
+                             options=["Bucket B only (validated)", "All widths"], group=grp_sig,
+                             tooltip="Only 35-50% wide boxes cleared the backtest. 'All widths' also signals the rest (grey), which did NOT.")
+minWidth      = input.float(35.0, "Bucket B min width % (exclusive)", group=grp_sig)
+maxWidth      = input.float(50.0, "Bucket B max width % (inclusive)", group=grp_sig)
+
+// Volume
+volMultiplier = input.float(1.5,  "Volume Surge Multiplier", minval=1.0, step=0.1,  group=grp_vol,
+                             tooltip="Volume must be >= this multiple of 20-bar SMA on breakout bar.")
+volLen        = input.int  (20,   "Volume SMA Length",       minval=5,   maxval=50,  group=grp_vol)
+requireVolume = input.bool (true, "Require Volume Surge",                             group=grp_vol)
+
+// Stop Loss
+atrLen_sl     = input.int  (14,   "ATR Length (SL)",           minval=5,               group=grp_sl)
+atrMult_sl    = input.float(2.0,  "ATR Multiplier (SL)",       minval=0.5, step=0.25,  group=grp_sl,
+                             tooltip="Stop = box ceiling - this x ATR, set at the breakout and raised only when a higher box confirms.")
+
+// Visual Enhancements
+showHistBoxes    = input.bool (true, "Show Historical Boxes",         group=grp_vis)
+maxHistBoxes     = input.int  (3,    "Max Historical Boxes",          minval=1, maxval=5, group=grp_vis)
+showMeasuredMove = input.bool (true, "Show Measured Move Target",     group=grp_vis)
+showProximityLbl = input.bool (true, "Show Approaching Warning",      group=grp_vis)
+proximityThresh  = input.float(7.0,  "Proximity Threshold (%)",       minval=0.5, step=0.5, group=grp_vis,
+                             tooltip="Warn when price is within this % below the ceiling.")
+
+// Display
+showDash       = input.bool (true,  "Show Dashboard",               group=grp_disp)
+showLabels     = input.bool (true,  "Show Signal Labels",            group=grp_disp)
+showSL         = input.bool (true,  "Show Stop Loss Line",           group=grp_disp)
+showAddSignals = input.bool (false, "Show Add-to-Position Signals (52W high — NOT part of the tested rule)", group=grp_disp)
+
+if not timeframe.isdaily
+    runtime.error("Use a 1D (daily) chart — the rule is defined on daily bars with weekly boxes.")
+
+// ─────────────────────────────────────────────
+//  2. COLOURS
+// ─────────────────────────────────────────────
+C_BOX_FAR      = color.new(color.aqua,   80)   // calm - far from ceiling
+C_BOX_NEAR     = color.new(color.orange, 70)   // hot  - near ceiling
+C_BORDER_FAR   = color.new(color.aqua,   20)
+C_BORDER_NEAR  = color.new(color.orange,  0)
+C_HIST_BG      = color.new(color.blue,   88)
+C_HIST_BORDER  = color.new(color.blue,   55)
+C_BREAKOUT     = color.new(color.lime,    0)
+C_OTHER_BO     = color.new(color.gray,   20)
+C_BREAKDOWN    = color.new(color.red,     0)
+C_TARGET_HIT   = color.new(color.teal,    0)
+C_ADD          = color.new(color.yellow,  0)
+C_SL_LINE      = color.new(color.orange, 10)
+C_CEIL         = color.new(color.teal,   20)
+C_FLOOR        = color.new(color.purple, 20)
+C_TARGET       = color.new(color.lime,   15)
+C_PROXIMITY    = color.new(color.orange,  0)
+
+// ─────────────────────────────────────────────
+//  3. WEEKLY BOX ENGINE (port of weekly_discovery._detect_box)
+//  Keep identical to darvas_breakout_strategy.pine / _alert.pine.
+//  One step on the first daily bar of each week, using the previous
+//  (complete) week's high/low. After a confirmation the pending
+//  ceiling/floor track the NEW week's running high/low, as Python does.
+// ─────────────────────────────────────────────
+var float wkHigh         = na
+var float wkLow          = na
+var int   weekCount      = 0
+var float pendingCeiling = na
+var float pendingFloor   = na
+var int   ceilConfCount  = 0
+var int   floorConfCount = 0
+var float boxCeiling     = na
+var float boxFloor       = na
+var bool  pendIsLive     = false
+
+boxJustFormed = false
+
+if timeframe.change("W") and not na(wkHigh)
+    prevH = wkHigh
+    prevL = wkLow
+    pendIsLive := false
+    weekCount += 1
+    if na(pendingCeiling)
+        pendingCeiling := prevH
+        ceilConfCount  := 0
+    else if prevH <= pendingCeiling
+        ceilConfCount += 1
+    else
+        pendingCeiling := prevH
+        ceilConfCount  := 0
+    if na(pendingFloor)
+        pendingFloor   := prevL
+        floorConfCount := 0
+    else if prevL >= pendingFloor
+        floorConfCount += 1
+    else
+        pendingFloor   := prevL
+        floorConfCount := 0
+    wkHigh := high
+    wkLow  := low
+    if ceilConfCount >= boxLookback and floorConfCount >= floorBars
+        boxJustFormed  := true
+        boxCeiling     := pendingCeiling
+        boxFloor       := pendingFloor
+        ceilConfCount  := 0
+        floorConfCount := 0
+        pendIsLive     := true
+else
+    wkHigh := na(wkHigh) ? high : math.max(wkHigh, high)
+    wkLow  := na(wkLow)  ? low  : math.min(wkLow, low)
+
+if pendIsLive
+    pendingCeiling := wkHigh
+    pendingFloor   := wkLow
+
+// Box bookkeeping for drawing (a re-confirmation of identical levels is
+// the same box on the chart)
+var float prevCeiling  = na
+var float prevFloor    = na
+var int   boxStartBar  = 0
+var int   prevBoxStart = 0
+var int   daysInBox    = 0
+var array<box> histBoxArr = array.new<box>()
+
+boxChanged = boxJustFormed and (boxCeiling != prevCeiling or boxFloor != prevFloor)
+if boxChanged
+    if showHistBoxes and not na(prevCeiling)
+        hBox = box.new(prevBoxStart, prevCeiling, bar_index - 1, prevFloor,
+                       border_color=C_HIST_BORDER, border_width=1, bgcolor=C_HIST_BG)
+        array.push(histBoxArr, hBox)
+        while array.size(histBoxArr) > maxHistBoxes
+            box.delete(array.shift(histBoxArr))
+    prevCeiling  := boxCeiling
+    prevFloor    := boxFloor
+    prevBoxStart := bar_index
+    boxStartBar  := bar_index
+    daysInBox    := 0
+
+hasBox = not na(boxCeiling) and boxFloor > 0
+if hasBox
+    daysInBox += 1
+
+// ─────────────────────────────────────────────
+//  4. DAILY SIGNALS (port of analyse_symbol's FRESH BREAKOUT)
+// ─────────────────────────────────────────────
+atr      = ta.atr(atrLen_sl)
+volSMA   = ta.sma(volume, volLen)
+volRatio = volSMA > 0.0 ? volume / volSMA : 0.0
+volSurge = volRatio >= volMultiplier
+
+boxWidth      = hasBox ? (boxCeiling - boxFloor) / boxFloor * 100.0 : na
+inBucket      = hasBox and boxWidth > minWidth and boxWidth <= maxWidth
+enoughHistory = bar_index >= 59 and weekCount >= boxLookback + floorBars + 1
+
+freshBreakout = hasBox and enoughHistory and boxWidth <= 200
+     and close > boxCeiling + atr * atrMult_bo
+     and (requireVolume ? volSurge : true)
+     and close[1] <= boxCeiling
+signalBar     = freshBreakout and (inBucket or signalMode == "All widths")
+
+stopIfEntered = hasBox ? boxCeiling - atrMult_sl * atr : na
+mmTargetNow   = hasBox ? boxCeiling + (boxCeiling - boxFloor) : na
+
+// ─────────────────────────────────────────────
+//  5. VIRTUAL POSITION (port of backtest_darvas_atr_stop._simulate_exit_atr)
+//  Order per bar: fill yesterday's signal at today's open -> stop check ->
+//  target check -> trail on a higher box -> new signal.
+// ─────────────────────────────────────────────
+var bool  inPosition   = false
+var bool  pendingEntry = false
+var float entryPrice   = na
+var float stopLoss     = na
+var float target       = na
+var float seenCeil     = na
+
+if pendingEntry
+    pendingEntry := false
+    inPosition   := true
+    entryPrice   := open
+
+exitStop   = false
+exitTarget = false
+if inPosition
+    if low <= stopLoss
+        exitStop := true
+    else if high >= target
+        exitTarget := true
+exitSignal = exitStop or exitTarget
+exitLevel  = exitStop ? stopLoss : exitTarget ? target : na
+exitPnlPct = exitSignal and entryPrice > 0 ? (exitLevel - entryPrice) / entryPrice * 100.0 : na
+if exitSignal
+    inPosition := false
+
+stopRaised = false
+if inPosition and hasBox and boxCeiling > seenCeil
+    newStop = boxCeiling - atrMult_sl * atr
+    if newStop > stopLoss
+        stopLoss   := newStop
+        seenCeil   := boxCeiling
+        stopRaised := true
+        newTgt = boxCeiling + (boxCeiling - boxFloor)
+        if newTgt > target
+            target := newTgt
+
+if signalBar and not inPosition and not pendingEntry and stopIfEntered > 0
+    pendingEntry  := true
+    stopLoss      := stopIfEntered
+    target        := mmTargetNow
+    seenCeil      := boxCeiling
+
+high52    = ta.highest(high, 252)
+addSignal = showAddSignals and inPosition and high >= high52
+
+// ─────────────────────────────────────────────
+//  6. PROXIMITY CALCULATION
+// ─────────────────────────────────────────────
+distToCeil = (hasBox and not inPosition and close > 0) ? (boxCeiling - close) / close * 100.0 : na
+isNear     = not na(distToCeil) and distToCeil >= 0 and distToCeil <= proximityThresh
+
+boxBgColor     = isNear ? C_BOX_NEAR    : C_BOX_FAR
+boxBorderColor = isNear ? C_BORDER_NEAR : C_BORDER_FAR
+boxBorderWidth = isNear ? 3             : 1
+
+// ─────────────────────────────────────────────
+//  7. DRAW ACTIVE BOX (proximity-aware)
+// ─────────────────────────────────────────────
+var line ceilLine  = na
+var line floorLine = na
+var box  activeBox = na
+
+if hasBox
+    if na(activeBox)
+        ceilLine  := line.new(bar_index, boxCeiling, bar_index + 1, boxCeiling,
+                              color=C_CEIL, width=2, style=line.style_dashed, extend=extend.right)
+        floorLine := line.new(bar_index, boxFloor,   bar_index + 1, boxFloor,
+                              color=C_FLOOR, width=2, style=line.style_dashed, extend=extend.right)
+        activeBox := box.new(boxStartBar, boxCeiling, bar_index + 1, boxFloor,
+                              border_color=boxBorderColor, border_width=boxBorderWidth,
+                              bgcolor=boxBgColor, extend=extend.right)
+    else
+        line.set_y1(ceilLine,  boxCeiling)
+        line.set_y2(ceilLine,  boxCeiling)
+        line.set_y1(floorLine, boxFloor)
+        line.set_y2(floorLine, boxFloor)
+        box.set_top         (activeBox, boxCeiling)
+        box.set_bottom      (activeBox, boxFloor)
+        box.set_left        (activeBox, boxStartBar)
+        box.set_right       (activeBox, bar_index + 1)
+        box.set_bgcolor     (activeBox, boxBgColor)
+        box.set_border_color(activeBox, boxBorderColor)
+        box.set_border_width(activeBox, boxBorderWidth)
+
+// ─────────────────────────────────────────────
+//  8. SIGNAL LABELS
+// ─────────────────────────────────────────────
+if showLabels
+    if signalBar and pendingEntry
+        riskPct = boxCeiling > 0 ? (boxCeiling - stopIfEntered) / boxCeiling * 100.0 : na
+        rewPct  = boxCeiling > 0 ? (mmTargetNow - boxCeiling) / boxCeiling * 100.0 : na
+        rrRatio = (not na(riskPct) and riskPct > 0) ? rewPct / riskPct : na
+        label.new(bar_index, low,
+             text      = (inBucket ? "🚀 BUCKET B BREAKOUT\n" : "⚪ BREAKOUT (outside 35-50%, untested)\n") +
+                         "Entry : next open\n" +
+                         "SL    : " + str.tostring(stopIfEntered, format.mintick) + "\n" +
+                         "Risk  : " + (na(riskPct) ? "n/a" : str.tostring(riskPct, "#.#") + "%") + "\n" +
+                         "Target: " + str.tostring(mmTargetNow, format.mintick) + "\n" +
+                         "R:R   : " + (na(rrRatio) ? "n/a" : str.tostring(rrRatio, "#.##") + "x") + "\n" +
+                         "Width : " + str.tostring(boxWidth, "#.#") + "%",
+             color     = inBucket ? C_BREAKOUT : C_OTHER_BO,
+             textcolor = color.black,
+             style     = label.style_label_up,
+             size      = size.normal)
+
+    if addSignal
+        label.new(bar_index, low,
+             text="➕ ADD\n52W High\n(untested)", color=C_ADD, textcolor=color.black,
+             style=label.style_label_up, size=size.small)
+
+    if exitSignal
+        label.new(bar_index, high,
+             text      = (exitStop ? "🔴 SL HIT" : "🎯 TARGET HIT") + "\n" +
+                         str.tostring(exitLevel, format.mintick) +
+                         (na(exitPnlPct) ? "" : "\nPnL: " + str.tostring(exitPnlPct, "#.##") + "%"),
+             color     = exitStop ? C_BREAKDOWN : C_TARGET_HIT,
+             textcolor = color.white,
+             style     = label.style_label_down,
+             size      = size.normal)
+
+// ─────────────────────────────────────────────
+//  Proximity warning label (live, on last bar)
+// ─────────────────────────────────────────────
+var label proximityLbl = na
+
+if showProximityLbl and barstate.islast
+    if isNear
+        distStr = str.tostring(distToCeil, "#.##")
+        lblTxt  = "⚠️ APPROACHING\n" + distStr + "% to ceiling" + (inBucket ? "\n(Bucket B box)" : "\n(box outside 35-50%)")
+        if na(proximityLbl)
+            proximityLbl := label.new(bar_index, boxCeiling,
+                             text      = lblTxt,
+                             color     = color.new(color.orange, 10),
+                             textcolor = color.white,
+                             style     = label.style_label_left,
+                             size      = size.normal)
+        else
+            label.set_x   (proximityLbl, bar_index)
+            label.set_y   (proximityLbl, boxCeiling)
+            label.set_text(proximityLbl, lblTxt)
+    else
+        if not na(proximityLbl)
+            label.delete(proximityLbl)
+            proximityLbl := na
+
+// ─────────────────────────────────────────────
+//  9. STOP LOSS LINE
+// ─────────────────────────────────────────────
+var line slLine = na
+
+if showSL and inPosition and not na(stopLoss)
+    if na(slLine)
+        slLine := line.new(bar_index, stopLoss, bar_index + 1, stopLoss,
+                           color=C_SL_LINE, width=2, style=line.style_solid, extend=extend.right)
+    else
+        line.set_y1(slLine, stopLoss)
+        line.set_y2(slLine, stopLoss)
+        line.set_x1(slLine, bar_index)
+        line.set_x2(slLine, bar_index + 1)
+else if not inPosition and not na(slLine)
+    line.delete(slLine)
+    slLine := na
+
+// ─────────────────────────────────────────────
+//  10. BACKGROUND HIGHLIGHTING
+// ─────────────────────────────────────────────
+bgcolor(inPosition  ? color.new(color.green,  95) : na, title="In-Position Tint")
+bgcolor(isNear and not inPosition ? color.new(color.orange, 94) : na, title="Approaching Ceiling")
+bgcolor(signalBar and inBucket ? color.new(color.lime, 80) : na, title="Breakout Bar")
+bgcolor(exitSignal  ? color.new(exitStop ? color.red : color.teal, 80) : na, title="Exit Bar")
+
+// ─────────────────────────────────────────────
+//  11. CANDLE COLOURING
+// ─────────────────────────────────────────────
+barcolor(signalBar and inBucket ? color.lime : na, title="Breakout Candle")
+barcolor(exitStop   ? color.red    : na, title="Stop Candle")
+barcolor(exitTarget ? color.teal   : na, title="Target Candle")
+barcolor(addSignal  ? color.yellow : na, title="Add Candle")
+
+// ─────────────────────────────────────────────
+//  12. PLOTSHAPES
+// ─────────────────────────────────────────────
+plotshape(signalBar and inBucket, title="Bucket B Breakout", style=shape.triangleup,
+           location=location.belowbar, color=C_BREAKOUT, size=size.small)
+plotshape(freshBreakout and not inBucket, title="Breakout outside 35-50% (untested)", style=shape.circle,
+           location=location.belowbar, color=C_OTHER_BO, size=size.tiny)
+plotshape(exitSignal, title="Exit", style=shape.triangledown,
+           location=location.abovebar, color=exitStop ? C_BREAKDOWN : C_TARGET_HIT, size=size.small)
+plotshape(addSignal, title="Add-To", style=shape.circle,
+           location=location.belowbar, color=C_ADD, size=size.tiny)
+plotshape(isNear and not inPosition, title="Approaching",
+           style=shape.diamond,
+           location=location.abovebar, color=C_PROXIMITY, size=size.tiny)
+
+// ─────────────────────────────────────────────
+//  13. DASHBOARD TABLE
+// ─────────────────────────────────────────────
+var table dash = na
+
+if showDash and barstate.islast
+    if na(dash)
+        dash := table.new(position.top_right, 2, 13,
+                          border_width=1,
+                          border_color=color.new(color.white, 70),
+                          bgcolor=color.new(color.black, 55))
+
+    hdrColor = color.new(color.teal,   30)
+    defColor = color.new(color.black,  70)
+    hotColor = color.new(color.orange, 50)
+
+    table.cell(dash, 0, 0, "DARVAS BOX",   bgcolor=hdrColor, text_color=color.white,  text_size=size.small)
+    table.cell(dash, 1, 0, syminfo.ticker, bgcolor=hdrColor, text_color=color.yellow, text_size=size.small)
+
+    table.cell(dash, 0, 1, "Box Ceiling",  bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 1, hasBox ? str.tostring(boxCeiling, format.mintick) : "n/a",
+               bgcolor=defColor, text_color=color.aqua, text_size=size.small)
+
+    table.cell(dash, 0, 2, "Box Floor",    bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 2, hasBox ? str.tostring(boxFloor, format.mintick) : "n/a",
+               bgcolor=defColor, text_color=color.purple, text_size=size.small)
+
+    table.cell(dash, 0, 3, "Box Width %",  bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 3, na(boxWidth) ? "n/a" : str.tostring(boxWidth, "#.##") + "%" + (inBucket ? "  Bucket B" : "  outside 35-50"),
+               bgcolor=defColor, text_color=inBucket ? color.lime : color.gray, text_size=size.small)
+
+    distRowBg = isNear ? hotColor : defColor
+    distClr   = isNear ? color.orange : color.white
+    table.cell(dash, 0, 4, "Dist to Ceil", bgcolor=distRowBg, text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 4, na(distToCeil) ? "n/a" : str.tostring(distToCeil, "#.##") + "%",
+               bgcolor=distRowBg, text_color=distClr, text_size=size.small)
+
+    table.cell(dash, 0, 5, "Days in Box",  bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 5, hasBox ? str.tostring(daysInBox) : "n/a",
+               bgcolor=defColor, text_color=color.white, text_size=size.small)
+
+    statusTxt = inPosition ? "IN POSITION" : pendingEntry ? "ENTRY NEXT OPEN" : freshBreakout ? "FRESH BREAKOUT" :
+         isNear ? "APPROACHING!" : hasBox ? "WATCHING" : "BOX FORMING"
+    statusClr = inPosition ? color.lime : pendingEntry ? color.lime : isNear ? color.orange : hasBox ? color.yellow : color.gray
+    table.cell(dash, 0, 6, "Status",       bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 6, statusTxt,      bgcolor=defColor, text_color=statusClr,    text_size=size.small)
+
+    table.cell(dash, 0, 7, "Entry Price",  bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 7, inPosition ? str.tostring(entryPrice, format.mintick) : pendingEntry ? "next open" : "n/a",
+               bgcolor=defColor, text_color=color.lime, text_size=size.small)
+
+    slDisplay = inPosition or pendingEntry ? stopLoss : stopIfEntered
+    slLabel   = inPosition or pendingEntry ? "Stop Loss" : "Stop if entered"
+    table.cell(dash, 0, 8, slLabel,        bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 8, na(slDisplay) ? "n/a" : str.tostring(slDisplay, format.mintick),
+               bgcolor=defColor, text_color=color.orange, text_size=size.small)
+
+    tgtDisplay = inPosition or pendingEntry ? target : mmTargetNow
+    table.cell(dash, 0, 9, "Target",       bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 9, na(tgtDisplay) ? "n/a" : str.tostring(tgtDisplay, format.mintick),
+               bgcolor=defColor, text_color=C_TARGET, text_size=size.small)
+
+    pnlPct   = inPosition and entryPrice > 0 ? (close - entryPrice) / entryPrice * 100.0 : na
+    pnlColor = na(pnlPct) ? color.gray : pnlPct >= 0.0 ? color.lime : color.red
+    table.cell(dash, 0, 10, "Unrealised PnL", bgcolor=defColor, text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 10, na(pnlPct) ? "n/a" : str.tostring(pnlPct, "#.##") + "%",
+               bgcolor=defColor, text_color=pnlColor, text_size=size.small)
+
+    volTxtClr = volRatio >= volMultiplier ? color.lime : color.gray
+    table.cell(dash, 0, 11, "Vol vs SMA",  bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 11, str.tostring(volRatio, "#.##") + "x",
+               bgcolor=defColor, text_color=volTxtClr, text_size=size.small)
+
+    // Planned R:R from the ceiling: reward = box height, risk = 2 x ATR
+    preRisk   = hasBox ? boxCeiling - stopIfEntered : na
+    preReward = hasBox ? boxCeiling - boxFloor : na
+    preRR     = (not na(preRisk) and preRisk > 0) ? preReward / preRisk : na
+    rrTxtClr  = na(preRR) ? color.gray : preRR >= 3.0 ? color.lime : preRR >= 1.5 ? color.yellow : color.red
+    table.cell(dash, 0, 12, "Planned R:R", bgcolor=defColor, text_color=color.white,   text_size=size.small)
+    table.cell(dash, 1, 12, na(preRR) ? "n/a" : str.tostring(preRR, "#.##") + "x",
+               bgcolor=defColor, text_color=rrTxtClr, text_size=size.small)
+
+// ─────────────────────────────────────────────
+//  14. PLOTS (Data Window)
+// ─────────────────────────────────────────────
+plot(hasBox ? boxCeiling : na, "Box Ceiling", color=C_CEIL,    linewidth=1, style=plot.style_stepline)
+plot(hasBox ? boxFloor   : na, "Box Floor",   color=C_FLOOR,   linewidth=1, style=plot.style_stepline)
+plot(inPosition ? stopLoss : na, "Stop Loss", color=C_SL_LINE, linewidth=1, style=plot.style_stepline)
+plot(showMeasuredMove and inPosition ? target : na, "Measured Move Target", color=C_TARGET,
+     linewidth=2, style=plot.style_stepline)
+
+// ─────────────────────────────────────────────
+//  15. ALERTS (plain TradingView notifications — no webhook)
+// ─────────────────────────────────────────────
+alertcondition(signalBar and inBucket,
+     title   = "Darvas Bucket B Breakout",
+     message = "🚀 DARVAS BUCKET B BREAKOUT: {{ticker}} | Close: {{close}} | enter next open")
+
+alertcondition(exitSignal,
+     title   = "Darvas Exit (SL or Target)",
+     message = "🔴 DARVAS EXIT: {{ticker}} | Close: {{close}}")
+
+alertcondition(stopRaised,
+     title   = "Darvas Stop Raised",
+     message = "⬆️ DARVAS STOP RAISED (higher box): {{ticker}}")
+
+alertcondition(addSignal,
+     title   = "Darvas Add-To-Position (untested)",
+     message = "➕ DARVAS ADD: {{ticker}} | New 52W High: {{close}}")
+
+alertcondition(isNear and not inPosition,
+     title   = "Darvas Approaching Ceiling",
+     message = "⚠️ APPROACHING CEILING: {{ticker}} | Close: {{close}} | Check chart for ceiling level")
+
+alertcondition(boxChanged,
+     title   = "Darvas Box Formed",
+     message = "📦 DARVAS BOX FORMED: {{ticker}} | Watch for breakout")
+
+if signalBar and inBucket
+    alert("🚀 DARVAS BUCKET B BREAKOUT " + syminfo.ticker + ": close " + str.tostring(close, format.mintick) +
+         ", width " + str.tostring(boxWidth, "#.#") + "%, stop " + str.tostring(stopIfEntered, format.mintick) +
+         ", target " + str.tostring(mmTargetNow, format.mintick) + " — enter next open",
+         alert.freq_once_per_bar_close)
+if exitSignal
+    alert((exitStop ? "🔴 DARVAS SL HIT " : "🎯 DARVAS TARGET HIT ") + syminfo.ticker + " at " +
+         str.tostring(exitLevel, format.mintick), alert.freq_once_per_bar_close)
