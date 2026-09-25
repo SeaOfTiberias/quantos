@@ -14,7 +14,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.backtest.equity_curve import (
-    Account, InsufficientCash, kelly_fraction, _max_drawdown, _sharpe,
+    Account, EquityCurvePoint, InsufficientCash, kelly_fraction,
+    _max_drawdown, _max_drawdown_duration_days, _sharpe, _sortino, _ulcer_index,
 )
 
 
@@ -230,6 +231,110 @@ class TestKellyFraction:
         low_p = kelly_fraction([1.0] * 55 + [-1.0] * 45)
         high_p = kelly_fraction([1.0] * 70 + [-1.0] * 30)
         assert high_p > low_p
+
+
+class TestFinalizeIncludesNewMetrics:
+    def test_sortino_calmar_ulcer_and_dd_duration_are_populated(self):
+        acct = Account(initial_capital=100_000.0)
+        pos_id = acct.open("A", qty=1000, price=100.0, when=_d(0))
+        acct.mark(_d(0), mark_prices={"A": 100.0})
+        acct.close(pos_id, price=80.0, when=_d(10))   # a real drawdown
+        acct.mark(_d(10), mark_prices={})
+        for i in range(11, 20):
+            acct.mark(_d(i), mark_prices={})   # flat, still underwater
+        result = acct.finalize()
+        assert result.max_drawdown_pct == pytest.approx(20.0)
+        assert result.max_drawdown_duration_days == 19   # never recovers by curve end
+        assert result.ulcer_index > 0.0
+        # Calmar is undefined (0.0) here since CAGR is negative and max DD > 0
+        # would otherwise divide a negative by a positive -- just check it's finite.
+        assert isinstance(result.calmar, float)
+
+    def test_calmar_is_cagr_over_max_drawdown(self):
+        acct = Account(initial_capital=100_000.0)
+        acct.mark(_d(0), mark_prices={})
+        acct.cash = 150_000.0
+        acct.mark(_d(365), mark_prices={})   # +50% over 1 year, no drawdown yet
+        acct.cash = 135_000.0
+        acct.mark(_d(400), mark_prices={})   # a 10% drawdown from the 150k peak
+        result = acct.finalize()
+        assert result.max_drawdown_pct == pytest.approx(10.0, abs=0.1)
+        assert result.calmar == pytest.approx(result.cagr_pct / result.max_drawdown_pct, abs=0.01)
+
+
+class TestSortino:
+    def test_matches_hand_computed_value(self):
+        returns = [0.02, -0.01, 0.03, -0.02, 0.0]
+        mean = sum(returns) / len(returns)
+        downside = [min(0.0, r) for r in returns]
+        downside_var = sum(d ** 2 for d in downside) / (len(downside) - 1)
+        downside_std = downside_var ** 0.5
+        expected = mean / downside_std * (252 ** 0.5)
+        assert _sortino(returns) == pytest.approx(expected)
+
+    def test_zero_with_fewer_than_two_returns(self):
+        assert _sortino([]) == 0.0
+        assert _sortino([0.01]) == 0.0
+
+    def test_zero_when_no_downside_at_all(self):
+        assert _sortino([0.01, 0.02, 0.03]) == 0.0
+
+    def test_big_upside_outlier_does_not_punish_sortino_like_sharpe(self):
+        returns = [0.01, -0.01, 0.01, -0.01, 0.50]   # one huge up day
+        assert _sortino(returns) > _sharpe(returns)
+
+
+class TestUlcerIndex:
+    def test_zero_on_monotonic_rise(self):
+        curve = [EquityCurvePoint(date=_d(i), cash=100_000.0 + i * 1000, positions_value=0.0)
+                 for i in range(5)]
+        assert _ulcer_index(curve) == 0.0
+
+    def test_longer_grinding_drawdown_scores_higher_than_a_brief_one_of_equal_depth(self):
+        # Both curves fall from 100k to 80k (20% DD) and end there -- but
+        # "grinding" stays there for many points, "brief" only dips once.
+        grinding = ([EquityCurvePoint(date=_d(0), cash=100_000.0, positions_value=0.0)] +
+                    [EquityCurvePoint(date=_d(i), cash=80_000.0, positions_value=0.0) for i in range(1, 10)])
+        brief = ([EquityCurvePoint(date=_d(0), cash=100_000.0, positions_value=0.0),
+                  EquityCurvePoint(date=_d(1), cash=80_000.0, positions_value=0.0)] +
+                 [EquityCurvePoint(date=_d(i), cash=100_000.0, positions_value=0.0) for i in range(2, 10)])
+        assert _ulcer_index(grinding) > _ulcer_index(brief)
+
+    def test_empty_curve_is_zero(self):
+        assert _ulcer_index([]) == 0.0
+
+
+class TestMaxDrawdownDuration:
+    def test_zero_when_curve_never_dips_below_peak(self):
+        curve = [EquityCurvePoint(date=_d(i), cash=100_000.0 + i, positions_value=0.0) for i in range(5)]
+        assert _max_drawdown_duration_days(curve) == 0
+
+    def test_counts_days_from_peak_to_recovery(self):
+        curve = [
+            EquityCurvePoint(date=_d(0), cash=100_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(5), cash=80_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(12), cash=100_000.0, positions_value=0.0),   # recovered
+        ]
+        assert _max_drawdown_duration_days(curve) == 12   # day 0 -> day 12
+
+    def test_still_underwater_at_curve_end_counts_through_the_last_point(self):
+        curve = [
+            EquityCurvePoint(date=_d(0), cash=100_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(5), cash=80_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(30), cash=90_000.0, positions_value=0.0),   # still below peak
+        ]
+        assert _max_drawdown_duration_days(curve) == 30
+
+    def test_takes_the_longest_of_multiple_drawdown_episodes(self):
+        curve = [
+            EquityCurvePoint(date=_d(0), cash=100_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(2), cash=90_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(4), cash=100_000.0, positions_value=0.0),    # short episode: 4 days
+            EquityCurvePoint(date=_d(10), cash=200_000.0, positions_value=0.0),   # new peak
+            EquityCurvePoint(date=_d(15), cash=150_000.0, positions_value=0.0),
+            EquityCurvePoint(date=_d(40), cash=200_000.0, positions_value=0.0),   # long episode: 30 days
+        ]
+        assert _max_drawdown_duration_days(curve) == 30
 
 
 class TestSharpeAndDrawdownHelpers:

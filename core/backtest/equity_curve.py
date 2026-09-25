@@ -94,8 +94,12 @@ class EquityCurveResult:
     closed_positions:   list[ClosedPosition] = field(default_factory=list)
     cagr_pct:           float = 0.0
     sharpe:             float = 0.0
+    sortino:            float = 0.0
+    calmar:             float = 0.0
+    ulcer_index:        float = 0.0
     max_drawdown_pct:   float = 0.0
     max_drawdown_rs:    float = 0.0
+    max_drawdown_duration_days: int = 0
     total_return_pct:   float = 0.0
 
 
@@ -220,13 +224,19 @@ class Account:
             if prev > 0:
                 daily_returns.append((self.curve[i].equity - prev) / prev)
         sharpe = _sharpe(daily_returns)
+        sortino = _sortino(daily_returns)
         dd_pct, dd_rs = _max_drawdown(self.curve)
+        calmar = (cagr_pct / dd_pct) if dd_pct > 0 else 0.0
+        ulcer = _ulcer_index(self.curve)
+        dd_duration = _max_drawdown_duration_days(self.curve)
 
         return EquityCurveResult(
             initial_capital=self.initial_capital, final_equity=round(final_equity, 2),
             curve=self.curve, closed_positions=self.closed_positions,
-            cagr_pct=round(cagr_pct, 2), sharpe=round(sharpe, 3),
+            cagr_pct=round(cagr_pct, 2), sharpe=round(sharpe, 3), sortino=round(sortino, 3),
+            calmar=round(calmar, 3), ulcer_index=round(ulcer, 3),
             max_drawdown_pct=round(dd_pct, 2), max_drawdown_rs=round(dd_rs, 2),
+            max_drawdown_duration_days=dd_duration,
             total_return_pct=round(total_return_pct, 2),
         )
 
@@ -247,6 +257,70 @@ def _sharpe(daily_returns: list[float], risk_free: float = 0.0) -> float:
     if std < 1e-12:
         return 0.0
     return (mean - risk_free) / std * math.sqrt(252)
+
+
+def _sortino(daily_returns: list[float], risk_free: float = 0.0) -> float:
+    """Sharpe's asymmetric sibling: same numerator (mean excess return),
+    but the denominator only counts DOWNSIDE deviation (returns below
+    `risk_free`, zero contribution from an up day) instead of full
+    variance. A strategy with occasional large UP days gets penalized by
+    Sharpe for that "volatility" even though nobody minds a big win --
+    Sortino doesn't make that mistake, which is why it's a standard
+    companion metric, not a replacement, in institutional reporting."""
+    if len(daily_returns) < 2:
+        return 0.0
+    mean = sum(daily_returns) / len(daily_returns)
+    downside = [min(0.0, r - risk_free) for r in daily_returns]
+    downside_variance = sum(d ** 2 for d in downside) / (len(downside) - 1)
+    downside_std = math.sqrt(downside_variance)
+    if downside_std < 1e-12:
+        return 0.0
+    return (mean - risk_free) / downside_std * math.sqrt(252)
+
+
+def _ulcer_index(curve: list[EquityCurvePoint]) -> float:
+    """Root-mean-square of the drawdown-from-running-peak (as %) at EVERY
+    point on the curve, not just the single worst point max_drawdown_pct
+    reports. Two curves can share the same max drawdown while one recovers
+    in a week and the other grinds underwater for two years -- Ulcer Index
+    is higher for the second, which max_drawdown_pct alone can't tell you.
+    Popular with trend-following/CTA shops for exactly this reason (a
+    long grinding drawdown is what actually drives investor redemptions,
+    not necessarily the single deepest one)."""
+    if not curve:
+        return 0.0
+    peak = curve[0].equity
+    sq_sum = 0.0
+    for point in curve:
+        peak = max(peak, point.equity)
+        dd_pct = (peak - point.equity) / peak * 100 if peak > 0 else 0.0
+        sq_sum += dd_pct ** 2
+    return math.sqrt(sq_sum / len(curve))
+
+
+def _max_drawdown_duration_days(curve: list[EquityCurvePoint]) -> int:
+    """Longest stretch (in days) from a new equity peak until the curve
+    recovers to at least that peak again. A drawdown still open at the end
+    of the curve counts as running through the curve's last date -- it
+    isn't excluded just because the window ended before it recovered."""
+    if len(curve) < 2:
+        return 0
+    peak = curve[0].equity
+    peak_date = curve[0].date
+    underwater_since = None
+    max_days = 0
+    for point in curve:
+        if point.equity >= peak:
+            if underwater_since is not None:
+                max_days = max(max_days, (point.date - underwater_since).days)
+                underwater_since = None
+            peak = point.equity
+            peak_date = point.date
+        elif underwater_since is None:
+            underwater_since = peak_date
+    if underwater_since is not None:
+        max_days = max(max_days, (curve[-1].date - underwater_since).days)
+    return max_days
 
 
 def kelly_fraction(returns: list[float], step: float = 0.001, max_fraction: float = 1.0) -> float:
