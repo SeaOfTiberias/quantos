@@ -172,9 +172,26 @@ is cleaner than bending the rotation-specific one.
    the same fixed profit is diluted over a bigger idle base. ₹500k buys
    safety, not more return, under the current sizing policy — scaling lot
    count with capital would be a new, not-yet-built design decision.
-3. Wire the Darvas ATR-stop candidate in second, if it's still relevant
-   by then (depends on whether the discretionary panel got built, and
-   what Track 1 says about the 0.5 bar's reliability). NOT STARTED.
+3. ~~Wire the Darvas ATR-stop candidate in second~~ **DONE 2026-09-25** --
+   `scripts/simulate_darvas_atr_stop_equity_curve.py` (14 unit tests),
+   run against the already-committed local cache (no new backtest, no
+   Fyers calls). Results in `docs/DARVAS_ATR_STOP_EQUITY_CURVE_RESULTS.md`:
+   unlike candidate 18, NO wipeout cliff (worst max DD ~50%, not ~98%) --
+   equities size down smoothly instead of hitting an all-or-nothing lot
+   floor. Instead the problem is CAPACITY: the backtest's own fixed-
+   Rs100k/trade convention loses money below Rs100k and never fully funds
+   even at Rs500k (43% of signals still skipped) because many overlapping
+   breakout signals compete for a fixed target each. Quarter Kelly
+   (~11.5% of equity/trade) is again the standout on the full (larger,
+   more trustworthy) window -- positive at every capital tier, lowest
+   drawdown and Ulcer Index of any policy tested. The Holdout-only table
+   looks spectacular (Sharpe >2, CAGR up to 78%) but is flagged as
+   untrustworthy in the doc itself -- only 67 signals, as few as ~20-45
+   actually executed per cell, the classic small-sample lucky-regime
+   shape. Also surfaced an unresolved methodological gap: the Kelly
+   fraction assumes one trade at a time, but Darvas holds many
+   concurrent positions -- a portfolio-level Kelly formulation is a real
+   follow-up, not built here.
 4. Stop there unless a specific new candidate needs it — resist
    generalizing further without a concrete question driving it, same
    discipline as every other piece of infra this project has built.
