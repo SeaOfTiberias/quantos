@@ -192,6 +192,26 @@ is cleaner than bending the rotation-specific one.
    fraction assumes one trade at a time, but Darvas holds many
    concurrent positions -- a portfolio-level Kelly formulation is a real
    follow-up, not built here.
+
+**Follow-up (2026-09-25, user asked to build the portfolio Kelly
+formulation) -- DONE**: `core/backtest/equity_curve.py::optimal_fraction_by_growth`
+(commit `1cea990`) finds the fraction that maximizes REALIZED portfolio
+log-growth by directly simulating the real overlapping trade history
+(concurrency, correlation, and the cash ceiling all correct by
+construction, not analytically approximated) -- rejected a naive
+"divide single-trade Kelly by N concurrent positions" heuristic first
+since it can't account for correlation or the fact Account's own cash
+constraint already caps aggregate exposure. Wired into
+`scripts/simulate_darvas_atr_stop_equity_curve.py` (commit `d35416f`) as
+a 5th sizing policy, grid-searched on the mining window and validated on
+holdout same as the others. Result: **f=0.09 (9% of equity/trade) beats
+every other policy including Quarter Kelly on every risk-adjusted metric
+on the full window** (best Sharpe/Sortino/Calmar, lowest Ulcer Index,
+lowest max drawdown) -- confirms the concurrency gap was real and that a
+properly-derived fraction measurably beats an ad hoc round-number guess,
+even though the ad hoc guess (Quarter Kelly, 11.48%) happened to be in
+the right ballpark. Updated recommendation:
+`docs/DARVAS_ATR_STOP_EQUITY_CURVE_RESULTS.md`.
 4. Stop there unless a specific new candidate needs it — resist
    generalizing further without a concrete question driving it, same
    discipline as every other piece of infra this project has built.
