@@ -232,6 +232,39 @@ orb_scalping_filtered:
   nifty_dte_floor_days: 2
   banknifty_dte_floor_days: 0
 
+darvas_atr_stop:
+  # Darvas ATR-scaled stop, Bucket B only (35% < box width <= 50%) --
+  # docs/DARVAS_ATR_STOP_BACKTEST_RESULTS.md (cleared its pre-registered
+  # PF>1.0/Sharpe>0.5 bar 2026-09-24) plus
+  # docs/DARVAS_ATR_STOP_EQUITY_CURVE_RESULTS.md (real-capital equity-curve
+  # and position-sizing pass) -- the second strategy in this project,
+  # alongside candidate 18, to clear both gates. Had ZERO live execution
+  # code until scripts/run_darvas_atr_stop_live.py.
+  #
+  # Deliberately NOT the scanner: block above (core/darvas/scanner.py +
+  # core/darvas/alerts.py): that pipeline's default max_box_width=35
+  # EXCLUDES this candidate's own 35-50% width range outright, its stop is
+  # the fixed sl_ceil_buffer_pct=2% this candidate's whole methodology
+  # chain found insufficient (docs/DARVAS_TRAILING_STOP_BACKTEST_
+  # METHODOLOGY.md), and it is human-confirm-gated via Telegram -- a human
+  # veto on a systematic signal corrupts the track record a backtest
+  # verdict is supposed to stand for (memory: quantos_fable_rationale_review).
+  #
+  # Both flags stay at their safest setting until a real, weeks-long
+  # supervised dry_run cycle has been watched AND you give a fresh,
+  # explicit capital go-ahead -- do NOT flip either casually.
+  enabled: false                    # Master switch. false = this never runs at all.
+  dry_run: true                     # true = compute what would be entered/trailed/exited and log
+                                     # it, without placing real orders.
+  equity_fraction: 0.09             # Grid-searched (core/backtest/equity_curve.py::
+                                     # optimal_fraction_by_growth on Bucket B's mining window,
+                                     # validated on holdout) -- NOT a routine tuning knob. Do not
+                                     # change without a fresh, documented re-derivation, same
+                                     # discipline as candidate 18's Kelly fractions.
+  starting_capital: 0.0             # Paper-ledger base for the equity_fraction sizing formula.
+  min_capital_floor: 0.0            # Refuse all new entries below this equity level.
+  universe_file: agent/universe_nifty500.txt   # SAME file the backtest itself scanned.
+
 # ── Obsidian vault: qualitative strategy memory (2026-08-14) ─────────────────
 # Audits symbols against the rule blocks written into your Obsidian strategy
 # notes (obsidian_vault/QuantOS/*.md) before they reach an execution path.
