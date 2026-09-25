@@ -9,6 +9,8 @@ tests/unit/test_run_orb_scalping_live.py's own _patch_common).
 """
 
 import sys
+
+import pytest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -559,85 +561,245 @@ class TestHaltFlagBlocksNewEntriesOnly:
         assert "TEST" in positions
 
 
-# ─── main(): config wiring ───────────────────────────────────────────────────
+# ─── Two-phase: scan -> plan -> execute ─────────────────────────────────────
 
-def _patch_main_deps(monkeypatch, cfg=None, universe=None):
-    calls = []
+class _ConnectingBroker(_FakeBroker):
+    def __init__(self, *a, fail_first=None, fail_always=None, **kw):
+        super().__init__(*a, **kw)
+        self._fail_first = set(fail_first or [])
+        self._fail_always = set(fail_always or [])
+        self.history_calls = []
 
-    class _StubBroker:
-        def connect(self):
-            return True
+    def connect(self):
+        return True
 
-    monkeypatch.setattr(mod, "load_config", lambda path: {
-        "broker": "stub", "darvas_atr_stop": cfg if cfg is not None else {"enabled": False},
-    })
-    monkeypatch.setattr(mod, "get_broker", lambda config: _StubBroker())
-    monkeypatch.setattr(mod, "_load_universe", lambda universe_file: universe or [])
-
-    def spy_process_symbol(broker, symbol, positions, trade_history, dry_run, equity_fraction,
-                            starting_capital, min_capital_floor, today, positions_path=None):
-        calls.append(dict(symbol=symbol, dry_run=dry_run, equity_fraction=equity_fraction,
-                           starting_capital=starting_capital, min_capital_floor=min_capital_floor))
-
-    monkeypatch.setattr(mod, "process_symbol", spy_process_symbol)
-    monkeypatch.setattr(mod, "load_open_positions", lambda: {})
-    monkeypatch.setattr(mod.time, "sleep", lambda s: None)   # keep the test suite fast
-    return calls
+    def get_historical_data(self, symbol, timeframe, from_date, to_date):
+        self.history_calls.append(symbol)
+        if symbol in self._fail_always:
+            raise RuntimeError("Invalid symbol provided")
+        if symbol in self._fail_first:
+            self._fail_first.discard(symbol)
+            raise RuntimeError("request limit reached")
+        return super().get_historical_data(symbol, timeframe, from_date, to_date)
 
 
-class TestMainConfigWiring:
-    def test_disabled_by_default_does_nothing(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": False}, universe=["A", "B"])
-        assert mod.main([]) == 0
-        assert calls == []
+def _breakout():
+    return build_breakout_daily(box_low=100.0, box_high=140.0, breakout_close=145.0)
 
-    def test_enabled_scans_every_universe_symbol(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True, "dry_run": True},
-                                  universe=["A", "B", "C"])
-        assert mod.main([]) == 0
-        assert {c["symbol"] for c in calls} == {"A", "B", "C"}
-        assert all(c["dry_run"] is True for c in calls)
 
-    def test_dry_run_defaults_true_even_if_omitted(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True}, universe=["A"])
-        assert mod.main([]) == 0
-        assert calls[0]["dry_run"] is True
+def _last_date(daily):
+    return daily[-1].timestamp.date()
 
-    def test_equity_fraction_defaults_to_the_validated_nine_percent(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True}, universe=["A"])
-        assert mod.main([]) == 0
-        assert calls[0]["equity_fraction"] == 0.09
 
-    def test_config_can_override_equity_fraction(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True, "equity_fraction": 0.05},
-                                  universe=["A"])
-        assert mod.main([]) == 0
-        assert calls[0]["equity_fraction"] == 0.05
+def _scan_plan(daily, symbol="BRK"):
+    return mod.run_scan(_ConnectingBroker(daily_by_symbol={symbol: daily}), [symbol], {}, {},
+                        through=_last_date(daily))
 
-    def test_empty_universe_is_a_no_op(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True}, universe=[])
-        assert mod.main([]) == 0
-        assert calls == []
 
-    def test_open_positions_outside_the_universe_are_still_scanned(self, monkeypatch):
-        """A delisting or index reshuffle must never orphan a position
-        real capital is already committed to."""
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True}, universe=["A"])
-        monkeypatch.setattr(mod, "load_open_positions", lambda: {
-            "DROPPED": _position(symbol="DROPPED"),
+@pytest.fixture
+def no_sleep(monkeypatch):
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+
+
+class TestLastFinalBarDate:
+    def test_before_session_end_uses_yesterday(self):
+        now = datetime(2026, 9, 28, 10, 0, tzinfo=mod.IST)
+        assert mod.last_final_bar_date(now) == date(2026, 9, 27)
+
+    def test_after_session_end_uses_today(self):
+        now = datetime(2026, 9, 28, 18, 0, tzinfo=mod.IST)
+        assert mod.last_final_bar_date(now) == date(2026, 9, 28)
+
+
+class TestRunScan:
+    def test_plans_bucket_b_entry_with_tags_and_places_no_orders(self, no_sleep):
+        daily = _breakout()
+        broker = _ConnectingBroker(daily_by_symbol={"BRK": daily, "FLAT": _flat(len(daily), 100.0)})
+        plan = mod.run_scan(broker, ["BRK", "FLAT"], {}, {"Alpha50": {"BRK"}, "Mom30": set()},
+                            through=_last_date(daily))
+        assert [e["symbol"] for e in plan["entries"]] == ["BRK"]
+        entry = plan["entries"][0]
+        assert entry["tags"] == ["Alpha50"]
+        assert 35.0 < entry["box_width_pct"] <= 50.0
+        assert entry["initial_stop"] < entry["last_close"]
+        assert plan["bars_as_of"] == _last_date(daily).isoformat()
+        assert broker.placed_orders == []
+
+    def test_matches_single_phase_decision(self, monkeypatch, tmp_path, no_sleep):
+        """The scan must reach the same entry the old morning fire did."""
+        _patch_common(monkeypatch, tmp_path)
+        daily = _breakout()
+        plan = _scan_plan(daily)
+        positions = {}
+        mod._detect_and_enter(_FakeBroker(ltp={"BRK": 145.0}), "BRK", daily, positions,
+                              TradeHistoryService(), dry_run=True, equity_fraction=0.09,
+                              starting_capital=1_000_000.0, min_capital_floor=0.0,
+                              today_iso="2024-05-01")
+        assert plan["entries"][0]["initial_stop"] == positions["BRK"].current_stop
+        assert plan["entries"][0]["target"] == positions["BRK"].current_target
+
+    def test_ignores_bars_after_through_date(self, no_sleep):
+        """A catch-up scan during market hours must not read today's forming bar."""
+        daily = _breakout()
+        through = _last_date(daily) - timedelta(days=1)
+        plan = mod.run_scan(_ConnectingBroker(daily_by_symbol={"BRK": daily}), ["BRK"], {}, {},
+                            through=through)
+        assert plan["entries"] == []   # the breakout bar is excluded
+        assert plan["bars_as_of"] == through.isoformat()
+
+    def test_transient_failure_is_retried_once(self, no_sleep):
+        daily = _breakout()
+        broker = _ConnectingBroker(daily_by_symbol={"BRK": daily}, fail_first={"BRK"})
+        plan = mod.run_scan(broker, ["BRK"], {}, {}, through=_last_date(daily))
+        assert plan["failures"] == {}
+        assert [e["symbol"] for e in plan["entries"]] == ["BRK"]
+        assert broker.history_calls == ["BRK", "BRK"]
+
+    def test_permanent_failure_is_listed_not_fatal(self, no_sleep):
+        daily = _breakout()
+        broker = _ConnectingBroker(daily_by_symbol={"BRK": daily}, fail_always={"DEAD"})
+        plan = mod.run_scan(broker, ["BRK", "DEAD"], {}, {}, through=_last_date(daily))
+        assert "Invalid symbol" in plan["failures"]["DEAD"]
+        assert [e["symbol"] for e in plan["entries"]] == ["BRK"]
+
+    def test_symbol_missing_the_latest_session_is_not_entered(self, no_sleep):
+        daily = _breakout()
+        # STALE's breakout bar is dated one session before FRESH's latest bar.
+        broker = _ConnectingBroker(daily_by_symbol={
+            "FRESH": _flat(len(daily) + 1, 100.0),
+            "STALE": daily,
         })
-        assert mod.main([]) == 0
-        assert {c["symbol"] for c in calls} == {"A", "DROPPED"}
+        plan = mod.run_scan(broker, ["FRESH", "STALE"], {}, {},
+                            through=_last_date(daily) + timedelta(days=1))
+        assert plan["entries"] == []
 
-    def test_a_single_symbol_failure_does_not_abort_the_rest(self, monkeypatch):
-        calls = _patch_main_deps(monkeypatch, cfg={"enabled": True}, universe=["A", "B"])
+    def test_open_position_gets_exit_action_even_outside_universe(self, no_sleep):
+        broker = _ConnectingBroker(daily_by_symbol={"HELD": [_bar(0, 135, 136, 125, 128)]})
+        plan = mod.run_scan(broker, [], {"HELD": _position(symbol="HELD")}, {},
+                            through=START.date())
+        assert plan["position_actions"]["HELD"] == {"action": "exit", "reason": "stop", "boundary": 130.0}
+        assert plan["entries"] == []
 
-        def flaky(broker, symbol, positions, trade_history, dry_run, equity_fraction,
-                  starting_capital, min_capital_floor, today, positions_path=None):
-            calls.append(symbol)
-            if symbol == "A":
-                raise RuntimeError("broker hiccup")
 
-        monkeypatch.setattr(mod, "process_symbol", flaky)
-        assert mod.main([]) == 0
-        assert calls == ["A", "B"]
+class TestPlanRefusal:
+    def _plan(self, as_of, executed_on=None):
+        return {"bars_as_of": as_of.isoformat(), "executed_on": executed_on}
+
+    def test_fresh_plan_is_accepted(self):
+        assert mod.plan_refusal_reason(self._plan(date(2026, 9, 25)), date(2026, 9, 28)) is None
+
+    def test_missing_plan_is_refused(self):
+        assert "no plan" in mod.plan_refusal_reason(None, date(2026, 9, 28))
+
+    def test_executed_plan_is_refused(self):
+        assert "already executed" in mod.plan_refusal_reason(
+            self._plan(date(2026, 9, 25), "2026-09-28"), date(2026, 9, 28))
+
+    def test_stale_plan_is_refused(self):
+        assert "stale" in mod.plan_refusal_reason(self._plan(date(2026, 9, 21)), date(2026, 9, 28))
+
+    def test_plan_from_today_is_refused(self):
+        assert mod.plan_refusal_reason(self._plan(date(2026, 9, 28)), date(2026, 9, 28)) is not None
+
+
+class TestRunExecute:
+    def test_dry_run_enters_planned_signal(self, monkeypatch, tmp_path, no_sleep):
+        _patch_common(monkeypatch, tmp_path)
+        plan = _scan_plan(_breakout())
+        broker = _FakeBroker(ltp={"BRK": 145.0})
+        positions = {}
+        mod.run_execute(broker, plan, positions, TradeHistoryService(), dry_run=True,
+                        equity_fraction=0.09, starting_capital=1_000_000.0, min_capital_floor=0.0,
+                        today=date(2024, 5, 2))
+        assert positions["BRK"].current_stop == plan["entries"][0]["initial_stop"]
+        assert broker.placed_orders == []
+
+    def test_already_held_symbol_is_not_entered_twice(self, monkeypatch, tmp_path, no_sleep):
+        _patch_common(monkeypatch, tmp_path)
+        plan = _scan_plan(_breakout())
+        positions = {"BRK": _position(symbol="BRK", quantity=7)}
+        mod.run_execute(_FakeBroker(ltp={"BRK": 145.0}), plan, positions, TradeHistoryService(),
+                        dry_run=True, equity_fraction=0.09, starting_capital=1_000_000.0,
+                        min_capital_floor=0.0, today=date(2024, 5, 2))
+        assert positions["BRK"].quantity == 7
+
+    def test_halt_blocks_entries_but_not_planned_exits(self, monkeypatch, tmp_path, no_sleep):
+        _patch_common(monkeypatch, tmp_path)
+        (tmp_path / "halt").write_text("manual test halt")
+        plan = _scan_plan(_breakout())
+        plan["position_actions"] = {"HELD": {"action": "exit", "reason": "stop", "boundary": 130.0}}
+        positions = {"HELD": _position(symbol="HELD")}
+        mod.run_execute(_FakeBroker(ltp={"BRK": 145.0, "HELD": 129.0}), plan, positions,
+                        TradeHistoryService(), dry_run=True, equity_fraction=0.09,
+                        starting_capital=1_000_000.0, min_capital_floor=0.0, today=date(2024, 5, 2))
+        assert positions == {}   # HELD exited, BRK refused
+
+    def test_trail_is_revalidated_against_current_stop(self, monkeypatch, tmp_path, no_sleep):
+        _patch_common(monkeypatch, tmp_path)
+        positions = {"HELD": _position(symbol="HELD", current_stop=150.0)}
+        plan = {"entries": [], "position_actions": {"HELD": {
+            "action": "trail", "new_stop": 140.0, "new_target": 200.0, "new_ceiling": 160.0}}}
+        mod.run_execute(_FakeBroker(), plan, positions, TradeHistoryService(), dry_run=True,
+                        equity_fraction=0.09, starting_capital=1_000_000.0, min_capital_floor=0.0,
+                        today=date(2024, 5, 2))
+        assert positions["HELD"].current_stop == 150.0   # never lowered
+
+
+def _patch_main(monkeypatch, tmp_path, cfg, broker, universe=None):
+    _patch_common(monkeypatch, tmp_path)
+    monkeypatch.setattr(mod, "PLAN_PATH", tmp_path / "plan.json")
+    monkeypatch.setattr(mod, "TRADE_HISTORY_PATH", tmp_path / "trade_history.json")
+    monkeypatch.setattr(mod, "load_config", lambda path: {"broker": "stub", "darvas_atr_stop": cfg})
+    monkeypatch.setattr(mod, "get_broker", lambda config: broker)
+    monkeypatch.setattr(mod, "_load_universe", lambda f: universe or [])
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+
+
+class TestMain:
+    def test_phase_is_required(self):
+        with pytest.raises(SystemExit):
+            mod.main([])
+
+    def test_disabled_does_nothing(self, monkeypatch, tmp_path):
+        broker = _ConnectingBroker()
+        _patch_main(monkeypatch, tmp_path, {"enabled": False}, broker, universe=["A"])
+        assert mod.main(["--phase", "scan"]) == 0
+        assert broker.history_calls == []
+        assert not (tmp_path / "plan.json").exists()
+
+    def test_scan_writes_plan(self, monkeypatch, tmp_path):
+        broker = _ConnectingBroker(daily_by_symbol={"BRK": _breakout()})
+        _patch_main(monkeypatch, tmp_path, {"enabled": True}, broker, universe=["BRK"])
+        assert mod.main(["--phase", "scan"]) == 0
+        plan = mod._load_plan(tmp_path / "plan.json")
+        assert [e["symbol"] for e in plan["entries"]] == ["BRK"]
+        assert plan["executed_on"] is None
+
+    def test_execute_refuses_missing_plan_without_connecting(self, monkeypatch, tmp_path):
+        class _NoConnect(_ConnectingBroker):
+            def connect(self):
+                raise AssertionError("must not connect")
+        _patch_main(monkeypatch, tmp_path, {"enabled": True}, _NoConnect())
+        assert mod.main(["--phase", "execute"]) == 1
+
+    def test_execute_runs_once_then_is_a_noop(self, monkeypatch, tmp_path):
+        broker = _ConnectingBroker(ltp={"BRK": 145.0})
+        _patch_main(monkeypatch, tmp_path, {"enabled": True, "starting_capital": 1_000_000.0}, broker)
+        plan = _scan_plan(_breakout())
+        plan["bars_as_of"] = (datetime.now(mod.IST).date() - timedelta(days=1)).isoformat()
+        mod._write_plan(plan, tmp_path / "plan.json")
+
+        assert mod.main(["--phase", "execute"]) == 0
+        assert "BRK" in mod.load_open_positions()
+        assert mod._load_plan(tmp_path / "plan.json")["executed_on"] is not None
+        assert mod.main(["--phase", "execute"]) == 0   # re-fire: already executed, exit 0
+
+    def test_rescan_keeps_executed_marker_for_same_bars(self, monkeypatch, tmp_path):
+        broker = _ConnectingBroker(daily_by_symbol={"BRK": _breakout()})
+        _patch_main(monkeypatch, tmp_path, {"enabled": True}, broker, universe=["BRK"])
+        assert mod.main(["--phase", "scan"]) == 0
+        plan = mod._load_plan(tmp_path / "plan.json")
+        plan["executed_on"] = "2099-01-01"
+        mod._write_plan(plan, tmp_path / "plan.json")
+        assert mod.main(["--phase", "scan"]) == 0
+        assert mod._load_plan(tmp_path / "plan.json")["executed_on"] == "2099-01-01"

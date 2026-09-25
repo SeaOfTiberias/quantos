@@ -1,0 +1,14 @@
+[Unit]
+Description=Fires the Darvas ATR-Stop (Bucket B) post-market SCAN phase once daily at 18:00 IST
+
+[Timer]
+# 12:30 UTC = 18:00 IST -- 2.5h after the 15:30 close so Fyers' daily bar
+# is final. The VM runs in Etc/UTC -- OnCalendar is evaluated in UTC.
+OnCalendar=Mon..Fri *-*-* 12:30:00
+
+# A scan missed while the VM was down is caught up on boot; re-running it
+# just rewrites the same plan (it is idempotent until executed).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

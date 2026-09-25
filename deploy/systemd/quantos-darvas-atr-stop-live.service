@@ -1,5 +1,5 @@
 [Unit]
-Description=QuantOS Darvas ATR-Stop (Bucket B) -- Live Execution (gated by agent/config.yaml darvas_atr_stop.enabled/dry_run)
+Description=QuantOS Darvas ATR-Stop (Bucket B) -- morning EXECUTE phase: places the orders in the evening scan's plan (gated by agent/config.yaml darvas_atr_stop.enabled/dry_run)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,48 +7,31 @@ Wants=network-online.target
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
-ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_darvas_atr_stop_live.py
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_darvas_atr_stop_live.py --phase execute
 Environment=HOME=/home/ubuntu
 
-# NOT enabled on the VM as of this commit -- see
-# docs/DARVAS_ATR_STOP_BACKTEST_RESULTS.md / docs/DARVAS_ATR_STOP_EQUITY_
-# CURVE_RESULTS.md for the two gates this candidate has already cleared,
-# and scripts/run_darvas_atr_stop_live.py's own module docstring for the
-# one it has NOT (a real, weeks-long supervised dry_run cycle). This unit
-# file exists so it can be copied by scripts/deploy-vm.ps1 (which never
-# auto-enables a new unit) and reviewed ahead of time; `systemctl enable
-# --now` is a separate, deliberate future step, same as every other new
-# timer in this project's history.
+# 2026-09-25: this unit is now ONLY the execute phase. The ~500-symbol
+# history scan moved to quantos-darvas-atr-stop-scan.service (18:00 IST,
+# post-market) because running it at 09:20 IST collided with candidate
+# 18/18b's own Fyers calls (rate-limit errors most days 09-21..09-25).
+# This phase reads ~/.quantos/darvas_atr_stop_plan.json and places only
+# the orders it lists -- a handful of API calls on a typical day.
 #
-# The script itself is doubly safe even if fired by mistake: it reads
-# agent/config.yaml's darvas_atr_stop.enabled flag FIRST and exits
-# immediately (no broker connection, no orders, not even the universe
-# file is read) if that's false -- default false. Even once enabled,
-# dry_run:true (also the default) means every order-placing call logs its
-# intended action instead of calling the broker. Both flags must be
-# deliberately flipped, and even then the user's own fresh capital
-# go-ahead ([[feedback_confirm_before_scaling_capital]]) is the actual
-# gate, not this file.
+# Safety, unchanged: the script reads darvas_atr_stop.enabled FIRST and
+# exits if false; dry_run:true logs intended orders instead of placing
+# them; the user's own fresh capital go-ahead
+# ([[feedback_confirm_before_scaling_capital]]) is the real gate for
+# dry_run:false. The script also refuses a plan that is missing, already
+# executed, or older than PLAN_MAX_AGE_DAYS.
 #
-# Same VM-is-UTC-not-IST lesson as every other timer here (see the
-# .timer). No ExecCondition weekday/market-hours guard is needed beyond
-# what the .timer's OnCalendar already encodes: this is a single DAILY
-# fire, not a fast-cadence intraday poll (this candidate's own signal is
-# fundamentally end-of-day -- see the script's module docstring for why),
-# so there is no "market must currently be open" precondition the way
-# quantos-orb-scalping-live.service has -- a MARKET order placed a few
-# minutes after 09:15 IST open is exactly the intended timing.
-ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ]'
+# Market-hours ExecCondition (same pattern as quantos-orb-scalping-live):
+# Persistent=true catch-up after a VM outage must never place MARKET
+# orders after the 15:30 IST close. Known gap, shared with every unit on
+# this VM: an NSE holiday that falls on a weekday is NOT detected
+# (core/reference/calendar.py covers past sessions only).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
 
-# No Restart= -- a failed fire (stale token, transient API error) is
-# harmless and self-healing on the NEXT trading day's fire, same as every
-# other daily-cadence job on this VM (quantos-momentum-shortlist.service).
-# Unlike a fast-cadence poll, a missed fire genuinely loses that specific
-# day's FRESH BREAKOUT entries (analyse_symbol's own prev_close <= box_ceil
-# gate makes a breakout a single-day event) -- but every already-open
-# position is still reconciled/trailed correctly on the next fire, so
-# real capital already committed is never orphaned by one missed day.
-# Running twice in the same day (Persistent=true catch-up racing the
-# regular fire) is harmless by construction: entries dedup on "symbol
-# already has an open position", and exit/trail management recomputes
-# the identical result from the identical "yesterday" data either way.
+# No Restart= -- a re-fire the same day is a no-op by construction (the
+# plan is marked executed_on after one run), and a missed day loses only
+# that day's FRESH BREAKOUT entries; open positions are re-evaluated by
+# that evening's scan.

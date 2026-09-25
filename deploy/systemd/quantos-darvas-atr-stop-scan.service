@@ -1,0 +1,20 @@
+[Unit]
+Description=QuantOS Darvas ATR-Stop (Bucket B) -- post-market SCAN phase: fetches daily bars for the universe and writes the next morning's plan (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_darvas_atr_stop_live.py --phase scan
+Environment=HOME=/home/ubuntu
+
+# Places NO orders -- only reads daily history (~500 Fyers calls, ~3 min)
+# and writes ~/.quantos/darvas_atr_stop_plan.json for
+# quantos-darvas-atr-stop-live.service (execute phase, 09:45 IST).
+# Post-market so those calls never compete with candidate 18/18b.
+# Entries are tagged with Alpha50 / Mom30 membership
+# (darvas_atr_stop.tag_universes) -- informational only; the trading rule
+# is still Bucket B on the Nifty 500, exactly as backtested.
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ]'

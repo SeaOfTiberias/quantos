@@ -264,6 +264,14 @@ darvas_atr_stop:
   starting_capital: 0.0             # Paper-ledger base for the equity_fraction sizing formula.
   min_capital_floor: 0.0            # Refuse all new entries below this equity level.
   universe_file: agent/universe_nifty500.txt   # SAME file the backtest itself scanned.
+  # Runs in two phases (2026-09-25): quantos-darvas-atr-stop-scan.timer at
+  # 18:00 IST fetches the universe and writes ~/.quantos/darvas_atr_stop_plan.json;
+  # quantos-darvas-atr-stop-live.timer at 09:45 IST places only that plan's orders.
+  # tag_universes labels planned entries by index membership -- informational
+  # only, the trading rule is unchanged. Omit to use these defaults.
+  # tag_universes:
+  #   Alpha50: agent/universe_alpha50.txt
+  #   Mom30: agent/universe_nifty200momentum30.txt
 
 # ── Obsidian vault: qualitative strategy memory (2026-08-14) ─────────────────
 # Audits symbols against the rule blocks written into your Obsidian strategy

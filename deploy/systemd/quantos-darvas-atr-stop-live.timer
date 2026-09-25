@@ -1,31 +1,17 @@
 [Unit]
-Description=Fires the Darvas ATR-Stop (Bucket B) live execution script once daily, shortly after NSE open (unit not enabled by default -- see the .service comment)
+Description=Fires the Darvas ATR-Stop (Bucket B) EXECUTE phase once daily at 09:45 IST
 
 [Timer]
-# 03:50 UTC = 09:20 IST -- five minutes after NSE's 09:15 IST open, and
-# well clear of quantos-rotation-pilot.timer's 02:10 UTC / quantos-
-# momentum-shortlist.timer's 02:15 UTC pre-market fires, so the same
-# morning Fyers token refresh already covers this too. Runs once/day: this
-# candidate's own signal is end-of-day (a FRESH BREAKOUT is a property of
-# yesterday's fully-closed daily bar -- see the .service comment and the
-# script's own module docstring), not an intraday timing question the way
-# candidate 18's every-minute cadence is.
+# 04:15 UTC = 09:45 IST. Moved from 09:20 IST on 2026-09-25 (user decision)
+# to stay clear of candidate 18/18b's opening-range minutes and their Fyers
+# calls. Entries now land ~30 min after the open rather than at it -- a
+# small, disclosed drift from the backtest's "next day's open" fill.
 #
-# The VM runs in Etc/UTC (confirmed via timedatectl) -- OnCalendar is
-# evaluated in the system's local timezone, NOT the .service's
-# ExecCondition guard's explicit TZ=Asia/Kolkata. Getting this wrong
-# doesn't cause a wrong-time fire (ExecCondition independently re-checks
-# real IST weekday) -- it would silently do nothing at all on a real
-# trading day instead, exactly the bug class this comment (and
-# `systemd-analyze calendar` before ever enabling this) exists to catch.
-OnCalendar=Mon..Fri *-*-* 03:50:00
+# The VM runs in Etc/UTC -- OnCalendar is evaluated in UTC, NOT IST.
+OnCalendar=Mon..Fri *-*-* 04:15:00
 
-# Unlike quantos-orb-scalping-live.timer's Persistent=false (a missed
-# fast-cadence fire is truly harmless -- there's another one a minute
-# later), a missed DAILY fire here genuinely loses that day's FRESH
-# BREAKOUT entries. Persistent=true lets a VM that was briefly down catch
-# up later the SAME day, which still reads the correct "yesterday" bar --
-# see the .service comment for why running twice in one day is harmless.
+# Catch up the same day after a brief VM outage; the .service's
+# market-hours ExecCondition stops a catch-up after the close.
 Persistent=true
 
 [Install]
