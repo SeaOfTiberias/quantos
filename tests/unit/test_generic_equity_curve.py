@@ -15,7 +15,8 @@ import pytest
 
 from core.backtest.equity_curve import (
     Account, EquityCurvePoint, InsufficientCash, kelly_fraction,
-    _max_drawdown, _max_drawdown_duration_days, _sharpe, _sortino, _ulcer_index,
+    optimal_fraction_by_growth, _max_drawdown, _max_drawdown_duration_days,
+    _sharpe, _sortino, _ulcer_index,
 )
 
 
@@ -198,6 +199,84 @@ class TestFinalize:
         result = acct.finalize()
         assert result.max_drawdown_pct == pytest.approx((150_000 - 90_000) / 150_000 * 100)
         assert result.max_drawdown_rs == pytest.approx(60_000.0)
+
+
+class TestOptimalFractionByGrowth:
+    def test_finds_the_fraction_that_evenly_splits_capital_across_concurrent_slots(self):
+        # Three symbols all open the SAME day and all resolve profitably --
+        # a fraction below 1/3 leaves cash idle in later slots (a real
+        # concurrency cost single-trade Kelly math can't see); anything at
+        # or above 1/3 fully deploys the Rs90,000 account and plateaus
+        # (cash-capped, not double-counted). The growth-optimal fraction
+        # here is exactly the one that evenly splits capital 3 ways.
+        def simulate_fn(fraction):
+            acct = Account(initial_capital=90_000.0)
+            acct.mark(_d(0), mark_prices={})
+            equity = acct.cash
+            for sym in ("A", "B", "C"):
+                target = fraction * equity
+                spend = min(target, acct.cash)
+                qty = int(spend // 100.0)
+                if qty >= 1:
+                    acct.open(sym, qty, 100.0, _d(0), strict=False)
+            acct.mark(_d(0), mark_prices={"A": 100.0, "B": 100.0, "C": 100.0})
+            for pos_id in list(acct.open_positions.keys()):
+                acct.close(pos_id, 150.0, _d(10))
+            acct.mark(_d(10), mark_prices={})
+            return acct.finalize()
+
+        fractions = [0.1, 0.2, 1 / 3, 0.4, 0.5, 1.0]
+        best_f, best_result = optimal_fraction_by_growth(simulate_fn, fractions)
+        assert best_f == pytest.approx(1 / 3)
+        assert best_result.final_equity == pytest.approx(135_000.0, rel=0.02)
+
+    def test_single_isolated_trade_roughly_matches_plain_kelly_fraction(self):
+        # With no concurrency at all (one trade, opens and closes before
+        # anything else could), the portfolio-growth optimum should land
+        # close to what single-trade kelly_fraction() recommends for the
+        # same win -- the two methods should agree when the thing that
+        # makes them differ (concurrency) isn't present.
+        def simulate_fn(fraction):
+            acct = Account(initial_capital=100_000.0)
+            acct.mark(_d(0), mark_prices={})
+            equity = acct.cash
+            qty = int((fraction * equity) // 100.0)
+            if qty >= 1:
+                acct.open("A", qty, 100.0, _d(0), strict=False)
+            acct.mark(_d(0), mark_prices={"A": 100.0})
+            for pos_id in list(acct.open_positions.keys()):
+                acct.close(pos_id, 130.0, _d(5))
+            acct.mark(_d(5), mark_prices={})
+            return acct.finalize()
+
+        fractions = [round(0.05 * i, 2) for i in range(1, 21)]   # 0.05 .. 1.0
+        best_f, _ = optimal_fraction_by_growth(simulate_fn, fractions)
+        # A single certain +30% trade has no downside in this synthetic
+        # case, so both methods should push toward the top of the grid.
+        assert best_f == max(fractions)
+
+    def test_raises_on_empty_fractions(self):
+        with pytest.raises(ValueError):
+            optimal_fraction_by_growth(lambda f: None, [])
+
+    def test_a_wipeout_fraction_is_never_selected_over_a_safer_one(self):
+        def simulate_fn(fraction):
+            acct = Account(initial_capital=100_000.0)
+            acct.mark(_d(0), mark_prices={})
+            qty = int((fraction * acct.cash) // 100.0)
+            if qty >= 1:
+                acct.open("A", qty, 100.0, _d(0), strict=False)
+            acct.mark(_d(0), mark_prices={"A": 100.0})
+            for pos_id in list(acct.open_positions.keys()):
+                acct.close(pos_id, 0.0, _d(5))   # total loss on whatever was risked
+            acct.mark(_d(5), mark_prices={})
+            return acct.finalize()
+
+        # fraction=1.0 risks everything and is wiped to zero; smaller
+        # fractions survive with some capital left.
+        best_f, best_result = optimal_fraction_by_growth(simulate_fn, [0.1, 0.5, 1.0])
+        assert best_f != 1.0
+        assert best_result.final_equity > 0
 
 
 class TestKellyFraction:

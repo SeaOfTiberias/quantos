@@ -42,7 +42,7 @@ distinctly rather than silently averaged together.
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 
 @dataclass
@@ -376,6 +376,56 @@ def kelly_fraction(returns: list[float], step: float = 0.001, max_fraction: floa
             best_growth, best_f = growth, f
         f += step
     return round(best_f, 4)
+
+
+def optimal_fraction_by_growth(
+    simulate_fn: Callable[[float], EquityCurveResult], fractions: list[float],
+) -> tuple[float, EquityCurveResult]:
+    """Finds the equity-fraction that maximizes REALIZED log-growth
+    (log(final_equity / initial_capital)) of an ACTUAL portfolio
+    simulation, not the single-trade-at-a-time approximation
+    `kelly_fraction()` uses.
+
+    Why this exists: `kelly_fraction()` treats every trade as if it were a
+    sequential bet against the FULL bankroll, one at a time. That's wrong
+    for a strategy that holds many positions CONCURRENTLY sharing one cash
+    pool (confirmed for the Darvas ATR-stop candidate: mean ~12, max 29
+    simultaneously open Bucket B positions in its own mining window) --
+    single-trade Kelly math has no way to know that 12 signals at its
+    "optimal" fraction would try to commit 12x that fraction of capital at
+    once. This function instead asks the right question directly: given
+    the REAL historical sequence of overlapping trades and the REAL cash
+    constraint (`Account.open`'s own affordability check), which fixed
+    equity-fraction-per-trade actually produced the best growth when
+    played out for real? Concurrency, correlation between overlapping
+    positions, and the cash ceiling are all automatically accounted for
+    because this runs the real simulation -- not derived analytically.
+
+    `simulate_fn(fraction) -> EquityCurveResult` is a caller-supplied
+    closure over one candidate/window's own trades, trading-day calendar,
+    and starting capital -- this function only owns the search.
+
+    THIS IS AN IN-SAMPLE OPTIMIZATION over whatever trades `simulate_fn`
+    was built from -- a grid search for "whichever fraction happened to
+    perform best on one historical path" is exactly the overfitting shape
+    this project has rejected everywhere else (see
+    docs/SHARPE_SWEEP_AND_EQUITY_CURVE_PLAN.md). The caller MUST build
+    `simulate_fn` from a MINING window only and validate the returned
+    fraction on an untouched HOLDOUT window separately -- this function
+    has no way to enforce that itself, and returns whatever fraction
+    looks best on whatever trades it's given, in-sample, by design."""
+    best_fraction, best_result, best_growth = 0.0, None, float("-inf")
+    for fraction in fractions:
+        result = simulate_fn(fraction)
+        if result.final_equity <= 0 or result.initial_capital <= 0:
+            growth = float("-inf")     # ruin is the worst possible outcome, same as Kelly's own log(0)
+        else:
+            growth = math.log(result.final_equity / result.initial_capital)
+        if growth > best_growth:
+            best_growth, best_fraction, best_result = growth, fraction, result
+    if best_result is None:
+        raise ValueError("fractions must be non-empty")
+    return best_fraction, best_result
 
 
 def _max_drawdown(curve: list[EquityCurvePoint]) -> tuple[float, float]:
