@@ -1,128 +1,158 @@
-// QuantOS — Darvas Box Multi-Timeframe Confluence Alert (US-01 / US-02)
-// ─────────────────────────────────────────────────────────────────────
-// Mirrors core/darvas/box.py exactly:
-//   - Box top   = highest high over `lookback` candles
-//   - Box forms after price holds within `tolPct` of that high for
-//     `minConsol` candles (box bottom = lowest low during that window)
-//   - Box width must be <= maxWidthPct
-//   - Breakout  = close > box top on >= volMult x 20-period avg volume
-//   - Confluence score = 15m(25) + 1h(35) + 1d(40) weights, each with
-//     up to +5 volume bonus and +5 tight-box (<4%) bonus, capped at 100
-//     (see core/darvas/box.py score_confluence())
+// QuantOS — Darvas ATR-Stop (Bucket B) INDICATOR — any-stock validator + alerts
+// ──────────────────────────────────────────────────────────────────────────
+// REWRITTEN 2026-09-25. The previous version was the S7-3 intraday
+// multi-timeframe confluence indicator (no demonstrated edge) that posted
+// to the order-path webhook (and whose documented URL was the dead Railway
+// host). It is in git history (a74521a). This version draws the ONLY
+// validated Darvas variant — docs/DARVAS_ATR_STOP_BACKTEST_RESULTS.md,
+// Bucket B — on any stock, and raises plain TradingView alerts.
 //
-// Works on ANY chart timeframe you attach it to — all three confluence
-// timeframes (15m/1h/1D) are always pulled via request.security(), so the
-// script's own chart timeframe only affects what you see plotted, not
-// what triggers the alert.
+// PURPOSE: the VM's 18:00 IST scan is the filter for our own universe
+// (Nifty 500) and the ONLY thing that feeds the executor. Use this on
+// stocks OUTSIDE that universe to see the same rule's box, stop and target,
+// and to get a TradingView notification when one breaks out. Deliberately
+// NOT wired to the QuantOS webhook: signals outside the backtested universe
+// are for your own discretionary judgement, not the systematic track record.
 //
-// Setup (TradingView "Create Alert" dialog):
-//   Condition -> this indicator -> "Any alert() function call"
-//   Webhook URL -> https://web-production-b5527.up.railway.app/webhook/tradingview
-//   Message field is ignored — alert() supplies the JSON body directly.
+// Rule and engine: identical to darvas_breakout_strategy.pine (see that
+// file's header for the full rule, the Python sources it ports, and the
+// known small differences). Keep the two engines in sync if either changes.
 //
-// Only long/BUY breakouts are detected — matches core/darvas/box.py,
-// which has no short-side logic either.
-//
-// For Strategy Tester backtesting (S7-3), use the sibling
-// darvas_breakout_strategy.pine instead — this file is an indicator only
-// and has no strategy.entry/exit calls to backtest against.
+// Setup: 1D chart. Alerts -> Create Alert -> Condition: this indicator ->
+// "Any alert() function call" (message text is built by the script), or
+// pick one of the alertcondition() entries for a fixed message.
+// Cross-check: ZYDUSLIFE should mark a Bucket B breakout on 2026-09-25,
+// stop ~1124.27, target 1527.50, width 41.4%.
 
 //@version=5
-indicator("QuantOS Darvas Box — Multi-TF Confluence", overlay=true)
+indicator("QuantOS Darvas ATR-Stop (Bucket B) — Validator", overlay=true)
 
-// ── Inputs ──────────────────────────────────────────────────────────────
-lookback      = input.int(20, "Box Lookback (candles)", minval=5)
-minConsol     = input.int(3, "Min Consolidation Candles", minval=1)
-volMult       = input.float(1.3, "Breakout Volume Multiplier", minval=1.0)
-maxWidthPct   = input.float(8.0, "Max Box Width %", minval=0.5)
-tolPct        = input.float(0.2, "Consolidation Tolerance %", minval=0.0)
-minConfluence = input.float(70, "Min Confluence to Fire (matches Railway MIN_CONFLUENCE_SCORE)")
-webhookSecret = input.string("", "Webhook Secret (paste yours here — do not share this script publicly with it filled in)")
+ceilBars   = input.int(3, "Weeks to confirm ceiling", minval=1)
+floorBars  = input.int(3, "Weeks to confirm floor", minval=1)
+atrLen     = input.int(14, "ATR period (daily)")
+atrMultBo  = input.float(0.1, "Breakout buffer (x ATR above ceiling)")
+volLen     = input.int(20, "Volume SMA period")
+volMult    = input.float(1.5, "Volume surge multiplier")
+atrStopMul = input.float(2.0, "Stop = ceiling - this x ATR")
+minWidth   = input.float(35.0, "Bucket B min width % (exclusive)")
+maxWidth   = input.float(50.0, "Bucket B max width % (inclusive)")
+proximity  = input.float(7.0, "APPROACHING when within this % below ceiling")
+alertOther = input.bool(false, "Also alert on breakouts outside 35-50% (not the validated edge)")
 
-tol = tolPct / 100
+if not timeframe.isdaily
+    runtime.error("Use a 1D (daily) chart — the rule is defined on daily bars with weekly boxes.")
 
-// ── Reusable Darvas Box detector — state persists per request.security context ──
-// FIXED 2026-07-18: breakoutNow now checks the box as CONFIRMED as of the
-// end of the previous bar, before today's high/low can touch it. A genuine
-// breakout candle almost always also sets a fresh `lookback`-bar high,
-// which resets boxReady below — checking breakoutNow against a box this
-// same bar already reset silently suppressed the vast majority of real
-// breakouts (caught via a 3-year Strategy Tester backtest producing zero
-// entries despite boxes visibly confirming). Mirrors core/darvas/box.py's
-// detect_breakout(), which scans boxes over candles[:-1] and only THEN
-// compares the latest candle against them — never against a box the
-// latest candle itself just reset.
-darvasBox() =>
-    var float candidateTop = na
-    var float boxTop       = na
-    var float boxBottom    = na
-    var int   consolCount  = 0
-    var bool  boxReady     = false
+// ── Weekly box engine (keep identical to darvas_breakout_strategy.pine) ──
+var float wkHigh     = na
+var float wkLow      = na
+var int   weekCount  = 0
+var float pendCeil   = na
+var float pendFloor  = na
+var int   ceilConf   = 0
+var int   floorConf  = 0
+var float boxCeil    = na
+var float boxFloor   = na
+var bool  pendIsLive = false
 
-    prevBoxReady  = boxReady
-    prevBoxTop    = boxTop
-    prevBoxBottom = boxBottom
+if timeframe.change("W") and not na(wkHigh)
+    prevH = wkHigh
+    prevL = wkLow
+    pendIsLive := false
+    weekCount += 1
+    if na(pendCeil)
+        pendCeil := prevH
+        ceilConf := 0
+    else if prevH <= pendCeil
+        ceilConf += 1
+    else
+        pendCeil := prevH
+        ceilConf := 0
+    if na(pendFloor)
+        pendFloor := prevL
+        floorConf := 0
+    else if prevL >= pendFloor
+        floorConf += 1
+    else
+        pendFloor := prevL
+        floorConf := 0
+    wkHigh := high
+    wkLow  := low
+    if ceilConf >= ceilBars and floorConf >= floorBars
+        boxCeil   := pendCeil
+        boxFloor  := pendFloor
+        ceilConf  := 0
+        floorConf := 0
+        pendIsLive := true
+else
+    wkHigh := na(wkHigh) ? high : math.max(wkHigh, high)
+    wkLow  := na(wkLow)  ? low  : math.min(wkLow, low)
 
-    avgVol      = ta.sma(volume, 20)
-    volRatio    = avgVol > 0 ? volume / avgVol : 0.0
-    breakoutNow = prevBoxReady and close > prevBoxTop and volRatio >= volMult
-    widthPctNow = (prevBoxReady and not na(prevBoxBottom) and prevBoxBottom != 0) ? (prevBoxTop - prevBoxBottom) / prevBoxBottom * 100 : 100.0
-    isTight     = widthPctNow < 4.0
+if pendIsLive
+    pendCeil  := wkHigh
+    pendFloor := wkLow
 
-    hh = ta.highest(high, lookback)
-    isNewHigh = high >= hh and (na(candidateTop) or high > candidateTop)
+atr      = ta.atr(atrLen)
+volSma   = ta.sma(volume, volLen)
+volRatio = volSma > 0 ? volume / volSma : 0.0
+hasBox   = not na(boxCeil) and boxFloor > 0
+widthPct = hasBox ? (boxCeil - boxFloor) / boxFloor * 100 : na
+enoughHistory = bar_index >= 59 and weekCount >= ceilBars + floorBars + 1
 
-    if isNewHigh
-        candidateTop := high
-        consolCount := 0
-        boxReady := false
-        boxBottom := low
-    else if not na(candidateTop)
-        if high <= candidateTop * (1 + tol)
-            consolCount := consolCount + 1
-            boxBottom := math.min(boxBottom, low)
-            if consolCount >= minConsol and not boxReady
-                widthPct = (candidateTop - boxBottom) / boxBottom * 100
-                if widthPct <= maxWidthPct
-                    boxTop := candidateTop
-                    boxReady := true
-        else
-            candidateTop := na
-            consolCount := 0
-            boxReady := false
+freshBreakout = hasBox and enoughHistory and widthPct <= 200
+     and close > boxCeil + atr * atrMultBo and volRatio >= volMult
+     and close[1] <= boxCeil
+bucketB = freshBreakout and widthPct > minWidth and widthPct <= maxWidth
 
-    [breakoutNow, prevBoxTop, prevBoxBottom, volRatio, isTight, close]
+stopIfEntered = hasBox ? boxCeil - atrStopMul * atr : na
+mmTarget      = hasBox ? boxCeil + (boxCeil - boxFloor) : na
+distToCeil    = hasBox ? (boxCeil - close) / close * 100 : na
 
-// ── Pull box state across all 3 confluence timeframes ────────────────────
-[brk15, top15, bot15, vr15, tight15, close15] = request.security(syminfo.tickerid, "15", darvasBox())
-[brk60, top60, bot60, vr60, tight60, close60] = request.security(syminfo.tickerid, "60", darvasBox())
-[brkD,  topD,  botD,  vrD,  tightD,  closeD ] = request.security(syminfo.tickerid, "D",  darvasBox())
-
-// ── Confluence scoring — mirrors core/darvas/box.py score_confluence() ───
-volBonus(vr) => vr >= 2.0 ? 5.0 : vr >= 1.5 ? 2.5 : 0.0
-
-score = 0.0
-score += brk15 ? 25 + volBonus(vr15) + (tight15 ? 5.0 : 0.0) : 0.0
-score += brk60 ? 35 + volBonus(vr60) + (tight60 ? 5.0 : 0.0) : 0.0
-score += brkD  ? 40 + volBonus(vrD)  + (tightD  ? 5.0 : 0.0) : 0.0
-confluenceScore = math.min(100.0, score)
-
-// ── Entry trigger: fires off the 15m breakout (finest / entry-timing TF) ─
-fireSignal = brk15 and confluenceScore >= minConfluence
+// Same status vocabulary as analyse_symbol.
+status = not hasBox ? "BOX FORMING" :
+     freshBreakout ? "FRESH BREAKOUT" :
+     (distToCeil >= 0 and distToCeil <= proximity) ? "APPROACHING" : "WATCHING"
+inBucket = hasBox and widthPct > minWidth and widthPct <= maxWidth
 
 // ── Visuals ───────────────────────────────────────────────────────────────
-plot(top15, "15m Box Top", color=color.new(color.green, 0), style=plot.style_linebr)
-plot(bot15, "15m Box Bottom", color=color.new(color.red, 0), style=plot.style_linebr)
-plotshape(fireSignal, title="QuantOS Signal", style=shape.triangleup,
-          location=location.belowbar, color=color.lime, size=size.normal)
+plot(boxCeil,  "Box ceiling", color=color.new(color.green, 0), style=plot.style_stepline)
+plot(boxFloor, "Box floor",   color=color.new(color.red, 40),  style=plot.style_stepline)
+plot(stopIfEntered, "ATR stop if entered", color=color.new(color.orange, 50), style=plot.style_linebr)
+plot(mmTarget, "Measured-move target", color=color.new(color.aqua, 50), style=plot.style_linebr)
+plotshape(bucketB, "Bucket B breakout", shape.triangleup, location.belowbar, color.lime, size=size.normal)
+plotshape(freshBreakout and not bucketB, "Breakout outside 35-50%", shape.circle,
+     location.belowbar, color.new(color.gray, 30), size=size.tiny)
 
-// ── Fire the webhook ───────────────────────────────────────────────────────
-if fireSignal
-    // timenow is epoch ms; the webhook's replay guard expects epoch seconds
-    // and rejects payloads outside its freshness window (default 2 min).
-    msg = '{"symbol":"' + syminfo.ticker + '","action":"BUY","price":' + str.tostring(close15) +
-          ',"timeframe":"15m","strategy":"darvas_breakout","confluence_score":' + str.tostring(confluenceScore) +
-          ',"stop_loss":' + str.tostring(bot15) +
-          ',"timestamp":' + str.tostring(timenow / 1000) +
-          ',"secret":"' + webhookSecret + '"}'
+fmt(x) => na(x) ? "-" : str.tostring(x, "#.##")
+
+var table info = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 20),
+     border_width=1)
+if barstate.islast
+    table.cell(info, 0, 0, "Status", text_color=color.white)
+    table.cell(info, 1, 0, status, text_color=status == "FRESH BREAKOUT" ? color.lime : color.white)
+    table.cell(info, 0, 1, "Box", text_color=color.white)
+    table.cell(info, 1, 1, fmt(boxFloor) + " - " + fmt(boxCeil), text_color=color.white)
+    table.cell(info, 0, 2, "Width %", text_color=color.white)
+    table.cell(info, 1, 2, fmt(widthPct) + (inBucket ? "  (Bucket B)" : "  (outside 35-50)"),
+         text_color=inBucket ? color.lime : color.gray)
+    table.cell(info, 0, 3, "Dist to ceiling %", text_color=color.white)
+    table.cell(info, 1, 3, fmt(distToCeil), text_color=color.white)
+    table.cell(info, 0, 4, "Stop if entered", text_color=color.white)
+    table.cell(info, 1, 4, fmt(stopIfEntered), text_color=color.orange)
+    table.cell(info, 0, 5, "Target", text_color=color.white)
+    table.cell(info, 1, 5, fmt(mmTarget), text_color=color.aqua)
+    table.cell(info, 0, 6, "Vol ratio", text_color=color.white)
+    table.cell(info, 1, 6, fmt(volRatio), text_color=color.white)
+
+// ── Alerts (plain TradingView notifications — no webhook) ─────────────────
+alertcondition(bucketB, "Darvas Bucket B breakout", "Darvas Bucket B breakout on {{ticker}} at {{close}}")
+alertcondition(freshBreakout and not bucketB, "Darvas breakout outside 35-50%",
+     "Darvas breakout (outside validated 35-50% width) on {{ticker}} at {{close}}")
+
+if bucketB or (alertOther and freshBreakout)
+    msg = (bucketB ? "DARVAS BUCKET B BREAKOUT " : "Darvas breakout (outside 35-50%, not validated) ") +
+         syminfo.ticker + ": close " + str.tostring(close, "#.##") +
+         ", width " + str.tostring(widthPct, "#.#") + "%" +
+         ", stop " + str.tostring(stopIfEntered, "#.##") +
+         ", target " + str.tostring(mmTarget, "#.##") +
+         " (discretionary; the VM 18:00 scan is the systematic signal)"
     alert(msg, alert.freq_once_per_bar_close)
