@@ -70,6 +70,7 @@ from typing import Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.main import load_config  # noqa: E402
+from agent.risk_guard import read_halt_reason  # noqa: E402
 from core.brokers import get_broker  # noqa: E402
 from core.brokers.base import OrderDirection, ProductType  # noqa: E402
 from core.execution.order_service import (  # noqa: E402
@@ -114,7 +115,7 @@ from core.orb_scalping.live_positions import (  # noqa: E402
 from core.orb_scalping.live_state import compute_live_state  # noqa: E402
 from core.orb_scalping.premium import PREMIUM_STOP_PCT, atm_strike  # noqa: E402
 from core.orb_scalping.signal import SESSION_FLATTEN_UTC  # noqa: E402
-from core.risk import ClosedTrade, TradeHistoryService  # noqa: E402
+from core.risk import ClosedTrade, TradeHistoryService, calculate_position_size  # noqa: E402
 
 UNDERLYINGS = [
     # (underlying, spot_symbol, strike_interval)
@@ -150,11 +151,59 @@ def _exit_reason(*, past_flatten: bool, index_stop_hit: bool, candle_confirmed_s
     return "session_flatten"
 
 
+def _dynamic_lot_count(trades: list, starting_capital: float, entry_premium: float,
+                        protective_stop_trigger: float, lot_size: int, min_capital_floor: float,
+                        symbol: str) -> tuple[int, str]:
+    """Rolling half-Kelly sizing (core/risk/kelly.py, US-07 -- NOT a new
+    sizing formula invented for this change) applied to candidate 18,
+    replacing the fixed `lots_per_trade` config value. `trades` must
+    already be filtered to THIS strategy's own closed trades (18 and 18b
+    must never share one Kelly calculation -- they are distinct
+    strategies with distinct edges, docs/ORB_ENTRY_FILTER_METHODOLOGY.md).
+
+    Sizing convention: `SizingResult.position_quantity` converts a risk
+    budget into a share/unit count via risk_amount / (entry - stop)
+    distance -- the standard risk-based convention this project's Kelly
+    module already uses everywhere else, not the notional-fraction
+    convention scripts/simulate_orb_scalping_capital_allocation.py used
+    for backtest research (that script's job was finding a defensible
+    fraction from historical data; this one sizes a single live order
+    with the sizing module this project already has, half-Kelly by
+    default, with its own MIN_SIZE_PCT/MAX_SIZE_PCT guardrails).
+
+    Returns (lots, note). lots=0 means refuse this entry entirely -- the
+    caller must not place an order. If the risk-based calculation rounds
+    down to less than 1 lot but capital is comfortably above
+    `min_capital_floor`, this floors to exactly 1 lot rather than
+    refusing a trade the account can clearly afford at normal risk;
+    below the floor, it refuses and returns a low-capital warning."""
+    current_capital = starting_capital + sum(t.pnl for t in trades)
+    result = calculate_position_size(trades, current_capital, symbol)
+    if result.size_pct <= 0:
+        return 0, f"Kelly sizing refused entry for {symbol}: {'; '.join(result.notes)}"
+
+    raw_qty = result.position_quantity(entry_premium, protective_stop_trigger)
+    lots = raw_qty // lot_size
+    if lots >= 1:
+        return int(lots), f"Kelly sizing for {symbol}: {int(lots)} lot(s) ({'; '.join(result.notes)})"
+
+    if current_capital >= min_capital_floor:
+        return 1, (f"Kelly sizing for {symbol} rounded to 0 lots but capital "
+                    f"Rs{current_capital:,.0f} >= floor Rs{min_capital_floor:,.0f} "
+                    f"-- flooring to 1 lot")
+    return 0, (f"LOW CAPITAL WARNING: Kelly sizing for {symbol} rounds to 0 lots and "
+               f"capital Rs{current_capital:,.0f} < floor Rs{min_capital_floor:,.0f} "
+               f"-- refusing entry")
+
+
 def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
                          strike_interval: float, lots_per_trade: int, dry_run: bool,
                          positions: dict, trade_date_iso: str, now_utc: datetime,
                          traded_today: set, positions_path: Optional[Path] = None,
-                         traded_today_path: Optional[Path] = None) -> None:
+                         traded_today_path: Optional[Path] = None,
+                         dynamic_sizing: bool = False, trade_history: Optional[TradeHistoryService] = None,
+                         starting_capital: float = 0.0, min_capital_floor: float = 0.0,
+                         strategy_name: str = "orb_scalping") -> None:
     trade_date = now_utc.date()
     strike = atm_strike(state.entry_price, strike_interval)
     expiries = sm.list_expiries(underlying)
@@ -184,7 +233,17 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
         print(f"  {underlying}: could not resolve tradeable symbol ({e}), skipping entry.")
         return
 
-    quantity = resolved.lot_size * lots_per_trade
+    if dynamic_sizing:
+        strategy_trades = [t for t in trade_history.get_trade_history() if t.strategy == strategy_name]
+        lots, note = _dynamic_lot_count(strategy_trades, starting_capital, entry_premium,
+                                         protective_stop_trigger, resolved.lot_size,
+                                         min_capital_floor, resolved.symbol)
+        print(f"  {underlying}: {note}")
+        if lots < 1:
+            return
+    else:
+        lots = lots_per_trade
+    quantity = resolved.lot_size * lots
     tag = f"orb-{underlying.lower()}-{trade_date_iso}"
     entry_result = enter_position(
         broker, symbol=resolved.symbol, direction=OrderDirection.BUY, quantity=quantity,
@@ -208,7 +267,8 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
 
 def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[float],
                 exit_timestamp, reason: str, positions: dict,
-                trade_history: TradeHistoryService, positions_path: Optional[Path] = None) -> None:
+                trade_history: TradeHistoryService, positions_path: Optional[Path] = None,
+                strategy_name: str = "orb_scalping") -> None:
     if exit_price is None:
         print(f"  {underlying}: position closed but no exit price could be determined "
               f"(reason={reason}) -- removing from tracking without a ClosedTrade record.")
@@ -226,7 +286,7 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
         direction="BUY",   # every ORB entry is a long option, CALL or PUT alike
         entry_date=datetime.fromisoformat(existing.entry_timestamp),
         exit_date=exit_timestamp,
-        strategy="orb_scalping",
+        strategy=strategy_name,
     )
     trade_history.record_closed_trade(trade)
     remove_position(positions, underlying, existing.trade_date, path=positions_path)
@@ -237,7 +297,8 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
                                existing: OrbOpenPosition, dry_run: bool, positions: dict,
                                trade_history: TradeHistoryService, now_utc: datetime,
                                positions_path: Optional[Path] = None,
-                               dry_run_log_path: Optional[Path] = None) -> None:
+                               dry_run_log_path: Optional[Path] = None,
+                               strategy_name: str = "orb_scalping") -> None:
     """Reconciles the tracked position against the broker first -- this is
     how a fill of the real resting 25%-of-premium SL_M order is noticed
     (see enter_position(): that order is placed once at entry and never
@@ -265,7 +326,8 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
         if not reconcile.still_open:
             reason = "premium_stop" if reconcile.exit_reason == "sl_fill" else (reconcile.exit_reason or "unknown")
             _close_out(underlying, existing, reconcile.exit_price, reconcile.exit_timestamp or now_utc,
-                       reason, positions, trade_history, positions_path=positions_path)
+                       reason, positions, trade_history, positions_path=positions_path,
+                       strategy_name=strategy_name)
             return
 
     past_flatten = now_utc.time() >= SESSION_FLATTEN_UTC
@@ -314,7 +376,7 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
             remove_position(positions, underlying, existing.trade_date, path=positions_path)
         else:
             _close_out(underlying, existing, flat_result.fill_price, now_utc, reason, positions,
-                       trade_history, positions_path=positions_path)
+                       trade_history, positions_path=positions_path, strategy_name=strategy_name)
         return
 
     # Still open, nothing forced this fire -- refresh the persisted
@@ -332,7 +394,10 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
                         traded_today: set, entry_filter: Optional[EntryFilter] = None,
                         positions_path: Optional[Path] = None,
                         traded_today_path: Optional[Path] = None,
-                        dry_run_log_path: Optional[Path] = None) -> None:
+                        dry_run_log_path: Optional[Path] = None,
+                        dynamic_sizing: bool = False, starting_capital: float = 0.0,
+                        min_capital_floor: float = 0.0,
+                        strategy_name: str = "orb_scalping") -> None:
     now_utc = datetime.now(timezone.utc)
     trade_date = now_utc.date()
     trade_date_iso = trade_date.isoformat()
@@ -363,6 +428,16 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
         # special case of this same rule.
         if state.status != "in_position" or has_traded_today(traded_today, underlying, trade_date_iso):
             return
+        # Hard kill-switch (agent/risk_guard.py, S4-2/P0-2) -- refuses NEW
+        # entries only, same as everywhere else it's checked; exit
+        # management above this branch is never gated by it, so a halted
+        # agent keeps managing/closing whatever is already open. This was
+        # entirely absent from this script before 2026-09-25 -- every
+        # other order-placing path in this project already checks it.
+        halt_reason = read_halt_reason()
+        if halt_reason:
+            print(f"  {underlying}: entry refused -- trading halted ({halt_reason})")
+            return
         # docs/ORB_ENTRY_FILTER_METHODOLOGY.md's --variant filtered gate --
         # None (unfiltered candidate 18, the only variant that has ever
         # placed a real order) always allows, reproducing every existing
@@ -377,12 +452,15 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
         _enter_new_position(broker, underlying, state, dte_floor_days, strike_interval,
                              lots_per_trade, dry_run, positions, trade_date_iso, now_utc,
                              traded_today, positions_path=positions_path,
-                             traded_today_path=traded_today_path)
+                             traded_today_path=traded_today_path,
+                             dynamic_sizing=dynamic_sizing, trade_history=trade_history,
+                             starting_capital=starting_capital, min_capital_floor=min_capital_floor,
+                             strategy_name=strategy_name)
         return
 
     _manage_existing_position(broker, underlying, spot_symbol, state, existing, dry_run,
                                positions, trade_history, now_utc, positions_path=positions_path,
-                               dry_run_log_path=dry_run_log_path)
+                               dry_run_log_path=dry_run_log_path, strategy_name=strategy_name)
 
 
 def _fetch_prior_daily_close(broker, spot_symbol: str, today: date) -> Optional[float]:
@@ -432,6 +510,14 @@ def main(argv: Optional[list] = None) -> int:
 
     dry_run = bool(orb_cfg.get("dry_run", True))
     lots_per_trade = int(orb_cfg.get("lots_per_trade", 1))
+    # Dynamic (Kelly-based) sizing is OPT-IN and defaults to False -- the
+    # existing fixed lots_per_trade behaviour is unchanged unless this is
+    # deliberately turned on, same "new capability defaults to the old
+    # behaviour" pattern as every other flag in this config block.
+    dynamic_sizing = bool(orb_cfg.get("dynamic_sizing", False))
+    starting_capital = float(orb_cfg.get("starting_capital", 0.0))
+    min_capital_floor = float(orb_cfg.get("min_capital_floor", 0.0))
+    strategy_name = "orb_scalping_filtered" if filtered else "orb_scalping"
     dte_floor_days = {
         "NIFTY": int(orb_cfg.get("nifty_dte_floor_days", NIFTY_DTE_FLOOR_DAYS)),
         "BANKNIFTY": int(orb_cfg.get("banknifty_dte_floor_days", BANKNIFTY_DTE_FLOOR_DAYS)),
@@ -446,11 +532,14 @@ def main(argv: Optional[list] = None) -> int:
     traded_today_path = ORB_TRADED_TODAY_FILTERED_PATH if filtered else None
     dry_run_log_path = ORB_DRY_RUN_LOG_FILTERED_PATH if filtered else None
 
-    # trade_history.json stays shared/unparametrized: dry_run never writes to
-    # it (see _manage_existing_position's dry_run branch), and this project's
-    # standing gate means neither variant will flip dry_run:false without a
-    # fresh, separate go-ahead -- if that ever happens the shared file
-    # becomes a real question, not one this document needs to answer today.
+    # trade_history.json stays shared/unparametrized across both variants:
+    # dry_run never writes to it (see _manage_existing_position's dry_run
+    # branch), and now that closed trades are tagged by their own
+    # strategy_name (2026-09-25 -- previously both variants wrote
+    # strategy="orb_scalping" unconditionally, which would have silently
+    # blended 18 and 18b's Kelly sizing together), sharing one file is
+    # safe: _dynamic_lot_count always filters to the calling variant's
+    # own trades before sizing off them.
     trade_history = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
     positions = load_open_positions(path=positions_path)
     traded_today = load_traded_today(path=traded_today_path)
@@ -477,7 +566,9 @@ def main(argv: Optional[list] = None) -> int:
                                 strike_interval, lots_per_trade, dry_run, positions, trade_history,
                                 traded_today, entry_filter=entry_filter,
                                 positions_path=positions_path, traded_today_path=traded_today_path,
-                                dry_run_log_path=dry_run_log_path)
+                                dry_run_log_path=dry_run_log_path, dynamic_sizing=dynamic_sizing,
+                                starting_capital=starting_capital, min_capital_floor=min_capital_floor,
+                                strategy_name=strategy_name)
         except Exception as e:
             print(f"  {underlying}: fire failed ({e}) -- self-healing, will retry next fire.")
     return 0

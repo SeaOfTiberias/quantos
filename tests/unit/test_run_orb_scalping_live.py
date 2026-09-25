@@ -21,7 +21,7 @@ from core.brokers.base import (  # noqa: E402
 from core.options.fyers_symbol_master import ResolvedOption  # noqa: E402
 from core.options.models import OptionType  # noqa: E402
 from core.orb_scalping.live_positions import get_position  # noqa: E402
-from core.risk import TradeHistoryService  # noqa: E402
+from core.risk import ClosedTrade, TradeHistoryService  # noqa: E402
 
 
 # ─── _exit_reason (pure) ─────────────────────────────────────────────────
@@ -133,6 +133,12 @@ def _patch_common(monkeypatch, tmp_path):
                          tmp_path / "orb_open_positions.json")
     monkeypatch.setattr("core.orb_scalping.live_positions.ORB_TRADED_TODAY_PATH",
                          tmp_path / "orb_traded_today.json")
+    # Isolate the halt-flag kill-switch (agent/risk_guard.py) from this
+    # machine's real ~/.quantos/halt -- process_underlying now checks it
+    # before every new entry (added 2026-09-25), so every test reaching
+    # that path must not depend on whatever real halt state happens to
+    # exist wherever tests run.
+    monkeypatch.setattr("agent.risk_guard.HALT_FLAG_PATH", tmp_path / "halt")
     monkeypatch.setattr(mod.sm, "list_expiries", lambda underlying: [date(2026, 9, 29)])
     monkeypatch.setattr(mod.sm, "get_expiry_epoch", lambda *a, **k: "123")
     monkeypatch.setattr(
@@ -523,10 +529,13 @@ def _patch_main_deps(monkeypatch, orb_cfg=None, orb_cfg_filtered=None):
     def spy_process_underlying(broker, underlying, spot_symbol, dte_floor_days, strike_interval,
                                 lots_per_trade, dry_run, positions, trade_history, traded_today,
                                 entry_filter=None, positions_path=None, traded_today_path=None,
-                                dry_run_log_path=None):
+                                dry_run_log_path=None, dynamic_sizing=False, starting_capital=0.0,
+                                min_capital_floor=0.0, strategy_name="orb_scalping"):
         calls.append(dict(underlying=underlying, entry_filter=entry_filter,
                            positions_path=positions_path, traded_today_path=traded_today_path,
-                           dry_run_log_path=dry_run_log_path, dry_run=dry_run))
+                           dry_run_log_path=dry_run_log_path, dry_run=dry_run,
+                           dynamic_sizing=dynamic_sizing, starting_capital=starting_capital,
+                           min_capital_floor=min_capital_floor, strategy_name=strategy_name))
 
     monkeypatch.setattr(mod, "process_underlying", spy_process_underlying)
     return calls
@@ -599,3 +608,263 @@ class _FrozenDatetime:
 
     def fromisoformat(self, *a, **k):
         return datetime.fromisoformat(*a, **k)
+
+
+# ─── _dynamic_lot_count (pure) ────────────────────────────────────────────
+
+def _winning_trade(i: int, strategy: str = "orb_scalping") -> ClosedTrade:
+    """A clean winner: entry 100 -> exit 120, well above any stop, so
+    win_loss_ratio is large and positive Kelly is guaranteed once enough
+    of these exist."""
+    day = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=i)
+    return ClosedTrade(trade_id=f"t{i}", symbol="NIFTY", entry_price=100.0, exit_price=120.0,
+                        quantity=65, direction="BUY", entry_date=day, exit_date=day, strategy=strategy)
+
+
+def _losing_trade(i: int, strategy: str = "orb_scalping") -> ClosedTrade:
+    day = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=i)
+    return ClosedTrade(trade_id=f"l{i}", symbol="NIFTY", entry_price=100.0, exit_price=80.0,
+                        quantity=65, direction="BUY", entry_date=day, exit_date=day, strategy=strategy)
+
+
+class TestDynamicLotCount:
+    def test_insufficient_history_uses_fixed_fallback_not_a_refusal(self):
+        lots, note = mod._dynamic_lot_count(
+            trades=[], starting_capital=100_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=50_000.0, symbol="NIFTY",
+        )
+        assert lots >= 1
+        assert "FIXED_FALLBACK" in note or "fallback" in note.lower() or "Kelly sizing" in note
+
+    def test_positive_edge_history_sizes_a_real_lot_count(self):
+        trades = [_winning_trade(i) for i in range(25)]
+        lots, note = mod._dynamic_lot_count(
+            trades=trades, starting_capital=1_000_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=50_000.0, symbol="NIFTY",
+        )
+        assert lots >= 1
+        assert "Kelly sizing" in note
+
+    def test_negative_edge_history_refuses_entirely(self):
+        trades = [_losing_trade(i) for i in range(25)]
+        lots, note = mod._dynamic_lot_count(
+            trades=trades, starting_capital=1_000_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=50_000.0, symbol="NIFTY",
+        )
+        assert lots == 0
+        assert "refused" in note.lower()
+
+    def test_rounds_to_zero_but_capital_above_floor_gets_floored_to_one_lot(self):
+        # 25 winners' realized P&L (~Rs32,310) plus a small starting
+        # capital puts current_capital (~Rs37,310) below the ~Rs40,625
+        # threshold where 4%-capped Kelly risk still affords a full lot --
+        # but it's above a Rs30,000 floor, so this should floor to 1.
+        trades = [_winning_trade(i) for i in range(25)]
+        lots, note = mod._dynamic_lot_count(
+            trades=trades, starting_capital=5_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=30_000.0, symbol="NIFTY",
+        )
+        assert lots == 1
+        assert "flooring to 1 lot" in note
+
+    def test_rounds_to_zero_and_below_floor_refuses_with_low_capital_warning(self):
+        trades = [_winning_trade(i) for i in range(25)]
+        lots, note = mod._dynamic_lot_count(
+            trades=trades, starting_capital=5_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=50_000.0, symbol="NIFTY",
+        )
+        assert lots == 0
+        assert "LOW CAPITAL WARNING" in note
+
+    def test_current_capital_includes_realized_pnl_not_just_starting_capital(self):
+        # 25 winners at (120-100)*65 - costs each add real realized P&L;
+        # current_capital should be well above the bare starting_capital.
+        trades = [_winning_trade(i) for i in range(25)]
+        lots_low_start, _ = mod._dynamic_lot_count(
+            trades=[], starting_capital=50_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=50_000.0, symbol="NIFTY",
+        )
+        lots_with_history, _ = mod._dynamic_lot_count(
+            trades=trades, starting_capital=50_000.0, entry_premium=100.0,
+            protective_stop_trigger=75.0, lot_size=65, min_capital_floor=50_000.0, symbol="NIFTY",
+        )
+        # Both may floor to a small number of lots, but the realized-gain
+        # version must never size off LESS capital than the bare starting
+        # figure -- i.e. it must not ignore the trade history's P&L.
+        assert lots_with_history >= lots_low_start
+
+
+# ─── Halt-flag kill-switch ─────────────────────────────────────────────────
+
+class TestHaltFlagBlocksNewEntries:
+    def test_entry_refused_and_no_order_placed_while_halted(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        halt_path = tmp_path / "halt"
+        halt_path.write_text("2026-09-25T00:00:00 IST — test halt\n")
+        monkeypatch.setattr("agent.risk_guard.HALT_FLAG_PATH", halt_path)
+
+        start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+        candles = _entry_candles(start)
+        now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+        monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+        broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+        trade_history = TradeHistoryService()
+        positions = {}
+        mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                                lots_per_trade=1, dry_run=False, positions=positions,
+                                trade_history=trade_history, traded_today=set())
+
+        assert broker.placed_orders == []
+        assert get_position(positions, "NIFTY", now_at_entry.date().isoformat()) is None
+
+    def test_entry_allowed_once_halt_file_is_absent(self, monkeypatch, tmp_path):
+        # Sanity check for the test above: with _patch_common's isolated
+        # (non-existent) halt path, entry proceeds normally.
+        _patch_common(monkeypatch, tmp_path)
+        start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+        candles = _entry_candles(start)
+        now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+        monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+        broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+        trade_history = TradeHistoryService()
+        positions = {}
+        mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                                lots_per_trade=1, dry_run=True, positions=positions,
+                                trade_history=trade_history, traded_today=set())
+
+        assert get_position(positions, "NIFTY", now_at_entry.date().isoformat()) is not None
+
+
+# ─── Per-variant strategy tagging ──────────────────────────────────────────
+
+class TestStrategyTagging:
+    def test_close_out_tags_trade_history_with_the_given_strategy_name(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        existing = mod.OrbOpenPosition(
+            underlying="NIFTY", option_symbol="NSE:NIFTYTESTCE", direction="CALL",
+            option_type="CE", quantity=65, strike=24000.0, expiry="2026-09-29",
+            dte_floor_rolled=False, entry_index_level=24005.0, entry_premium=50.0,
+            entry_timestamp=datetime(2026, 9, 3, 5, 0, tzinfo=timezone.utc).isoformat(),
+            current_index_stop=23990.0, current_premium_stop=37.5, armed=False,
+            entry_order_id="ORD-1", stop_order_id="ORD-2", trade_date="2026-09-03",
+        )
+        positions = {}
+        mod.add_position(positions, existing)
+        trade_history = TradeHistoryService()
+
+        mod._close_out("NIFTY", existing, 60.0, datetime(2026, 9, 3, 6, 0, tzinfo=timezone.utc),
+                        "stop", positions, trade_history, strategy_name="orb_scalping_filtered")
+
+        recorded = trade_history.get_trade_history()
+        assert len(recorded) == 1
+        assert recorded[0].strategy == "orb_scalping_filtered"
+
+    def test_default_strategy_name_is_unfiltered_orb_scalping(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        existing = mod.OrbOpenPosition(
+            underlying="NIFTY", option_symbol="NSE:NIFTYTESTCE", direction="CALL",
+            option_type="CE", quantity=65, strike=24000.0, expiry="2026-09-29",
+            dte_floor_rolled=False, entry_index_level=24005.0, entry_premium=50.0,
+            entry_timestamp=datetime(2026, 9, 3, 5, 0, tzinfo=timezone.utc).isoformat(),
+            current_index_stop=23990.0, current_premium_stop=37.5, armed=False,
+            entry_order_id="ORD-1", stop_order_id="ORD-2", trade_date="2026-09-03",
+        )
+        positions = {}
+        mod.add_position(positions, existing)
+        trade_history = TradeHistoryService()
+
+        mod._close_out("NIFTY", existing, 60.0, datetime(2026, 9, 3, 6, 0, tzinfo=timezone.utc),
+                        "stop", positions, trade_history)
+
+        assert trade_history.get_trade_history()[0].strategy == "orb_scalping"
+
+
+# ─── Dynamic sizing end-to-end (through process_underlying) ────────────────
+
+class TestDynamicSizingIntegration:
+    def test_dynamic_sizing_overrides_lots_per_trade_with_kelly_derived_quantity(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+        candles = _entry_candles(start)
+        now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+        monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+        broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 100.0)])
+        trade_history = TradeHistoryService()
+        for t in [_winning_trade(i) for i in range(25)]:
+            trade_history.record_closed_trade(t)
+        positions = {}
+
+        # lots_per_trade=1 would place a 65-qty order; dynamic sizing with
+        # this trade history and starting_capital should size UP well past
+        # that (see TestDynamicLotCount's own calibration of this scenario).
+        mod.process_underlying(
+            broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history,
+            traded_today=set(), dynamic_sizing=True, starting_capital=1_000_000.0,
+            min_capital_floor=50_000.0, strategy_name="orb_scalping",
+        )
+
+        pos = get_position(positions, "NIFTY", now_at_entry.date().isoformat())
+        assert pos is not None
+        assert pos.quantity > 65          # more than lots_per_trade=1 would have placed
+        assert pos.quantity % 65 == 0     # still a whole number of lots
+
+    def test_dynamic_sizing_places_no_order_when_kelly_refuses(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+        candles = _entry_candles(start)
+        now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+        monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+        broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 100.0)])
+        trade_history = TradeHistoryService()
+        for t in [_losing_trade(i) for i in range(25)]:
+            trade_history.record_closed_trade(t)
+        positions = {}
+
+        mod.process_underlying(
+            broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history,
+            traded_today=set(), dynamic_sizing=True, starting_capital=1_000_000.0,
+            min_capital_floor=50_000.0, strategy_name="orb_scalping",
+        )
+
+        assert broker.placed_orders == []
+        assert get_position(positions, "NIFTY", now_at_entry.date().isoformat()) is None
+
+    def test_dynamic_sizing_filters_trade_history_by_strategy_name(self, monkeypatch, tmp_path):
+        # 25 winners tagged for the OTHER variant must not feed this
+        # variant's Kelly sizing -- with zero own-strategy history, this
+        # should fall back to FIXED_FALLBACK sizing, not the aggressive
+        # Kelly number the (wrong-strategy) winners would produce.
+        _patch_common(monkeypatch, tmp_path)
+        start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+        candles = _entry_candles(start)
+        now_at_entry = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+        monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_at_entry))
+
+        broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 100.0)])
+        trade_history = TradeHistoryService()
+        for t in [_winning_trade(i, strategy="orb_scalping_filtered") for i in range(25)]:
+            trade_history.record_closed_trade(t)
+        positions = {}
+
+        mod.process_underlying(
+            broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+            lots_per_trade=1, dry_run=False, positions=positions, trade_history=trade_history,
+            traded_today=set(), dynamic_sizing=True, starting_capital=1_000_000.0,
+            min_capital_floor=50_000.0, strategy_name="orb_scalping",   # unfiltered
+        )
+
+        pos = get_position(positions, "NIFTY", now_at_entry.date().isoformat())
+        assert pos is not None
+        # FIXED_FALLBACK is 2% of capital, not the 4%-capped aggressive
+        # Kelly the (wrong-strategy) winning history would have produced --
+        # confirms the filter actually excluded them, not just happened to
+        # size similarly.
+        from core.risk.kelly import FALLBACK_SIZE_PCT
+        expected_qty = (int((1_000_000.0 * FALLBACK_SIZE_PCT) / (100.0 - 75.0)) // 65) * 65
+        assert pos.quantity == expected_qty

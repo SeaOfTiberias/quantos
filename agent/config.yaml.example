@@ -199,6 +199,13 @@ orb_scalping:
                                      # supervised dry-run cycle before setting false.
   lots_per_trade: 1                 # Capital-at-risk decision -- do not raise without explicit
                                      # confirmation each time, same rule as rotation's position_size.
+  dynamic_sizing: false             # OPT-IN (added 2026-09-25). true replaces lots_per_trade above
+                                     # with core/risk/kelly.py's existing rolling half-Kelly sizing
+                                     # (US-07), keyed to THIS strategy's own closed-trade history only
+                                     # -- never blended with orb_scalping_filtered's. Only matters
+                                     # when true; treat flipping it with the same care as dry_run.
+  starting_capital: 0.0             # Only used when dynamic_sizing is true.
+  min_capital_floor: 0.0            # Only used when dynamic_sizing is true.
   nifty_dte_floor_days: 2           # core/orb_scalping/backtest.py's resolve_nifty_expiry
   banknifty_dte_floor_days: 0       # resolve_banknifty_expiry has no floor
 
@@ -219,6 +226,9 @@ orb_scalping_filtered:
   enabled: false
   dry_run: true
   lots_per_trade: 1
+  dynamic_sizing: false   # see orb_scalping's own comment -- opt-in, keyed to this variant's own trade history only
+  starting_capital: 0.0
+  min_capital_floor: 0.0
   nifty_dte_floor_days: 2
   banknifty_dte_floor_days: 0
 
