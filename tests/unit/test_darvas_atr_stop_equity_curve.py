@@ -13,7 +13,7 @@ import pytest
 
 from scripts.simulate_darvas_atr_stop_equity_curve import (
     BUCKET_B_LABEL, bucket_b_trades, build_trading_days, capital_floor_threshold,
-    mining_holdout_split, simulate, trade_fractional_return,
+    concurrent_position_stats, mining_holdout_split, simulate, trade_fractional_return,
 )
 
 
@@ -150,6 +150,35 @@ class TestSimulateEquityFraction:
                                     initial_capital=100.0, sizing="fraction", fraction=0.01)
         assert result.closed_positions == []
         assert len(skipped) == 1
+
+
+class TestConcurrentPositionStats:
+    def test_empty_trades_is_all_zero(self):
+        stats = concurrent_position_stats([])
+        assert stats == {"mean": 0.0, "median": 0.0, "max": 0}
+
+    def test_non_overlapping_trades_never_exceed_one_concurrent(self):
+        a = _trade("A", 40.0, _dt("2024-01-01"), _dt("2024-01-05"), 100, 110)
+        b = _trade("B", 40.0, _dt("2024-01-10"), _dt("2024-01-15"), 100, 110)
+        stats = concurrent_position_stats([a, b])
+        assert stats["max"] == 1
+
+    def test_three_way_overlap_is_detected(self):
+        a = _trade("A", 40.0, _dt("2024-01-01"), _dt("2024-01-20"), 100, 110)
+        b = _trade("B", 40.0, _dt("2024-01-05"), _dt("2024-01-20"), 100, 110)
+        c = _trade("C", 40.0, _dt("2024-01-10"), _dt("2024-01-20"), 100, 110)
+        stats = concurrent_position_stats([a, b, c])
+        assert stats["max"] == 3
+
+    def test_mean_reflects_time_spent_at_each_concurrency_level(self):
+        # Two trades overlap for a while, but most of the swept EVENT
+        # sequence (entries/exits) sits at 1 or 0 concurrent, not 2 --
+        # mean must be below the max, not equal to it.
+        a = _trade("A", 40.0, _dt("2024-01-01"), _dt("2024-01-10"), 100, 110)
+        b = _trade("B", 40.0, _dt("2024-01-09"), _dt("2024-01-20"), 100, 110)
+        stats = concurrent_position_stats([a, b])
+        assert stats["max"] == 2
+        assert stats["mean"] < stats["max"]
 
 
 class TestCapitalFloorThreshold:

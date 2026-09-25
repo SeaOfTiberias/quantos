@@ -25,17 +25,35 @@ was never found to have an edge in the first place.
 
 Equities, not options: position sizing here is a SHARE COUNT, not a lot
 count -- Darvas trades individual NSE stocks, no lot-size granularity.
-Four sizing policies tested, same discipline as
+Five sizing policies tested, same discipline as
 scripts/simulate_orb_scalping_capital_allocation.py:
   - Fixed-notional: reproduces the original backtest's own convention
     (Rs100,000/trade), capped by actually available cash.
-  - Full/Half/Quarter Kelly: a fraction of CURRENT equity per trade,
-    derived on trades before this candidate's own pre-registered
-    Mining/Holdout boundary (MINING_HOLDOUT_SPLIT, 2026-02-15,
-    scripts/backtest_darvas_box_width.py) and VALIDATED on the untouched
-    Holdout trades -- not fit and reported on the same data (the
-    overfitting trap docs/SHARPE_SWEEP_AND_EQUITY_CURVE_PLAN.md exists to
-    avoid, same as candidate 18's Kelly analysis).
+  - Full/Half/Quarter Kelly: a fraction of CURRENT equity per trade, from
+    `core/backtest/equity_curve.py::kelly_fraction` -- the SINGLE-TRADE
+    Kelly formula, which assumes one bet at a time. Darvas Bucket B holds
+    a mean of ~12 (max 29) positions CONCURRENTLY in its own mining
+    window (see `concurrent_position_stats` below) -- single-trade Kelly
+    has no way to know that, and its 45.9% "optimal" fraction would (if
+    cash allowed) try to commit far more than 100% of capital across
+    those concurrent slots at once. Kept here for comparison, not as the
+    recommended policy.
+  - Portfolio Kelly (grid-searched): `core/backtest/equity_curve.py::
+    optimal_fraction_by_growth` -- finds the fraction that maximizes
+    REALIZED portfolio log-growth by actually simulating the real
+    overlapping trade history (concurrency, correlation between
+    simultaneously-held positions, and the cash ceiling all correctly
+    accounted for because it's the real simulation, not an analytical
+    approximation). This is the policy this script's own prior version
+    was missing, and the one actually recommended if this candidate is
+    deployed.
+  All fraction-based policies are derived on trades before this
+  candidate's own pre-registered Mining/Holdout boundary
+  (MINING_HOLDOUT_SPLIT, 2026-02-15, scripts/backtest_darvas_box_width.py)
+  and VALIDATED on the untouched Holdout trades -- not fit and reported
+  on the same data (the overfitting trap
+  docs/SHARPE_SWEEP_AND_EQUITY_CURVE_PLAN.md exists to avoid, same as
+  candidate 18's Kelly analysis).
 
 Costs: the real STRESSED_COST_MODEL (this candidate's own gating cost
 model), recomputed at the ACTUAL sized share count for every trade, not
@@ -75,7 +93,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.backtest.equity_curve import Account, EquityCurveResult, kelly_fraction  # noqa: E402
+from core.backtest.equity_curve import (  # noqa: E402
+    Account, EquityCurveResult, kelly_fraction, optimal_fraction_by_growth,
+)
 from core.reference.calendar import coverage as calendar_coverage  # noqa: E402
 from core.reference.calendar import trading_days as nse_trading_days  # noqa: E402
 from scripts.backtest_darvas_atr_stop import CACHE_DEFAULT  # noqa: E402
@@ -86,6 +106,33 @@ from scripts.backtest_darvas_box_width import (  # noqa: E402
 BUCKET_B_LABEL = "35-50%"
 DEFAULT_CAPITALS = [25_000.0, 50_000.0, 75_000.0, 100_000.0, 250_000.0, 500_000.0]
 FIXED_NOTIONAL_PER_TRADE = 100_000.0   # matches the original backtest's own convention
+PORTFOLIO_GRID_CAPITAL = 250_000.0     # representative capital for the grid search (mid-range of DEFAULT_CAPITALS)
+PORTFOLIO_GRID_FRACTIONS = [round(0.01 * i, 4) for i in range(1, 51)]   # 1% .. 50%, 1% steps
+
+
+def concurrent_position_stats(trades: list[dict]) -> dict:
+    """How many of `trades` are open SIMULTANEOUSLY, at any point in time
+    -- the number single-trade `kelly_fraction()` has no way to see.
+    Sweeps every entry (+1) and exit (-1) event chronologically and tracks
+    the running open count. Returns mean/median/max over every event
+    (not just daily snapshots, so a brief multi-way overlap isn't
+    averaged away by day-granular sampling)."""
+    if not trades:
+        return {"mean": 0.0, "median": 0.0, "max": 0}
+    events = []
+    for t in trades:
+        events.append((datetime.fromisoformat(t["entry_date"]), 1))
+        events.append((datetime.fromisoformat(t["exit_date"]), -1))
+    events.sort(key=lambda e: e[0])
+    counts = []
+    running = 0
+    for _ts, delta in events:
+        running += delta
+        counts.append(running)
+    counts.sort()
+    n = len(counts)
+    median = counts[n // 2] if n % 2 else (counts[n // 2 - 1] + counts[n // 2]) / 2
+    return {"mean": sum(counts) / n, "median": median, "max": max(counts)}
 
 
 def bucket_b_trades(results: dict) -> list[dict]:
@@ -227,15 +274,29 @@ def main_report(cache_path: Path, capitals: list[float]) -> str:
     f_full = kelly_fraction(mining_returns)
     f_half = round(f_full / 2, 4)
     f_quarter = round(f_full / 4, 4)
+    concurrency = concurrent_position_stats(mining)
 
     window_end = max(datetime.fromisoformat(t["exit_date"]).date() for t in trades)
     trading_days = build_trading_days(trades, window_end)
     lockout_capacity_days = len(trading_days)
 
+    # Portfolio-level fraction: grid-searched on MINING trades/days only
+    # (real overlapping history, real cash constraint), validated on
+    # holdout below exactly like the single-trade Kelly fractions.
+    mining_days = [d for d in trading_days if d < MINING_HOLDOUT_SPLIT.date()]
+
+    def _mining_simulate_fn(fraction: float) -> EquityCurveResult:
+        result, _skipped = simulate(mining, mining_days, PORTFOLIO_GRID_CAPITAL, "fraction", fraction)
+        return result
+
+    f_portfolio, portfolio_mining_result = optimal_fraction_by_growth(
+        _mining_simulate_fn, PORTFOLIO_GRID_FRACTIONS)
+
     policies = [("Fixed Rs100k/trade", "fixed_notional", 0.0),
                 (f"Full Kelly ({f_full:.4f})", "fraction", f_full),
                 (f"Half Kelly ({f_half:.4f})", "fraction", f_half),
-                (f"Quarter Kelly ({f_quarter:.4f})", "fraction", f_quarter)]
+                (f"Quarter Kelly ({f_quarter:.4f})", "fraction", f_quarter),
+                (f"Portfolio Kelly, grid-searched ({f_portfolio:.4f})", "fraction", f_portfolio)]
 
     lines = [
         "# Darvas ATR-Stop (Bucket B) — Real Capital-Tracked Equity Curve & Position Sizing",
@@ -252,6 +313,20 @@ def main_report(cache_path: Path, capitals: list[float]) -> str:
         f"({len(mining)} mining / {len(holdout)} holdout trades, {len(trades)} total).",
         f"Mining-derived Kelly fraction (n={len(mining_returns)}): "
         f"full={f_full:.4f} ({f_full*100:.2f}% of equity/trade), half={f_half:.4f}, quarter={f_quarter:.4f}.",
+        "",
+        f"**Concurrent open positions in the mining window** (why single-trade Kelly is the wrong tool "
+        f"here): mean={concurrency['mean']:.1f}, median={concurrency['median']:.1f}, "
+        f"max={concurrency['max']}. Full Kelly's 45.9%-of-equity-per-trade figure assumes ONE bet at a "
+        f"time -- with a mean of {concurrency['mean']:.0f} (max {concurrency['max']}) positions open "
+        f"simultaneously, that fraction would try to commit several multiples of total capital at once "
+        f"if cash allowed it.",
+        f"**Portfolio Kelly, grid-searched (f={f_portfolio:.4f})**: found by "
+        f"`core/backtest/equity_curve.py::optimal_fraction_by_growth`, which simulates the REAL "
+        f"overlapping mining trade history at each candidate fraction (at ₹{PORTFOLIO_GRID_CAPITAL:,.0f} "
+        f"starting capital) and picks whichever produced the best realized log-growth -- concurrency, "
+        f"correlation between simultaneously-held positions, and the cash ceiling are automatically "
+        f"correct because it's the real simulation, not an analytical approximation. This is the "
+        f"policy actually recommended below, not the single-trade Kelly fractions.",
         "",
         "## Full-window results by starting capital and sizing policy",
         "",
