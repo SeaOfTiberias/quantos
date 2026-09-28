@@ -748,6 +748,210 @@ function BreakoutCandidatesPanel() {
   );
 }
 
+// ─── Darvas ATR-Stop (Bucket B) ──────────────────────────────────────────
+// The systematic Darvas strategy (scripts/run_darvas_atr_stop_live.py): the
+// 18:00 IST scan's plan, the open positions the 09:45 execute placed, and
+// closed round trips. Read-only mirror of the executor's own files
+// (cloud/api/darvas_atr_stop_routes.py). Not the Breakout Candidates panel
+// above — that one drops every box wider than 35%, i.e. all of Bucket B.
+// No live price here (the API holds no broker), so no unrealised P&L:
+// stop/target % are measured from the entry price.
+function useDarvasAtrStop() {
+  const [state, setState] = useState({ data: null, loading: true, error: false });
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${CLOUD_API_URL}/darvas-atr-stop/status`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setState({ data, loading: false, error: false });
+      } catch {
+        if (!cancelled) setState(s => ({ ...s, loading: false, error: true }));
+      }
+    };
+    load();
+    const id = setInterval(load, 300000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  return state;
+}
+
+const fmtNum = (v, d = 2) => (v == null ? "—" : Number(v).toLocaleString("en-IN", {
+  minimumFractionDigits: d, maximumFractionDigits: d,
+}));
+const fmtPct = v => (v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`);
+
+function DarvasCell({ label, value, color = C.white }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minWidth: 70 }}>
+      <span style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</span>
+      <span style={{ fontSize: 12, color, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+    </div>
+  );
+}
+
+function DarvasRow({ children }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+      padding: "8px 10px", background: C.bg, borderRadius: 6,
+      border: `1px solid ${C.border}`,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function DarvasSymbol({ symbol }) {
+  return (
+    <a href={tradingViewUrl(symbol)} target="_blank" rel="noreferrer"
+       style={{ color: C.white, fontWeight: 700, textDecoration: "none", minWidth: 96 }}>
+      {symbol}
+    </a>
+  );
+}
+
+function DarvasSubhead({ children }) {
+  return (
+    <div style={{ fontSize: 10, color: C.mid, fontWeight: 700, letterSpacing: 0.8,
+                  textTransform: "uppercase", marginTop: 14, marginBottom: 6 }}>
+      {children}
+    </div>
+  );
+}
+
+function DarvasAtrStopPanel() {
+  const { data, loading, error } = useDarvasAtrStop();
+  const settings = data?.settings ?? {};
+  const plan = data?.plan;
+  const positions = data?.open_positions ?? [];
+  const closed = data?.closed_trades ?? [];
+  const mode = settings.dry_run === false ? "LIVE" : "PAPER";
+  const planActions = Object.entries(plan?.position_actions ?? {});
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Label color={C.accent}>Darvas ATR-Stop · Bucket B</Label>
+        <span style={{
+          fontSize: 9, fontWeight: 700, letterSpacing: 0.8, padding: "2px 6px", borderRadius: 4,
+          color: mode === "LIVE" ? C.red : C.gold,
+          border: `1px solid ${mode === "LIVE" ? C.red : C.gold}`,
+        }}>
+          {mode}
+        </span>
+        {settings.enabled === false && (
+          <span style={{ fontSize: 10, color: C.red }}>disabled in config</span>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+        Systematic Nifty 500 strategy: 35–50% weekly box, stop = ceiling − 2×ATR,
+        measured-move target. Scan 18:00 IST, execute 09:45 IST.
+        {settings.starting_capital ? ` Ledger ₹${fmtNum(settings.starting_capital, 0)}, ${(settings.equity_fraction * 100).toFixed(0)}% per trade.` : ""}
+        {" "}No live price — % shown vs entry.
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>Loading…</div>}
+      {error && !loading && (
+        <div style={{ fontSize: 12, color: C.red, marginTop: 10 }}>Could not reach cloud API.</div>
+      )}
+
+      {!loading && !error && data && (
+        <>
+          <DarvasSubhead>Open positions ({positions.length})</DarvasSubhead>
+          {positions.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted }}>None.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {positions.map(p => (
+                <DarvasRow key={p.symbol}>
+                  <DarvasSymbol symbol={p.symbol} />
+                  <DarvasCell label="Entered" value={p.entry_date} color={C.mid} />
+                  <DarvasCell label="Qty" value={p.quantity} />
+                  <DarvasCell label="Entry" value={fmtNum(p.entry_price)} />
+                  <DarvasCell label="Stop" value={`${fmtNum(p.current_stop)} (${fmtPct(p.risk_pct)})`} color={C.red} />
+                  <DarvasCell label="Target" value={`${fmtNum(p.current_target)} (${fmtPct(p.reward_pct)})`} color={C.green} />
+                  <DarvasCell label="Width" value={`${p.box_width_pct.toFixed(1)}%`} color={C.mid} />
+                  <DarvasCell label="Notional" value={`₹${fmtNum(p.notional, 0)}`} color={C.mid} />
+                </DarvasRow>
+              ))}
+            </div>
+          )}
+
+          <DarvasSubhead>
+            Latest plan
+            {plan && (
+              <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: C.muted }}>
+                {" "}— bars {plan.bars_as_of}, {plan.symbols_scanned ?? "?"} scanned,{" "}
+                {plan.executed_on
+                  ? <span style={{ color: C.green }}>executed {plan.executed_on}</span>
+                  : <span style={{ color: C.gold }}>awaiting 09:45 execute</span>}
+              </span>
+            )}
+          </DarvasSubhead>
+          {!plan ? (
+            <div style={{ fontSize: 12, color: C.muted }}>No plan file yet.</div>
+          ) : plan.entries.length === 0 && planActions.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted }}>No new breakouts and no stop/target changes.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {plan.entries.map(e => (
+                <DarvasRow key={`entry-${e.symbol}`}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: C.green, minWidth: 48 }}>ENTRY</span>
+                  <DarvasSymbol symbol={e.symbol} />
+                  <DarvasCell label="Ceiling" value={fmtNum(e.box_ceiling)} />
+                  <DarvasCell label="Close" value={fmtNum(e.last_close)} />
+                  <DarvasCell label="Stop" value={fmtNum(e.initial_stop)} color={C.red} />
+                  <DarvasCell label="Target" value={fmtNum(e.target)} color={C.green} />
+                  <DarvasCell label="Width" value={`${e.box_width_pct.toFixed(1)}%`} color={C.mid} />
+                  {e.tags?.length > 0 && <DarvasCell label="Tags" value={e.tags.join(", ")} color={C.purple} />}
+                </DarvasRow>
+              ))}
+              {planActions.map(([symbol, a]) => (
+                <DarvasRow key={`action-${symbol}`}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: C.gold, minWidth: 48 }}>
+                    {String(a?.action ?? a?.type ?? "ACTION").toUpperCase()}
+                  </span>
+                  <DarvasSymbol symbol={symbol} />
+                  <span style={{ fontSize: 11, color: C.muted }}>
+                    {Object.entries(a ?? {}).filter(([k]) => k !== "action" && k !== "type")
+                      .map(([k, v]) => `${k}: ${typeof v === "number" ? fmtNum(v) : v}`).join(" · ")}
+                  </span>
+                </DarvasRow>
+              ))}
+            </div>
+          )}
+          {plan?.failed_symbols?.length > 0 && (
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
+              Scan failures: {plan.failed_symbols.join(", ")}
+            </div>
+          )}
+
+          <DarvasSubhead>Closed trades ({closed.length})</DarvasSubhead>
+          {closed.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted }}>None yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {closed.map((t, i) => (
+                <DarvasRow key={`${t.symbol}-${t.exit_timestamp}-${i}`}>
+                  <DarvasSymbol symbol={t.symbol} />
+                  <DarvasCell label="Held" value={`${t.entry_timestamp} → ${String(t.exit_timestamp).slice(0, 10)}`} color={C.mid} />
+                  <DarvasCell label="Exit" value={t.exit_reason.toUpperCase()} color={t.exit_reason === "target" ? C.green : C.red} />
+                  <DarvasCell label="Entry" value={fmtNum(t.entry_price)} />
+                  <DarvasCell label="Exit level" value={fmtNum(t.boundary_price)} />
+                  <DarvasCell label="P&L (gross)" value={`₹${fmtNum(t.pnl, 0)} (${fmtPct(t.pnl_pct)})`}
+                              color={t.pnl >= 0 ? C.green : C.red} />
+                </DarvasRow>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function BriefNote({ note, error }) {
   return (
     <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
@@ -1653,6 +1857,14 @@ export default function QuantOSCockpit() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
           <PanelBoundary name="Breakout Candidates">
             <BreakoutCandidatesPanel />
+          </PanelBoundary>
+        </div>
+
+        {/* Row 2.6: Darvas ATR-Stop — the systematic strategy's plan and
+            paper/live positions (see the component's own comment). */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
+          <PanelBoundary name="Darvas ATR-Stop">
+            <DarvasAtrStopPanel />
           </PanelBoundary>
         </div>
 
