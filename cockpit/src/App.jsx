@@ -1,7 +1,7 @@
 import { Component, useState, useEffect, useMemo } from "react";
 
 // ─── Design tokens (Bloomberg dark terminal aesthetic) ─────────────────────
-const C = {
+export const C = {
   bg:       "#0A0E1A",
   panel:    "#111827",
   panelAlt: "#1A2235",
@@ -34,7 +34,7 @@ const C = {
 // origin) rather than a hardcoded external URL, so it never goes stale if
 // the VM's IP changes. .env.development.local overrides this for local dev
 // against a standalone backend.
-const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL || "";
+export const CLOUD_API_URL = import.meta.env.VITE_CLOUD_API_URL || "";
 
 // Fallback shown only until scripts/run_momentum_shortlist.py's first daily
 // market-snapshot sync lands (or after a Railway redeploy wipes the
@@ -191,7 +191,7 @@ const statusBadge = s => ({
 
 // ─── Sub-components ────────────────────────────────────────────────────────
 
-function Card({ children, style = {}, className = "" }) {
+export function Card({ children, style = {}, className = "" }) {
   return (
     <div style={{
       background: C.panelAlt, border: `1px solid ${C.border}`,
@@ -218,7 +218,7 @@ function Card({ children, style = {}, className = "" }) {
 // equivalent. Boundaries also only catch errors thrown while RENDERING a
 // descendant -- an event handler or an async fetch rejection is not caught,
 // which is fine here because those already have their own error states.
-class PanelBoundary extends Component {
+export class PanelBoundary extends Component {
   constructor(props) {
     super(props);
     this.state = { error: null };
@@ -254,7 +254,7 @@ class PanelBoundary extends Component {
   }
 }
 
-function Label({ children, color = C.muted }) {
+export function Label({ children, color = C.muted }) {
   return (
     <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1.5,
       textTransform: "uppercase", color }}>
@@ -1630,6 +1630,13 @@ function TopBar({ lastRefresh, jobs, obsError }) {
       <div style={{ width: 1, height: 18, background: C.border }} />
       <span style={{ fontSize: 11, color: C.muted }}>Bloomberg. But Smarter.</span>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+        {/* Paper-strategy reports page (cockpit/src/Reports.jsx), hash-routed in main.jsx */}
+        <a href="#/reports" style={{
+          fontSize: 11, color: C.accent, textDecoration: "none", fontWeight: 700,
+          border: `1px solid ${C.border}`, borderRadius: 4, padding: "3px 8px",
+        }}>
+          Reports →
+        </a>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor,
             animation: stale ? "none" : "pulse 2s infinite" }} />
