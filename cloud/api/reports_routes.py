@@ -147,6 +147,7 @@ def orb_report() -> dict:
         "dry_run":  cfg.get("dry_run", True),
         "cost_basis": "Stratified spread (locked-final research cost variant)",
         "backtest": BACKTEST_REFERENCE["orb"],
+        "sizing_changes": SIZING_CHANGES["orb"],
         "unpriced": unpriced,
         "summary":  _summary(trades, capital),
         "curve":    _curve(trades, capital),
@@ -184,6 +185,7 @@ def darvas_report() -> dict:
         "dry_run":  cfg.get("dry_run", True),
         "cost_basis": "Stressed delivery cost model (research basis)",
         "backtest": BACKTEST_REFERENCE["darvas"],
+        "sizing_changes": SIZING_CHANGES["darvas"],
         "unpriced": 0,
         "summary":  _summary(trades, capital),
         "curve":    _curve(trades, capital),
@@ -212,6 +214,15 @@ BACKTEST_REFERENCE = {
             {"label": "Holdout", "trades": 67, "win_rate_pct": 43.3, "profit_factor": 1.16},
         ],
     },
+}
+
+
+# Sizing regime changes, drawn as markers on the curve so trades at
+# different sizes aren't read as one series. Dates are the first session the
+# new sizing could trade (the VM config itself is untracked).
+SIZING_CHANGES = {
+    "orb": [{"date": "2026-09-30", "label": "2 lots · Rs5L (was 1 lot · Rs70k)"}],
+    "darvas": [],
 }
 
 

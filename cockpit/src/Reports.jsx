@@ -72,8 +72,13 @@ function CurveTooltip({ active, payload }) {
   );
 }
 
-function EquityChart({ curve, startingCapital }) {
+function EquityChart({ curve, startingCapital, sizingChanges = [] }) {
   const points = curve.map((p, i) => ({ ...p, i }));
+  // A marker sits just before the first trade exiting on/after the change
+  // date; changes with no trade after them yet aren't drawn.
+  const markers = sizingChanges
+    .map(c => ({ ...c, i: points.findIndex(p => p.label !== "start" && p.t.slice(0, 10) >= c.date) }))
+    .filter(m => m.i > 0);
   return (
     <div style={{ height: 240, marginTop: 12 }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -87,6 +92,10 @@ function EquityChart({ curve, startingCapital }) {
                  tickFormatter={v => inr(v)} stroke={C.border} />
           <ReferenceLine y={startingCapital} stroke={C.muted} strokeDasharray="4 4"
                          label={{ value: "start", fill: C.muted, fontSize: 10, position: "insideTopLeft" }} />
+          {markers.map(m => (
+            <ReferenceLine key={m.date} x={m.i - 0.5} stroke={C.gold} strokeDasharray="2 3"
+                           label={{ value: m.label, fill: C.gold, fontSize: 10, position: "insideTopRight" }} />
+          ))}
           <Tooltip content={<CurveTooltip />} cursor={{ stroke: C.mid, strokeDasharray: "3 3" }} />
           <Line type="stepAfter" dataKey="equity" stroke={C.accent} strokeWidth={2}
                 dot={{ r: 4, fill: C.accent, stroke: C.panel, strokeWidth: 2 }}
@@ -196,6 +205,12 @@ function StrategyReport({ report, kind, emptyNote }) {
         {bt.rows.map(r => `${r.label} ${r.trades} trades, ${r.win_rate_pct}% win, PF ${r.profit_factor}`).join(" · ")}
       </div>
 
+      {report.sizing_changes?.map(c => (
+        <div key={c.date} style={{ fontSize: 10, color: C.gold, marginTop: 4 }}>
+          Sizing change from {c.date}: {c.label}. Earlier trades were sized differently; the curve uses the current starting capital.
+        </div>
+      ))}
+
       {report.unpriced > 0 && (
         <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
           {report.unpriced} exit{report.unpriced === 1 ? "" : "s"} had no quote (Fyers rate limit) and {report.unpriced === 1 ? "is" : "are"} left
@@ -207,7 +222,8 @@ function StrategyReport({ report, kind, emptyNote }) {
         <div style={{ fontSize: 12, color: C.muted, marginTop: 14 }}>{emptyNote}</div>
       ) : (
         <>
-          <EquityChart curve={report.curve} startingCapital={s.starting_capital} />
+          <EquityChart curve={report.curve} startingCapital={s.starting_capital}
+                       sizingChanges={report.sizing_changes} />
           <TradeTable trades={report.trades} kind={kind} />
         </>
       )}
