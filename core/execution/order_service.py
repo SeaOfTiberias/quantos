@@ -46,6 +46,59 @@ logger = logging.getLogger(__name__)
 FILL_POLL_ATTEMPTS = 5
 FILL_POLL_SLEEP_SECONDS = 1.0
 
+# Protective stop for option buys (2026-09-30). NSE blocked stop-loss-MARKET
+# (SL-M) orders in index options from 2021-09-27 and Fyers rejects them, so
+# the stop is a stop-LIMIT (SL-L): trigger plus a limit this far below it.
+# The limit can be gapped through, which leaves the order resting unfilled;
+# the ORB live loop covers that by flattening at market once the option
+# trades at/below the trigger while the position is still open.
+OPTION_TICK = 0.05
+STOP_LIMIT_BUFFER_PCT = 0.10
+STOP_CONFIRM_ATTEMPTS = 5
+STOP_CONFIRM_SLEEP_SECONDS = 1.0
+
+
+def round_to_tick(price: float, tick: float = OPTION_TICK) -> float:
+    """Nearest exchange tick -- Fyers rejects off-tick trigger/limit prices."""
+    return round(round(price / tick) * tick, 2)
+
+
+def stop_limit_price(trigger: float, stop_direction: OrderDirection) -> float:
+    """Limit for an SL-L stop: below the trigger for a SELL stop (closing a
+    long), above it for a BUY stop, never less than one tick."""
+    if stop_direction == OrderDirection.SELL:
+        return max(OPTION_TICK, round_to_tick(trigger * (1 - STOP_LIMIT_BUFFER_PCT)))
+    return round_to_tick(trigger * (1 + STOP_LIMIT_BUFFER_PCT))
+
+
+def _bare_symbol(symbol: str) -> str:
+    """Brokers' position/order symbols come back without the exchange
+    prefix (core/brokers/fyers.py strips "NSE:" and "-EQ"), while ORB
+    stores the fully-qualified "NSE:NIFTY26O0622600PE" it traded."""
+    return symbol.replace("NSE:", "").replace("-EQ", "")
+
+
+def _stop_is_resting(broker, order_id: Optional[str]) -> bool:
+    """True once the broker shows the stop OPEN (resting) or already
+    EXECUTED (it triggered immediately; reconcile will find the fill).
+    Fyers acks a submission first and its RMS can reject it afterwards,
+    so the ack alone proves nothing. REJECTED/CANCELLED, a missing id, or
+    still in transit after STOP_CONFIRM_ATTEMPTS all count as not resting."""
+    if not order_id:
+        return False
+    for attempt in range(STOP_CONFIRM_ATTEMPTS):
+        try:
+            status = broker.get_order_status(order_id).status
+        except Exception as e:
+            logger.warning("Stop %s status check failed (attempt %d): %s", order_id, attempt + 1, e)
+            status = None
+        if status in (OrderStatus.OPEN, OrderStatus.EXECUTED):
+            return True
+        if status in (OrderStatus.REJECTED, OrderStatus.CANCELLED):
+            return False
+        time.sleep(STOP_CONFIRM_SLEEP_SECONDS)
+    return False
+
 
 @dataclass(frozen=True)
 class EntryResult:
@@ -71,11 +124,20 @@ class ReconcileResult:
 
 def enter_position(broker, *, symbol: str, direction: OrderDirection, quantity: int,
                     product_type: ProductType, protective_stop_trigger: float,
-                    tag: str, dry_run: bool) -> EntryResult:
-    """MARKET entry, then (if not dry_run) a second SL_M stop order in the
+                    tag: str, dry_run: bool, stop_as_limit: bool = False) -> EntryResult:
+    """MARKET entry, then (if not dry_run) a second stop order in the
     opposite direction -- Fyers v3 rejects Cover Orders ("CO" productType)
-    outright, so a resting stop-loss is always a second, separate order,
-    same as agent/main.py::_size_and_place_order."""
+    outright, so a resting stop-loss is always a second, separate order.
+
+    `stop_as_limit`: index OPTIONS must pass True. NSE/Fyers reject SL-M
+    there, so the stop goes in as SL-L (see STOP_LIMIT_BUFFER_PCT). Until
+    2026-09-30 ORB sent SL-M and never checked the outcome, so a live ORB
+    trade would have run with no premium stop at all. Equities (Darvas)
+    keep SL-M, which is still allowed for stocks and fills through a gap.
+
+    Either way the stop must now be seen resting at the broker; if it
+    isn't, the position is flattened at market immediately rather than
+    left unprotected."""
     if dry_run:
         logger.info(
             "[dry_run] would enter %s %s x%d, protective stop trigger=%.4f (tag=%s)",
@@ -107,15 +169,34 @@ def enter_position(broker, *, symbol: str, direction: OrderDirection, quantity: 
             break
 
     stop_direction = OrderDirection.SELL if direction == OrderDirection.BUY else OrderDirection.BUY
+    trigger = round_to_tick(protective_stop_trigger)
     stop_order = Order(
         symbol=symbol, direction=stop_direction, quantity=quantity,
-        order_type=OrderType.SL_M, product_type=product_type,
-        trigger_price=protective_stop_trigger, tag=f"{tag}-sl",
+        order_type=OrderType.SL if stop_as_limit else OrderType.SL_M, product_type=product_type,
+        price=stop_limit_price(trigger, stop_direction) if stop_as_limit else None,
+        trigger_price=trigger, tag=f"{tag}-sl",
     )
-    stop_result = broker.place_order(stop_order)
+    stop_order_id = None
+    try:
+        stop_order_id = broker.place_order(stop_order).order_id
+    except Exception as e:
+        logger.error("Protective stop placement failed for %s: %s", symbol, e)
+
+    if not _stop_is_resting(broker, stop_order_id):
+        logger.error("Protective stop for %s is NOT resting at the broker (order %s) -- "
+                     "flattening the unprotected position at market.", symbol, stop_order_id)
+        flat = flatten_position(broker, symbol=symbol, direction=direction, quantity=quantity,
+                                product_type=product_type, stop_order_id=stop_order_id,
+                                tag=f"{tag}-nostop", dry_run=False)
+        return EntryResult(
+            dry_run=False, entry_order_id=result.order_id, stop_order_id=None,
+            fill_price=fill_price, quantity=quantity,
+            message=(f"entered {direction.value} {symbol} x{quantity} @ {fill_price}, but the stop "
+                     f"was not accepted -- flattened (order {flat.entry_order_id})"),
+        )
 
     return EntryResult(
-        dry_run=False, entry_order_id=result.order_id, stop_order_id=stop_result.order_id,
+        dry_run=False, entry_order_id=result.order_id, stop_order_id=stop_order_id,
         fill_price=fill_price, quantity=quantity,
         message=f"entered {direction.value} {symbol} x{quantity} @ {fill_price}",
     )
@@ -138,8 +219,13 @@ def reconcile_position(broker, *, symbol: str, stop_order_id: str) -> ReconcileR
     filling is the exit itself; otherwise the latest executed fill for the
     symbol (e.g. a manual square-off), with the now-orphaned stop
     cancelled."""
-    live_positions = {p.symbol: p for p in broker.get_positions()}
-    live = live_positions.get(symbol)
+    # Compared prefix-free: the real Fyers adapter returns "NIFTY26O06..."
+    # for a position ORB traded as "NSE:NIFTY26O06..." -- keyed as-is, it
+    # was never found, so the first live check after entry would declare
+    # the position closed, cancel its stop, and stop tracking it (caught
+    # 2026-09-30 in review, before any live ORB trade).
+    live_positions = {_bare_symbol(p.symbol): p for p in broker.get_positions()}
+    live = live_positions.get(_bare_symbol(symbol))
     if live is not None and live.quantity != 0:
         return ReconcileResult(still_open=True)
 
@@ -158,7 +244,7 @@ def reconcile_position(broker, *, symbol: str, stop_order_id: str) -> ReconcileR
         else:
             candidates = [
                 o for o in history
-                if o.symbol == symbol and o.order_id != stop_order_id
+                if _bare_symbol(o.symbol) == _bare_symbol(symbol) and o.order_id != stop_order_id
                 and o.status == OrderStatus.EXECUTED
             ]
             if candidates:

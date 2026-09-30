@@ -78,6 +78,7 @@ from core.brokers.base import OrderDirection, ProductType  # noqa: E402
 from core.execution.order_service import (  # noqa: E402
     enter_position,
     flatten_position,
+    round_to_tick,
     reconcile_position,
 )
 from core.options import fyers_symbol_master as sm  # noqa: E402
@@ -248,7 +249,9 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
         print(f"  {underlying}: no live quote for strike={strike} {option_type}, skipping entry.")
         return
     entry_premium = float(chain_row["ltp"])
-    protective_stop_trigger = round(entry_premium * (1 - PREMIUM_STOP_PCT), 4)
+    # Tick-aligned (2026-09-30): Fyers rejects off-tick trigger prices, and
+    # paper enforces the same level so both record one number.
+    protective_stop_trigger = round_to_tick(entry_premium * (1 - PREMIUM_STOP_PCT))
 
     opt_enum = OptionType.CALL if state.direction == "CALL" else OptionType.PUT
     try:
@@ -272,7 +275,7 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
     entry_result = enter_position(
         broker, symbol=resolved.symbol, direction=OrderDirection.BUY, quantity=quantity,
         product_type=ProductType.INTRADAY, protective_stop_trigger=protective_stop_trigger,
-        tag=tag, dry_run=dry_run,
+        tag=tag, dry_run=dry_run, stop_as_limit=True,
     )
     position = OrbOpenPosition(
         underlying=underlying, option_symbol=resolved.symbol, direction=state.direction,
@@ -428,6 +431,26 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
             _close_out(underlying, existing, reconcile.exit_price, reconcile.exit_timestamp or now_utc,
                        reason, positions, trade_history, positions_path=positions_path,
                        strategy_name=strategy_name)
+            return
+        # Gap guard (2026-09-30): the premium stop is now a stop-LIMIT, which
+        # a fast drop can trade straight through, leaving it resting unfilled
+        # while the position is still open. If the option is already at/below
+        # the trigger, stop waiting on the limit and close at market.
+        try:
+            option_ltp = broker.get_ltp([existing.option_symbol]).get(existing.option_symbol)
+        except Exception:
+            option_ltp = None
+        if _premium_stop_hit(option_ltp, existing.current_premium_stop):
+            print(f"  {underlying}: option LTP {option_ltp} <= premium trigger "
+                  f"{existing.current_premium_stop} but still open -- stop-limit gapped, flattening at market.")
+            flat = flatten_position(
+                broker, symbol=existing.option_symbol, direction=OrderDirection.BUY,
+                quantity=existing.quantity, product_type=ProductType.INTRADAY,
+                stop_order_id=existing.stop_order_id,
+                tag=f"orb-{underlying.lower()}-{existing.trade_date}-gap", dry_run=False,
+            )
+            _close_out(underlying, existing, flat.fill_price, now_utc, "premium_stop", positions,
+                       trade_history, positions_path=positions_path, strategy_name=strategy_name)
             return
     elif _dry_run_premium_stop_exit(broker, underlying, existing, now_utc, positions,
                                     positions_path=positions_path,

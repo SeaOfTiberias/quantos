@@ -293,3 +293,20 @@ class TestOrderMutationOutcomeField:
         broker = _connected_broker()
         broker._client.modify_order.return_value = {"s": "error", "code": -99}
         assert broker.modify_stop_loss("ORD1", 100.0) is False
+
+
+
+def test_parse_order_uses_fyers_v3_status_codes():
+    """1 Cancelled, 2 Filled, 4 Transit, 5 Rejected, 6 Pending, 7 Expired.
+    1 and 4 were swapped until 2026-09-30."""
+    from core.brokers.base import OrderStatus
+    broker = FyersBroker(config={})
+    def parse(code):
+        return broker._parse_order({"id": "X", "status": code, "symbol": "NSE:NIFTY26O0622600PE",
+                                    "side": -1, "qty": 65}).status
+    assert parse(1) == OrderStatus.CANCELLED
+    assert parse(2) == OrderStatus.EXECUTED
+    assert parse(4) == OrderStatus.PENDING
+    assert parse(5) == OrderStatus.REJECTED
+    assert parse(6) == OrderStatus.OPEN
+    assert parse(7) == OrderStatus.CANCELLED

@@ -524,12 +524,18 @@ class FyersBroker(BrokerAdapter):
         }[order_type]
 
     def _parse_order(self, o: dict) -> OrderResult:
+        # Fyers v3 orderbook codes: 1 Cancelled, 2 Traded/Filled, 3 reserved,
+        # 4 Transit, 5 Rejected, 6 Pending (resting), 7 Expired. Until
+        # 2026-09-30 this had 1 and 4 swapped (cancelled read as PENDING,
+        # transit as CANCELLED) -- latent while every caller only checked
+        # EXECUTED, wrong the moment anything checks whether a stop rests.
         status_map = {
-            1: OrderStatus.PENDING,
+            1: OrderStatus.CANCELLED,
             2: OrderStatus.EXECUTED,
-            4: OrderStatus.CANCELLED,
+            4: OrderStatus.PENDING,
             5: OrderStatus.REJECTED,
             6: OrderStatus.OPEN,
+            7: OrderStatus.CANCELLED,
         }
         return OrderResult(
             order_id=o["id"],

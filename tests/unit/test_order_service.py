@@ -19,6 +19,7 @@ from core.brokers.base import (  # noqa: E402
     Position,
     ProductType,
 )
+import core.execution.order_service as osvc  # noqa: E402
 from core.execution.order_service import (  # noqa: E402
     enter_position,
     flatten_position,
@@ -225,3 +226,91 @@ def test_flatten_without_a_stop_order_id_still_closes():
     )
     assert broker.cancelled_order_ids == []
     assert broker.placed_orders[0].direction == OrderDirection.BUY
+
+
+
+# ─── 2026-09-30: SL-L for options, stop must be seen resting ────────────
+
+def test_option_stop_is_a_stop_limit_on_tick_below_the_trigger():
+    broker = _FakeBroker()
+    result = enter_position(
+        broker, symbol="NSE:BANKNIFTY26SEP53900PE", direction=OrderDirection.BUY,
+        quantity=30, product_type=ProductType.INTRADAY,
+        protective_stop_trigger=165.2625, tag="orb-bn", dry_run=False, stop_as_limit=True,
+    )
+    _, stop = broker.placed_orders
+    assert stop.order_type == OrderType.SL
+    assert stop.trigger_price == 165.25
+    assert 0 < stop.price < stop.trigger_price
+    assert abs(stop.price / 0.05 - round(stop.price / 0.05)) < 1e-9
+    assert result.stop_order_id is not None
+
+
+def test_equity_stop_stays_sl_m_by_default():
+    broker = _FakeBroker()
+    enter_position(broker, symbol="ZYDUSLIFE", direction=OrderDirection.BUY, quantity=18,
+                   product_type=ProductType.CNC, protective_stop_trigger=1124.27,
+                   tag="darvas", dry_run=False)
+    _, stop = broker.placed_orders
+    assert stop.order_type == OrderType.SL_M
+    assert stop.price is None
+    assert stop.trigger_price == 1124.25
+
+
+class _RejectingStopBroker(_FakeBroker):
+    """Acks every submission, then RMS-rejects the stop -- the Fyers pattern."""
+    def __init__(self, stop_status):
+        super().__init__()
+        self._stop_status = stop_status
+
+    def get_order_status(self, order_id):
+        r = super().get_order_status(order_id)
+        if order_id == "ORD-2":
+            return OrderResult(order_id=r.order_id, status=self._stop_status, symbol=r.symbol,
+                               direction=r.direction, quantity=r.quantity, filled_quantity=0,
+                               average_price=None, timestamp=r.timestamp)
+        return r
+
+
+def _enter_with(broker, monkeypatch):
+    monkeypatch.setattr(osvc.time, "sleep", lambda s: None)
+    return enter_position(broker, symbol="NSE:NIFTY26O0622600PE", direction=OrderDirection.BUY,
+                          quantity=65, product_type=ProductType.INTRADAY,
+                          protective_stop_trigger=113.25, tag="orb-nifty", dry_run=False,
+                          stop_as_limit=True)
+
+
+def test_rejected_stop_flattens_the_position_immediately(monkeypatch):
+    broker = _RejectingStopBroker(OrderStatus.REJECTED)
+    result = _enter_with(broker, monkeypatch)
+    assert len(broker.placed_orders) == 3
+    close = broker.placed_orders[2]
+    assert close.order_type == OrderType.MARKET and close.direction == OrderDirection.SELL
+    assert result.stop_order_id is None
+    assert "flattened" in result.message
+
+
+def test_stop_stuck_in_transit_is_treated_as_not_resting(monkeypatch):
+    broker = _RejectingStopBroker(OrderStatus.PENDING)
+    result = _enter_with(broker, monkeypatch)
+    assert len(broker.placed_orders) == 3
+    assert result.stop_order_id is None
+
+
+def test_resting_stop_is_kept(monkeypatch):
+    broker = _RejectingStopBroker(OrderStatus.OPEN)
+    result = _enter_with(broker, monkeypatch)
+    assert len(broker.placed_orders) == 2
+    assert result.stop_order_id == "ORD-2"
+
+
+def test_reconcile_matches_prefixed_symbol_against_brokers_bare_symbol():
+    """The real Fyers adapter strips "NSE:"; ORB stores the prefixed symbol.
+    Before 2026-09-30 this lookup always missed, so a live position looked
+    closed one minute after entry and its stop got cancelled."""
+    broker = _FakeBroker()
+    broker._positions = [Position(symbol="NIFTY26O0622600PE", quantity=65, average_price=151.0,
+                                  current_price=150.0, pnl=0.0, pnl_percent=0.0, product_type=ProductType.INTRADAY)]
+    result = reconcile_position(broker, symbol="NSE:NIFTY26O0622600PE", stop_order_id="SL-1")
+    assert result.still_open is True
+    assert broker.cancelled_order_ids == []

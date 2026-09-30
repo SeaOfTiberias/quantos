@@ -21,6 +21,7 @@ import scripts.run_darvas_atr_stop_live as mod  # noqa: E402
 from core.brokers.base import (  # noqa: E402
     OHLCV,
     OrderResult,
+    OrderDirection,
     OrderStatus,
     Position,
     ProductType,
@@ -107,6 +108,14 @@ class _FakeBroker:
     def cancel_order(self, order_id):
         self.cancelled_order_ids.append(order_id)
         return True
+
+    def get_order_status(self, order_id):
+        # Every order this fake accepts rests/fills -- the protective-stop
+        # check (core/execution/order_service._stop_is_resting) sees OPEN.
+        return OrderResult(
+            order_id=order_id, status=OrderStatus.OPEN, symbol="", direction=OrderDirection.SELL,
+            quantity=0, filled_quantity=0, average_price=None, timestamp=datetime.now(timezone.utc),
+        )
 
     def modify_stop_loss(self, order_id, new_trigger_price):
         self.modified = (order_id, new_trigger_price)

@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import scripts.run_orb_scalping_live as mod  # noqa: E402
 from core.brokers.base import (  # noqa: E402
     OHLCV,
+    OrderDirection,
     OrderResult,
     OrderStatus,
     Position,
@@ -120,6 +121,14 @@ class _FakeBroker:
     def cancel_order(self, order_id):
         self.cancelled_order_ids.append(order_id)
         return True
+
+    def get_order_status(self, order_id):
+        # Every order this fake accepts rests/fills -- the protective-stop
+        # check (core/execution/order_service._stop_is_resting) sees OPEN.
+        return OrderResult(
+            order_id=order_id, status=OrderStatus.OPEN, symbol="", direction=OrderDirection.SELL,
+            quantity=0, filled_quantity=0, average_price=None, timestamp=datetime.now(timezone.utc),
+        )
 
     def modify_stop_loss(self, order_id, new_trigger_price):
         raise AssertionError("run_orb_scalping_live should never call modify_stop_loss "
@@ -994,3 +1003,46 @@ def test_exit_quote_gives_up_with_none_never_a_guess(monkeypatch):
     broker = _FlakyLtpBroker(failures=99)
     assert mod._ltp_with_retry(broker, "NSE:X", "BANKNIFTY") is None
     assert broker.calls == mod.EXIT_QUOTE_ATTEMPTS
+
+
+def test_live_entry_places_the_premium_stop_as_a_tick_aligned_stop_limit(monkeypatch, tmp_path):
+    """NSE/Fyers reject SL-M on index options (2021-09-27); the stop must
+    go in as SL-L with an on-tick trigger below entry and a limit below it."""
+    from core.brokers.base import OrderType
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(candles[-1].timestamp + timedelta(minutes=5, seconds=30)))
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 220.35)])
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=False, positions={}, trade_history=TradeHistoryService(),
+                            traded_today=set())
+    stop = broker.placed_orders[1]
+    assert stop.order_type == OrderType.SL
+    assert stop.trigger_price == 165.25                      # 220.35 * 0.75 = 165.2625 -> tick
+    assert stop.price < stop.trigger_price
+    assert abs(stop.price / 0.05 - round(stop.price / 0.05)) < 1e-9
+
+
+def test_live_gap_guard_flattens_when_the_stop_limit_was_traded_through(monkeypatch, tmp_path):
+    """Still open at the broker, but the option is already below the
+    trigger: the SL-L's limit was gapped. Close at market, record premium_stop."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(candles[-1].timestamp + timedelta(minutes=6)))
+    broker = _FakeBroker(
+        candles, index_ltp=24003.0, chain_rows=[],
+        positions=[Position(symbol="NIFTYTESTCE", quantity=65, average_price=50.0,
+                            current_price=20.0, pnl=0.0, pnl_percent=0.0, product_type=ProductType.INTRADAY)],
+    )
+    broker.symbol_ltps["NSE:NIFTYTESTCE"] = 20.0             # well below the 37.5 trigger
+    positions = {"NIFTY:2026-09-03": _existing_call_position()}
+    trade_history = TradeHistoryService()
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=False, positions=positions,
+                            trade_history=trade_history, traded_today=set())
+    assert get_position(positions, "NIFTY", "2026-09-03") is None
+    assert broker.cancelled_order_ids == ["SL-1"]
+    assert broker.placed_orders[-1].direction == OrderDirection.SELL
+    assert len(trade_history.get_trade_history()) == 1   # ClosedTrade carries no reason field
