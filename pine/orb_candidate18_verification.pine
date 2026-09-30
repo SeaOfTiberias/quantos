@@ -36,7 +36,12 @@
 //       and tell Claude. It compares trade-by-trade with QuantOS.
 // ============================================================
 //@version=6
+// initial_capital covers one full position (NIFTY 65 x ~24,000 = ~Rs16L;
+// BANKNIFTY 30 x ~55,000 = ~Rs17L): Pine v6 requires 100% of the position value
+// by default, and with the 100K default capital every order was silently rejected.
+// Only the P&L per trade matters here, not the capital.
 strategy("QuantOS ORB verification (cand. 18)", shorttitle="ORB-verify", overlay=true,
+     initial_capital=5000000, margin_long=100, margin_short=100,
      pyramiding=0, commission_type=strategy.commission.percent, commission_value=0.014,
      slippage=20, process_orders_on_close=false, calc_on_every_tick=false,
      max_labels_count=500)
