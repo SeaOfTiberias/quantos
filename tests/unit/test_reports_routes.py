@@ -125,3 +125,19 @@ async def test_orb_flags_exits_that_fell_through_the_unenforced_premium_stop(_is
     assert orb["premium_stop_missed"] == 1
     flagged = [t for t in orb["trades"] if t["premium_stop_missed"]]
     assert [(t["underlying"], t["exit_price"]) for t in flagged] == [("BANKNIFTY", 2.95)]
+
+
+@pytest.mark.asyncio
+async def test_orb_stop_enforced_summary_caps_pre_fix_blowups_only(_isolated):
+    """2026-09-30 addendum rule 4: the go-live figure re-marks a pre-fix row
+    that fell past the unenforced stop at its trigger; the as-logged summary
+    is left alone."""
+    _write_jsonl(_isolated / "orb_dry_run_trades.jsonl", [
+        _orb("BANKNIFTY", 220.35, 2.95, 30, day="2026-09-29", exit_reason="session_flatten"),
+        _orb("NIFTY", 100.0, 120.0, 65, day="2026-09-30"),
+    ])
+    orb = (await _get()).json()["orb"]
+    logged, enforced = orb["summary"], orb["summary_stop_enforced"]
+    assert logged["gross_pnl"] == pytest.approx((2.95 - 220.35) * 30 + 20 * 65, abs=0.01)
+    assert enforced["gross_pnl"] == pytest.approx((165.2625 - 220.35) * 30 + 20 * 65, abs=0.01)
+    assert enforced["trades"] == logged["trades"] == 2

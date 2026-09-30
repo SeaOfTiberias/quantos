@@ -195,6 +195,11 @@ function StrategyReport({ report, kind, emptyNote }) {
               sub={s.return_pct == null ? null : `${s.return_pct > 0 ? "+" : ""}${s.return_pct.toFixed(2)}%`} />
         <Stat label="Net P&L" value={signedInr(s.net_pnl)} color={pnlColor(s.net_pnl)}
               sub={`gross ${signedInr(s.gross_pnl)}`} />
+        {report.premium_stop_missed > 0 && report.summary_stop_enforced && (
+          <Stat label="Net · stop enforced" value={signedInr(report.summary_stop_enforced.net_pnl)}
+                color={pnlColor(report.summary_stop_enforced.net_pnl)}
+                sub={`PF ${report.summary_stop_enforced.profit_factor ?? "—"} · used for go-live`} />
+        )}
         <Stat label="Costs" value={inr(s.costs)} color={C.mid} />
         <Stat label="Trades" value={s.trades}
               sub={report.unpriced ? `+${report.unpriced} unpriced exit${report.unpriced === 1 ? "" : "s"}` : null} />
@@ -217,7 +222,7 @@ function StrategyReport({ report, kind, emptyNote }) {
       {report.premium_stop_missed > 0 && (
         <div style={{ fontSize: 10, color: C.gold, marginTop: 4 }}>
           {report.premium_stop_missed} trade{report.premium_stop_missed === 1 ? "" : "s"} marked NO PREM STOP fell through the 25% premium stop,
-          which paper did not enforce before 2026-09-30 (live, a resting stop order would have closed it near the trigger). Shown as logged, not corrected.
+          which paper did not enforce before 2026-09-30 (live, a resting stop order would have closed it near the trigger). The curve and table show them as logged; "Net · stop enforced" re-marks them at the trigger and is the figure the go-live call uses (pre-registered 2026-09-30).
         </div>
       )}
 

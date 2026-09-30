@@ -152,3 +152,68 @@ def test_equity_report_pools_both_indices_into_one_account():
     assert f"Rs{expected_equity:,.2f}" in text
     # Both legs' own contribution disclosed even though pooled into one account.
     assert "NIFTY contribution" in text and "BANKNIFTY contribution" in text
+
+
+# ─── 2026-09-30 addendum: two views, INCONCLUSIVE on disagreement ──────────
+
+def _gate_met_today():
+    from datetime import timedelta
+    return DEPLOYED_AT + timedelta(weeks=int(MIN_WEEKS) + 1)
+
+
+def test_views_agree_gives_a_plain_verdict():
+    # Post-fix rows only: both views are identical, so they cannot disagree.
+    filtered = [trade(exit_premium=110.0 + i % 3, entry="2026-10-05T04:10:00+00:00",
+                      exit_="2026-10-05T09:50:00+00:00") for i in range(MIN_SAMPLE_N)]
+    text = format_pf_sharpe_report("NIFTY", filtered, [], today=_gate_met_today())
+    assert "[as logged]" in text and "[stop enforced]" in text
+    assert "VERDICT: 18b" in text and "INCONCLUSIVE" not in text
+
+
+def test_views_that_flip_the_verdict_are_inconclusive_not_picked():
+    """As logged, two pre-fix rows that rode past the unenforced stop to
+    near zero sink PF below 1; with the stop enforced they are capped at
+    -25% and PF clears. The verdict must refuse to choose."""
+    winners = [trade(exit_premium=110.0 + (i % 3)) for i in range(18)]
+    blowups = [trade(exit_premium=1.0) for _ in range(2)]
+    text = format_pf_sharpe_report("NIFTY", winners + blowups, [], today=_gate_met_today())
+    assert "VERDICT: INCONCLUSIVE" in text
+    assert "18b PASS/FAIL" in text
+
+
+def test_stop_enforcement_is_applied_to_the_unfiltered_baseline_too():
+    """Symmetry: a pre-fix blowup in unfiltered 18 is capped as well, so the
+    baseline is not made artificially weak for 18b to beat."""
+    import scripts.check_orb_18b_gate as gate
+    filtered = [trade(exit_premium=110.0 + (i % 3), entry="2026-10-05T04:10:00+00:00",
+                      exit_="2026-10-05T09:50:00+00:00") for i in range(MIN_SAMPLE_N)]
+    unfiltered = [trade(exit_premium=112.0) for _ in range(10)] + [trade(exit_premium=1.0)]
+    logged = gate._view(filtered, unfiltered)
+    enforced = gate._view(gate.enforce_premium_stop_all(filtered),
+                          gate.enforce_premium_stop_all(unfiltered))
+    assert enforced["um"].profit_factor > logged["um"].profit_factor
+
+
+def test_banknifty_sensitivity_view_excludes_expiry_days_from_both_arms():
+    filtered = [trade(underlying="BANKNIFTY", exit_premium=110.0 + (i % 3)) for i in range(MIN_SAMPLE_N)]
+    filtered.append(trade(underlying="BANKNIFTY", exit_premium=1.0,
+                          entry="2026-09-29T04:10:00+00:00", exit_="2026-09-29T09:50:00+00:00"))
+    text = format_pf_sharpe_report("BANKNIFTY", filtered, [], today=_gate_met_today())
+    assert "BANKNIFTY expiry days excluded both arms" in text
+    assert f"n={MIN_SAMPLE_N})" in text.split("sensitivity")[1]
+
+
+def test_skip_policy_drops_expiry_days_from_the_primary_views(monkeypatch):
+    import scripts.check_orb_18b_gate as gate
+    monkeypatch.setattr(gate, "BANKNIFTY_EXPIRY_POLICY", "skip")
+    filtered = [trade(underlying="BANKNIFTY", exit_premium=110.0 + (i % 3)) for i in range(MIN_SAMPLE_N)]
+    filtered.append(trade(underlying="BANKNIFTY", exit_premium=1.0,
+                          entry="2026-09-29T04:10:00+00:00", exit_="2026-09-29T09:50:00+00:00"))
+    text = gate.format_pf_sharpe_report("BANKNIFTY", filtered, [], today=_gate_met_today())
+    assert f"N={MIN_SAMPLE_N} " in text
+    assert "sensitivity" not in text
+
+
+def test_equity_report_shows_both_views():
+    text = format_equity_report({"NIFTY": [trade(exit_premium=1.0)], "BANKNIFTY": []}, EQUITY_DATE)
+    assert "[as logged]" in text and "[stop enforced]" in text

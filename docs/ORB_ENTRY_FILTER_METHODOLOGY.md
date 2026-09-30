@@ -171,6 +171,50 @@ exists to peek at:
   PF/Sharpe (or vice versa) is a real, reportable outcome, not a
   contradiction to resolve by picking whichever looks better.
 
+## Addendum, pre-registered 2026-09-30 (paper-log defect; written before any 18b P&L was looked at)
+
+**What happened.** Until 2026-09-30 (fix `39e6cbc`), dry_run never enforced
+the 25% premium stop. Live, that stop is a resting SL_M order at the broker.
+The backtest (`core/orb_scalping/premium.py`) applies it too. Paper had no
+order and skipped the broker reconcile, so nothing checked it. On
+2026-09-29 (BANKNIFTY's monthly expiry) that left BANKNIFTY's 0-DTE put to
+ride from 220.35 to 2.95. Both logs (18b's and unfiltered 18's) hold rows
+from before the fix. Because 18b's verdict is a comparison against 18 over
+the same window, an unequal effect on the two logs could tilt the verdict
+before anyone looks at it.
+
+These four rules were fixed by the user on 2026-09-30, blind to 18b's
+numbers. They are implemented in `core/orb_scalping/paper_adjustments.py`
+and `scripts/check_orb_18b_gate.py`.
+
+1. **Enforce the stop retroactively, identically in both arms.** Any row
+   entered before 2026-09-30, with an exit quote, whose exit is below its
+   trigger (`round(entry * 0.75, 4)`) and did not exit as `premium_stop`,
+   is counted at the trigger with reason `premium_stop_retro`. That is what
+   both live trading and the backtest would have recorded. The logs
+   themselves are never rewritten.
+2. **Two views, and disagreement means INCONCLUSIVE.** The gate reports
+   every figure "as logged" and "stop enforced" (primary). If the two
+   views disagree on 18b PASS/FAIL, or on whether 18b leads unfiltered 18
+   on PF, or on Sharpe, the verdict is INCONCLUSIVE and needs more trades.
+   It is never resolved by picking the view that looks better.
+3. **BANKNIFTY expiry days are handled symmetrically.** The BANKNIFTY
+   expiry-day rule is being decided separately ("fix 2": correct 0-DTE
+   pricing in the backtest, then compare current vs roll-to-next-month vs
+   skip). If the outcome is **skip**, BANKNIFTY expiry-day trades are dropped
+   from BOTH arms, retroactively, in both views (`BANKNIFTY_EXPIRY_POLICY =
+   "skip"` in the gate script). Otherwise a sensitivity view with those
+   trades excluded from both arms is always reported alongside for
+   BANKNIFTY. It does not replace the primary verdict.
+4. **Candidate 18's go-live call reads the stop-enforced figures.** The
+   Reports page shows a "Net · stop enforced" figure beside the as-logged
+   curve. The small-N warning stays. 2026-09-29 is shown both ways, never
+   silently dropped.
+
+N counts and the >=8-week clock are unchanged by rules 1-2 (re-marking a
+row does not add or remove it). Under rule 3's "skip", N is counted after
+the exclusion.
+
 ## What this does NOT produce, even in the best case
 
 Turning `entry_filter_enabled: true` on is a **paper-trading configuration
@@ -197,3 +241,7 @@ prospective result.
   without a fresh, explicit go-ahead from the user at that time.
 - Pooling NIFTY and BankNifty's prospective results, or reporting only
   one index's.
+- Reporting only one of the two 2026-09-30 views (as logged / stop
+  enforced), or resolving an INCONCLUSIVE disagreement by choosing one.
+- Applying the BANKNIFTY expiry-day exclusion to one arm only, or choosing
+  roll vs skip after looking at which one favours 18b.

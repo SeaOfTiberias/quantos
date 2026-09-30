@@ -108,6 +108,7 @@ def orb_report() -> dict:
     from core.orb_scalping.costs import stratified_spread_trade_cost
     from core.orb_scalping.dry_run_log import load_dry_run_trades
     from core.orb_scalping.expiry import is_nifty_weekly_expiry_day
+    from core.orb_scalping.paper_adjustments import enforce_premium_stop_all
     from core.orb_scalping.premium import PREMIUM_STOP_PCT
 
     cfg = _config_block("orb_scalping")
@@ -116,39 +117,47 @@ def orb_report() -> dict:
     priced = [t for t in raw if t.exit_premium is not None]
     unpriced = len(raw) - len(priced)
 
-    trades = []
-    if priced:
-        entry_days = [datetime.fromisoformat(t.entry_timestamp).date() for t in priced]
-        calendar = _weekdays_around(entry_days)
-        for t, d in zip(priced, entry_days):
-            expiry_fn = is_nifty_weekly_expiry_day if t.underlying == "NIFTY" else is_banknifty_monthly_expiry_day
-            is_expiry = expiry_fn(d, calendar)
-            costs = stratified_spread_trade_cost(
-                t.entry_premium, t.exit_premium, t.quantity, d, t.underlying, is_expiry,
-            ).total
-            gross = (t.exit_premium - t.entry_premium) * t.quantity
-            # Paper exits before 2026-09-30 never enforced the 25% premium
-            # stop (live, a resting SL_M does). Flag rows that fell through
-            # it rather than rewrite the append-only log.
-            stop_missed = (t.exit_reason != "premium_stop"
-                           and t.exit_premium < t.entry_premium * (1 - PREMIUM_STOP_PCT))
-            trades.append({
-                "label":           f"{t.underlying} {t.direction}",
-                "underlying":      t.underlying,
-                "direction":       t.direction,
-                "entry_timestamp": t.entry_timestamp,
-                "exit_timestamp":  t.exit_timestamp,
-                "exit_reason":     t.exit_reason,
-                "quantity":        t.quantity,
-                "entry_price":     t.entry_premium,
-                "exit_price":      t.exit_premium,
-                "expiry_day":      is_expiry,
-                "premium_stop_missed": stop_missed,
-                "gross_pnl":       round(gross, 2),
-                "costs":           round(costs, 2),
-                "net_pnl":         round(gross - costs, 2),
-            })
-    trades.sort(key=lambda t: t["exit_timestamp"])
+    def rows(priced: list) -> list[dict]:
+        trades = []
+        if priced:
+            entry_days = [datetime.fromisoformat(t.entry_timestamp).date() for t in priced]
+            calendar = _weekdays_around(entry_days)
+            for t, d in zip(priced, entry_days):
+                expiry_fn = is_nifty_weekly_expiry_day if t.underlying == "NIFTY" else is_banknifty_monthly_expiry_day
+                is_expiry = expiry_fn(d, calendar)
+                costs = stratified_spread_trade_cost(
+                    t.entry_premium, t.exit_premium, t.quantity, d, t.underlying, is_expiry,
+                ).total
+                gross = (t.exit_premium - t.entry_premium) * t.quantity
+                # Paper exits before 2026-09-30 never enforced the 25% premium
+                # stop (live, a resting SL_M does). Flag rows that fell through
+                # it rather than rewrite the append-only log.
+                stop_missed = (t.exit_reason != "premium_stop"
+                               and t.exit_premium < t.entry_premium * (1 - PREMIUM_STOP_PCT))
+                trades.append({
+                    "label":           f"{t.underlying} {t.direction}",
+                    "underlying":      t.underlying,
+                    "direction":       t.direction,
+                    "entry_timestamp": t.entry_timestamp,
+                    "exit_timestamp":  t.exit_timestamp,
+                    "exit_reason":     t.exit_reason,
+                    "quantity":        t.quantity,
+                    "entry_price":     t.entry_premium,
+                    "exit_price":      t.exit_premium,
+                    "expiry_day":      is_expiry,
+                    "premium_stop_missed": stop_missed,
+                    "gross_pnl":       round(gross, 2),
+                    "costs":           round(costs, 2),
+                    "net_pnl":         round(gross - costs, 2),
+                })
+        trades.sort(key=lambda t: t["exit_timestamp"])
+        return trades
+
+    trades = rows(priced)
+    # 2026-09-30 addendum, rule 4: candidate 18's go-live call reads the
+    # stop-enforced figures (pre-fix rows past the unenforced 25% premium
+    # stop re-marked at the trigger); the as-logged curve stays as the record.
+    enforced = rows(enforce_premium_stop_all(priced))
     return {
         "name":     "Candidate 18 — ORB options scalping",
         "dry_run":  cfg.get("dry_run", True),
@@ -158,6 +167,7 @@ def orb_report() -> dict:
         "premium_stop_missed": sum(1 for t in trades if t["premium_stop_missed"]),
         "unpriced": unpriced,
         "summary":  _summary(trades, capital),
+        "summary_stop_enforced": _summary(enforced, capital),
         "curve":    _curve(trades, capital),
         "trades":   list(reversed(trades)),
     }

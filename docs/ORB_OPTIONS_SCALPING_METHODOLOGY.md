@@ -337,6 +337,19 @@ confirmed 5-minute depth window above.
   variant as a distinct, freshly pre-registered candidate 19 that discloses
   it was built in response to 18's specific failure mode.
 
+## Addendum, 2026-09-30: paper-log premium stop (applies to the live paper watch)
+
+Until 2026-09-30 (`39e6cbc`) the dry_run executor never enforced this
+document's 25% premium stop. Only the live SL_M order and the backtest
+applied it. For candidate 18's go-live decision, pre-fix paper rows that fell
+past the trigger are counted at the trigger ("stop enforced"). The Reports
+page shows that figure beside the as-logged curve. Full rules, shared with
+18b: `docs/ORB_ENTRY_FILTER_METHODOLOGY.md`, "Addendum, pre-registered
+2026-09-30". Separately open: BANKNIFTY buys the 0-DTE monthly contract on
+its own expiry day, and the backtest's `max(1, dte)` pricing never modelled
+that case ("fix 2", to be rerun and brought to the user before any live
+rule change).
+
 ## Open items before the harness can run (not deferred silently — listed)
 
 1. ~~Live-probe 1-minute historical depth~~ — **DONE 2026-07-28**
