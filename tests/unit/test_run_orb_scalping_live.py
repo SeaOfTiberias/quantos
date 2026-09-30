@@ -1130,3 +1130,23 @@ def test_live_close_logs_an_exit_event_with_its_reason(monkeypatch, tmp_path):
                    TradeHistoryService(), strategy_name="orb_scalping_pilot")
     events = live_trade_log.load_live_events("orb_scalping_pilot")
     assert [(e.event, e.reason, e.fill_price) for e in events] == [("exit", "premium_stop", 30.0)]
+
+
+
+def test_no_late_entry_on_a_stale_breakout(monkeypatch, tmp_path):
+    """2026-09-30: a variant switched on mid-session (or a late token
+    refresh) sees an old breakout as "in_position". The backtest would never
+    enter there; neither may live."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    candles += [_bar(start, i, 24006, 24010, 24004, 24008) for i in range(5, 12)]   # later candles
+    monkeypatch.setattr(mod, "datetime",
+                        _FrozenDatetime(candles[-1].timestamp + timedelta(minutes=5, seconds=20)))
+    broker = _FakeBroker(candles, index_ltp=24008.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions, traded_today = {}, set()
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=traded_today)
+    assert positions == {}
+    assert broker.placed_orders == []

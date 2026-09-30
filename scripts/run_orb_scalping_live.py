@@ -586,6 +586,16 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
                 return
         elif state.status != "in_position":
             return
+        elif state.entry_index is None or state.entry_index < len(closed) - 1:
+            # Stale breakout (2026-09-30): "in_position" with no position
+            # held means the entry window was missed -- a late token
+            # refresh, a run of failed fires, or a variant switched on
+            # mid-session. The backtest only ever enters at the candle
+            # right after the breakout close; entering now would be a
+            # different trade at a different price. Entry is still allowed
+            # the moment that entry candle has just closed (one fire late).
+            print(f"  {underlying}: breakout's entry window already passed -- no late entry today.")
+            return
         # Hard kill-switch (agent/risk_guard.py, S4-2/P0-2) -- refuses NEW
         # entries only, same as everywhere else it's checked; exit
         # management above this branch is never gated by it, so a halted
