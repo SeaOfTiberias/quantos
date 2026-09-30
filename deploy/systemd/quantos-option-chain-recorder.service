@@ -1,0 +1,17 @@
+# Records NIFTY / BANKNIFTY option chains every minute (scripts/record_option_chains.py).
+# READ-ONLY market data: never places an order. Added 2026-09-30 to learn real
+# option pricing from the market instead of from strategy trades.
+# Enable once:  sudo systemctl enable --now quantos-option-chain-recorder.timer
+
+[Unit]
+Description=QuantOS option-chain recorder (NIFTY/BANKNIFTY, 2 expiries, +-10 strikes, read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/record_option_chains.py
+Environment=HOME=/home/ubuntu
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'

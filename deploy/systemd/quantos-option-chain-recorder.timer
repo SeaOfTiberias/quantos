@@ -1,0 +1,12 @@
+[Unit]
+Description=Fires the option-chain recorder every minute during NSE market hours, at :50
+
+[Timer]
+# :50 past each minute: ORB paper 18 + stop-out probe fire at :00, 18b at :20,
+# the live pilot at :40 -- this stays clear of all of them on Fyers' rate limit.
+OnCalendar=Mon..Fri *-*-* 03:45..59:50
+OnCalendar=Mon..Fri *-*-* 04..09:*:50
+Persistent=false
+
+[Install]
+WantedBy=timers.target
