@@ -243,6 +243,10 @@ orb_scalping_pilot:
   # log (~/.quantos/orb_scalping_pilot_live_trades.jsonl). lots_per_trade is
   # hard-capped at 1 in code (PILOT_MAX_LOTS); dynamic sizing is ignored.
   # dry_run:false needs the user's explicit go-ahead on the day, as always.
+  # Breaker (core/orb_scalping/pilot_guard.py, not configurable here on purpose):
+  # any live-only anomaly, a trade Rs1,500+ worse than paper, or net -Rs15,000
+  # since the last reset writes ~/.quantos/halt_pilot -- new pilot entries stop,
+  # open positions are still managed. Reset: python scripts/pilot_guard.py --reset
   enabled: false
   dry_run: true
   lots_per_trade: 1

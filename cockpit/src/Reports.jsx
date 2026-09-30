@@ -262,8 +262,9 @@ function PilotReport({ report }) {
     );
   }
   const s = report.summary;
-  const status = !report.enabled ? "OFF" : report.dry_run === false ? "LIVE" : "REHEARSAL";
-  const statusColor = status === "LIVE" ? C.red : status === "OFF" ? C.muted : C.gold;
+  const status = report.halted ? "HALTED" : !report.enabled ? "OFF"
+    : report.dry_run === false ? "LIVE" : "REHEARSAL";
+  const statusColor = status === "LIVE" || status === "HALTED" ? C.red : status === "OFF" ? C.muted : C.gold;
   const hasTrades = s.trades > 0;
   return (
     <Card>
@@ -285,6 +286,23 @@ function PilotReport({ report }) {
         Execution test, not an edge measurement. This P&L does not feed candidate 18's go-live figure or
         18b's verdict. Read the shortfall vs paper, the exit paths and the anomalies.
       </div>
+
+      {report.halted && (
+        <div style={{
+          marginTop: 10, padding: "6px 10px", borderRadius: 6, fontSize: 11, color: C.white,
+          border: `1px solid ${C.red}`, background: `${C.red}22`,
+        }}>
+          <b style={{ color: C.red }}>PILOT HALTED</b> — no new entries; open positions are still managed to
+          their exit. {report.halted} Review below, then reset with
+          <code> python scripts/pilot_guard.py --reset</code> on the VM.
+        </div>
+      )}
+      {report.limits && (
+        <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
+          Breaker: any anomaly, a trade {inr(report.limits.shortfall_limit_rs)}+ worse than paper, or net
+          −{inr(report.limits.budget_rs)} since the last reset stops new entries.
+        </div>
+      )}
 
       {report.anomalies?.length > 0 && (
         <div style={{

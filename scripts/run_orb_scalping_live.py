@@ -96,7 +96,9 @@ from core.orb_scalping.contract_selection import (  # noqa: E402
 from core.orb_scalping.dry_run_log import (  # noqa: E402
     DryRunTrade,
     ORB_DRY_RUN_LOG_FILTERED_PATH,
+    ORB_DRY_RUN_LOG_PATH,
     append_dry_run_trade,
+    load_dry_run_trades,
 )
 from core.orb_scalping.entry_filter import (  # noqa: E402
     banknifty_entry_allowed,
@@ -117,7 +119,8 @@ from core.orb_scalping.live_positions import (  # noqa: E402
     remove_position,
     update_stops,
 )
-from core.orb_scalping.live_trade_log import LiveTradeEvent, append_live_event  # noqa: E402
+from core.orb_scalping import pilot_guard  # noqa: E402
+from core.orb_scalping.live_trade_log import LiveTradeEvent, append_live_event, load_live_events  # noqa: E402
 from core.orb_scalping.live_state import compute_live_state  # noqa: E402
 from core.orb_scalping.premium import PREMIUM_STOP_PCT, atm_strike  # noqa: E402
 from core.orb_scalping.signal import SESSION_FLATTEN_UTC  # noqa: E402
@@ -602,7 +605,8 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
         # agent keeps managing/closing whatever is already open. This was
         # entirely absent from this script before 2026-09-25 -- every
         # other order-placing path in this project already checks it.
-        halt_reason = read_halt_reason()
+        halt_reason = read_halt_reason() or (
+            pilot_guard.read_pilot_halt() if strategy_name == "orb_scalping_pilot" else None)
         if halt_reason:
             print(f"  {underlying}: entry refused -- trading halted ({halt_reason})")
             return
@@ -754,7 +758,39 @@ def main(argv: Optional[list] = None) -> int:
                                 strategy_name=strategy_name)
         except Exception as e:
             print(f"  {underlying}: fire failed ({e}) -- self-healing, will retry next fire.")
+    if pilot:
+        _check_pilot_breaker()
     return 0
+
+
+def _check_pilot_breaker() -> None:
+    """After every pilot fire (so this fire's exits count): trip the
+    pilot-only halt on a defect signal or a spent budget, and alert once --
+    only on the transition into halted, never on every fire while halted."""
+    if pilot_guard.read_pilot_halt():
+        return
+    try:
+        reason = pilot_guard.evaluate(
+            load_live_events("orb_scalping_pilot"),
+            load_dry_run_trades(ORB_DRY_RUN_LOG_PATH),
+            acknowledged=pilot_guard.acknowledged_until(),
+        )
+    except Exception as e:
+        print(f"  pilot breaker: evaluation failed ({e}) -- not halting on an error.")
+        return
+    if reason is None:
+        return
+    pilot_guard.set_pilot_halt(reason)
+    print(f"  PILOT HALTED -- {reason}")
+    try:
+        import asyncio
+        from cloud.api.notifier import send_telegram
+        asyncio.run(send_telegram(
+            f"ORB live pilot HALTED -- no new entries; open positions still managed.\n"
+            f"Reason: {reason}\n"
+            f"Review the Reports page, then on the VM: python scripts/pilot_guard.py --reset"))
+    except Exception as e:
+        print(f"  pilot breaker: Telegram alert failed ({e}) -- the halt itself is in place.")
 
 
 if __name__ == "__main__":

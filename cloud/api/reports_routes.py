@@ -249,64 +249,18 @@ def pilot_report() -> dict:
     versus the prices paper recorded."""
     from collections import Counter
 
-    from core.orb_scalping.costs import clean_trade_cost
+    from core.orb_scalping import pilot_guard
     from core.orb_scalping.dry_run_log import load_dry_run_trades
     from core.orb_scalping.live_trade_log import load_live_events
+    from core.orb_scalping.pilot_review import review
 
     cfg = _config_block("orb_scalping_pilot")
     events = load_live_events("orb_scalping_pilot",
                               path=_quantos_dir() / "orb_scalping_pilot_live_trades.jsonl")
-    paper = {(t.underlying, t.entry_timestamp[:10]): t
-             for t in load_dry_run_trades(_quantos_dir() / "orb_dry_run_trades.jsonl")}
-
-    open_entries, trades, anomalies = {}, [], []
-    for e in sorted(events, key=lambda e: e.timestamp):
-        key = (e.underlying, e.timestamp[:10])
-        if e.event == "entry":
-            open_entries[key] = e
-            if not e.stop_order_id:
-                anomalies.append(f"{key[1]} {e.underlying}: no protective stop was left resting "
-                                 f"({e.note or 'see the VM journal'})")
-            continue
-        entry = open_entries.pop(key, None)
-        if entry is None:
-            anomalies.append(f"{key[1]} {e.underlying}: exit ({e.reason}) with no matching entry")
-            continue
-        if entry.fill_price is None or e.fill_price is None:
-            anomalies.append(f"{key[1]} {e.underlying}: missing fill price "
-                             f"({'entry' if entry.fill_price is None else 'exit'}) -- left out of the curve")
-            continue
-        if e.reason in (None, "unknown", "manual"):
-            anomalies.append(f"{key[1]} {e.underlying}: exit reason '{e.reason}' -- "
-                             f"the position closed by a path the pilot did not drive")
-        d = datetime.fromisoformat(entry.timestamp).date()
-        gross = (e.fill_price - entry.fill_price) * entry.quantity
-        costs = clean_trade_cost(entry.fill_price, e.fill_price, entry.quantity, d).total
-        p = paper.get(key)
-        # Shortfall vs paper, in rupees at the pilot's quantity: paid more on
-        # entry, received less on exit. Positive = live did worse.
-        shortfall = None
-        if p is not None and p.exit_premium is not None:
-            shortfall = round(((entry.fill_price - p.entry_premium)
-                               + (p.exit_premium - e.fill_price)) * entry.quantity, 2)
-        trades.append({
-            "label":           f"{entry.underlying} {entry.direction}",
-            "underlying":      entry.underlying,
-            "entry_timestamp": entry.timestamp,
-            "exit_timestamp":  e.timestamp,
-            "quantity":        entry.quantity,
-            "entry_quote":     entry.quoted_premium,
-            "entry_price":     entry.fill_price,
-            "exit_price":      e.fill_price,
-            "exit_reason":     e.reason or "unknown",
-            "gross_pnl":       round(gross, 2),
-            "costs":           round(costs, 2),
-            "net_pnl":         round(gross - costs, 2),
-            "paper_entry":     p.entry_premium if p else None,
-            "paper_exit":      p.exit_premium if p else None,
-            "paper_reason":    p.exit_reason if p else None,
-            "shortfall_vs_paper": shortfall,
-        })
+    r = review(events, load_dry_run_trades(_quantos_dir() / "orb_dry_run_trades.jsonl"))
+    trades = r.trades
+    anomalies = [a.message for a in r.anomalies]
+    open_entries = {(e.underlying, e.timestamp[:10]): e for e in r.open_entries}
     trades.sort(key=lambda t: t["exit_timestamp"])
     shortfalls = [t["shortfall_vs_paper"] for t in trades if t["shortfall_vs_paper"] is not None]
     return {
@@ -324,6 +278,9 @@ def pilot_report() -> dict:
                             "entry_price": e.fill_price, "stop_resting": bool(e.stop_order_id)}
                            for e in open_entries.values()],
         "anomalies":  anomalies,
+        "halted":     pilot_guard.read_pilot_halt(_quantos_dir()),
+        "limits":     {"budget_rs": pilot_guard.BUDGET_RS,
+                       "shortfall_limit_rs": pilot_guard.SHORTFALL_LIMIT_RS},
     }
 
 

@@ -74,6 +74,8 @@ def _isolate_live_event_log(monkeypatch, tmp_path):
     reach the real ~/.quantos (core/orb_scalping/live_trade_log.py)."""
     monkeypatch.setattr("core.orb_scalping.live_trade_log.live_trade_log_path",
                          lambda name: tmp_path / f"{name}_live_trades.jsonl")
+    # ...nor the pilot breaker's flag / acknowledgement files.
+    monkeypatch.setattr("core.orb_scalping.pilot_guard._dir", lambda base=None: base or tmp_path)
 
 
 def _bar(start, i, o, h, l, c):
@@ -1150,3 +1152,43 @@ def test_no_late_entry_on_a_stale_breakout(monkeypatch, tmp_path):
                             trade_history=TradeHistoryService(), traded_today=traded_today)
     assert positions == {}
     assert broker.placed_orders == []
+
+
+
+# ─── 2026-09-30: pilot breaker wiring ────────────────────────────────────
+
+def test_pilot_halt_blocks_pilot_entries_only(monkeypatch, tmp_path):
+    from core.orb_scalping import pilot_guard
+    pilot_guard.set_pilot_halt("test")
+    for strategy, expect_entry in (("orb_scalping_pilot", False), ("orb_scalping", True)):
+        _patch_common(monkeypatch, tmp_path)
+        start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+        candles = _entry_candles(start)
+        monkeypatch.setattr(mod, "datetime", _FrozenDatetime(candles[-1].timestamp + timedelta(minutes=5, seconds=30)))
+        broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+        positions = {}
+        mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                                lots_per_trade=1, dry_run=True, positions=positions,
+                                trade_history=TradeHistoryService(), traded_today=set(),
+                                strategy_name=strategy)
+        assert bool(positions) is expect_entry, strategy
+
+
+def test_breaker_trips_once_and_alerts_once(monkeypatch, tmp_path):
+    from core.orb_scalping import pilot_guard
+    sent = []
+
+    async def fake_send(text):
+        sent.append(text)
+        return True
+    monkeypatch.setattr("cloud.api.notifier.send_telegram", fake_send)
+    monkeypatch.setattr(mod, "load_live_events", lambda name: [
+        __import__("core.orb_scalping.live_trade_log", fromlist=["x"]).LiveTradeEvent(
+            event="entry", underlying="NIFTY", option_symbol="NSE:X", direction="PUT",
+            timestamp="2026-10-01T04:05:30+00:00", quantity=65, fill_price=100.0, stop_order_id=None)])
+    monkeypatch.setattr(mod, "load_dry_run_trades", lambda path=None: [])
+
+    mod._check_pilot_breaker()
+    mod._check_pilot_breaker()                      # already halted: no second alert
+    assert pilot_guard.read_pilot_halt() and "no protective stop" in pilot_guard.read_pilot_halt()
+    assert len(sent) == 1 and "HALTED" in sent[0]

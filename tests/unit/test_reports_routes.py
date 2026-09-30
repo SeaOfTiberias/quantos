@@ -199,3 +199,11 @@ async def test_pilot_surfaces_live_only_defect_signals(_isolated):
     assert "with no matching entry" in text
     assert [p["underlying"] for p in pilot["open_positions"]] == ["BANKNIFTY"]
     assert pilot["open_positions"][0]["stop_resting"] is True
+
+
+@pytest.mark.asyncio
+async def test_pilot_card_reports_the_breaker_state_and_limits(_isolated):
+    (_isolated / "halt_pilot").write_text("2026-10-01T05:00:00 UTC -- test reason\n")
+    pilot = (await _get()).json()["pilot"]
+    assert "test reason" in pilot["halted"]
+    assert pilot["limits"] == {"budget_rs": 15000.0, "shortfall_limit_rs": 1500.0}
