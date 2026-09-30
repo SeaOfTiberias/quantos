@@ -198,6 +198,44 @@ def test_enters_new_position_live_places_entry_and_stop_orders(monkeypatch, tmp_
     assert pos.current_premium_stop == round(50.0 * (1 - mod.PREMIUM_STOP_PCT), 4)
 
 
+def test_enters_as_soon_as_breakout_candle_closes_like_the_backtest(monkeypatch, tmp_path):
+    """2026-09-30: entry must happen at the NEXT candle's open (the backtest's
+    rule), not after that candle has also closed, which put every live
+    entry ~5 minutes late. Only the breakout candle has closed here."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)[:4]   # range + breakout close; entry candle not closed yet
+    now_utc = candles[-1].timestamp + timedelta(minutes=5, seconds=20)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_utc))
+
+    broker = _FakeBroker(candles, index_ltp=24006.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions = {}
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=set())
+
+    pos = get_position(positions, "NIFTY", "2026-09-03")
+    assert pos is not None
+    assert pos.direction == "CALL"
+    assert pos.entry_index_level == 24006.0        # the live index level at entry
+    assert pos.current_index_stop == 23999.0       # opposite side of the opening range
+
+
+def test_pending_entry_waits_when_index_quote_fails(monkeypatch, tmp_path):
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)[:4]
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(candles[-1].timestamp + timedelta(minutes=5, seconds=20)))
+
+    broker = _FakeBroker(candles, index_ltp=None, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions, traded_today = {}, set()
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=traded_today)
+    assert positions == {}
+    assert traded_today == set()   # not marked -- the next fire can still enter
+
+
 def test_no_entry_before_breakout_confirmed(monkeypatch, tmp_path):
     _patch_common(monkeypatch, tmp_path)
     start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
@@ -931,3 +969,28 @@ class TestDynamicSizingIntegration:
         from core.risk.kelly import FALLBACK_SIZE_PCT
         expected_qty = (int((1_000_000.0 * FALLBACK_SIZE_PCT) / (100.0 - 75.0)) // 65) * 65
         assert pos.quantity == expected_qty
+
+
+class _FlakyLtpBroker:
+    def __init__(self, failures, value=42.0):
+        self.failures, self.value, self.calls = failures, value, 0
+
+    def get_ltp(self, symbols):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise RuntimeError("request limit reached")
+        return {s: self.value for s in symbols}
+
+
+def test_exit_quote_retries_through_a_rate_limit(monkeypatch):
+    monkeypatch.setattr(mod.time_mod, "sleep", lambda s: None)
+    broker = _FlakyLtpBroker(failures=2)
+    assert mod._ltp_with_retry(broker, "NSE:X", "BANKNIFTY") == 42.0
+    assert broker.calls == 3
+
+
+def test_exit_quote_gives_up_with_none_never_a_guess(monkeypatch):
+    monkeypatch.setattr(mod.time_mod, "sleep", lambda s: None)
+    broker = _FlakyLtpBroker(failures=99)
+    assert mod._ltp_with_retry(broker, "NSE:X", "BANKNIFTY") is None
+    assert broker.calls == mod.EXIT_QUOTE_ATTEMPTS

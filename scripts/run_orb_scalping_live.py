@@ -62,7 +62,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import sys
+import time as time_mod
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -196,6 +198,28 @@ def _dynamic_lot_count(trades: list, starting_capital: float, entry_premium: flo
                f"-- refusing entry")
 
 
+def _pending_as_entered(broker, underlying: str, spot_symbol: str, state):
+    """Enter on the first fire after the breakout candle CLOSES, as the
+    backtest does (core/orb_scalping/signal.py: entry at the NEXT candle's
+    open). Until 2026-09-30 live waited for compute_live_state() to report
+    "in_position", which needs that next candle to have closed too -- so
+    every entry landed ~5 minutes (one candle) after the backtest's, at a
+    different index level and premium. The entry level is the index LTP
+    now, i.e. the new candle's open plus however many seconds this fire
+    lagged; the initial stop is the opposite side of the opening range,
+    the same as the backtest. None (skip this fire, retry next) if the
+    index quote fails."""
+    try:
+        ltp = broker.get_ltp([spot_symbol]).get(spot_symbol)
+    except Exception as e:
+        print(f"  {underlying}: could not fetch index LTP for a pending entry ({e}) -- retrying next fire.")
+        return None
+    if ltp is None:
+        return None
+    stop = state.range_low if state.direction == "CALL" else state.range_high
+    return replace(state, status="in_position", entry_price=ltp, current_stop=stop, armed=False)
+
+
 def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
                          strike_interval: float, lots_per_trade: int, dry_run: bool,
                          positions: dict, trade_date_iso: str, now_utc: datetime,
@@ -291,6 +315,29 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
     trade_history.record_closed_trade(trade)
     remove_position(positions, underlying, existing.trade_date, path=positions_path)
     print(f"  {underlying}: CLOSED reason={reason} exit_price={exit_price} pnl={trade.pnl:.2f}")
+
+
+EXIT_QUOTE_ATTEMPTS = 3
+EXIT_QUOTE_RETRY_SECONDS = 2.0
+
+
+def _ltp_with_retry(broker, symbol: str, underlying: str) -> Optional[float]:
+    """The dry-run exit quote, retried: the position is dropped from
+    tracking right after, so a single 429 ("request limit reached") used
+    to leave the trade with no exit price at all (2026-09-25 BANKNIFTY),
+    silently removing it from the ledger. None only if every attempt
+    fails -- still never guessed."""
+    for attempt in range(1, EXIT_QUOTE_ATTEMPTS + 1):
+        try:
+            ltp = broker.get_ltp([symbol]).get(symbol)
+            if ltp is not None:
+                return ltp
+        except Exception as e:
+            print(f"  {underlying}: exit quote attempt {attempt}/{EXIT_QUOTE_ATTEMPTS} failed ({e}).")
+        if attempt < EXIT_QUOTE_ATTEMPTS:
+            time_mod.sleep(EXIT_QUOTE_RETRY_SECONDS)
+    print(f"  {underlying}: could not fetch exit quote for the dry-run log after {EXIT_QUOTE_ATTEMPTS} attempts.")
+    return None
 
 
 def _premium_stop_hit(option_ltp: Optional[float], premium_stop: Optional[float]) -> bool:
@@ -417,11 +464,7 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
             # core/orb_scalping/dry_run_log.py's own separate, lower-stakes
             # record -- observability only, never fed into sizing -- since
             # otherwise a dry-run close leaves no queryable price at all.
-            exit_premium = None
-            try:
-                exit_premium = broker.get_ltp([existing.option_symbol]).get(existing.option_symbol)
-            except Exception as e:
-                print(f"  {underlying}: could not fetch exit quote for the dry-run log ({e}).")
+            exit_premium = _ltp_with_retry(broker, existing.option_symbol, underlying)
             append_dry_run_trade(DryRunTrade(
                 underlying=underlying, direction=existing.direction,
                 entry_timestamp=existing.entry_timestamp, entry_premium=existing.entry_premium,
@@ -483,7 +526,13 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
         # and again 2026-09-11 (index-stop path) -- this replaces the narrower
         # session-flatten-only wall-clock guard the first fix added, since that was a
         # special case of this same rule.
-        if state.status != "in_position" or has_traded_today(traded_today, underlying, trade_date_iso):
+        if has_traded_today(traded_today, underlying, trade_date_iso):
+            return
+        if state.status == "pending_entry":
+            state = _pending_as_entered(broker, underlying, spot_symbol, state)
+            if state is None:
+                return
+        elif state.status != "in_position":
             return
         # Hard kill-switch (agent/risk_guard.py, S4-2/P0-2) -- refuses NEW
         # entries only, same as everywhere else it's checked; exit
