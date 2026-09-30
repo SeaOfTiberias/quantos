@@ -141,3 +141,61 @@ async def test_orb_stop_enforced_summary_caps_pre_fix_blowups_only(_isolated):
     assert logged["gross_pnl"] == pytest.approx((2.95 - 220.35) * 30 + 20 * 65, abs=0.01)
     assert enforced["gross_pnl"] == pytest.approx((165.2625 - 220.35) * 30 + 20 * 65, abs=0.01)
     assert enforced["trades"] == logged["trades"] == 2
+
+
+# ─── 1-lot LIVE pilot card ──────────────────────────────────────────────
+
+def _ev(event, underlying="NIFTY", ts="2026-10-01T04:05:30+00:00", **kw):
+    base = {"event": event, "underlying": underlying, "option_symbol": f"NSE:{underlying}TESTPE",
+            "direction": "PUT", "timestamp": ts, "quantity": 65}
+    base.update(kw)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_pilot_empty_when_no_live_events():
+    pilot = (await _get()).json()["pilot"]
+    assert pilot["summary"]["trades"] == 0
+    assert pilot["enabled"] is False
+    assert pilot["anomalies"] == [] and pilot["open_positions"] == []
+
+
+@pytest.mark.asyncio
+async def test_pilot_pairs_fills_nets_statutory_costs_and_measures_shortfall_vs_paper(_isolated):
+    from core.orb_scalping.costs import clean_trade_cost
+    _write_jsonl(_isolated / "orb_scalping_pilot_live_trades.jsonl", [
+        _ev("entry", quoted_premium=52.0, fill_price=52.5, order_id="E1", stop_order_id="S1"),
+        _ev("exit", ts="2026-10-01T09:50:30+00:00", fill_price=60.0, reason="session_flatten"),
+    ])
+    _write_jsonl(_isolated / "orb_dry_run_trades.jsonl", [
+        {"underlying": "NIFTY", "direction": "PUT", "entry_timestamp": "2026-10-01T04:05:10+00:00",
+         "entry_premium": 52.0, "exit_timestamp": "2026-10-01T09:50:10+00:00",
+         "exit_reason": "session_flatten", "quantity": 130, "exit_premium": 61.0},
+    ])
+    pilot = (await _get()).json()["pilot"]
+    t = pilot["trades"][0]
+    costs = clean_trade_cost(52.5, 60.0, 65, __import__("datetime").date(2026, 10, 1)).total
+    assert t["gross_pnl"] == pytest.approx((60.0 - 52.5) * 65)
+    assert t["costs"] == pytest.approx(costs, abs=0.01)
+    assert t["shortfall_vs_paper"] == pytest.approx((0.5 + 1.0) * 65)   # paid 0.5 more, got 1.0 less
+    assert pilot["avg_shortfall_vs_paper"] == pytest.approx(97.5)
+    assert pilot["exit_reasons"] == {"session_flatten": 1}
+    assert pilot["anomalies"] == []
+
+
+@pytest.mark.asyncio
+async def test_pilot_surfaces_live_only_defect_signals(_isolated):
+    _write_jsonl(_isolated / "orb_scalping_pilot_live_trades.jsonl", [
+        _ev("entry", fill_price=50.0, stop_order_id=None, note="stop was not accepted -- flattened"),
+        _ev("exit", ts="2026-10-01T04:06:30+00:00", fill_price=49.0, reason="manual"),
+        _ev("exit", underlying="BANKNIFTY", fill_price=300.0, reason="stop"),       # no entry
+        _ev("entry", underlying="BANKNIFTY", ts="2026-10-02T04:05:30+00:00",
+            fill_price=280.0, stop_order_id="S9"),                                 # still open
+    ])
+    pilot = (await _get()).json()["pilot"]
+    text = " | ".join(pilot["anomalies"])
+    assert "no protective stop was left resting" in text
+    assert "exit reason 'manual'" in text
+    assert "with no matching entry" in text
+    assert [p["underlying"] for p in pilot["open_positions"]] == ["BANKNIFTY"]
+    assert pilot["open_positions"][0]["stop_resting"] is True

@@ -235,6 +235,98 @@ BACKTEST_REFERENCE = {
 }
 
 
+def pilot_report() -> dict:
+    """Candidate 18's 1-lot LIVE pilot (2026-09-30): real fills from
+    core/orb_scalping/live_trade_log.py, paired entry->exit per underlying and
+    day. An execution test, not an edge measurement -- its P&L never feeds
+    candidate 18's go-live figure or 18b's verdict.
+
+    Costs are brokerage + statutory only (clean_trade_cost): real fills
+    already paid the bid-ask spread, which the paper cards' Stratified model
+    has to estimate, so adding it again would double-count. Each live trade is
+    matched to paper candidate 18's trade on the same underlying and day, so
+    the table shows execution shortfall directly: what the live fills cost
+    versus the prices paper recorded."""
+    from collections import Counter
+
+    from core.orb_scalping.costs import clean_trade_cost
+    from core.orb_scalping.dry_run_log import load_dry_run_trades
+    from core.orb_scalping.live_trade_log import load_live_events
+
+    cfg = _config_block("orb_scalping_pilot")
+    events = load_live_events("orb_scalping_pilot",
+                              path=_quantos_dir() / "orb_scalping_pilot_live_trades.jsonl")
+    paper = {(t.underlying, t.entry_timestamp[:10]): t
+             for t in load_dry_run_trades(_quantos_dir() / "orb_dry_run_trades.jsonl")}
+
+    open_entries, trades, anomalies = {}, [], []
+    for e in sorted(events, key=lambda e: e.timestamp):
+        key = (e.underlying, e.timestamp[:10])
+        if e.event == "entry":
+            open_entries[key] = e
+            if not e.stop_order_id:
+                anomalies.append(f"{key[1]} {e.underlying}: no protective stop was left resting "
+                                 f"({e.note or 'see the VM journal'})")
+            continue
+        entry = open_entries.pop(key, None)
+        if entry is None:
+            anomalies.append(f"{key[1]} {e.underlying}: exit ({e.reason}) with no matching entry")
+            continue
+        if entry.fill_price is None or e.fill_price is None:
+            anomalies.append(f"{key[1]} {e.underlying}: missing fill price "
+                             f"({'entry' if entry.fill_price is None else 'exit'}) -- left out of the curve")
+            continue
+        if e.reason in (None, "unknown", "manual"):
+            anomalies.append(f"{key[1]} {e.underlying}: exit reason '{e.reason}' -- "
+                             f"the position closed by a path the pilot did not drive")
+        d = datetime.fromisoformat(entry.timestamp).date()
+        gross = (e.fill_price - entry.fill_price) * entry.quantity
+        costs = clean_trade_cost(entry.fill_price, e.fill_price, entry.quantity, d).total
+        p = paper.get(key)
+        # Shortfall vs paper, in rupees at the pilot's quantity: paid more on
+        # entry, received less on exit. Positive = live did worse.
+        shortfall = None
+        if p is not None and p.exit_premium is not None:
+            shortfall = round(((entry.fill_price - p.entry_premium)
+                               + (p.exit_premium - e.fill_price)) * entry.quantity, 2)
+        trades.append({
+            "label":           f"{entry.underlying} {entry.direction}",
+            "underlying":      entry.underlying,
+            "entry_timestamp": entry.timestamp,
+            "exit_timestamp":  e.timestamp,
+            "quantity":        entry.quantity,
+            "entry_quote":     entry.quoted_premium,
+            "entry_price":     entry.fill_price,
+            "exit_price":      e.fill_price,
+            "exit_reason":     e.reason or "unknown",
+            "gross_pnl":       round(gross, 2),
+            "costs":           round(costs, 2),
+            "net_pnl":         round(gross - costs, 2),
+            "paper_entry":     p.entry_premium if p else None,
+            "paper_exit":      p.exit_premium if p else None,
+            "paper_reason":    p.exit_reason if p else None,
+            "shortfall_vs_paper": shortfall,
+        })
+    trades.sort(key=lambda t: t["exit_timestamp"])
+    shortfalls = [t["shortfall_vs_paper"] for t in trades if t["shortfall_vs_paper"] is not None]
+    return {
+        "name":       "Candidate 18 — 1-lot LIVE pilot",
+        "enabled":    bool(cfg.get("enabled", False)),
+        "dry_run":    cfg.get("dry_run", True),
+        "cost_basis": "Brokerage + statutory only (real fills already paid the spread)",
+        "summary":    _summary(trades, 0.0),
+        "curve":      _curve(trades, 0.0),
+        "trades":     list(reversed(trades)),
+        "exit_reasons": dict(Counter(t["exit_reason"] for t in trades)),
+        "avg_shortfall_vs_paper": round(sum(shortfalls) / len(shortfalls), 2) if shortfalls else None,
+        "matched_to_paper": len(shortfalls),
+        "open_positions": [{"underlying": e.underlying, "since": e.timestamp,
+                            "entry_price": e.fill_price, "stop_resting": bool(e.stop_order_id)}
+                           for e in open_entries.values()],
+        "anomalies":  anomalies,
+    }
+
+
 # Sizing regime changes, drawn as markers on the curve so trades at
 # different sizes aren't read as one series. Dates are the first session the
 # new sizing could trade (the VM config itself is untracked).
@@ -254,4 +346,5 @@ def _safe(fn) -> dict:
 
 @router.get("/paper-strategies")
 async def paper_strategies():
-    return {"orb": _safe(orb_report), "darvas": _safe(darvas_report)}
+    return {"orb": _safe(orb_report), "darvas": _safe(darvas_report),
+            "pilot": _safe(pilot_report)}

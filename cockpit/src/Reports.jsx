@@ -5,6 +5,8 @@
 // 2026-11-17 gate is decided on P&L and its protocol forbids peeking before
 // then. Paper samples are tiny next to the backtests — every card says so, and
 // shows the backtest's own numbers beside the paper ones.
+// The last card is candidate 18's 1-lot LIVE pilot: real fills vs paper, for
+// execution defects -- not an edge measure, and it feeds no verdict.
 import { useEffect, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
@@ -246,6 +248,123 @@ function StrategyReport({ report, kind, emptyNote }) {
   );
 }
 
+// ─── 1-lot LIVE pilot (candidate 18, from 2026-10-01) ──────────────────────
+// Real fills, matched to paper 18's trade on the same day. What matters here is
+// the gap between live execution and paper (shortfall, exit paths, anomalies),
+// not the P&L, which at 1 lot and a handful of trades says nothing about edge.
+function PilotReport({ report }) {
+  if (report?.error) {
+    return (
+      <Card>
+        <Label color={C.accent}>Candidate 18 — 1-lot LIVE pilot</Label>
+        <div style={{ fontSize: 12, color: C.red, marginTop: 10 }}>Report failed: {report.error}</div>
+      </Card>
+    );
+  }
+  const s = report.summary;
+  const status = !report.enabled ? "OFF" : report.dry_run === false ? "LIVE" : "REHEARSAL";
+  const statusColor = status === "LIVE" ? C.red : status === "OFF" ? C.muted : C.gold;
+  const hasTrades = s.trades > 0;
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Label color={C.accent}>{report.name}</Label>
+        <span style={{
+          fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+          color: statusColor, border: `1px solid ${statusColor}`,
+        }}>{status}</span>
+      </div>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+        Net of: {report.cost_basis}. Curve = cumulative net P&L from ₹0.
+      </div>
+
+      <div style={{
+        fontSize: 11, color: C.gold, marginTop: 10, padding: "6px 10px",
+        border: `1px solid ${C.gold}55`, borderRadius: 6, background: `${C.gold}10`,
+      }}>
+        Execution test, not an edge measurement. This P&L does not feed candidate 18's go-live figure or
+        18b's verdict. Read the shortfall vs paper, the exit paths and the anomalies.
+      </div>
+
+      {report.anomalies?.length > 0 && (
+        <div style={{
+          marginTop: 10, padding: "6px 10px", borderRadius: 6,
+          border: `1px solid ${C.red}66`, background: `${C.red}12`,
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.red, marginBottom: 4 }}>
+            {report.anomalies.length} ANOMAL{report.anomalies.length === 1 ? "Y" : "IES"} — possible live-only defect
+          </div>
+          {report.anomalies.map((a, i) => (
+            <div key={i} style={{ fontSize: 10, color: C.white, marginTop: 2 }}>• {a}</div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+        <Stat label="Net P&L" value={signedInr(s.net_pnl)} color={pnlColor(s.net_pnl)}
+              sub={`gross ${signedInr(s.gross_pnl)} · costs ${inr(s.costs)}`} />
+        <Stat label="Trades" value={s.trades}
+              sub={report.open_positions?.length ? `${report.open_positions.length} open now` : null} />
+        <Stat label="Avg shortfall vs paper"
+              value={report.avg_shortfall_vs_paper == null ? "—" : signedInr(report.avg_shortfall_vs_paper)}
+              color={report.avg_shortfall_vs_paper > 0 ? C.red : C.mid}
+              sub={`per trade · ${report.matched_to_paper} matched · + = live worse`} />
+        <Stat label="Exit paths" value={Object.keys(report.exit_reasons || {}).length || "—"}
+              sub={Object.entries(report.exit_reasons || {})
+                .map(([r, n]) => `${r.replace(/_/g, " ")} ${n}`).join(" · ") || null} />
+      </div>
+
+      {report.open_positions?.map(p => (
+        <div key={p.underlying} style={{ fontSize: 10, color: p.stop_resting ? C.mid : C.red, marginTop: 6 }}>
+          Open: {p.underlying} since {istDateTime(p.since)} @ {p.entry_price ?? "—"} ·
+          {p.stop_resting ? " stop resting at broker" : " NO STOP RESTING"}
+        </div>
+      ))}
+
+      {!hasTrades ? (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 14 }}>
+          No closed live pilot trades yet{status === "OFF" ? " (the pilot is not enabled)" : ""}.
+        </div>
+      ) : (
+        <>
+          <EquityChart curve={report.curve} startingCapital={0} />
+          <div style={{ overflowX: "auto", marginTop: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={th}>Exit</th><th style={th}>Leg</th><th style={th}>Qty</th>
+                  <th style={th}>Quote → fill</th><th style={th}>Exit fill</th><th style={th}>Reason</th>
+                  <th style={th}>Net</th><th style={th}>Paper entry / exit</th><th style={th}>Shortfall</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.trades.map((t, i) => (
+                  <tr key={`${t.label}-${t.exit_timestamp}-${i}`}>
+                    <td style={{ ...td, color: C.mid }}>{istDateTime(t.exit_timestamp)}</td>
+                    <td style={td}>{t.label}</td>
+                    <td style={td}>{t.quantity}</td>
+                    <td style={td}>{t.entry_quote?.toFixed(2) ?? "—"} → {t.entry_price.toFixed(2)}</td>
+                    <td style={td}>{t.exit_price.toFixed(2)}</td>
+                    <td style={{ ...td, color: C.mid }}>{t.exit_reason.replace(/_/g, " ")}</td>
+                    <td style={{ ...td, color: pnlColor(t.net_pnl), fontWeight: 700 }}>{signedInr(t.net_pnl)}</td>
+                    <td style={{ ...td, color: C.mid }}>
+                      {t.paper_entry == null ? "no paper trade"
+                        : `${t.paper_entry.toFixed(2)} / ${t.paper_exit?.toFixed(2) ?? "—"} (${(t.paper_reason || "").replace(/_/g, " ")})`}
+                    </td>
+                    <td style={{ ...td, color: t.shortfall_vs_paper > 0 ? C.red : C.mid }}>
+                      {signedInr(t.shortfall_vs_paper)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function ReportsPage() {
   const { data, loading, error } = usePaperReports();
   return (
@@ -280,6 +399,11 @@ export default function ReportsPage() {
               <StrategyReport report={data.darvas} kind="darvas"
                 emptyNote="No closed paper trades yet. Open positions are on the dashboard's Darvas ATR-Stop panel; a trade appears here once its stop or target is hit." />
             </PanelBoundary>
+            {data.pilot && (
+              <PanelBoundary name="Live pilot report">
+                <PilotReport report={data.pilot} />
+              </PanelBoundary>
+            )}
           </>
         )}
       </div>
