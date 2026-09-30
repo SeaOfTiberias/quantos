@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.main import load_config  # noqa: E402
 from core.brokers import get_broker  # noqa: E402
-from core.marketdata.option_chain_recorder import append_rows, flatten, parse_expiries  # noqa: E402
+from core.marketdata.option_chain_recorder import append_rows, flatten, parse_expiries, recorder_dir  # noqa: E402
 
 INDICES = (("NIFTY", "NSE:NIFTY50-INDEX"), ("BANKNIFTY", "NSE:NIFTYBANK-INDEX"))
 EXPIRIES_PER_INDEX = 2
@@ -31,11 +31,30 @@ STRIKE_COUNT = 10            # +-10 strikes around ATM, CE and PE
 CALL_SPACING_SECONDS = 0.4   # stay well inside Fyers' per-second limit
 
 
+def _log_coverage(now: datetime, underlying: str, ok: int, failed: int, rows: int,
+                  latency_ms: float, note: str = "") -> None:
+    """One line per index per minute (Fable P0, 2026-09-30): without it a missing
+    minute is indistinguishable from "no data", and a dead broker has hidden behind
+    green health signals before. Also flags a response with no futures price or
+    VIX, since derived IV depends on both."""
+    path = recorder_dir() / now.date().isoformat() / "coverage.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new = not path.exists()
+    with path.open("a", encoding="utf-8") as fh:
+        if new:
+            fh.write("sampled_at_utc,underlying,calls_ok,calls_failed,rows,latency_ms,note" + chr(10))
+        fh.write(f"{now.isoformat(timespec='seconds')},{underlying},{ok},{failed},{rows},{latency_ms:.0f},{note}"
+                 + chr(10))
+
+
 def record_index(client, underlying: str, fyers_symbol: str, now: datetime) -> int:
     """Nearest expiry first (its response carries the expiry list), then the next."""
+    t0, ok, failed, notes = time.monotonic(), 0, 0, []
     first = client.optionchain(data={"symbol": fyers_symbol, "strikecount": STRIKE_COUNT, "timestamp": ""})
     if first.get("code") != 200:
+        _log_coverage(now, underlying, 0, 1, 0, (time.monotonic() - t0) * 1000, "first call failed")
         raise RuntimeError(f"optionchain failed: {first}")
+    ok += 1
     data = first.get("data", {})
     expiries = parse_expiries(data)[:EXPIRIES_PER_INDEX]
     if not expiries:
@@ -46,12 +65,17 @@ def record_index(client, underlying: str, fyers_symbol: str, now: datetime) -> i
             time.sleep(CALL_SPACING_SECONDS)
             resp = client.optionchain(data={"symbol": fyers_symbol, "strikecount": STRIKE_COUNT, "timestamp": epoch})
             if resp.get("code") != 200:
+                failed += 1
                 print(f"  {underlying} {exp}: optionchain failed ({resp.get('message')}) -- skipped this minute.")
                 continue
+            ok += 1
             data = resp.get("data", {})
         rows = flatten(data, underlying, exp, flag, now)
+        if rows and (rows[0]["future"] is None or rows[0]["vix"] is None):
+            notes.append(f"{exp} missing {'future' if rows[0]['future'] is None else 'vix'}")
         append_rows(rows, underlying, now.date())
         written += len(rows)
+    _log_coverage(now, underlying, ok, failed, written, (time.monotonic() - t0) * 1000, "; ".join(notes))
     return written
 
 

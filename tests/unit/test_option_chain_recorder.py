@@ -62,7 +62,24 @@ class _FakeClient:
 def test_record_index_fetches_the_two_nearest_expiries(monkeypatch, tmp_path):
     monkeypatch.setattr(rec, "append_rows", lambda rows, u, d: append_rows(rows, u, d, base=tmp_path))
     monkeypatch.setattr(rec.time, "sleep", lambda s: None)
+    monkeypatch.setattr(rec, "recorder_dir", lambda: tmp_path)
     client = _FakeClient()
     n = rec.record_index(client, "NIFTY", "NSE:NIFTY50-INDEX", NOW)
     assert client.calls == ["", "1791886200"]      # nearest via "", then the 2nd expiry by epoch
     assert n == 4
+
+    cov = (tmp_path / "2026-09-30" / "coverage.csv").read_text().splitlines()
+    assert cov[1].split(",")[1:5] == ["NIFTY", "2", "0", "4"]
+
+
+def test_coverage_flags_a_response_without_futures_price(monkeypatch, tmp_path):
+    monkeypatch.setattr(rec, "append_rows", lambda rows, u, d: append_rows(rows, u, d, base=tmp_path))
+    monkeypatch.setattr(rec, "recorder_dir", lambda: tmp_path)
+    monkeypatch.setattr(rec.time, "sleep", lambda s: None)
+    no_fp = {**RESP, "optionsChain": [{**RESP["optionsChain"][0], "fp": None}] + RESP["optionsChain"][1:]}
+
+    class _C(_FakeClient):
+        def optionchain(self, data):
+            return {"code": 200, "data": no_fp}
+    rec.record_index(_C(), "NIFTY", "NSE:NIFTY50-INDEX", NOW)
+    assert "missing future" in (tmp_path / "2026-09-30" / "coverage.csv").read_text()
