@@ -71,7 +71,7 @@ UNDERLYINGS = ("NIFTY", "BANKNIFTY")
 # addendum, rule 3): "pending" | "roll" | "skip". Only "skip" changes the
 # primary views -- it drops BANKNIFTY expiry-day trades from BOTH arms,
 # retroactively. Otherwise the exclusion is a reported sensitivity view.
-BANKNIFTY_EXPIRY_POLICY = "pending"
+BANKNIFTY_EXPIRY_POLICY = "skip"   # decided 2026-09-30 from docs/ORB_FIX2_RESULTS.md (pre-registered rule)
 
 
 def elapsed_weeks(today: date, deployed_at: date = DEPLOYED_AT) -> float:

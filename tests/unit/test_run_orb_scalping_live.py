@@ -1192,3 +1192,26 @@ def test_breaker_trips_once_and_alerts_once(monkeypatch, tmp_path):
     mod._check_pilot_breaker()                      # already halted: no second alert
     assert pilot_guard.read_pilot_halt() and "no protective stop" in pilot_guard.read_pilot_halt()
     assert len(sent) == 1 and "HALTED" in sent[0]
+
+
+
+def _bn_fire(monkeypatch, tmp_path, day):
+    _patch_common(monkeypatch, tmp_path)   # list_expiries -> [2026-09-29]
+    start = datetime(day.year, day.month, day.day, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(candles[-1].timestamp + timedelta(minutes=5, seconds=30)))
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 50.0)])
+    positions = {}
+    mod.process_underlying(broker, "BANKNIFTY", "NIFTY BANK", dte_floor_days=0, strike_interval=100.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=set())
+    return positions
+
+
+def test_banknifty_takes_no_entry_on_its_own_expiry_day(monkeypatch, tmp_path):
+    """Fix 2 (2026-09-30): the pre-registered rule picked skip."""
+    assert _bn_fire(monkeypatch, tmp_path, date(2026, 9, 29)) == {}
+
+
+def test_banknifty_still_trades_on_ordinary_days(monkeypatch, tmp_path):
+    assert _bn_fire(monkeypatch, tmp_path, date(2026, 9, 3)) != {}

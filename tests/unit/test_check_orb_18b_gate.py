@@ -194,7 +194,9 @@ def test_stop_enforcement_is_applied_to_the_unfiltered_baseline_too():
     assert enforced["um"].profit_factor > logged["um"].profit_factor
 
 
-def test_banknifty_sensitivity_view_excludes_expiry_days_from_both_arms():
+def test_banknifty_sensitivity_view_excludes_expiry_days_from_both_arms(monkeypatch):
+    import scripts.check_orb_18b_gate as gate
+    monkeypatch.setattr(gate, "BANKNIFTY_EXPIRY_POLICY", "pending")   # the pre-decision behaviour
     filtered = [trade(underlying="BANKNIFTY", exit_premium=110.0 + (i % 3)) for i in range(MIN_SAMPLE_N)]
     filtered.append(trade(underlying="BANKNIFTY", exit_premium=1.0,
                           entry="2026-09-29T04:10:00+00:00", exit_="2026-09-29T09:50:00+00:00"))
@@ -217,3 +219,9 @@ def test_skip_policy_drops_expiry_days_from_the_primary_views(monkeypatch):
 def test_equity_report_shows_both_views():
     text = format_equity_report({"NIFTY": [trade(exit_premium=1.0)], "BANKNIFTY": []}, EQUITY_DATE)
     assert "[as logged]" in text and "[stop enforced]" in text
+
+
+
+def test_policy_is_skip_after_the_2026_09_30_fix2_decision():
+    import scripts.check_orb_18b_gate as gate
+    assert gate.BANKNIFTY_EXPIRY_POLICY == "skip"

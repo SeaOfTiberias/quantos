@@ -211,6 +211,16 @@ and `scripts/check_orb_18b_gate.py`.
    curve. The small-N warning stays. 2026-09-29 is shown both ways, never
    silently dropped.
 
+**Rule 3 outcome (2026-09-30, docs/ORB_FIX2_RESULTS.md):** the pre-registered
+fix-2 rule picked **skip** (roll PF 1.06 vs skip 1.07 on BANKNIFTY under
+corrected intraday pricing, within the 0.05 tie band). The gate script now runs
+with `BANKNIFTY_EXPIRY_POLICY = "skip"`: BANKNIFTY expiry-day trades are dropped
+from BOTH arms, retroactively, in both views. Live, 18 / 18b / the pilot no longer
+enter BANKNIFTY on its expiry day (`BANKNIFTY_SKIP_EXPIRY_DAY` in
+`scripts/run_orb_scalping_live.py`). Recorded for honesty: keeping those trades
+scored slightly better (PF 1.09) on ~12 winners in 64; the rule excluded that
+option by design, and it was not revisited after seeing the numbers.
+
 N counts and the >=8-week clock are unchanged by rules 1-2 (re-marking a
 row does not add or remove it). Under rule 3's "skip", N is counted after
 the exclusion.

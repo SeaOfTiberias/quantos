@@ -238,6 +238,10 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
     trade_date = now_utc.date()
     strike = atm_strike(state.entry_price, strike_interval)
     expiries = sm.list_expiries(underlying)
+    if underlying == "BANKNIFTY" and BANKNIFTY_SKIP_EXPIRY_DAY and trade_date in expiries:
+        print(f"  {underlying}: {trade_date} is BANKNIFTY's own expiry day -- no entry "
+              f"(fix-2 decision 2026-09-30, docs/ORB_FIX2_RESULTS.md).")
+        return
     expiry = select_expiry(expiries, trade_date, dte_floor_days)
     if expiry is None:
         print(f"  {underlying}: no suitable expiry found, skipping entry.")
@@ -346,6 +350,17 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
     remove_position(positions, underlying, existing.trade_date, path=positions_path)
     print(f"  {underlying}: CLOSED reason={reason} exit_price={exit_price} pnl={trade.pnl:.2f}")
 
+
+# Fix 2 (decided 2026-09-30, docs/ORB_FIX2_RESULTS.md): no BANKNIFTY entry on
+# BANKNIFTY's own monthly expiry day. That day the nearest contract is 0-DTE;
+# the locked-final backtest priced it as if a full day of time value remained.
+# Under corrected intraday pricing, roll (PF 1.06) and skip (1.07) sat inside the
+# pre-registered 0.05 tie band, so the rule picked skip. Keeping those trades
+# scored slightly higher (PF 1.09) on ~12 winners in 64; it was excluded from
+# the pre-registered choice as the exposure the fix removes. BANKNIFTY has
+# monthly expiries only, so "today is in its expiry list" == its expiry day.
+# NIFTY is unaffected: its 2-day DTE floor already rolls off 0-DTE.
+BANKNIFTY_SKIP_EXPIRY_DAY = True
 
 # The live pilot is a plumbing test at the smallest size, not a capital
 # allocation: whatever orb_scalping_pilot.lots_per_trade says, never more.
