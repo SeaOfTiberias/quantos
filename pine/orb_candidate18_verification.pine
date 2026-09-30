@@ -1,0 +1,143 @@
+// ============================================================
+//  QuantOS — Candidate 18 ORB: independent futures/index verification
+//  (2026-09-30). Mirrors core/orb_scalping/exit_policies.py so the user can
+//  check QuantOS's backtest in TradingView's own engine, with no option
+//  pricing model involved: index-point P&L only, like the "futures" rows of
+//  docs/ORB_EXIT_POLICY_RESULTS.md.
+//
+//  Rules (identical to QuantOS):
+//    - Opening range = the first three 5-minute bars (09:15-09:30 IST).
+//    - First 5-minute CLOSE above the range high -> long / below the range low
+//      -> short, entered at the NEXT bar's open. One trade per day, first
+//      breakout only, no new signal from the 15:20 bar on.
+//    - Initial stop = the opposite side of the opening range.
+//    - Trailing stop arms once a close has moved Arm x range-width in favour,
+//      then trails the low (long) / high (short) of the last 3 bars, never
+//      loosening.
+//    - Flatten on the 15:20 IST bar.
+//  Exit policies V1-V4 are the study's variants.
+//
+//  Known, small differences from QuantOS (documented, deliberate):
+//    - Time-stop and flatten exits fill at the NEXT bar's open here (QuantOS
+//      uses that bar's close).
+//    - A gap through a stop fills at the gap price here (QuantOS fills at the
+//      stop) -- TradingView is slightly more realistic.
+//    - Costs: 0.014% per order + 20 ticks (1 index point) of slippage per
+//      fill, approximating QuantOS's futures costs.
+//
+//  HOW TO RUN AND BRING THE DATA BACK
+//    1. Chart NSE:NIFTY (then NSE:BANKNIFTY), 5-minute timeframe.
+//    2. Set "Quantity" to 65 for NIFTY or 30 for BANKNIFTY.
+//    3. Strategy Tester -> enable Deep Backtesting, range 2022-06-01 to today
+//       (NIFTY) or 2021-06-01 to today (BANKNIFTY), same windows as QuantOS.
+//    4. Run each Exit policy you want (V0 first).
+//    5. "List of trades" -> Export (download) -> save as e.g.
+//       FyersBackTestResults\tv_orb_NIFTY_V0.csv
+//       and tell Claude. It compares trade-by-trade with QuantOS.
+// ============================================================
+//@version=6
+strategy("QuantOS ORB verification (cand. 18)", shorttitle="ORB-verify", overlay=true,
+     pyramiding=0, commission_type=strategy.commission.percent, commission_value=0.014,
+     slippage=20, process_orders_on_close=false, calc_on_every_tick=false,
+     max_labels_count=500)
+
+// ── Inputs ────────────────────────────────────────────────────────────────
+exitMode  = input.string("V0 current", "Exit policy",
+     options=["V0 current", "V1 arm at 0.5 RW", "V2 breakeven at 0.5 RW",
+              "V3 time stop 60 min (if not armed)", "V4 trail 1 RW from entry"])
+qtyUnits  = input.int(65, "Quantity (NIFTY 65, BANKNIFTY 30)", minval=1)
+startDate = input.time(timestamp("2021-06-01T00:00:00+05:30"), "Test from")
+showLevels = input.bool(true, "Show range / stop lines")
+
+armMult     = exitMode == "V1 arm at 0.5 RW" ? 0.5 : 1.0
+useBE       = exitMode == "V2 breakeven at 0.5 RW"
+useTimeStop = exitMode == "V3 time stop 60 min (if not armed)"
+useTrailE   = exitMode == "V4 trail 1 RW from entry"
+
+// ── Session bookkeeping ───────────────────────────────────────────────────
+tz      = "Asia/Kolkata"
+newDay  = ta.change(time("D")) != 0
+hm      = hour(time, tz) * 100 + minute(time, tz)       // this bar's OPEN time, IST
+flatBar = hm >= 1520
+inRange = time >= startDate
+
+var int   barNo      = -1
+var float rHigh      = na
+var float rLow       = na
+var bool  tradedDay  = false
+barNo := newDay ? 0 : barNo + 1
+if newDay
+    rHigh     := high
+    rLow      := low
+    tradedDay := false
+else if barNo < 3
+    rHigh := math.max(rHigh, high)
+    rLow  := math.min(rLow, low)
+rw = rHigh - rLow
+
+// ── Trade state ───────────────────────────────────────────────────────────
+var int   dir       = 0          // +1 long, -1 short
+var int   entryBar  = na         // bar the entry FILLS on (signal bar + 1)
+var float entryPx   = na         // that bar's open (QuantOS convention, pre-slippage)
+var float stopLvl   = na
+var bool  armed     = false
+var bool  beDone    = false
+var float bestClose = na
+
+// ── Entry: first breakout close, filled at the next bar's open ────────────
+canEnter = inRange and barNo >= 3 and not tradedDay and strategy.position_size == 0 and not flatBar and not na(rw)
+sig = not canEnter ? 0 : close > rHigh ? 1 : close < rLow ? -1 : 0
+if sig != 0
+    strategy.entry("ORB", sig == 1 ? strategy.long : strategy.short, qty=qtyUnits,
+         comment=sig == 1 ? "entry_long" : "entry_short")
+    dir       := sig
+    tradedDay := true
+    entryBar  := bar_index + 1
+    stopLvl   := sig == 1 ? rLow : rHigh
+    armed     := false
+    beDone    := false
+
+// ── Management, decided on bar closes (orders apply from the next bar) ────
+// Lookback extremes computed on EVERY bar (Pine ta.* must not be called conditionally).
+low1  = low
+low2  = ta.lowest(low, 2)
+low3  = ta.lowest(low, 3)
+high1 = high
+high2 = ta.highest(high, 2)
+high3 = ta.highest(high, 3)
+inTrade = strategy.position_size != 0
+if inTrade and bar_index == entryBar
+    entryPx   := open
+    bestClose := open
+if inTrade and bar_index > entryBar
+    bestClose := dir == 1 ? math.max(bestClose, close) : math.min(bestClose, close)
+    minutesHeld = (bar_index - entryBar) * 5
+    if useTimeStop and not armed and minutesHeld >= 60
+        strategy.close("ORB", comment="time_stop")
+    if useBE and not beDone and (close - entryPx) * dir >= 0.5 * rw
+        stopLvl := dir == 1 ? math.max(stopLvl, entryPx) : math.min(stopLvl, entryPx)
+        beDone  := true
+    armLevel = entryPx + dir * armMult * rw
+    if not armed and (dir == 1 ? close >= armLevel : close <= armLevel)
+        armed := true
+    if armed
+        lb = math.min(3, bar_index - entryBar)       // bars since entry+1, incl. this one (QuantOS lookback)
+        trailLow  = lb >= 3 ? low3 : lb == 2 ? low2 : low1
+        trailHigh = lb >= 3 ? high3 : lb == 2 ? high2 : high1
+        stopLvl := dir == 1 ? math.max(stopLvl, trailLow) : math.min(stopLvl, trailHigh)
+    if useTrailE
+        trailLvl = bestClose - dir * rw
+        stopLvl := dir == 1 ? math.max(stopLvl, trailLvl) : math.min(stopLvl, trailLvl)
+    if flatBar
+        strategy.close("ORB", comment="session_flatten")
+
+// Resting stop for the next bar, labelled with the reason it would exit.
+if inTrade and bar_index >= entryBar and not na(stopLvl)
+    reason = (armed or useTrailE) ? "trailing_stop" : beDone ? "breakeven_stop" : "stop"
+    strategy.exit("ORB-stop", from_entry="ORB", stop=stopLvl, comment=reason)
+
+
+// ── Visuals ───────────────────────────────────────────────────────────────
+plot(showLevels and barNo >= 2 ? rHigh : na, "Range high", color=color.new(color.teal, 30), style=plot.style_linebr)
+plot(showLevels and barNo >= 2 ? rLow  : na, "Range low",  color=color.new(color.purple, 30), style=plot.style_linebr)
+plot(showLevels and inTrade ? stopLvl : na, "Stop", color=color.new(color.orange, 0), style=plot.style_linebr, linewidth=2)
