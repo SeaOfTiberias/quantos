@@ -52,6 +52,12 @@ ORB_TRADED_TODAY_PATH = Path.home() / ".quantos" / "orb_traded_today.json"
 ORB_OPEN_POSITIONS_FILTERED_PATH = Path.home() / ".quantos" / "orb_open_positions_filtered.json"
 ORB_TRADED_TODAY_FILTERED_PATH = Path.home() / ".quantos" / "orb_traded_today_filtered.json"
 
+# The 1-lot LIVE pilot (2026-09-30, `--variant pilot`): real orders, run beside
+# paper candidate 18 so 18's own dry-run log (18b's verdict baseline) keeps
+# accumulating untouched. Separate files for the same reason as 18b's.
+ORB_OPEN_POSITIONS_PILOT_PATH = Path.home() / ".quantos" / "orb_open_positions_pilot.json"
+ORB_TRADED_TODAY_PILOT_PATH = Path.home() / ".quantos" / "orb_traded_today_pilot.json"
+
 
 @dataclass
 class OrbOpenPosition:

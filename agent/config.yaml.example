@@ -232,6 +232,23 @@ orb_scalping_filtered:
   nifty_dte_floor_days: 2
   banknifty_dte_floor_days: 0
 
+orb_scalping_pilot:
+  # 1-lot LIVE pilot of candidate 18 (2026-09-30): the unfiltered signal with
+  # REAL orders, to surface live-only defects (order types, broker status,
+  # reconcile, fills) before any real go-live decision -- not a capital
+  # allocation. Runs ALONGSIDE paper orb_scalping (whose dry-run log is 18b's
+  # verdict baseline), via `run_orb_scalping_live.py --variant pilot` and its
+  # own systemd timer (quantos-orb-scalping-pilot.timer, fires at :30 to stay
+  # off 18/18b's :00). Own position store, traded-today mark and live event
+  # log (~/.quantos/orb_scalping_pilot_live_trades.jsonl). lots_per_trade is
+  # hard-capped at 1 in code (PILOT_MAX_LOTS); dynamic sizing is ignored.
+  # dry_run:false needs the user's explicit go-ahead on the day, as always.
+  enabled: false
+  dry_run: true
+  lots_per_trade: 1
+  nifty_dte_floor_days: 2
+  banknifty_dte_floor_days: 0
+
 darvas_atr_stop:
   # Darvas ATR-scaled stop, Bucket B only (35% < box width <= 50%) --
   # docs/DARVAS_ATR_STOP_BACKTEST_RESULTS.md (cleared its pre-registered

@@ -5,6 +5,8 @@ and TRADE_HISTORY_PATH are monkeypatched to tmp_path in every test).
 """
 
 import sys
+
+import pytest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -65,6 +67,14 @@ def test_exit_reason_session_flatten_when_nothing_else_fired():
 
 
 # ─── Fixtures ────────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _isolate_live_event_log(monkeypatch, tmp_path):
+    """Every live-mode test here writes entry/exit events; never let them
+    reach the real ~/.quantos (core/orb_scalping/live_trade_log.py)."""
+    monkeypatch.setattr("core.orb_scalping.live_trade_log.live_trade_log_path",
+                         lambda name: tmp_path / f"{name}_live_trades.jsonl")
+
 
 def _bar(start, i, o, h, l, c):
     return OHLCV(timestamp=start + timedelta(minutes=5 * i), open=o, high=h, low=l, close=c, volume=1000)
@@ -619,7 +629,7 @@ def _bar_daily(day, close):
 # an entry_filter only for the filtered variant -- load_config/get_broker
 # are faked so no real file or network is touched.
 
-def _patch_main_deps(monkeypatch, orb_cfg=None, orb_cfg_filtered=None):
+def _patch_main_deps(monkeypatch, orb_cfg=None, orb_cfg_filtered=None, orb_cfg_pilot=None):
     calls = []
 
     class _StubBroker:
@@ -633,6 +643,7 @@ def _patch_main_deps(monkeypatch, orb_cfg=None, orb_cfg_filtered=None):
         "broker": "stub",
         "orb_scalping": orb_cfg if orb_cfg is not None else {"enabled": False},
         "orb_scalping_filtered": orb_cfg_filtered if orb_cfg_filtered is not None else {"enabled": False},
+        "orb_scalping_pilot": orb_cfg_pilot if orb_cfg_pilot is not None else {"enabled": False},
     })
     monkeypatch.setattr(mod, "get_broker", lambda config: _StubBroker())
 
@@ -645,7 +656,8 @@ def _patch_main_deps(monkeypatch, orb_cfg=None, orb_cfg_filtered=None):
                            positions_path=positions_path, traded_today_path=traded_today_path,
                            dry_run_log_path=dry_run_log_path, dry_run=dry_run,
                            dynamic_sizing=dynamic_sizing, starting_capital=starting_capital,
-                           min_capital_floor=min_capital_floor, strategy_name=strategy_name))
+                           min_capital_floor=min_capital_floor, strategy_name=strategy_name,
+                           lots_per_trade=lots_per_trade))
 
     monkeypatch.setattr(mod, "process_underlying", spy_process_underlying)
     return calls
@@ -1046,3 +1058,75 @@ def test_live_gap_guard_flattens_when_the_stop_limit_was_traded_through(monkeypa
     assert broker.cancelled_order_ids == ["SL-1"]
     assert broker.placed_orders[-1].direction == OrderDirection.SELL
     assert len(trade_history.get_trade_history()) == 1   # ClosedTrade carries no reason field
+
+
+
+# ─── 2026-09-30: the 1-lot LIVE pilot variant ────────────────────────────
+
+def test_pilot_variant_uses_its_own_block_paths_and_strategy_name(monkeypatch):
+    calls = _patch_main_deps(monkeypatch, orb_cfg={"enabled": True, "dry_run": True},
+                              orb_cfg_pilot={"enabled": True, "dry_run": False, "lots_per_trade": 1})
+    monkeypatch.setattr(mod, "load_open_positions", lambda path=None: {})
+    monkeypatch.setattr(mod, "load_traded_today", lambda path=None: set())
+
+    assert mod.main(["--variant", "pilot"]) == 0
+    assert len(calls) == 2
+    for c in calls:
+        assert c["entry_filter"] is None                    # candidate 18's unfiltered signal
+        assert c["dry_run"] is False
+        assert c["strategy_name"] == "orb_scalping_pilot"
+        assert c["positions_path"] == mod.ORB_OPEN_POSITIONS_PILOT_PATH
+        assert c["traded_today_path"] == mod.ORB_TRADED_TODAY_PILOT_PATH
+        assert c["dry_run_log_path"] == mod.ORB_DRY_RUN_LOG_PILOT_PATH   # never 18's paper log
+
+
+def test_pilot_is_hard_capped_at_one_lot_and_ignores_dynamic_sizing(monkeypatch):
+    calls = _patch_main_deps(monkeypatch, orb_cfg_pilot={
+        "enabled": True, "dry_run": False, "lots_per_trade": 5, "dynamic_sizing": True})
+    monkeypatch.setattr(mod, "load_open_positions", lambda path=None: {})
+    monkeypatch.setattr(mod, "load_traded_today", lambda path=None: set())
+
+    assert mod.main(["--variant", "pilot"]) == 0
+    assert all(c["lots_per_trade"] == mod.PILOT_MAX_LOTS == 1 for c in calls)
+    assert all(c["dynamic_sizing"] is False for c in calls)
+
+
+def test_pilot_disabled_by_default_does_nothing(monkeypatch):
+    calls = _patch_main_deps(monkeypatch, orb_cfg={"enabled": True})
+    assert mod.main(["--variant", "pilot"]) == 0
+    assert calls == []
+
+
+def test_live_entry_records_the_real_fill_and_logs_an_entry_event(monkeypatch, tmp_path):
+    """Live P&L must start from the broker fill (the fake fills at 50.0),
+    not the chain quote (52.0) -- the quote goes to the live event log."""
+    from core.orb_scalping import live_trade_log
+    monkeypatch.setattr(live_trade_log, "live_trade_log_path", lambda name: tmp_path / f"{name}.jsonl")
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now = candles[-1].timestamp + timedelta(minutes=5, seconds=30)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now))
+    broker = _FakeBroker(candles, index_ltp=24005.0, chain_rows=[_chain_row(24000.0, "CE", 52.0)])
+    positions = {}
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=False, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=set(),
+                            strategy_name="orb_scalping_pilot")
+    pos = get_position(positions, "NIFTY", now.date().isoformat())
+    assert pos.entry_premium == 50.0
+    events = live_trade_log.load_live_events("orb_scalping_pilot")
+    assert [(e.event, e.quoted_premium, e.fill_price) for e in events] == [("entry", 52.0, 50.0)]
+    assert events[0].stop_order_id is not None
+
+
+def test_live_close_logs_an_exit_event_with_its_reason(monkeypatch, tmp_path):
+    from core.orb_scalping import live_trade_log
+    monkeypatch.setattr(live_trade_log, "live_trade_log_path", lambda name: tmp_path / f"{name}.jsonl")
+    _patch_common(monkeypatch, tmp_path)
+    positions = {"NIFTY:2026-09-03": _existing_call_position()}
+    mod._close_out("NIFTY", positions["NIFTY:2026-09-03"], 30.0,
+                   datetime(2026, 9, 3, 6, 0, tzinfo=timezone.utc), "premium_stop", positions,
+                   TradeHistoryService(), strategy_name="orb_scalping_pilot")
+    events = live_trade_log.load_live_events("orb_scalping_pilot")
+    assert [(e.event, e.reason, e.fill_price) for e in events] == [("exit", "premium_stop", 30.0)]

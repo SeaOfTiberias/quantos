@@ -1,0 +1,25 @@
+# 1-lot LIVE pilot of candidate 18 (2026-09-30) -- REAL ORDERS when
+# agent/config.yaml orb_scalping_pilot.enabled is true and dry_run is false.
+# Runs alongside paper candidate 18 (quantos-orb-scalping-live), never
+# instead of it; see the orb_scalping_pilot block in agent/config.yaml.example.
+#
+# Installed by deploy-vm.ps1 but NOT enabled by it. To start the pilot, after
+# the user's explicit go-ahead on the day:
+#   sudo systemctl enable --now quantos-orb-scalping-pilot.timer
+# To stop it, either flip orb_scalping_pilot.enabled to false, or:
+#   sudo systemctl disable --now quantos-orb-scalping-pilot.timer
+# Disabling the timer does NOT close an open position -- the broker's own
+# intraday square-off would; prefer letting the day's 15:20 flatten run.
+
+[Unit]
+Description=QuantOS Candidate 18 ORB -- 1-lot LIVE pilot (gated by agent/config.yaml orb_scalping_pilot.enabled/dry_run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_orb_scalping_live.py --variant pilot
+Environment=HOME=/home/ubuntu
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'

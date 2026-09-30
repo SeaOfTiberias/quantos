@@ -104,7 +104,9 @@ from core.orb_scalping.entry_filter import (  # noqa: E402
 )
 from core.orb_scalping.live_positions import (  # noqa: E402
     ORB_OPEN_POSITIONS_FILTERED_PATH,
+    ORB_OPEN_POSITIONS_PILOT_PATH,
     ORB_TRADED_TODAY_FILTERED_PATH,
+    ORB_TRADED_TODAY_PILOT_PATH,
     OrbOpenPosition,
     add_position,
     get_position,
@@ -115,6 +117,7 @@ from core.orb_scalping.live_positions import (  # noqa: E402
     remove_position,
     update_stops,
 )
+from core.orb_scalping.live_trade_log import LiveTradeEvent, append_live_event  # noqa: E402
 from core.orb_scalping.live_state import compute_live_state  # noqa: E402
 from core.orb_scalping.premium import PREMIUM_STOP_PCT, atm_strike  # noqa: E402
 from core.orb_scalping.signal import SESSION_FLATTEN_UTC  # noqa: E402
@@ -277,6 +280,13 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
         product_type=ProductType.INTRADAY, protective_stop_trigger=protective_stop_trigger,
         tag=tag, dry_run=dry_run, stop_as_limit=True,
     )
+    # Live: P&L must be measured from the REAL fill, not the chain quote the
+    # decision was made on (until 2026-09-30 live stored the quote, so entry
+    # slippage never reached trade_history). The quote is kept in the live
+    # event log for the pilot's fill-vs-quote comparison.
+    quoted_premium = entry_premium
+    if not dry_run and entry_result.fill_price:
+        entry_premium = float(entry_result.fill_price)
     position = OrbOpenPosition(
         underlying=underlying, option_symbol=resolved.symbol, direction=state.direction,
         option_type=option_type, quantity=quantity, strike=strike, expiry=expiry.isoformat(),
@@ -288,6 +298,14 @@ def _enter_new_position(broker, underlying: str, state, dte_floor_days: int,
     )
     add_position(positions, position, path=positions_path)
     mark_traded_today(traded_today, underlying, trade_date_iso, path=traded_today_path)
+    if not dry_run:
+        append_live_event(LiveTradeEvent(
+            event="entry", underlying=underlying, option_symbol=resolved.symbol,
+            direction=state.direction, timestamp=now_utc.isoformat(), quantity=quantity,
+            quoted_premium=quoted_premium, fill_price=entry_result.fill_price,
+            order_id=entry_result.entry_order_id, stop_order_id=entry_result.stop_order_id,
+            note=entry_result.message,
+        ), strategy_name)
     print(f"  {underlying}: ENTERED {state.direction} strike={strike} expiry={expiry} "
           f"premium={entry_premium} qty={quantity} dry_run={dry_run}")
 
@@ -296,6 +314,12 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
                 exit_timestamp, reason: str, positions: dict,
                 trade_history: TradeHistoryService, positions_path: Optional[Path] = None,
                 strategy_name: str = "orb_scalping") -> None:
+    append_live_event(LiveTradeEvent(
+        event="exit", underlying=underlying, option_symbol=existing.option_symbol,
+        direction=existing.direction,
+        timestamp=(exit_timestamp.isoformat() if hasattr(exit_timestamp, "isoformat") else str(exit_timestamp)),
+        quantity=existing.quantity, fill_price=exit_price, reason=reason,
+    ), strategy_name)
     if exit_price is None:
         print(f"  {underlying}: position closed but no exit price could be determined "
               f"(reason={reason}) -- removing from tracking without a ClosedTrade record.")
@@ -319,6 +343,11 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
     remove_position(positions, underlying, existing.trade_date, path=positions_path)
     print(f"  {underlying}: CLOSED reason={reason} exit_price={exit_price} pnl={trade.pnl:.2f}")
 
+
+# The live pilot is a plumbing test at the smallest size, not a capital
+# allocation: whatever orb_scalping_pilot.lots_per_trade says, never more.
+PILOT_MAX_LOTS = 1
+ORB_DRY_RUN_LOG_PILOT_PATH = Path.home() / ".quantos" / "orb_dry_run_trades_pilot.jsonl"
 
 EXIT_QUOTE_ATTEMPTS = 3
 EXIT_QUOTE_RETRY_SECONDS = 2.0
@@ -619,19 +648,25 @@ def _fetch_prior_daily_close(broker, spot_symbol: str, today: date) -> Optional[
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "--variant", choices=["unfiltered", "filtered"], default="unfiltered",
+        "--variant", choices=["unfiltered", "filtered", "pilot"], default="unfiltered",
         help="'unfiltered' (default) is candidate 18 exactly as pre-registered -- the only "
              "variant that has ever placed a real order. 'filtered' is CANDIDATE 18b "
              "(docs/ORB_ENTRY_FILTER_METHODOLOGY.md): same signal, gated to NIFTY "
              "Monday/Friday and BankNifty big-gap-day entries only, its own config block "
              "(orb_scalping_filtered), its own position store and dry-run log -- it runs "
-             "ALONGSIDE unfiltered candidate 18, never in place of it.",
+             "ALONGSIDE unfiltered candidate 18, never in place of it. 'pilot' is the "
+             "1-lot LIVE pilot (2026-09-30): candidate 18's unfiltered signal with real "
+             "orders, own config block (orb_scalping_pilot), own position store, "
+             "traded-today mark and live event log, capped at PILOT_MAX_LOTS; it also "
+             "runs alongside paper candidate 18, never in place of it.",
     )
     args = parser.parse_args(argv)
     filtered = args.variant == "filtered"
+    pilot = args.variant == "pilot"
 
     config = load_config("agent/config.yaml")
-    config_key = "orb_scalping_filtered" if filtered else "orb_scalping"
+    config_key = {"filtered": "orb_scalping_filtered", "pilot": "orb_scalping_pilot"}.get(
+        args.variant, "orb_scalping")
     orb_cfg = config.get(config_key, {})
     if not orb_cfg.get("enabled", False):
         print(f"{config_key}.enabled is false in agent/config.yaml -- nothing to do.")
@@ -639,14 +674,18 @@ def main(argv: Optional[list] = None) -> int:
 
     dry_run = bool(orb_cfg.get("dry_run", True))
     lots_per_trade = int(orb_cfg.get("lots_per_trade", 1))
+    if pilot and lots_per_trade > PILOT_MAX_LOTS:
+        print(f"orb_scalping_pilot.lots_per_trade={lots_per_trade} exceeds the pilot cap -- "
+              f"using {PILOT_MAX_LOTS}. Scaling past the pilot is a separate decision.")
+        lots_per_trade = PILOT_MAX_LOTS
     # Dynamic (Kelly-based) sizing is OPT-IN and defaults to False -- the
     # existing fixed lots_per_trade behaviour is unchanged unless this is
     # deliberately turned on, same "new capability defaults to the old
     # behaviour" pattern as every other flag in this config block.
-    dynamic_sizing = bool(orb_cfg.get("dynamic_sizing", False))
+    dynamic_sizing = bool(orb_cfg.get("dynamic_sizing", False)) and not pilot
     starting_capital = float(orb_cfg.get("starting_capital", 0.0))
     min_capital_floor = float(orb_cfg.get("min_capital_floor", 0.0))
-    strategy_name = "orb_scalping_filtered" if filtered else "orb_scalping"
+    strategy_name = config_key
     dte_floor_days = {
         "NIFTY": int(orb_cfg.get("nifty_dte_floor_days", NIFTY_DTE_FLOOR_DAYS)),
         "BANKNIFTY": int(orb_cfg.get("banknifty_dte_floor_days", BANKNIFTY_DTE_FLOOR_DAYS)),
@@ -657,9 +696,14 @@ def main(argv: Optional[list] = None) -> int:
         print("ERROR: broker connect() failed -- check the Fyers token.")
         return 1
 
-    positions_path = ORB_OPEN_POSITIONS_FILTERED_PATH if filtered else None
-    traded_today_path = ORB_TRADED_TODAY_FILTERED_PATH if filtered else None
-    dry_run_log_path = ORB_DRY_RUN_LOG_FILTERED_PATH if filtered else None
+    positions_path = (ORB_OPEN_POSITIONS_FILTERED_PATH if filtered else
+                      ORB_OPEN_POSITIONS_PILOT_PATH if pilot else None)
+    traded_today_path = (ORB_TRADED_TODAY_FILTERED_PATH if filtered else
+                         ORB_TRADED_TODAY_PILOT_PATH if pilot else None)
+    # A pilot left in dry_run (a rehearsal) must never write into candidate
+    # 18's paper log -- that log is 18b's verdict baseline.
+    dry_run_log_path = (ORB_DRY_RUN_LOG_FILTERED_PATH if filtered else
+                        ORB_DRY_RUN_LOG_PILOT_PATH if pilot else None)
 
     # trade_history.json stays shared/unparametrized across both variants:
     # dry_run never writes to it (see _manage_existing_position's dry_run
