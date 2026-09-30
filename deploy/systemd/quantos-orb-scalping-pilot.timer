@@ -1,12 +1,12 @@
 [Unit]
-Description=Fires the candidate 18 1-lot LIVE pilot every minute during NSE market hours, at :30 (not enabled by default -- see the .service comment)
+Description=Fires the candidate 18 1-lot LIVE pilot every minute during NSE market hours, at :40 (not enabled by default -- see the .service comment)
 
 [Timer]
-# :30 past each minute, not :00: candidate 18 and 18b both fire at :00 and
-# already collide on Fyers' rate limit (429 "request limit reached") a few
-# times a week. The pilot enters/exits ~30s after paper 18 as a result.
-OnCalendar=Mon..Fri *-*-* 03:45..59:30
-OnCalendar=Mon..Fri *-*-* 04..09:*:30
+# :40 past each minute: 18 + the stop-out probe fire at :00 and 18b at :20,
+# spread out so they stop colliding on Fyers' rate limit (429 "request
+# limit reached"). The pilot enters/exits ~40s after paper 18 as a result.
+OnCalendar=Mon..Fri *-*-* 03:45..59:40
+OnCalendar=Mon..Fri *-*-* 04..09:*:40
 Persistent=false
 
 [Install]

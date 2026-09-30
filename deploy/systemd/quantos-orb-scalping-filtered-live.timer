@@ -2,13 +2,23 @@
 Description=Fires Candidate 18b (ORB entry-filtered strategy) every minute during NSE market hours
 
 [Timer]
-# Identical schedule to quantos-orb-scalping-live.timer, same UTC-not-IST
+# Same schedule as quantos-orb-scalping-live.timer but offset to :20 (see
+# below), same UTC-not-IST
 # reasoning (the VM runs in Etc/UTC; OnCalendar is evaluated in the
 # system's local timezone, not the .service's ExecCondition's explicit
 # TZ=Asia/Kolkata). Every minute, 09:15-15:30 IST = 03:45-10:00 UTC.
-OnCalendar=Mon..Fri *-*-* 03:45..59:00
-OnCalendar=Mon..Fri *-*-* 04..09:*:00
-OnCalendar=Mon..Fri *-*-* 10:00:00
+#
+# Fires at :20 past each minute, not :00 (2026-09-30): candidate 18, 18b
+# and the stop-out probe all firing in the same second hit Fyers' rate
+# limit (429 "request limit reached") several times an hour, skipping that
+# minute's stop checks. 18 and the stop-out probe stay at :00 -- the probe
+# feeds 18's pre-registered cost gate, so its timing is not moved; the live
+# pilot fires at :40. Only when in the minute this runs changes, not any
+# trading rule; 18b's entries land ~20s later, the same way for its whole
+# prospective window from here on.
+OnCalendar=Mon..Fri *-*-* 03:45..59:20
+OnCalendar=Mon..Fri *-*-* 04..09:*:20
+OnCalendar=Mon..Fri *-*-* 10:00:20
 
 # A missed fire is harmless and self-healing (see the .service file) --
 # no catch-up needed.
