@@ -108,6 +108,7 @@ def orb_report() -> dict:
     from core.orb_scalping.costs import stratified_spread_trade_cost
     from core.orb_scalping.dry_run_log import load_dry_run_trades
     from core.orb_scalping.expiry import is_nifty_weekly_expiry_day
+    from core.orb_scalping.premium import PREMIUM_STOP_PCT
 
     cfg = _config_block("orb_scalping")
     capital = float(cfg.get("starting_capital") or 0.0)
@@ -126,6 +127,11 @@ def orb_report() -> dict:
                 t.entry_premium, t.exit_premium, t.quantity, d, t.underlying, is_expiry,
             ).total
             gross = (t.exit_premium - t.entry_premium) * t.quantity
+            # Paper exits before 2026-09-30 never enforced the 25% premium
+            # stop (live, a resting SL_M does). Flag rows that fell through
+            # it rather than rewrite the append-only log.
+            stop_missed = (t.exit_reason != "premium_stop"
+                           and t.exit_premium < t.entry_premium * (1 - PREMIUM_STOP_PCT))
             trades.append({
                 "label":           f"{t.underlying} {t.direction}",
                 "underlying":      t.underlying,
@@ -137,6 +143,7 @@ def orb_report() -> dict:
                 "entry_price":     t.entry_premium,
                 "exit_price":      t.exit_premium,
                 "expiry_day":      is_expiry,
+                "premium_stop_missed": stop_missed,
                 "gross_pnl":       round(gross, 2),
                 "costs":           round(costs, 2),
                 "net_pnl":         round(gross - costs, 2),
@@ -148,6 +155,7 @@ def orb_report() -> dict:
         "cost_basis": "Stratified spread (locked-final research cost variant)",
         "backtest": BACKTEST_REFERENCE["orb"],
         "sizing_changes": SIZING_CHANGES["orb"],
+        "premium_stop_missed": sum(1 for t in trades if t["premium_stop_missed"]),
         "unpriced": unpriced,
         "summary":  _summary(trades, capital),
         "curve":    _curve(trades, capital),

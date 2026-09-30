@@ -140,7 +140,10 @@ function TradeTable({ trades, kind }) {
               <td style={td}>{t.quantity}</td>
               <td style={td}>{t.entry_price.toFixed(2)}</td>
               <td style={td}>{t.exit_price.toFixed(2)}</td>
-              <td style={{ ...td, color: C.mid }}>{t.exit_reason.replace(/_/g, " ")}</td>
+              <td style={{ ...td, color: C.mid }}>
+                {t.exit_reason.replace(/_/g, " ")}
+                {t.premium_stop_missed && <span style={{ color: C.gold, fontSize: 9, marginLeft: 6 }}>NO PREM STOP</span>}
+              </td>
               <td style={{ ...td, color: pnlColor(t.gross_pnl) }}>{signedInr(t.gross_pnl)}</td>
               <td style={{ ...td, color: C.mid }}>{inr(t.costs)}</td>
               <td style={{ ...td, color: pnlColor(t.net_pnl), fontWeight: 700 }}>{signedInr(t.net_pnl)}</td>
@@ -210,6 +213,13 @@ function StrategyReport({ report, kind, emptyNote }) {
           Sizing change from {c.date}: {c.label}. Earlier trades were sized differently; the curve uses the current starting capital.
         </div>
       ))}
+
+      {report.premium_stop_missed > 0 && (
+        <div style={{ fontSize: 10, color: C.gold, marginTop: 4 }}>
+          {report.premium_stop_missed} trade{report.premium_stop_missed === 1 ? "" : "s"} marked NO PREM STOP fell through the 25% premium stop,
+          which paper did not enforce before 2026-09-30 (live, a resting stop order would have closed it near the trigger). Shown as logged, not corrected.
+        </div>
+      )}
 
       {report.unpriced > 0 && (
         <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>

@@ -20,6 +20,7 @@ from core.brokers.base import (  # noqa: E402
 )
 from core.options.fyers_symbol_master import ResolvedOption  # noqa: E402
 from core.options.models import OptionType  # noqa: E402
+from core.orb_scalping.dry_run_log import load_dry_run_trades  # noqa: E402
 from core.orb_scalping.live_positions import get_position  # noqa: E402
 from core.risk import ClosedTrade, TradeHistoryService  # noqa: E402
 
@@ -93,12 +94,15 @@ class _FakeBroker:
         self.placed_orders = []
         self.cancelled_order_ids = []
         self._next_id = 1
+        # Per-symbol overrides (e.g. an option's own premium); anything
+        # not listed quotes at index_ltp, as before.
+        self.symbol_ltps = {}
 
     def get_historical_data(self, symbol, timeframe, from_date, to_date):
         return [c for c in self._candles if c.timestamp <= to_date]
 
     def get_ltp(self, symbols):
-        return {s: self.index_ltp for s in symbols}
+        return {s: self.symbol_ltps.get(s, self.index_ltp) for s in symbols}
 
     def get_option_chain(self, underlying, expiry_epoch):
         return {"optionsChain": self._chain_rows}
@@ -294,6 +298,65 @@ def test_dry_run_index_stop_exit_removes_position_without_recording_trade(monkey
     assert get_position(positions, "NIFTY", "2026-09-03") is None
     assert trade_history.get_trade_history() == []
     assert broker.placed_orders == []  # dry_run flatten places no real order either
+
+
+def _dry_run_fire(monkeypatch, tmp_path, index_ltp, option_ltp):
+    """One dry-run management fire on the fixture CALL position (index stop
+    23999, premium stop 37.5), with the option quoting at `option_ltp`."""
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now_utc = candles[-1].timestamp + timedelta(minutes=6)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now_utc))
+    broker = _FakeBroker(candles, index_ltp=index_ltp, chain_rows=[])
+    broker.symbol_ltps["NSE:NIFTYTESTCE"] = option_ltp
+    positions = {"NIFTY:2026-09-03": _existing_call_position()}
+    log_path = tmp_path / "dry_run.jsonl"
+    trade_history = TradeHistoryService()
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=trade_history, traded_today=set(),
+                            dry_run_log_path=log_path)
+    return broker, positions, trade_history, load_dry_run_trades(log_path)
+
+
+def test_premium_stop_hit_is_pure_and_none_safe():
+    assert mod._premium_stop_hit(37.5, 37.5) is True
+    assert mod._premium_stop_hit(10.0, 37.5) is True
+    assert mod._premium_stop_hit(37.6, 37.5) is False
+    assert mod._premium_stop_hit(None, 37.5) is False
+    assert mod._premium_stop_hit(10.0, None) is False
+
+
+def test_dry_run_premium_stop_exits_at_trigger_even_with_index_stop_intact(monkeypatch, tmp_path):
+    """Regression for 2026-09-29: BANKNIFTY's put fell 220.35 -> 2.95 with
+    the index stop never touched, and dry_run -- which has no resting
+    SL_M -- held it to session_flatten. The option below its 25% trigger
+    must now close the paper position, logged at the trigger level."""
+    broker, positions, trade_history, logged = _dry_run_fire(
+        monkeypatch, tmp_path, index_ltp=24003.0, option_ltp=5.0)  # index well above 23999
+    assert get_position(positions, "NIFTY", "2026-09-03") is None
+    assert trade_history.get_trade_history() == []
+    assert broker.placed_orders == []
+    assert len(logged) == 1
+    assert logged[0].exit_reason == "premium_stop"
+    assert logged[0].exit_premium == 37.5
+
+
+def test_dry_run_premium_above_trigger_keeps_position_open(monkeypatch, tmp_path):
+    broker, positions, _, logged = _dry_run_fire(
+        monkeypatch, tmp_path, index_ltp=24003.0, option_ltp=40.0)
+    assert get_position(positions, "NIFTY", "2026-09-03") is not None
+    assert logged == []
+
+
+def test_dry_run_premium_stop_takes_priority_over_index_stop_same_fire(monkeypatch, tmp_path):
+    """Both breached in one fire: live, the resting SL_M would already have
+    filled intra-minute, so the paper record says premium_stop."""
+    _, positions, _, logged = _dry_run_fire(
+        monkeypatch, tmp_path, index_ltp=23990.0, option_ltp=30.0)
+    assert get_position(positions, "NIFTY", "2026-09-03") is None
+    assert [t.exit_reason for t in logged] == ["premium_stop"]
 
 
 def test_live_index_stop_exit_flattens_and_records_trade(monkeypatch, tmp_path):

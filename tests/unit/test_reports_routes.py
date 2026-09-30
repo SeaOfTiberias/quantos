@@ -109,3 +109,19 @@ def test_one_broken_report_does_not_blank_the_other(monkeypatch):
         raise RuntimeError("x")
     boom.__name__ = "orb_report"
     assert routes._safe(boom) == {"error": "RuntimeError: x"}
+
+
+@pytest.mark.asyncio
+async def test_orb_flags_exits_that_fell_through_the_unenforced_premium_stop(_isolated):
+    """2026-09-29: paper held a BANKNIFTY put from 220.35 to 2.95 because
+    dry_run never enforced the 25% premium stop. Such rows are flagged,
+    not rewritten; a real premium_stop exit or a small loss is not."""
+    _write_jsonl(_isolated / "orb_dry_run_trades.jsonl", [
+        _orb("BANKNIFTY", 220.35, 2.95, 30, day="2026-09-29", exit_reason="session_flatten"),
+        _orb("NIFTY", 100.0, 75.0, 65, day="2026-09-30", exit_reason="premium_stop"),
+        _orb("NIFTY", 100.0, 80.0, 65, day="2026-09-30", exit_reason="stop"),
+    ])
+    orb = (await _get()).json()["orb"]
+    assert orb["premium_stop_missed"] == 1
+    flagged = [t for t in orb["trades"] if t["premium_stop_missed"]]
+    assert [(t["underlying"], t["exit_price"]) for t in flagged] == [("BANKNIFTY", 2.95)]

@@ -293,6 +293,57 @@ def _close_out(underlying: str, existing: OrbOpenPosition, exit_price: Optional[
     print(f"  {underlying}: CLOSED reason={reason} exit_price={exit_price} pnl={trade.pnl:.2f}")
 
 
+def _premium_stop_hit(option_ltp: Optional[float], premium_stop: Optional[float]) -> bool:
+    """Pure: has the option's own price reached the fixed 25%-of-entry
+    trigger? A missing quote or missing trigger is never a hit."""
+    return option_ltp is not None and premium_stop is not None and option_ltp <= premium_stop
+
+
+def _dry_run_premium_stop_exit(broker, underlying: str, existing: OrbOpenPosition,
+                                now_utc: datetime, positions: dict,
+                                positions_path: Optional[Path] = None,
+                                dry_run_log_path: Optional[Path] = None) -> bool:
+    """dry_run stand-in for the real resting SL_M order. Live, that order
+    sits at the broker and fires on its own, and the reconcile step above
+    notices the fill; dry_run places no order and skips the reconcile, so
+    until 2026-09-30 nothing enforced the premium stop at all on paper.
+    That day before, BANKNIFTY's 0-DTE put fell 220.35 -> 2.95 and rode to
+    session_flatten (-Rs6,522 paper vs ~-Rs1,653 had the stop existed),
+    while core/orb_scalping/premium.py's backtest -- the thing paper is
+    meant to be compared against -- does apply it.
+
+    Records the exit AT the trigger level, not the polled LTP: the real
+    SL_M would have fired intra-minute at the trigger (plus slippage),
+    whereas this check only sees the price once per fire, so the polled
+    LTP can already be well past it. Same convention as the backtest's
+    premium_stop exit. The polled LTP is printed for the audit trail.
+    Returns True if it closed the position."""
+    try:
+        option_ltp = broker.get_ltp([existing.option_symbol]).get(existing.option_symbol)
+    except Exception as e:
+        print(f"  {underlying}: could not fetch option quote for the dry-run premium stop ({e}).")
+        return False
+    if not _premium_stop_hit(option_ltp, existing.current_premium_stop):
+        return False
+
+    flatten_position(
+        broker, symbol=existing.option_symbol, direction=OrderDirection.BUY,
+        quantity=existing.quantity, product_type=ProductType.INTRADAY,
+        stop_order_id=existing.stop_order_id,
+        tag=f"orb-{underlying.lower()}-{existing.trade_date}-exit", dry_run=True,
+    )
+    append_dry_run_trade(DryRunTrade(
+        underlying=underlying, direction=existing.direction,
+        entry_timestamp=existing.entry_timestamp, entry_premium=existing.entry_premium,
+        exit_timestamp=now_utc.isoformat(), exit_reason="premium_stop",
+        quantity=existing.quantity, exit_premium=existing.current_premium_stop,
+    ), path=dry_run_log_path)
+    print(f"  {underlying}: [dry_run] would exit reason=premium_stop -- option LTP {option_ltp} "
+          f"<= trigger {existing.current_premium_stop}; logged at the trigger, no ClosedTrade recorded.")
+    remove_position(positions, underlying, existing.trade_date, path=positions_path)
+    return True
+
+
 def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
                                existing: OrbOpenPosition, dry_run: bool, positions: dict,
                                trade_history: TradeHistoryService, now_utc: datetime,
@@ -319,7 +370,9 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
     broker-side reconcile step is skipped entirely -- checking
     broker.get_positions() for a symbol that was never really bought
     would immediately (and wrongly) look "closed" on the very next fire.
-    dry_run relies solely on the script's own state-based checks below."""
+    dry_run relies solely on the script's own state-based checks below,
+    starting with _dry_run_premium_stop_exit() as the stand-in for the
+    resting premium SL_M (added 2026-09-30)."""
     if not dry_run:
         reconcile = reconcile_position(broker, symbol=existing.option_symbol,
                                         stop_order_id=existing.stop_order_id)
@@ -329,6 +382,10 @@ def _manage_existing_position(broker, underlying: str, spot_symbol: str, state,
                        reason, positions, trade_history, positions_path=positions_path,
                        strategy_name=strategy_name)
             return
+    elif _dry_run_premium_stop_exit(broker, underlying, existing, now_utc, positions,
+                                    positions_path=positions_path,
+                                    dry_run_log_path=dry_run_log_path):
+        return
 
     past_flatten = now_utc.time() >= SESSION_FLATTEN_UTC
     index_ltp = broker.get_ltp([spot_symbol]).get(spot_symbol)
