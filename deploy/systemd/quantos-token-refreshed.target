@@ -19,9 +19,11 @@ Documentation=man:systemd.target(5)
 # path unit, never pulled in at boot -- a boot-time fire would run the whole
 # batch against whatever stale token happened to be on disk.
 Wants=quantos-orb-spread-probe.service
-Wants=quantos-rotation-pilot.service
 Wants=quantos-paper-momentum.service
 Wants=quantos-momentum-shortlist.service
+# quantos-rotation-pilot.service was removed 2026-09-30 (retired -- see the
+# banner in its unit file). Re-add its Wants= only together with a
+# market-hours gate: this batch runs pre-market.
 
 # A target has no processes, so once started it stays active forever unless
 # something stops it -- and a systemd .path unit only watches while it is in
@@ -37,6 +39,6 @@ Wants=quantos-momentum-shortlist.service
 # it, which re-arms the path for tomorrow. Nothing else pulls this target in
 # (there is no [Install]; the path unit's Triggers= is not a Wants=), so it
 # becomes unneeded immediately -- that is fine and deliberate. Wants= is a
-# start-time dependency only, so the four jobs, already queued and ordered by
+# start-time dependency only, so the three jobs, already queued and ordered by
 # their own After= chain, run to completion after the target has gone away.
 StopWhenUnneeded=yes

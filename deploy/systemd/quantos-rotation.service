@@ -19,7 +19,7 @@
 # are untouched (still true/true — it never traded real money).
 #
 # NOT to be confused with quantos-rotation-pilot.*, which is candidate 11's
-# real-capital pilot and stays live. They share core/rotation/ranker.py but
+# real-capital pilot (itself retired 2026-09-30). They share core/rotation/ranker.py but
 # are different strategies.
 # ══════════════════════════════════════════════════════════════════════
 

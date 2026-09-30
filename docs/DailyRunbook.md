@@ -42,12 +42,11 @@ and starts `quantos-token-refreshed.target`, which runs, in this order:
 | # | Unit | Off-boundary cost | Notes |
 |---|---|---|---|
 | 1 | `quantos-orb-spread-probe` | ~5s | Skipped unless NSE is open (Mon–Fri 09:15–15:30 IST) |
-| 2 | `quantos-rotation-pilot` | ~2s no-op | Real orders, but only on a quarter boundary |
-| 3 | `quantos-paper-momentum` | ~2s no-op | Paper only |
-| 4 | `quantos-momentum-shortlist` | ~11 min | Once per IST weekday, stamped |
+| 2 | `quantos-paper-momentum` | ~2s no-op | Paper only |
+| 3 | `quantos-momentum-shortlist` | ~11 min | Once per IST weekday, stamped |
 
 They run single-file on purpose — the VM has 956 MB and no `MemoryMax` on any
-of them, and on a quarter boundary jobs 2–4 would otherwise each pull a few
+of them, and on a quarter boundary jobs 2–3 would otherwise each pull a few
 hundred symbol series concurrently.
 
 **Why this exists.** Before it, each of those jobs sat on its own fixed
@@ -63,7 +62,15 @@ inotify watch misses.
 every Monday on the same expired token while firing a Telegram
 `POST /rotation/failed` each week. Making a dead strategy fire reliably is the
 wrong fix. Re-enable with `sudo systemctl enable --now quantos-rotation.timer`
-if it is ever revived. It is *not* `quantos-rotation-pilot`, which stays live.
+if it is ever revived.
+
+**Also retired: `quantos-rotation-pilot`** (candidate 11's real-capital pilot),
+removed from the batch and timer disabled on 2026-09-30. Both of its quarter
+fires landed pre-market; the second was stopped by hand because a pre-market
+RMS rejection would have been recorded as ~20 filled positions (details in
+the unit file's banner). Candidate 11's evidence is the paper walk-forward,
+which still runs. Do not re-enable without a market-hours gate and
+fill-confirmed position recording.
 
 To confirm a morning went through:
 

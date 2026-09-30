@@ -12,7 +12,10 @@ Wants=network-online.target
 # probe is ~5s and the rotation jobs no-op in ~2s off-boundary, so the
 # shortlist still starts within seconds of the refresh.
 # A failed or ExecCondition-skipped predecessor still releases the barrier.
-After=quantos-rotation-pilot.service
+# The spread probe is listed directly since the pilot left the batch
+# (2026-09-30): After= on a unit that isn't queued orders nothing, so
+# without it this job would race the probe.
+After=quantos-orb-spread-probe.service quantos-rotation-pilot.service
 
 [Service]
 Type=oneshot

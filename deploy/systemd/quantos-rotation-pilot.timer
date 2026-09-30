@@ -1,3 +1,29 @@
+# ══════════════════════════════════════════════════════════════════════
+# RETIRED ON THE VM 2026-09-30 — deliberately, do not re-enable casually.
+#
+# Candidate 11's real-capital pilot. Its only job was to prove the live
+# order path end to end; the strategy's actual evidence is the paper
+# walk-forward (quantos-paper-momentum), which keeps running. In two
+# quarter fires it never completed one real order, and both fired
+# PRE-MARKET (07:18-07:50 IST, the token-refresh batch runs before the
+# 09:15 open):
+#   - Q2 (2026-07-29): every CNC order bounced by Fyers RMS 16387.
+#   - Q3 (2026-09-30): stopped by hand before placing anything, because
+#     since c0b5b90 place_order() reads Fyers' pre-market ack (s=ok) as
+#     success, the RMS rejection only shows in the orderbook afterwards,
+#     and _poll_fill_price() (core/rotation/executor.py) falls back to the
+#     reference price -- so the pilot would have recorded ~20 positions
+#     that never filled and marked the quarter done.
+#
+# Unhooked, not deleted: removed from quantos-token-refreshed.target and
+# the timer is disabled. Before bringing it back, add a market-hours gate
+# (NSE calendar) and record positions only on a confirmed fill; then
+#   sudo systemctl enable --now quantos-rotation-pilot.timer
+# and re-add the Wants= line to quantos-token-refreshed.target.
+# Q3 2026 is still unrecorded in its state file -- a revived pilot will
+# act on it immediately.
+# ══════════════════════════════════════════════════════════════════════
+
 [Unit]
 Description=Daily trigger for QuantOS Momentum Turnover Real-Capital Pilot (quarterly-acting)
 
