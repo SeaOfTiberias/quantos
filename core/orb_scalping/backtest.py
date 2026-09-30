@@ -144,6 +144,8 @@ def run_index_backtest(
     index_candles: list[OHLCV], vix_candles: list[OHLCV], *, underlying: str,
     arm_multiplier: float = 1.0,
     intraday_dte: bool = False,
+    time_weights=None,
+    vol_scale: float = 1.0,
     banknifty_expiry_policy: str = "current",
     entry_delay_candles: int = 0,
 ) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade], list[BacktestTrade],
@@ -225,7 +227,7 @@ def run_index_backtest(
         is_expiry_day = is_expiry_day_fn(day, trading_days)
         premium_trade = reconstruct_premium(
             index_trade, day_candles, vix_day_candles, expiry, strike_interval,
-            intraday_dte=intraday_dte,
+            intraday_dte=intraday_dte, time_weights=time_weights, vol_scale=vol_scale,
         )
 
         trade_num += 1

@@ -209,3 +209,38 @@ def test_zero_dte_option_decays_toward_intrinsic_only_with_intraday_dte():
     assert new.entry_premium < old.entry_premium          # ~6h of time value, not a full day
     assert new.exit_premium < old.exit_premium            # decayed toward intrinsic by the close
     assert new.exit_reason == "premium_stop"              # and the 25% stop now fires, as it would live
+
+
+# ─── 2026-09-30: TimeWeights (trading-time decay, post-Fable) ────────────
+
+def test_calendar_weights_reproduce_calendar_days_everywhere():
+    from core.orb_scalping.premium import TimeWeights, days_to_expiry_close, effective_days_to_expiry
+    expiry = date(2026, 10, 6)                                            # a Tuesday
+    for at in (datetime(2026, 9, 30, 4, 10, tzinfo=timezone.utc),        # Wed, in session
+               datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc),        # Wed night
+               datetime(2026, 10, 2, 11, 0, tzinfo=timezone.utc),        # Fri evening (weekend gap)
+               datetime(2026, 10, 4, 9, 0, tzinfo=timezone.utc),         # Sunday
+               datetime(2026, 10, 6, 9, 55, tzinfo=timezone.utc)):       # expiry, 5 min before close
+        assert abs(effective_days_to_expiry(expiry, at, TimeWeights.calendar())
+                   - days_to_expiry_close(expiry, at)) < 1e-9, at
+
+
+def test_trading_252_charges_only_sessions():
+    from core.orb_scalping.premium import TimeWeights, effective_days_to_expiry
+    w = TimeWeights.trading_252()
+    expiry = date(2026, 10, 6)                                            # Tue
+    fri_close = datetime(2026, 10, 2, 10, 0, tzinfo=timezone.utc)
+    mon_open = datetime(2026, 10, 5, 3, 45, tzinfo=timezone.utc)
+    assert abs(effective_days_to_expiry(expiry, fri_close, w)
+               - effective_days_to_expiry(expiry, mon_open, w)) < 1e-9    # weekend costs nothing
+    # from Monday's open: two full sessions left (Mon, Tue)
+    assert abs(effective_days_to_expiry(expiry, mon_open, w) - 2 * 365 / 252) < 1e-9
+
+
+def test_heavier_session_weight_decays_a_held_option_faster():
+    from core.orb_scalping.premium import TimeWeights, effective_days_to_expiry
+    expiry, entry, exit_ = (date(2026, 10, 6), datetime(2026, 10, 1, 4, 10, tzinfo=timezone.utc),
+                            datetime(2026, 10, 1, 9, 50, tzinfo=timezone.utc))
+    def burned(w):
+        return effective_days_to_expiry(expiry, entry, w) - effective_days_to_expiry(expiry, exit_, w)
+    assert burned(TimeWeights(0.8, 0.29, 0.6)) > 3 * burned(TimeWeights.calendar())

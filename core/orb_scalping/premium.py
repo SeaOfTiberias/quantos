@@ -27,6 +27,7 @@ contract.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 from datetime import date, datetime, time, timedelta, timezone
 
 from core.brokers.base import OHLCV
@@ -90,6 +91,79 @@ def days_to_expiry_close(expiry: date, at: datetime) -> float:
     return (close - at).total_seconds() / 86400.0
 
 
+SESSION_OPEN_UTC = time(3, 45)     # 09:15 IST
+_SESSION_HOURS = 6.25
+_WEEKNIGHT_HOURS = 17.75
+_WEEKEND_HOURS = 65.75             # Fri 15:30 IST -> Mon 09:15 IST
+
+
+@dataclass(frozen=True)
+class TimeWeights:
+    """How many calendar-day-equivalents of option time decay each stretch
+    of the week carries (2026-09-30, after Fable's review of fix 2). Calendar
+    time spreads decay evenly over 24h; the market loads it onto trading
+    hours. `calendar()` reproduces days_to_expiry_close() exactly. Fitted
+    values come from scripts/calibrate_orb_time_convention.py and are frozen
+    in its committed results doc."""
+    session: float      # one full 09:15-15:30 IST session
+    weeknight: float    # 15:30 IST -> next weekday's 09:15 IST
+    weekend: float      # Fri 15:30 IST -> Mon 09:15 IST (a longer gap scales pro rata)
+
+    @staticmethod
+    def calendar() -> "TimeWeights":
+        return TimeWeights(_SESSION_HOURS / 24, _WEEKNIGHT_HOURS / 24, _WEEKEND_HOURS / 24)
+
+    @staticmethod
+    def trading_252() -> "TimeWeights":
+        """Standard trading-day convention: 365/252 calendar-day-equivalents
+        per session, nothing overnight or over weekends."""
+        return TimeWeights(365 / 252, 0.0, 0.0)
+
+
+def _next_session_open(t: datetime) -> datetime:
+    d = t.date()
+    while True:
+        start = datetime.combine(d, SESSION_OPEN_UTC, tzinfo=timezone.utc)
+        if d.weekday() < 5 and start > t:
+            return start
+        d += timedelta(days=1)
+
+
+def _prev_session_close(t: datetime) -> datetime:
+    d = t.date()
+    while True:
+        end = datetime.combine(d, EXPIRY_CLOSE_UTC, tzinfo=timezone.utc)
+        if d.weekday() < 5 and end <= t:
+            return end
+        d -= timedelta(days=1)
+
+
+def effective_days_to_expiry(expiry: date, at: datetime, w: TimeWeights) -> float:
+    """Calendar-day-equivalents of decay left from `at` to the 15:30 IST close
+    on `expiry`, weighting each stretch by `w`. Weekdays are sessions (NSE
+    holidays are not known here; a gap over one scales the weekend weight pro
+    rata by its length). <= 0 at/after the close."""
+    end = datetime.combine(expiry, EXPIRY_CLOSE_UTC, tzinfo=timezone.utc)
+    if at >= end:
+        return (end - at).total_seconds() / 86400.0
+    total, t = 0.0, at
+    while t < end:
+        s_open = datetime.combine(t.date(), SESSION_OPEN_UTC, tzinfo=timezone.utc)
+        s_close = datetime.combine(t.date(), EXPIRY_CLOSE_UTC, tzinfo=timezone.utc)
+        if t.weekday() < 5 and s_open <= t < s_close:
+            seg_end = min(end, s_close)
+            total += w.session * (seg_end - t).total_seconds() / 3600 / _SESSION_HOURS
+        else:
+            gap_start, gap_end = _prev_session_close(t), _next_session_open(t)
+            gap_hours = (gap_end - gap_start).total_seconds() / 3600
+            weight = (w.weeknight if abs(gap_hours - _WEEKNIGHT_HOURS) < 1e-6
+                      else w.weekend * gap_hours / _WEEKEND_HOURS)
+            seg_end = min(end, gap_end)
+            total += weight * (seg_end - t).total_seconds() / 3600 / gap_hours
+        t = seg_end
+    return total
+
+
 def reconstruct_premium(
     index_trade: IndexTrade,
     day_candles: list[OHLCV],
@@ -97,6 +171,8 @@ def reconstruct_premium(
     expiry: date,
     strike_interval: float,
     intraday_dte: bool = False,
+    time_weights: Optional[TimeWeights] = None,
+    vol_scale: float = 1.0,
 ) -> PremiumTrade:
     """Reconstruct entry/exit premiums for one IndexTrade, walking every
     candle from entry to the index-determined exit to check the 25%
@@ -113,17 +189,29 @@ def reconstruct_premium(
     remained all session, so it never decays toward intrinsic -- the case
     behind 2026-09-29's BANKNIFTY put (220.35 -> 2.95 on its expiry day).
     Added 2026-09-30 for the fix-2 comparison; the locked-final results
-    were produced with False."""
+    were produced with False.
+
+    `time_weights` (default None): price with effective_days_to_expiry()
+    under these weights instead -- overrides `intraday_dte`. See TimeWeights.
+    `vol_scale` (default 1.0): implied vol = vol_scale x India VIX, the per-index
+    level calibrated alongside the weights (BANKNIFTY trades above VIX)."""
+    if time_weights is not None:
+        def dte_at(ts: datetime) -> float:
+            return effective_days_to_expiry(expiry, ts, time_weights)
+    elif intraday_dte:
+        def dte_at(ts: datetime) -> float:
+            return days_to_expiry_close(expiry, ts)
+    else:
+        dte_at = None
     option_type = _option_type(index_trade.direction)
     strike = atm_strike(index_trade.entry_price, strike_interval)
 
     entry_dt = day_candles[index_trade.entry_index].timestamp
     entry_vix = _vix_at(vix_day_candles, index_trade.entry_index)
-    entry_dte = (days_to_expiry_close(expiry, entry_dt) if intraday_dte
-                 else max(1, (expiry - entry_dt.date()).days))
+    entry_dte = dte_at(entry_dt) if dte_at else max(1, (expiry - entry_dt.date()).days)
     entry_premium = compute_greeks(
         spot=index_trade.entry_price, strike=strike, days_to_expiry=entry_dte,
-        implied_vol=entry_vix / 100.0, option_type=option_type,
+        implied_vol=vol_scale * entry_vix / 100.0, option_type=option_type,
     ).theoretical_price
     premium_stop_level = entry_premium * (1 - PREMIUM_STOP_PCT)
 
@@ -138,11 +226,11 @@ def reconstruct_premium(
         spot = index_trade.exit_price if i == index_trade.exit_index else candle.close
         vix = _vix_at(vix_day_candles, i)
         # The candle's CLOSE is what's priced (see below), at the candle's end.
-        dte = (days_to_expiry_close(expiry, candle.timestamp + timedelta(minutes=CANDLE_MINUTES))
-               if intraday_dte else max(1, (expiry - candle.timestamp.date()).days))
+        dte = (dte_at(candle.timestamp + timedelta(minutes=CANDLE_MINUTES)) if dte_at
+               else max(1, (expiry - candle.timestamp.date()).days))
         premium = compute_greeks(
             spot=spot, strike=strike, days_to_expiry=dte,
-            implied_vol=vix / 100.0, option_type=option_type,
+            implied_vol=vol_scale * vix / 100.0, option_type=option_type,
         ).theoretical_price
 
         last_timestamp, last_spot, last_premium = candle.timestamp, spot, premium
