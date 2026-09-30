@@ -54,7 +54,8 @@ class IndexTrade:
 
 def simulate_day(day_candles: list[OHLCV],
                   flatten_time: time = SESSION_FLATTEN_UTC,
-                  arm_multiplier: float = 1.0) -> Optional[IndexTrade]:
+                  arm_multiplier: float = 1.0,
+                  entry_delay_candles: int = 0) -> Optional[IndexTrade]:
     """Simulate one trading day's ORB per
     docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md. No cross-day state — caller
     passes exactly one day's 5-minute candles, already sorted ascending by
@@ -70,7 +71,12 @@ def simulate_day(day_candles: list[OHLCV],
     needed to arm the trailing stop. See
     docs/ORB_ARM_THRESHOLD_METHODOLOGY.md — the only sanctioned use of a
     non-default value is that pre-registered grid backtest; nothing live
-    passes anything but the default."""
+    passes anything but the default.
+
+    `entry_delay_candles` (default 0, unchanged behaviour) enters that many
+    candles AFTER the backtest's normal entry candle -- a sensitivity knob
+    only, added 2026-09-30 to measure what live's one-candle entry lag
+    (fixed in 77c5c98) had been costing. Nothing live passes it."""
     n = len(day_candles)
     if n <= OPENING_RANGE_CANDLES:
         return None
@@ -81,13 +87,17 @@ def simulate_day(day_candles: list[OHLCV],
     range_width = range_high - range_low
 
     pending_direction: Optional[str] = None
+    signal_index: Optional[int] = None
 
     for t in range(OPENING_RANGE_CANDLES, n):
         candle = day_candles[t]
         flatten_now = candle.timestamp.time() >= flatten_time
 
-        # 1) Execute a pending entry queued from the previous candle's signal.
-        if pending_direction is not None:
+        # 1) Execute a pending entry queued from the previous candle's signal
+        #    (or `entry_delay_candles` later).
+        if pending_direction is not None and t - signal_index - 1 >= entry_delay_candles:
+            if flatten_now and entry_delay_candles > 0:
+                return None   # a delayed entry that would land at/after flatten never happens
             direction = pending_direction
             entry_price = candle.open
             initial_stop = range_low if direction == "CALL" else range_high
@@ -99,11 +109,11 @@ def simulate_day(day_candles: list[OHLCV],
             )
 
         # 2) Look for the day's first breakout, on candle close.
-        if not flatten_now:
+        if pending_direction is None and not flatten_now:
             if candle.close > range_high:
-                pending_direction = "CALL"
+                pending_direction, signal_index = "CALL", t
             elif candle.close < range_low:
-                pending_direction = "PUT"
+                pending_direction, signal_index = "PUT", t
 
     return None
 

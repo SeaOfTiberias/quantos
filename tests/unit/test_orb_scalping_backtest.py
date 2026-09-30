@@ -206,3 +206,41 @@ def test_run_index_backtest_prices_an_expiry_day_trade_at_the_wider_stratified_r
     # proving is_expiry_day was correctly detected and threaded through --
     # not just that the two rates differ in the abstract.
     assert trade.costs == as_expiry
+
+
+
+# ─── 2026-09-30: BANKNIFTY expiry-day policy (fix 2) ────────────────────
+
+def _banknifty_breakout_day(day, price=54000.0):
+    candles = flat_day(day, OPENING_RANGE_CANDLES, price=price)
+    candles.append(bar(day, OPENING_RANGE_CANDLES, price + 60))
+    for i in range(OPENING_RANGE_CANDLES + 1, OPENING_RANGE_CANDLES + 60):
+        candles.append(bar(day, i, price + 60))
+    return candles
+
+
+def _run_bn(day, policy):
+    candles = _banknifty_breakout_day(day)
+    vix = [bar(day, i, 15.0) for i in range(len(candles))]
+    *_, stratified = run_index_backtest(candles, vix, underlying="BANKNIFTY",
+                                        banknifty_expiry_policy=policy)
+    return stratified
+
+
+def test_banknifty_skip_policy_takes_no_trade_on_its_expiry_day_only():
+    expiry_day, ordinary = date(2026, 9, 29), date(2026, 9, 28)
+    assert _run_bn(expiry_day, "current") and not _run_bn(expiry_day, "skip")
+    assert len(_run_bn(ordinary, "skip")) == 1
+
+
+def test_banknifty_roll_policy_prices_next_months_contract_on_expiry_day():
+    expiry_day = date(2026, 9, 29)
+    current = _run_bn(expiry_day, "current")[0]
+    rolled = _run_bn(expiry_day, "roll")[0]
+    assert rolled.entry_price > current.entry_price       # ~4 weeks of time value vs a clamped day
+
+
+def test_unknown_banknifty_expiry_policy_is_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        _run_bn(date(2026, 9, 29), "sometimes")

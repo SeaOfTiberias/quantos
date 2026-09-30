@@ -176,3 +176,36 @@ def test_premium_stop_takes_precedence_on_the_same_candle_as_index_exit():
     result = reconstruct_premium(index_trade, day_candles, vix_candles, expiry, strike_interval=50.0)
 
     assert result.exit_reason == "premium_stop"
+
+
+
+# ─── 2026-09-30: intraday time-to-expiry (fix 2) ────────────────────────
+
+def test_days_to_expiry_close_is_fractional_and_hits_zero_at_1530_ist():
+    from core.orb_scalping.premium import days_to_expiry_close
+    d = date(2026, 9, 29)
+    assert days_to_expiry_close(d, datetime(2026, 9, 29, 4, 0, tzinfo=timezone.utc)) == 0.25   # 6h left
+    assert days_to_expiry_close(d, datetime(2026, 9, 29, 10, 0, tzinfo=timezone.utc)) == 0.0
+    assert days_to_expiry_close(d, datetime(2026, 9, 28, 10, 0, tzinfo=timezone.utc)) == 1.0
+
+
+def test_zero_dte_option_decays_toward_intrinsic_only_with_intraday_dte():
+    """The 2026-09-29 shape: a PUT bought on its own expiry day while the
+    index drifts up but never hits the index stop. The old max(1, days)
+    clamp keeps a full day of time value all session; intraday pricing lets
+    it collapse, which is what the real option did (220.35 -> 2.95)."""
+    from core.orb_scalping.signal import IndexTrade
+    day = date(2026, 9, 29)
+    start = datetime(2026, 9, 29, 3, 45, tzinfo=timezone.utc)
+    candles = [OHLCV(timestamp=start + timedelta(minutes=5 * i), open=54000 + 3 * i,
+                     high=54001 + 3 * i, low=53999 + 3 * i, close=54000 + 3 * i, volume=1)
+               for i in range(72)]                                  # to 09:45 UTC, drifting up
+    vix = [OHLCV(timestamp=c.timestamp, open=13, high=13, low=13, close=13, volume=1) for c in candles]
+    trade = IndexTrade(direction="PUT", entry_index=5, entry_price=candles[5].open,
+                       exit_index=71, exit_price=candles[71].close, initial_stop=54500.0,
+                       exit_reason="session_flatten")
+    old = reconstruct_premium(trade, candles, vix, day, 100.0)
+    new = reconstruct_premium(trade, candles, vix, day, 100.0, intraday_dte=True)
+    assert new.entry_premium < old.entry_premium          # ~6h of time value, not a full day
+    assert new.exit_premium < old.exit_premium            # decayed toward intrinsic by the close
+    assert new.exit_reason == "premium_stop"              # and the 25% stop now fires, as it would live

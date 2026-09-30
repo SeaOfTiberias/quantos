@@ -296,3 +296,26 @@ def test_stop_out_before_arming_still_reports_its_mfe():
     assert trade.exit_reason == "stop"
     assert trade.armed is False
     assert trade.max_favorable_points == 3.0
+
+
+
+# ─── 2026-09-30: entry_delay_candles (sensitivity knob) ─────────────────
+
+def test_entry_delay_enters_that_many_candles_later_at_that_candles_open():
+    candles = flat_bars(80, price=24000.0)
+    candles = with_opening_range(candles, range_high=24010.0, range_low=23990.0)
+    breakout_i = OPENING_RANGE_CANDLES + 2
+    candles[breakout_i] = bar(breakout_i, 24000, 24025, 23995, 24020)
+    candles[breakout_i + 2] = bar(breakout_i + 2, 24031, 24033, 24029, 24030)
+    trade = simulate_day(candles, entry_delay_candles=1)
+    assert trade.entry_index == breakout_i + 2
+    assert trade.entry_price == 24031
+    assert trade.initial_stop == 23990.0
+
+
+def test_entry_delay_zero_is_the_default_behaviour():
+    candles = flat_bars(80, price=24000.0)
+    candles = with_opening_range(candles, range_high=24010.0, range_low=23990.0)
+    breakout_i = OPENING_RANGE_CANDLES + 2
+    candles[breakout_i] = bar(breakout_i, 24000, 24025, 23995, 24020)
+    assert simulate_day(candles, entry_delay_candles=0) == simulate_day(candles)

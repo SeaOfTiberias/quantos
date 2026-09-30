@@ -27,7 +27,7 @@ contract.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 
 from core.brokers.base import OHLCV
 from core.options.greeks import compute_greeks
@@ -77,12 +77,26 @@ class PremiumTrade:
     exit_reason:       str     # signal.py's reasons, or "premium_stop"
 
 
+# NSE index options expire at the 15:30 IST close.
+EXPIRY_CLOSE_UTC = time(10, 0)
+CANDLE_MINUTES = 5
+
+
+def days_to_expiry_close(expiry: date, at: datetime) -> float:
+    """Fractional calendar days from `at` to the 15:30 IST close on
+    `expiry`. <= 0 at/after the close (compute_greeks then prices
+    intrinsic value)."""
+    close = datetime.combine(expiry, EXPIRY_CLOSE_UTC, tzinfo=timezone.utc)
+    return (close - at).total_seconds() / 86400.0
+
+
 def reconstruct_premium(
     index_trade: IndexTrade,
     day_candles: list[OHLCV],
     vix_day_candles: list[OHLCV],
     expiry: date,
     strike_interval: float,
+    intraday_dte: bool = False,
 ) -> PremiumTrade:
     """Reconstruct entry/exit premiums for one IndexTrade, walking every
     candle from entry to the index-determined exit to check the 25%
@@ -91,13 +105,22 @@ def reconstruct_premium(
     FIRST in time wins. `expiry` is the already-resolved contract for this
     trading day (including any DTE-floor roll — see
     core/orb_scalping/expiry.py) — this function does no expiry-date logic
-    of its own."""
+    of its own.
+
+    `intraday_dte` (default False, unchanged behaviour): price with the
+    actual fraction of time left to the expiry close instead of
+    `max(1, whole days)`. The clamp prices a 0-DTE option as if a full day
+    remained all session, so it never decays toward intrinsic -- the case
+    behind 2026-09-29's BANKNIFTY put (220.35 -> 2.95 on its expiry day).
+    Added 2026-09-30 for the fix-2 comparison; the locked-final results
+    were produced with False."""
     option_type = _option_type(index_trade.direction)
     strike = atm_strike(index_trade.entry_price, strike_interval)
 
     entry_dt = day_candles[index_trade.entry_index].timestamp
     entry_vix = _vix_at(vix_day_candles, index_trade.entry_index)
-    entry_dte = max(1, (expiry - entry_dt.date()).days)
+    entry_dte = (days_to_expiry_close(expiry, entry_dt) if intraday_dte
+                 else max(1, (expiry - entry_dt.date()).days))
     entry_premium = compute_greeks(
         spot=index_trade.entry_price, strike=strike, days_to_expiry=entry_dte,
         implied_vol=entry_vix / 100.0, option_type=option_type,
@@ -114,7 +137,9 @@ def reconstruct_premium(
         # same close-only discipline as the entry/breakout signal.
         spot = index_trade.exit_price if i == index_trade.exit_index else candle.close
         vix = _vix_at(vix_day_candles, i)
-        dte = max(1, (expiry - candle.timestamp.date()).days)
+        # The candle's CLOSE is what's priced (see below), at the candle's end.
+        dte = (days_to_expiry_close(expiry, candle.timestamp + timedelta(minutes=CANDLE_MINUTES))
+               if intraday_dte else max(1, (expiry - candle.timestamp.date()).days))
         premium = compute_greeks(
             spot=spot, strike=strike, days_to_expiry=dte,
             implied_vol=vix / 100.0, option_type=option_type,

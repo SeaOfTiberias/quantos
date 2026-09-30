@@ -16,7 +16,7 @@ as candidate 15's core/breakout1010/backtest.py.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from core.backtest.parser import BacktestTrade
 from core.brokers.base import OHLCV
@@ -58,8 +58,11 @@ def group_by_day(candles: list[OHLCV]) -> dict[date, list[OHLCV]]:
 
 def resolve_banknifty_expiry(entry_date: date, trading_days: set) -> tuple:
     """Nearest calendar-month BankNifty monthly expiry on/after
-    entry_date — identical rule to candidate 15, no DTE floor (BankNifty's
-    monthly contracts are never within 2 days of expiry at entry). Returns
+    entry_date — identical rule to candidate 15, no DTE floor. CORRECTION
+    2026-09-30: this used to claim BankNifty's monthly contracts "are never
+    within 2 days of expiry at entry" -- false on the expiry day itself,
+    when this returns that same day's (0-DTE) contract, and on the day
+    before. See run_index_backtest's banknifty_expiry_policy. Returns
     (expiry, liquidity_tier) — BankNifty is always "front_week" (never
     rolled), matching resolve_nifty_expiry's shape so run_index_backtest
     can call either uniformly."""
@@ -140,6 +143,9 @@ def _to_backtest_trade(entry_dt: datetime, exit_dt: datetime, entry_premium: flo
 def run_index_backtest(
     index_candles: list[OHLCV], vix_candles: list[OHLCV], *, underlying: str,
     arm_multiplier: float = 1.0,
+    intraday_dte: bool = False,
+    banknifty_expiry_policy: str = "current",
+    entry_delay_candles: int = 0,
 ) -> tuple[list[BacktestTrade], list[BacktestTrade], list[BacktestTrade], list[BacktestTrade],
            list[BacktestTrade], list[BacktestTrade]]:
     """Full per-day simulation for ONE index (underlying: "NIFTY" |
@@ -153,7 +159,15 @@ def run_index_backtest(
     `arm_multiplier` (default 1.0, unchanged behaviour) — see
     core/orb_scalping/signal.py::simulate_day and
     docs/ORB_ARM_THRESHOLD_METHODOLOGY.md. Only the pre-registered grid
-    backtest passes a non-default value."""
+    backtest passes a non-default value.
+
+    Fix-2 comparison knobs (2026-09-30, all default to unchanged behaviour):
+    `intraday_dte` -- see premium.reconstruct_premium; `entry_delay_candles`
+    -- see signal.simulate_day; `banknifty_expiry_policy` -- on BankNifty's
+    own monthly expiry day, "current" trades that day's 0-DTE contract,
+    "roll" trades next month's, "skip" takes no trade. NIFTY ignores it."""
+    if banknifty_expiry_policy not in ("current", "roll", "skip"):
+        raise ValueError(f"unsupported banknifty_expiry_policy: {banknifty_expiry_policy!r}")
     if underlying == "NIFTY":
         lot_size, strike_interval = NIFTY_LOT_SIZE, NIFTY_STRIKE_INTERVAL
         resolve_expiry = resolve_nifty_expiry
@@ -168,6 +182,16 @@ def run_index_backtest(
     idx_by_day = group_by_day(index_candles)
     vix_by_day = group_by_day(vix_candles)
     trading_days = set(idx_by_day.keys())
+    # Expiry resolution looks FORWARD -- a held contract can expire after the
+    # data's last candle -- and adjust_for_holiday() walks BACK to the nearest
+    # date in this set. Without future dates, any expiry past the data's end
+    # collapsed onto the last data day: a phantom 0-DTE contract for every
+    # trade in the window's final weeks (caught 2026-09-30 building the
+    # fix-2 "roll" variant). Future sessions are unknown, so plain weekdays.
+    if trading_days:
+        last = max(trading_days)
+        trading_days |= {last + timedelta(days=i) for i in range(1, 70)
+                         if (last + timedelta(days=i)).weekday() < 5}
 
     clean_trades: list[BacktestTrade] = []
     stressed_trades: list[BacktestTrade] = []
@@ -183,17 +207,25 @@ def run_index_backtest(
         if not vix_day_candles:
             continue
 
-        index_trade = simulate_day(day_candles, arm_multiplier=arm_multiplier)
+        bn_expiry_day = underlying == "BANKNIFTY" and is_expiry_day_fn(day, trading_days)
+        if bn_expiry_day and banknifty_expiry_policy == "skip":
+            continue
+
+        index_trade = simulate_day(day_candles, arm_multiplier=arm_multiplier,
+                                   entry_delay_candles=entry_delay_candles)
         if index_trade is None:
             continue
 
         expiry, liquidity_tier = resolve_expiry(day, trading_days)
+        if bn_expiry_day and banknifty_expiry_policy == "roll":
+            expiry, liquidity_tier = resolve_expiry(day + timedelta(days=1), trading_days)
         # Whether the ENTRY DAY ITSELF is an expiry day — a market-wide
         # spread condition, independent of liquidity_tier (which describes
         # which CONTRACT this trade holds, e.g. NIFTY's DTE-floor roll).
         is_expiry_day = is_expiry_day_fn(day, trading_days)
         premium_trade = reconstruct_premium(
             index_trade, day_candles, vix_day_candles, expiry, strike_interval,
+            intraday_dte=intraday_dte,
         )
 
         trade_num += 1
