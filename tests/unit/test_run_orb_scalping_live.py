@@ -74,6 +74,8 @@ def _isolate_live_event_log(monkeypatch, tmp_path):
     reach the real ~/.quantos (core/orb_scalping/live_trade_log.py)."""
     monkeypatch.setattr("core.orb_scalping.live_trade_log.live_trade_log_path",
                          lambda name: tmp_path / f"{name}_live_trades.jsonl")
+    monkeypatch.setattr("core.orb_scalping.premium_trace.premium_trace_path",
+                         lambda: tmp_path / "orb_premium_trace.jsonl")
     # ...nor the pilot breaker's flag / acknowledgement files.
     monkeypatch.setattr("core.orb_scalping.pilot_guard._dir", lambda base=None: base or tmp_path)
 
@@ -1215,3 +1217,47 @@ def test_banknifty_takes_no_entry_on_its_own_expiry_day(monkeypatch, tmp_path):
 
 def test_banknifty_still_trades_on_ordinary_days(monkeypatch, tmp_path):
     assert _bn_fire(monkeypatch, tmp_path, date(2026, 9, 3)) != {}
+
+
+
+# ─── 2026-09-30: real-premium trace ─────────────────────────────────────
+
+def _trace_fire(monkeypatch, tmp_path, minute, broker_cls=None):
+    from core.orb_scalping import premium_trace
+    _patch_common(monkeypatch, tmp_path)
+    start = datetime(2026, 9, 3, 3, 45, tzinfo=timezone.utc)
+    candles = _entry_candles(start)
+    now = datetime(2026, 9, 3, 4, minute, 10, tzinfo=timezone.utc)
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime(now))
+    broker = (broker_cls or _FakeBroker)(candles, index_ltp=24003.0, chain_rows=[])
+    broker.symbol_ltps.update({"NSE:NIFTYTESTCE": 55.0, "INDIA VIX": 13.2})
+    positions = {"NIFTY:2026-09-03": _existing_call_position()}
+    mod.process_underlying(broker, "NIFTY", "NIFTY 50", dte_floor_days=0, strike_interval=50.0,
+                            lots_per_trade=1, dry_run=True, positions=positions,
+                            trade_history=TradeHistoryService(), traded_today=set())
+    return premium_trace.load_samples(), positions
+
+
+def test_premium_trace_samples_real_price_index_and_vix_on_five_minute_marks(monkeypatch, tmp_path):
+    samples, positions = _trace_fire(monkeypatch, tmp_path, minute=15)
+    assert len(samples) == 1
+    s = samples[0]
+    assert (s.option_ltp, s.index_ltp, s.vix) == (55.0, 24003.0, 13.2)
+    assert (s.strategy, s.option_type, s.strike, s.expiry) == ("orb_scalping", "CE", 24000.0, "2026-09-29")
+    assert get_position(positions, "NIFTY", "2026-09-03") is not None   # management unaffected
+
+
+def test_premium_trace_skips_off_mark_minutes(monkeypatch, tmp_path):
+    samples, _ = _trace_fire(monkeypatch, tmp_path, minute=16)
+    assert samples == []
+
+
+def test_premium_trace_failure_never_disturbs_management(monkeypatch, tmp_path):
+    class _VixFails(_FakeBroker):
+        def get_ltp(self, symbols):
+            if "INDIA VIX" in symbols:
+                raise RuntimeError("request limit reached")
+            return super().get_ltp(symbols)
+    samples, positions = _trace_fire(monkeypatch, tmp_path, minute=15, broker_cls=_VixFails)
+    assert samples == []
+    assert get_position(positions, "NIFTY", "2026-09-03") is not None

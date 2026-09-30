@@ -120,6 +120,12 @@ from core.orb_scalping.live_positions import (  # noqa: E402
     update_stops,
 )
 from core.orb_scalping import pilot_guard  # noqa: E402
+from core.orb_scalping.premium_trace import (  # noqa: E402
+    SAMPLE_EVERY_MINUTES,
+    VIX_SYMBOL,
+    PremiumSample,
+    append_sample,
+)
 from core.orb_scalping.live_trade_log import LiveTradeEvent, append_live_event, load_live_events  # noqa: E402
 from core.orb_scalping.live_state import compute_live_state  # noqa: E402
 from core.orb_scalping.premium import PREMIUM_STOP_PCT, atm_strike  # noqa: E402
@@ -390,6 +396,27 @@ def _ltp_with_retry(broker, symbol: str, underlying: str) -> Optional[float]:
     return None
 
 
+def _sample_premium(broker, underlying: str, spot_symbol: str, existing: OrbOpenPosition,
+                    now_utc: datetime, strategy_name: str) -> None:
+    """Every SAMPLE_EVERY_MINUTES while a position is open: the option's real
+    price, the index level and India VIX, in ONE batched quote call
+    (core/orb_scalping/premium_trace.py -- the direct test of the backtest's
+    time-decay convention). Observability only: any failure is swallowed so
+    it can never disturb position management."""
+    if now_utc.minute % SAMPLE_EVERY_MINUTES != 0:
+        return
+    try:
+        q = broker.get_ltp([existing.option_symbol, spot_symbol, VIX_SYMBOL])
+        append_sample(PremiumSample(
+            timestamp=now_utc.isoformat(), strategy=strategy_name, underlying=underlying,
+            option_symbol=existing.option_symbol, option_type=existing.option_type,
+            strike=existing.strike, expiry=existing.expiry,
+            option_ltp=q.get(existing.option_symbol), index_ltp=q.get(spot_symbol), vix=q.get(VIX_SYMBOL),
+        ))
+    except Exception as e:
+        print(f"  {underlying}: premium trace sample skipped ({e}).")
+
+
 def _premium_stop_hit(option_ltp: Optional[float], premium_stop: Optional[float]) -> bool:
     """Pure: has the option's own price reached the fixed 25%-of-entry
     trigger? A missing quote or missing trigger is never a hit."""
@@ -645,6 +672,7 @@ def process_underlying(broker, underlying: str, spot_symbol: str, dte_floor_days
                              strategy_name=strategy_name)
         return
 
+    _sample_premium(broker, underlying, spot_symbol, existing, now_utc, strategy_name)
     _manage_existing_position(broker, underlying, spot_symbol, state, existing, dry_run,
                                positions, trade_history, now_utc, positions_path=positions_path,
                                dry_run_log_path=dry_run_log_path, strategy_name=strategy_name)
