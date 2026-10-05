@@ -300,12 +300,18 @@ def _compute_metrics(trades: list[BacktestTrade]) -> BacktestMetrics:
     net_loss_sum   = abs(sum(t.net_profit for t in losses))
     profit_factor = net_profit_sum / net_loss_sum if net_loss_sum > 0 else float("inf")
 
+    # Order-independent from here on: callers may pass trades grouped by
+    # symbol (the Darvas backtests list them alphabetically), and both the
+    # date span and the drawdown curve assumed chronological order -- that
+    # turned a ~7-year span into a few days and printed Sharpe 92.8 for the
+    # Darvas out-of-sample run (found 2026-10-05).
+    trades = sorted(trades, key=lambda t: t.exit_date)
     max_dd  = _max_drawdown(trades)
     net_pct = sum(t.net_profit_pct for t in trades)
 
     avg_bars = sum(t.bars_held for t in trades) / len(trades)
 
-    days_span = max(1, (trades[-1].exit_date - trades[0].entry_date).days)
+    days_span = max(1, (max(t.exit_date for t in trades) - min(t.entry_date for t in trades)).days)
     tpm = len(trades) / (days_span / 30.44)
 
     # Annualise Sharpe using THIS trade set's own observed frequency, not an
