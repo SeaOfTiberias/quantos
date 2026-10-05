@@ -12,9 +12,19 @@ Data: NSE's own daily equity bhavcopies (core/fundamentals/pead/eq_bhavcopy.py r
 cache), EQ series, 2016-01-01..2023-12-31. They list every traded stock on each
 day, including names that were later delisted or merged -- no survivorship from
 the data source.
-  - Split/bonus adjustment: NSE's PREVCLOSE is adjusted on an ex-date; where
-    PREVCLOSE differs from the prior day's CLOSE by more than 1%, all earlier bars
-    of that symbol are scaled by PREVCLOSE / prior CLOSE (volume inversely).
+  - Split/bonus adjustment. AMENDED 2026-10-05 BEFORE THE RUN: the original plan
+    (NSE's PREVCLOSE adjusts on ex-dates) was wrong -- a data check showed the
+    legacy archive's PREVCLOSE is NOT adjusted (RELIANCE 07-Sep-2017 bonus 1:1:
+    PREVCLOSE 1645.4, CLOSE 818.1). Instead: NSE's corporate-actions list
+    (data_cache/nse_corporate_actions_2016_2023.json, 495 bonus/split events);
+    on each ex-date all earlier bars are scaled by the factor -- bonus a:b ->
+    b/(a+b), face-value split X->Y -> Y/X, both -> the product (volume inversely).
+    Debenture/preference-share bonuses do not touch the share price and are skipped.
+    Residual check (also before the run): 163 overnight jumps beyond -35%/+60% remained
+    in universe members. 118 follow missing days (series switches) and are real moves;
+    35 sit within 4% of a standard split/bonus fraction (e.g. JSWSTEEL 1:10 2017) that
+    NSE's list missed -> adjusted by that fraction; 10 are demergers/ETFs -> demergers
+    left as real drops (biases AGAINST the rule), ETFs dropped from the data.
   - Universe (a Nifty 500 proxy; NSE's 2016-2023 constituent history is not on
     hand): on each 1 Jan and 1 Jul, the 500 symbols with the highest median daily
     traded value over the prior 126 sessions. Breakouts count only for symbols in
@@ -46,6 +56,7 @@ import csv
 import io
 import json
 import random
+import re
 import statistics
 import sys
 import zipfile
@@ -64,7 +75,8 @@ DATA_FROM, DATA_TO = date(2016, 1, 1), date(2023, 12, 31)
 BREAKOUT_FROM, BREAKOUT_TO = date(2016, 7, 1), date(2023, 9, 21)
 LOOKBACK = 756
 UNIVERSE_SIZE, UNIVERSE_WINDOW = 500, 126
-ADJ_THRESHOLD = 0.01
+STD_FRACTIONS = (1/2, 1/3, 2/3, 1/4, 3/4, 1/5, 2/5, 3/5, 1/6, 1/8, 1/10)
+ACTIONS = Path("data_cache/nse_corporate_actions_2016_2023.json")
 BOOT, SEED = 10_000, 20261005
 POSITION_RS = 100_000.0
 CACHE = Path.home() / ".quantos" / "darvas_atr_stop_oos_results.json"
@@ -92,23 +104,58 @@ def load_bhavcopies() -> dict[str, list[dict]]:
                                vol=float(r["TOTTRDQTY"]), val=float(r["TOTTRDVAL"]))
                 except (KeyError, ValueError):
                     continue
+                sym = r["SYMBOL"].strip()
+                if sym.endswith("BEES") or "ETF" in sym:     # ETFs are not stocks
+                    continue
                 if row["c"] > 0 and row["o"] > 0:
-                    by_sym[r["SYMBOL"].strip()].append(row)
+                    by_sym[sym].append(row)
         d += timedelta(days=1)
     return by_sym
 
 
-def adjust(rows: list[dict]) -> list[dict]:
-    """Back-adjust for splits/bonuses using NSE's ex-date PREVCLOSE."""
+def action_factor(subject: str):
+    """Price factor for an equity bonus and/or face-value split, else None."""
+    t = subject.lower()
+    if "debenture" in t or "ncrps" in t or "preference" in t:
+        return None
+    f = 1.0
+    m = re.search(r"bonus\W*(\d+)\s*:\s*(\d+)", t)
+    if m:
+        f *= int(m.group(2)) / (int(m.group(1)) + int(m.group(2)))
+    m = re.search(r"rs\.?\s*(\d+(?:\.\d+)?)\D+?to\s*(?:rs|re)\.?\s*(\d+(?:\.\d+)?)", t)
+    if m and ("split" in t or "sub" in t):
+        f *= float(m.group(2)) / float(m.group(1))
+    return None if f == 1.0 else f
+
+
+def load_actions() -> dict[str, list[tuple[date, float]]]:
+    out: dict[str, list[tuple[date, float]]] = defaultdict(list)
+    for a in json.loads(ACTIONS.read_text()):
+        f = action_factor(a["subject"])
+        if f:
+            out[a["symbol"].strip()].append((datetime.strptime(a["exDate"], "%d-%b-%Y").date(), f))
+    return out
+
+
+def adjust(rows: list[dict], actions: list[tuple[date, float]]) -> list[dict]:
+    """Back-adjust for bonuses/splits: every bar before an ex-date is scaled by its factor."""
     rows = [dict(r) for r in rows]
-    for i in range(1, len(rows)):
-        prior_close = rows[i - 1]["c"]
-        f = rows[i]["prev"] / prior_close if prior_close else 1.0
-        if abs(f - 1) > ADJ_THRESHOLD:
-            for r in rows[:i]:
+    for ex_date, f in actions:
+        for r in rows:
+            if r["date"] < ex_date:
                 for k in ("o", "h", "l", "c", "prev"):
                     r[k] *= f
                 r["vol"] /= f
+    for i in range(1, len(rows)):          # splits/bonuses missing from NSE's list
+        a, b = rows[i - 1], rows[i]
+        g = b["o"] / a["c"]
+        if g < 0.65 and (b["date"] - a["date"]).days <= 6:
+            f = next((x for x in STD_FRACTIONS if abs(g / x - 1) < 0.04), None)
+            if f:
+                for r in rows[:i]:
+                    for k in ("o", "h", "l", "c", "prev"):
+                        r[k] *= f
+                    r["vol"] /= f
     return rows
 
 
@@ -250,7 +297,8 @@ def main(argv=None) -> int:
     snapshots = build_universe(raw)
     members = sorted(frozenset().union(*(s.symbols for s in snapshots)))
     print(f"{len(members)} symbols ever in the universe", flush=True)
-    adj = {s: adjust(raw[s]) for s in members}
+    actions = load_actions()
+    adj = {s: adjust(raw[s], actions.get(s, [])) for s in members}
     results = json.loads(CACHE.read_text()) if CACHE.exists() and not args.limit else {}
     todo = [s for s in members if s not in results][: args.limit]
     jobs = [(s, to_ohlcv(adj[s]), snapshots) for s in todo if len(adj[s]) >= 60]

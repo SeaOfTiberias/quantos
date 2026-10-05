@@ -1,0 +1,3467 @@
+[
+{
+"symbol": "KOTHARIPRO",
+"series": "EQ",
+"exDate": "05-Jan-2016",
+"subject": " Bonus 1:2",
+"isin": "INE823A01017"
+},
+{
+"symbol": "GREENPLY",
+"series": "EQ",
+"exDate": "06-Jan-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE461C01020"
+},
+{
+"symbol": "MOLDTKPAC",
+"series": "EQ",
+"exDate": "17-Feb-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE893J01011"
+},
+{
+"symbol": "PRAKASHSTL",
+"series": "EQ",
+"exDate": "03-Mar-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE696K01016"
+},
+{
+"symbol": "MINDTREE",
+"series": "EQ",
+"exDate": "09-Mar-2016",
+"subject": " Bonus 1:1",
+"isin": "INE018I01017"
+},
+{
+"symbol": "RAMASTEEL",
+"series": "EQ",
+"exDate": "14-Mar-2016",
+"subject": " Bonus 4:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE230R01019"
+},
+{
+"symbol": "VEEDOL",
+"series": "EQ",
+"exDate": "16-Mar-2016",
+"subject": " Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share ",
+"isin": "INE484C01030"
+},
+{
+"symbol": "PRECWIRE",
+"series": "EQ",
+"exDate": "21-Mar-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE372C01011"
+},
+{
+"symbol": "WELSPUNLIV",
+"series": "EQ",
+"exDate": "21-Mar-2016",
+"subject": " Interim Div - Rs 6/- Per Share + Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share ",
+"isin": "INE192B01031"
+},
+{
+"symbol": "VIVIDHA",
+"series": "EQ",
+"exDate": "30-Mar-2016",
+"subject": " Bonus 1:3",
+"isin": "INE370E01029"
+},
+{
+"symbol": "VIVIMEDLAB",
+"series": "EQ",
+"exDate": "06-Apr-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE526G01013"
+},
+{
+"symbol": "DISHMAN",
+"series": "EQ",
+"exDate": "02-May-2016",
+"subject": " Bonus 1:1",
+"isin": "INE353G01020"
+},
+{
+"symbol": "GMBREW",
+"series": "EQ",
+"exDate": "30-May-2016",
+"subject": " Bonus 1:4",
+"isin": "INE075D01018"
+},
+{
+"symbol": "NBCC",
+"series": "EQ",
+"exDate": "02-Jun-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE095N01015"
+},
+{
+"symbol": "LUXIND",
+"series": "EQ",
+"exDate": "06-Jun-2016",
+"subject": " Face Value Split From Rs 10 To Rs 2",
+"isin": "INE150G01012"
+},
+{
+"symbol": "PINCON",
+"series": "EQ",
+"exDate": "23-Jun-2016",
+"subject": " Bonus 1:1",
+"isin": "INE675G01018"
+},
+{
+"symbol": "ITC",
+"series": "EQ",
+"exDate": "01-Jul-2016",
+"subject": " Bonus 1:2",
+"isin": "INE154A01025"
+},
+{
+"symbol": "HATSUN",
+"series": "EQ",
+"exDate": "13-Jul-2016",
+"subject": " Bonus 2:5",
+"isin": "INE473B01035"
+},
+{
+"symbol": "BPCL",
+"series": "EQ",
+"exDate": "13-Jul-2016",
+"subject": " Bonus 1:1",
+"isin": "INE029A01011"
+},
+{
+"symbol": "GRINDWELL",
+"series": "EQ",
+"exDate": "14-Jul-2016",
+"subject": " Bonus 1:1",
+"isin": "INE536A01023"
+},
+{
+"symbol": "GANESHHOU",
+"series": "EQ",
+"exDate": "14-Jul-2016",
+"subject": " Bonus 1:2",
+"isin": "INE460C01014"
+},
+{
+"symbol": "BERGEPAINT",
+"series": "EQ",
+"exDate": "15-Jul-2016",
+"subject": " Bonus 2:5",
+"isin": "INE463A01020"
+},
+{
+"symbol": "KTIL",
+"series": "EQ",
+"exDate": "11-Aug-2016",
+"subject": " Bonus 1:25/ Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE096L01017"
+},
+{
+"symbol": "PNCINFRA",
+"series": "EQ",
+"exDate": "12-Aug-2016",
+"subject": " Face Value Split From Rs 10 To Rs 2",
+"isin": "INE195J01011"
+},
+{
+"symbol": "PILITA",
+"series": "EQ",
+"exDate": "24-Aug-2016",
+"subject": " Face Value Split (Sub-Division) - From Rs 4/- Per Share To Re 1/- Per Share",
+"isin": "INE600A01027"
+},
+{
+"symbol": "PFC",
+"series": "EQ",
+"exDate": "26-Aug-2016",
+"subject": " Bonus 1:1",
+"isin": "INE134E01011"
+},
+{
+"symbol": "VGUARD",
+"series": "EQ",
+"exDate": "30-Aug-2016",
+"subject": " Face Value Split From Rs 10 To Re 1",
+"isin": "INE951I01019"
+},
+{
+"symbol": "MENONBE",
+"series": "EQ",
+"exDate": "30-Aug-2016",
+"subject": " Bonus 1:5",
+"isin": "INE071D01025"
+},
+{
+"symbol": "NAVA",
+"series": "EQ",
+"exDate": "01-Sep-2016",
+"subject": " Bonus 1:1",
+"isin": "INE725A01022"
+},
+{
+"symbol": "TECHNO",
+"series": "EQ",
+"exDate": "06-Sep-2016",
+"subject": " Bonus 1:1",
+"isin": "INE286K01024"
+},
+{
+"symbol": "BAJFINANCE",
+"series": "EQ",
+"exDate": "08-Sep-2016",
+"subject": " Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE296A01016"
+},
+{
+"symbol": "TRENT",
+"series": "EQ",
+"exDate": "12-Sep-2016",
+"subject": " Face Value Split From Rs 10 To Re 1",
+"isin": "INE849A01012"
+},
+{
+"symbol": "UNOMINDA",
+"series": "EQ",
+"exDate": "12-Sep-2016",
+"subject": " Face Value Split From Rs 10 To Rs 2",
+"isin": "INE405E01023"
+},
+{
+"symbol": "HINDPETRO",
+"series": "EQ",
+"exDate": "14-Sep-2016",
+"subject": " Bonus 2:1",
+"isin": "INE094A01015"
+},
+{
+"symbol": "SYMPHONY",
+"series": "EQ",
+"exDate": "14-Sep-2016",
+"subject": " Bonus 1:1",
+"isin": "INE225D01019"
+},
+{
+"symbol": "JMTAUTOLTD",
+"series": "EQ",
+"exDate": "21-Sep-2016",
+"subject": " Face Value Split From Rs 2 To Re 1",
+"isin": "INE988E01010"
+},
+{
+"symbol": "RECLTD",
+"series": "EQ",
+"exDate": "28-Sep-2016",
+"subject": " Bonus 1:1",
+"isin": "INE020B01018"
+},
+{
+"symbol": "KAJARIACER",
+"series": "EQ",
+"exDate": "04-Oct-2016",
+"subject": " Face Value Split From Rs 2 To Re 1",
+"isin": "INE217B01028"
+},
+{
+"symbol": "GRASIM",
+"series": "EQ",
+"exDate": "06-Oct-2016",
+"subject": " Face Value Split From Rs 10 To Re 2",
+"isin": "INE047A01013"
+},
+{
+"symbol": "SECURKLOUD",
+"series": "EQ",
+"exDate": "10-Oct-2016",
+"subject": " Bonus 1:3/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE650K01021"
+},
+{
+"symbol": "SHAH",
+"series": "EQ",
+"exDate": "13-Oct-2016",
+"subject": " Face Value Split From Rs 10 To Re 1",
+"isin": "INE482J01021"
+},
+{
+"symbol": "IOC",
+"series": "EQ",
+"exDate": "18-Oct-2016",
+"subject": " Bonus 1:1",
+"isin": "INE242A01010"
+},
+{
+"symbol": "ALANKIT",
+"series": "EQ",
+"exDate": "19-Oct-2016",
+"subject": " Bonus 1:1",
+"isin": "INE914E01024"
+},
+{
+"symbol": "SUNILHITEC",
+"series": "EQ",
+"exDate": "01-Dec-2016",
+"subject": " Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE305H01010"
+},
+{
+"symbol": "INDIANHUME",
+"series": "EQ",
+"exDate": "09-Dec-2016",
+"subject": " Bonus 1:1",
+"isin": "INE323C01022"
+},
+{
+"symbol": "ONGC",
+"series": "EQ",
+"exDate": "15-Dec-2016",
+"subject": " Bonus 1: 2",
+"isin": "INE213A01011"
+},
+{
+"symbol": "BALMLAWRIE",
+"series": "EQ",
+"exDate": "26-Dec-2016",
+"subject": " Bonus 3:1",
+"isin": "INE164A01016"
+},
+{
+"symbol": "ENGINERSIN",
+"series": "EQ",
+"exDate": "30-Dec-2016",
+"subject": " Bonus 1:1",
+"isin": "INE510A01010"
+},
+{
+"symbol": "GATECH",
+"series": "EQ",
+"exDate": "10-Jan-2017",
+"subject": " Bonus 1:4",
+"isin": "INE224E01028"
+},
+{
+"symbol": "OIL",
+"series": "EQ",
+"exDate": "12-Jan-2017",
+"subject": " Bonus 1:3",
+"isin": "INE274J01014"
+},
+{
+"symbol": "GAYAPROJ",
+"series": "EQ",
+"exDate": "10-Feb-2017",
+"subject": " Face Value Split From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE336H01015"
+},
+{
+"symbol": "ORBTEXP",
+"series": "EQ",
+"exDate": "14-Feb-2017",
+"subject": " Bonus 1:1/Interim Dividend Rs 2/- Per Share (Purpose Revised)",
+"isin": "INE231G01010"
+},
+{
+"symbol": "COMPINFO",
+"series": "EQ",
+"exDate": "16-Feb-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE070C01029"
+},
+{
+"symbol": "NBCC",
+"series": "EQ",
+"exDate": "17-Feb-2017",
+"subject": " Bonus 1:2",
+"isin": "INE095N01015"
+},
+{
+"symbol": "GAIL",
+"series": "EQ",
+"exDate": "09-Mar-2017",
+"subject": " Bonus 1:3",
+"isin": "INE129A01019"
+},
+{
+"symbol": "VGUARD",
+"series": "EQ",
+"exDate": "15-Mar-2017",
+"subject": " Bonus 2:5",
+"isin": "INE951I01019"
+},
+{
+"symbol": "ABMINTLTD",
+"series": "EQ",
+"exDate": "15-Mar-2017",
+"subject": " Bonus 5:1",
+"isin": "INE251C01017"
+},
+{
+"symbol": "BEL",
+"series": "EQ",
+"exDate": "16-Mar-2017",
+"subject": " Face Value Split From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE263A01016"
+},
+{
+"symbol": "POLYMED",
+"series": "EQ",
+"exDate": "24-Mar-2017",
+"subject": " Bonus 1:1",
+"isin": "INE205C01013"
+},
+{
+"symbol": "CONCOR",
+"series": "EQ",
+"exDate": "05-Apr-2017",
+"subject": " Bonus 1:4",
+"isin": "INE111A01017"
+},
+{
+"symbol": "BLS",
+"series": "EQ",
+"exDate": "26-Apr-2017",
+"subject": " Face Value Split From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE153T01019"
+},
+{
+"symbol": "BEARDSELL",
+"series": "EQ",
+"exDate": "04-May-2017",
+"subject": " Bonus 1:5/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE520H01014"
+},
+{
+"symbol": "HINDCOMPOS",
+"series": "EQ",
+"exDate": "25-May-2017",
+"subject": " Bonus 1:2/Face Value Split (Sub-Division) From Rs 10 Per Share To Rs 5 Per Share",
+"isin": "INE310C01011"
+},
+{
+"symbol": "ADVENZYMES",
+"series": "EQ",
+"exDate": "25-May-2017",
+"subject": " Face Value Split From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE837H01012"
+},
+{
+"symbol": "MUTHOOTCAP",
+"series": "EQ",
+"exDate": "12-Jun-2017",
+"subject": " Bonus 1:10",
+"isin": "INE296G01013"
+},
+{
+"symbol": "WIPRO",
+"series": "EQ",
+"exDate": "13-Jun-2017",
+"subject": " Bonus 1:1",
+"isin": "INE075A01022"
+},
+{
+"symbol": "BIOCON",
+"series": "EQ",
+"exDate": "15-Jun-2017",
+"subject": " Bonus 2:1",
+"isin": "INE376G01013"
+},
+{
+"symbol": "ICICIBANK",
+"series": "EQ",
+"exDate": "20-Jun-2017",
+"subject": " Annual General Meeting/Dividend - Rs 2.50 Per Share/Bonus 1:10 (Revised)",
+"isin": "INE090A01013"
+},
+{
+"symbol": "GODREJCP",
+"series": "EQ",
+"exDate": "22-Jun-2017",
+"subject": " Bonus 1:1",
+"isin": "INE102D01028"
+},
+{
+"symbol": "KITEX",
+"series": "EQ",
+"exDate": "22-Jun-2017",
+"subject": " Bonus 2:5",
+"isin": "INE602G01020"
+},
+{
+"symbol": "ARCOTECH",
+"series": "EQ",
+"exDate": "22-Jun-2017",
+"subject": " Face Value Split From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE574I01027"
+},
+{
+"symbol": "PLASTIBLEN",
+"series": "EQ",
+"exDate": "03-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE083C01014"
+},
+{
+"symbol": "PETRONET",
+"series": "EQ",
+"exDate": "03-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE347G01014"
+},
+{
+"symbol": "SANWARIA",
+"series": "EQ",
+"exDate": "03-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE890C01046"
+},
+{
+"symbol": "MOTHERSON",
+"series": "EQ",
+"exDate": "05-Jul-2017",
+"subject": " Bonus 1:2",
+"isin": "INE775A01035"
+},
+{
+"symbol": "PCJEWELLER",
+"series": "EQ",
+"exDate": "06-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE785M01013"
+},
+{
+"symbol": "MAANALU",
+"series": "EQ",
+"exDate": "10-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE215I01019"
+},
+{
+"symbol": "MHRIL",
+"series": "EQ",
+"exDate": "10-Jul-2017",
+"subject": " Bonus 1:2",
+"isin": "INE998I01010"
+},
+{
+"symbol": "HINDPETRO",
+"series": "EQ",
+"exDate": "11-Jul-2017",
+"subject": " Bonus 1:2/ Dividend - Rs 1.10 Per Share",
+"isin": "INE094A01015"
+},
+{
+"symbol": "MUNJALAU",
+"series": "EQ",
+"exDate": "11-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE672B01024"
+},
+{
+"symbol": "AURUS",
+"series": "EQ",
+"exDate": "12-Jul-2017",
+"subject": " Bonus 2:5",
+"isin": "INE142K01011"
+},
+{
+"symbol": "LT",
+"series": "EQ",
+"exDate": "13-Jul-2017",
+"subject": " Bonus 1:2",
+"isin": "INE018A01030"
+},
+{
+"symbol": "CUB",
+"series": "EQ",
+"exDate": "13-Jul-2017",
+"subject": " Bonus 1:10",
+"isin": "INE491A01021"
+},
+{
+"symbol": "BPCL",
+"series": "EQ",
+"exDate": "13-Jul-2017",
+"subject": " Bonus 1:2",
+"isin": "INE029A01011"
+},
+{
+"symbol": "GPTINFRA",
+"series": "EQ",
+"exDate": "13-Jul-2017",
+"subject": " Bonus 1:1",
+"isin": "INE390G01014"
+},
+{
+"symbol": "NAVINFLUOR",
+"series": "EQ",
+"exDate": "19-Jul-2017",
+"subject": " Face Value Split From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE048G01018"
+},
+{
+"symbol": "SUNTECK",
+"series": "EQ",
+"exDate": "25-Jul-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Rs 1/- Per Share",
+"isin": "INE805D01026"
+},
+{
+"symbol": "JAYAGROGN",
+"series": "EQ",
+"exDate": "01-Aug-2017",
+"subject": " Bonus 1:1  ",
+"isin": "INE785A01026"
+},
+{
+"symbol": "CORALFINAC",
+"series": "EQ",
+"exDate": "03-Aug-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE558D01013"
+},
+{
+"symbol": "VIJIFIN",
+"series": "EQ",
+"exDate": "04-Aug-2017",
+"subject": " Bonus 1:10",
+"isin": "INE159N01019"
+},
+{
+"symbol": "DWARKESH",
+"series": "EQ",
+"exDate": "10-Aug-2017",
+"subject": " Annual General Meeting/Dividend - Rs 10 Per Share/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share (Purpose Revised)",
+"isin": "INE366A01033"
+},
+{
+"symbol": "CCAVENUE",
+"series": "EQ",
+"exDate": "31-Aug-2017",
+"subject": " Annual General Meeting/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE483S01020"
+},
+{
+"symbol": "DOLLAR",
+"series": "EQ",
+"exDate": "31-Aug-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE325C01027"
+},
+{
+"symbol": "RELIANCE",
+"series": "EQ",
+"exDate": "07-Sep-2017",
+"subject": " Bonus 1:1",
+"isin": "INE002A01018"
+},
+{
+"symbol": "DECCANCE",
+"series": "EQ",
+"exDate": "11-Sep-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share ",
+"isin": "INE583C01013"
+},
+{
+"symbol": "NESCO",
+"series": "EQ",
+"exDate": "15-Sep-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE317F01027"
+},
+{
+"symbol": "TATAELXSI",
+"series": "EQ",
+"exDate": "18-Sep-2017",
+"subject": " Bonus 1:1",
+"isin": "INE670A01012"
+},
+{
+"symbol": "YESBANK",
+"series": "EQ",
+"exDate": "21-Sep-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share ",
+"isin": "INE528G01019"
+},
+{
+"symbol": "SUTLEJTEX",
+"series": "EQ",
+"exDate": "26-Sep-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share ",
+"isin": "INE645H01019"
+},
+{
+"symbol": "MANPASAND",
+"series": "EQ",
+"exDate": "27-Sep-2017",
+"subject": " Bonus 1:1",
+"isin": "INE122R01018"
+},
+{
+"symbol": "MOIL",
+"series": "EQ",
+"exDate": "27-Sep-2017",
+"subject": " Bonus 1:1",
+"isin": "INE490G01020"
+},
+{
+"symbol": "BHARATFORG",
+"series": "EQ",
+"exDate": "28-Sep-2017",
+"subject": " Bonus 1:1",
+"isin": "INE465A01025"
+},
+{
+"symbol": "BHEL",
+"series": "EQ",
+"exDate": "28-Sep-2017",
+"subject": " Bonus 1:2  ",
+"isin": "INE257A01018"
+},
+{
+"symbol": "BEL",
+"series": "EQ",
+"exDate": "28-Sep-2017",
+"subject": " Bonus 1:10",
+"isin": "INE263A01016"
+},
+{
+"symbol": "TARIL",
+"series": "EQ",
+"exDate": "28-Sep-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE763I01026"
+},
+{
+"symbol": "PANAMAPET",
+"series": "EQ",
+"exDate": "03-Oct-2017",
+"subject": " Bonus 1:2",
+"isin": "INE305C01011"
+},
+{
+"symbol": "JAMNAAUTO",
+"series": "EQ",
+"exDate": "05-Oct-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE039C01016"
+},
+{
+"symbol": "HERITGFOOD",
+"series": "EQ",
+"exDate": "10-Oct-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE978A01019"
+},
+{
+"symbol": "CANFINHOME",
+"series": "EQ",
+"exDate": "12-Oct-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE477A01012"
+},
+{
+"symbol": "POKARNA",
+"series": "EQ",
+"exDate": "18-Oct-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE637C01017"
+},
+{
+"symbol": "SIYSIL",
+"series": "EQ",
+"exDate": "25-Oct-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE076B01010"
+},
+{
+"symbol": "ATLASCYCLE",
+"series": "EQ",
+"exDate": "30-Oct-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE446A01017"
+},
+{
+"symbol": "INFINITE",
+"series": "EQ",
+"exDate": "01-Nov-2017",
+"subject": " Bonus 1:26",
+"isin": "INE486J01014"
+},
+{
+"symbol": "IGL",
+"series": "EQ",
+"exDate": "09-Nov-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE203G01019"
+},
+{
+"symbol": "NBIFIN",
+"series": "EQ",
+"exDate": "07-Dec-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE365I01012"
+},
+{
+"symbol": "BALKRISIND",
+"series": "EQ",
+"exDate": "21-Dec-2017",
+"subject": " Bonus 1:1",
+"isin": "INE787D01018"
+},
+{
+"symbol": "CASTROLIND",
+"series": "EQ",
+"exDate": "21-Dec-2017",
+"subject": " Bonus 1:1",
+"isin": "INE172A01027"
+},
+{
+"symbol": "VAKRANGEE",
+"series": "EQ",
+"exDate": "21-Dec-2017",
+"subject": " Bonus 1:1",
+"isin": "INE051B01021"
+},
+{
+"symbol": "M&M",
+"series": "EQ",
+"exDate": "21-Dec-2017",
+"subject": " Bonus 1:1",
+"isin": "INE101A01026"
+},
+{
+"symbol": "JINDWORLD",
+"series": "EQ",
+"exDate": "26-Dec-2017",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE247D01013"
+},
+{
+"symbol": "BILENERGY",
+"series": "EQ",
+"exDate": "11-Jan-2018",
+"subject": " Bonus 1:1",
+"isin": "INE607L01011"
+},
+{
+"symbol": "LANDSMILL",
+"series": "EQ",
+"exDate": "23-Jan-2018",
+"subject": " Bonus 2:1",
+"isin": "INE688J01023"
+},
+{
+"symbol": "IOC",
+"series": "EQ",
+"exDate": "15-Mar-2018",
+"subject": " Bonus 1:1",
+"isin": "INE242A01010"
+},
+{
+"symbol": "INDNIPPON",
+"series": "EQ",
+"exDate": "21-Mar-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE092B01017"
+},
+{
+"symbol": "LAOPALA",
+"series": "EQ",
+"exDate": "22-Mar-2018",
+"subject": " Bonus 1:1",
+"isin": "INE059D01012"
+},
+{
+"symbol": "GAIL",
+"series": "EQ",
+"exDate": "27-Mar-2018",
+"subject": " Bonus 1:3",
+"isin": "INE129A01019"
+},
+{
+"symbol": "OIL",
+"series": "EQ",
+"exDate": "27-Mar-2018",
+"subject": " Bonus 1:2",
+"isin": "INE274J01014"
+},
+{
+"symbol": "KELLTONTEC",
+"series": "EQ",
+"exDate": "27-Mar-2018",
+"subject": " Bonus 1:1",
+"isin": "INE164B01022"
+},
+{
+"symbol": "MARATHON",
+"series": "EQ",
+"exDate": "05-Apr-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE182D01012"
+},
+{
+"symbol": "AMRUTANJAN",
+"series": "EQ",
+"exDate": "13-Apr-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE098F01015"
+},
+{
+"symbol": "PCBL",
+"series": "EQ",
+"exDate": "19-Apr-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE602A01023"
+},
+{
+"symbol": "NBCC",
+"series": "EQ",
+"exDate": "25-Apr-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE095N01015"
+},
+{
+"symbol": "MMTC",
+"series": "EQ",
+"exDate": "03-May-2018",
+"subject": " Bonus 1:2",
+"isin": "INE123F01011"
+},
+{
+"symbol": "GMBREW",
+"series": "EQ",
+"exDate": "21-May-2018",
+"subject": " Bonus 1:4",
+"isin": "INE075D01018"
+},
+{
+"symbol": "TCS",
+"series": "EQ",
+"exDate": "31-May-2018",
+"subject": " Bonus 1:1 /Dividend- Rs 29 Per Share",
+"isin": "INE467B01029"
+},
+{
+"symbol": "GRUH",
+"series": "EQ",
+"exDate": "06-Jun-2018",
+"subject": " Bonus 1:1",
+"isin": "INE580B01011"
+},
+{
+"symbol": "LUMAXTECH",
+"series": "EQ",
+"exDate": "07-Jun-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE872H01019"
+},
+{
+"symbol": "LGBBROSLTD",
+"series": "EQ",
+"exDate": "14-Jun-2018",
+"subject": " Bonus 1:1",
+"isin": "INE337A01034"
+},
+{
+"symbol": "UNITDSPR",
+"series": "EQ",
+"exDate": "15-Jun-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE854D01024"
+},
+{
+"symbol": "EPL",
+"series": "EQ",
+"exDate": "20-Jun-2018",
+"subject": " Bonus 1:1",
+"isin": "INE255A01020"
+},
+{
+"symbol": "EMAMILTD",
+"series": "EQ",
+"exDate": "21-Jun-2018",
+"subject": " Bonus 1:1/Dividend- Rs 7 Per Share",
+"isin": "INE548C01024"
+},
+{
+"symbol": "JUBLFOOD",
+"series": "EQ",
+"exDate": "21-Jun-2018",
+"subject": " Bonus 1:1",
+"isin": "INE797F01012"
+},
+{
+"symbol": "HIKAL",
+"series": "EQ",
+"exDate": "22-Jun-2018",
+"subject": " Bonus 1:2",
+"isin": "INE475B01014"
+},
+{
+"symbol": "UNIPLY",
+"series": "EQ",
+"exDate": "25-Jun-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE950G01015"
+},
+{
+"symbol": "CONCOR",
+"series": "EQ",
+"exDate": "26-Jun-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE111A01017"
+},
+{
+"symbol": "AVANTIFEED",
+"series": "EQ",
+"exDate": "26-Jun-2018",
+"subject": " Bonus 1:2/Face Value Split (Sub-Division) From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE871C01012"
+},
+{
+"symbol": "FILATEX",
+"series": "EQ",
+"exDate": "27-Jun-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE816B01019"
+},
+{
+"symbol": "NIACL",
+"series": "EQ",
+"exDate": "27-Jun-2018",
+"subject": " Bonus 1:1/ Dividend- Rs 5 Per Share",
+"isin": "INE470Y01017"
+},
+{
+"symbol": "JYOTHYLAB",
+"series": "EQ",
+"exDate": "28-Jun-2018",
+"subject": " Bonus 1:1",
+"isin": "INE668F01031"
+},
+{
+"symbol": "CUB",
+"series": "EQ",
+"exDate": "10-Jul-2018",
+"subject": " Bonus 1:10",
+"isin": "INE491A01021"
+},
+{
+"symbol": "UNOMINDA",
+"series": "EQ",
+"exDate": "11-Jul-2018",
+"subject": " Bonus 2:1/Dividend- Rs 1.60 Per Share",
+"isin": "INE405E01023"
+},
+{
+"symbol": "GICRE",
+"series": "EQ",
+"exDate": "12-Jul-2018",
+"subject": " Bonus 1:1/Dividend- Rs 13.5 Per Share",
+"isin": "INE481Y01014"
+},
+{
+"symbol": "ASHOKA",
+"series": "EQ",
+"exDate": "12-Jul-2018",
+"subject": " Bonus 1:2",
+"isin": "INE442H01011"
+},
+{
+"symbol": "MMFL",
+"series": "EQ",
+"exDate": "18-Jul-2018",
+"subject": " Bonus 1:1",
+"isin": "INE227C01017"
+},
+{
+"symbol": "BORORENEW",
+"series": "EQ",
+"exDate": "02-Aug-2018",
+"subject": " Bonus 3:1",
+"isin": "INE666D01022"
+},
+{
+"symbol": "SUMEETINDS",
+"series": "EQ",
+"exDate": "02-Aug-2018",
+"subject": " Bonus 1:4",
+"isin": "INE235C01010"
+},
+{
+"symbol": "GALLISPAT",
+"series": "EQ",
+"exDate": "07-Aug-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE528K01011"
+},
+{
+"symbol": "WHEELS",
+"series": "EQ",
+"exDate": "08-Aug-2018",
+"subject": " Bonus 1:1",
+"isin": "INE715A01015"
+},
+{
+"symbol": "TIRUMALCHM",
+"series": "EQ",
+"exDate": "14-Aug-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE338A01016"
+},
+{
+"symbol": "KARURVYSYA",
+"series": "EQ",
+"exDate": "14-Aug-2018",
+"subject": " Bonus 1:10",
+"isin": "INE036D01010"
+},
+{
+"symbol": "INFY",
+"series": "EQ",
+"exDate": "04-Sep-2018",
+"subject": " Bonus 1:1",
+"isin": "INE009A01021"
+},
+{
+"symbol": "ZENSARTECH",
+"series": "EQ",
+"exDate": "07-Sep-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10 /- Per Share To Rs 2/- Per Share",
+"isin": "INE520A01019"
+},
+{
+"symbol": "GLAXO",
+"series": "EQ",
+"exDate": "11-Sep-2018",
+"subject": " Bonus 1:1",
+"isin": "INE159A01016"
+},
+{
+"symbol": "GODREJCP",
+"series": "EQ",
+"exDate": "12-Sep-2018",
+"subject": " Bonus 1:2",
+"isin": "INE102D01028"
+},
+{
+"symbol": "IGARASHI",
+"series": "EQ",
+"exDate": "27-Sep-2018",
+"subject": " Bonus 25:202",
+"isin": "INE188B01013"
+},
+{
+"symbol": "JMCPROJECT",
+"series": "EQ",
+"exDate": "04-Oct-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE890A01016"
+},
+{
+"symbol": "CUPID",
+"series": "EQ",
+"exDate": "11-Oct-2018",
+"subject": " Bonus 1:5",
+"isin": "INE509F01011"
+},
+{
+"symbol": "APOLSINHOT",
+"series": "EQ",
+"exDate": "12-Oct-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE451F01016"
+},
+{
+"symbol": "IEX",
+"series": "EQ",
+"exDate": "19-Oct-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE022Q01012"
+},
+{
+"symbol": "DAMODARIND",
+"series": "EQ",
+"exDate": "25-Oct-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE497D01014"
+},
+{
+"symbol": "MOTHERSON",
+"series": "EQ",
+"exDate": "30-Oct-2018",
+"subject": " Bonus 1:2",
+"isin": "INE775A01035"
+},
+{
+"symbol": "JINDWORLD",
+"series": "EQ",
+"exDate": "31-Oct-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE247D01013"
+},
+{
+"symbol": "DFMFOODS",
+"series": "EQ",
+"exDate": "01-Nov-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE456C01012"
+},
+{
+"symbol": "SAKUMA",
+"series": "EQ",
+"exDate": "12-Nov-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE190H01016"
+},
+{
+"symbol": "BRITANNIA",
+"series": "EQ",
+"exDate": "29-Nov-2018",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE216A01014"
+},
+{
+"symbol": "GUJENERGY",
+"series": "EQ",
+"exDate": "15-Jan-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE844O01030"
+},
+{
+"symbol": "CONCOR",
+"series": "EQ",
+"exDate": "04-Feb-2019",
+"subject": " Bonus 1:4",
+"isin": "INE111A01017"
+},
+{
+"symbol": "RADIOCITY",
+"series": "EQ",
+"exDate": "20-Feb-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE919I01016"
+},
+{
+"symbol": "WIPRO",
+"series": "EQ",
+"exDate": "06-Mar-2019",
+"subject": " Bonus 1:3",
+"isin": "INE075A01022"
+},
+{
+"symbol": "NTPC",
+"series": "EQ",
+"exDate": "19-Mar-2019",
+"subject": " Bonus 1:5",
+"isin": "INE733E01010"
+},
+{
+"symbol": "JMA",
+"series": "EQ",
+"exDate": "14-May-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE412C01015"
+},
+{
+"symbol": "TTKPRESTIG",
+"series": "EQ",
+"exDate": "15-May-2019",
+"subject": " Bonus 1:5",
+"isin": "INE690A01010"
+},
+{
+"symbol": "SYNGENE",
+"series": "EQ",
+"exDate": "11-Jun-2019",
+"subject": " Bonus 1:1",
+"isin": "INE398R01022"
+},
+{
+"symbol": "BIOCON",
+"series": "EQ",
+"exDate": "12-Jun-2019",
+"subject": " Bonus 1:1",
+"isin": "INE376G01013"
+},
+{
+"symbol": "CHOLAFIN",
+"series": "EQ",
+"exDate": "14-Jun-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE121A01016"
+},
+{
+"symbol": "RELAXO",
+"series": "EQ",
+"exDate": "26-Jun-2019",
+"subject": " Bonus 1:1",
+"isin": "INE131B01021"
+},
+{
+"symbol": "AVADHSUGAR",
+"series": "EQ",
+"exDate": "27-Jun-2019",
+"subject": " Bonus 1:1",
+"isin": "INE349W01017"
+},
+{
+"symbol": "MAGADSUGAR",
+"series": "EQ",
+"exDate": "27-Jun-2019",
+"subject": " Bonus 4:10",
+"isin": "INE347W01011"
+},
+{
+"symbol": "UPL",
+"series": "EQ",
+"exDate": "02-Jul-2019",
+"subject": " Bonus 1:2",
+"isin": "INE628A01036"
+},
+{
+"symbol": "APCOTEXIND",
+"series": "EQ",
+"exDate": "04-Jul-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 5 Per Share To Rs 2 Per Share",
+"isin": "INE116A01016"
+},
+{
+"symbol": "GAIL",
+"series": "EQ",
+"exDate": "09-Jul-2019",
+"subject": " Bonus 1:1",
+"isin": "INE129A01019"
+},
+{
+"symbol": "BHAGERIA",
+"series": "EQ",
+"exDate": "17-Jul-2019",
+"subject": " Bonus 1:1",
+"isin": "INE354C01019"
+},
+{
+"symbol": "VBL",
+"series": "EQ",
+"exDate": "25-Jul-2019",
+"subject": " Bonus 1:2",
+"isin": "INE200M01013"
+},
+{
+"symbol": "RITES",
+"series": "EQ",
+"exDate": "08-Aug-2019",
+"subject": " Bonus  1:4",
+"isin": "INE320J01015"
+},
+{
+"symbol": "SESHAPAPER",
+"series": "EQ",
+"exDate": "19-Aug-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE630A01016"
+},
+{
+"symbol": "BRITANNIA",
+"series": "EQ",
+"exDate": "22-Aug-2019",
+"subject": " Scheme Of Arangement- Bonus - 1 Debenture For 1 Equity Share Held",
+"isin": "INE216A01014"
+},
+{
+"symbol": "SWELECTES",
+"series": "EQ",
+"exDate": "22-Aug-2019",
+"subject": " Bonus 1:2",
+"isin": "INE409B01013"
+},
+{
+"symbol": "BRIGADE",
+"series": "EQ",
+"exDate": "28-Aug-2019",
+"subject": " Bonus 1:2",
+"isin": "INE791I01019"
+},
+{
+"symbol": "ASTRAL",
+"series": "EQ",
+"exDate": "16-Sep-2019",
+"subject": " Bonus 1:4",
+"isin": "INE006I01012"
+},
+{
+"symbol": "HDFCBANK",
+"series": "EQ",
+"exDate": "19-Sep-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 2 Per Share To Rs 1 Per Share",
+"isin": "INE040A01018"
+},
+{
+"symbol": "AARTIIND",
+"series": "EQ",
+"exDate": "27-Sep-2019",
+"subject": " Bonus 1:1",
+"isin": "INE769A01020"
+},
+{
+"symbol": "SATIA",
+"series": "EQ",
+"exDate": "15-Oct-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE170E01015"
+},
+{
+"symbol": "IMPAL",
+"series": "EQ",
+"exDate": "25-Oct-2019",
+"subject": " Bonus 1:2",
+"isin": "INE547E01014"
+},
+{
+"symbol": "HCLTECH",
+"series": "EQ",
+"exDate": "05-Dec-2019",
+"subject": " Bonus 1:1",
+"isin": "INE860A01027"
+},
+{
+"symbol": "TRIDENT",
+"series": "EQ",
+"exDate": "13-Dec-2019",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 1/- Per Share",
+"isin": "INE064C01014"
+},
+{
+"symbol": "BALMLAWRIE",
+"series": "EQ",
+"exDate": "26-Dec-2019",
+"subject": " Bonus 1:2",
+"isin": "INE164A01016"
+},
+{
+"symbol": "SIS",
+"series": "EQ",
+"exDate": "15-Jan-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE285J01010"
+},
+{
+"symbol": "VINATIORGA",
+"series": "EQ",
+"exDate": "05-Feb-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Rs 1/- Per Share",
+"isin": "INE410B01029"
+},
+{
+"symbol": "RADIOCITY",
+"series": "EQ",
+"exDate": "12-Mar-2020",
+"subject": " Bonus 1:4",
+"isin": "INE919I01016"
+},
+{
+"symbol": "KTKBANK",
+"series": "EQ",
+"exDate": "17-Mar-2020",
+"subject": " Bonus 1:10",
+"isin": "INE614B01018"
+},
+{
+"symbol": "IRCON",
+"series": "EQ",
+"exDate": "03-Apr-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE962Y01013"
+},
+{
+"symbol": "MOTOGENFIN",
+"series": "EQ",
+"exDate": "19-Jun-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10 Per Share To Rs 5  Per Share",
+"isin": "INE861B01015"
+},
+{
+"symbol": "DHARAN",
+"series": "EQ",
+"exDate": "02-Jul-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE278R01034"
+},
+{
+"symbol": "KUANTUM",
+"series": "EQ",
+"exDate": "14-Jul-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE529I01013"
+},
+{
+"symbol": "EICHERMOT",
+"series": "EQ",
+"exDate": "24-Aug-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE066A01013"
+},
+{
+"symbol": "ELGIEQUIP",
+"series": "EQ",
+"exDate": "24-Sep-2020",
+"subject": " Bonus 1:1",
+"isin": "INE285A01027"
+},
+{
+"symbol": "COHANCE",
+"series": "EQ",
+"exDate": "25-Sep-2020",
+"subject": " Bonus 1:1",
+"isin": "INE03QK01018"
+},
+{
+"symbol": "LAURUSLABS",
+"series": "EQ",
+"exDate": "29-Sep-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE947Q01010"
+},
+{
+"symbol": "AARTIDRUGS",
+"series": "EQ",
+"exDate": "30-Sep-2020",
+"subject": " Bonus 3:1",
+"isin": "INE767A01016"
+},
+{
+"symbol": "GAEL",
+"series": "EQ",
+"exDate": "01-Oct-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE036B01022"
+},
+{
+"symbol": "SAGARDEEP",
+"series": "EQ",
+"exDate": "05-Oct-2020",
+"subject": " Bonus 1:2",
+"isin": "INE976T01013"
+},
+{
+"symbol": "SHRENIK",
+"series": "EQ",
+"exDate": "08-Oct-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE632X01014"
+},
+{
+"symbol": "SHRENIK",
+"series": "EQ",
+"exDate": "08-Oct-2020",
+"subject": " Bonus 2:1",
+"isin": "INE632X01014"
+},
+{
+"symbol": "MAHESHWARI",
+"series": "EQ",
+"exDate": "13-Oct-2020",
+"subject": " Bonus 1:1",
+"isin": "INE263W01010"
+},
+{
+"symbol": "SDBL",
+"series": "EQ",
+"exDate": "15-Oct-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE480C01012"
+},
+{
+"symbol": "HATSUN",
+"series": "EQ",
+"exDate": "09-Dec-2020",
+"subject": " Bonus 1:3",
+"isin": "INE473B01035"
+},
+{
+"symbol": "APLAPOLLO",
+"series": "EQ",
+"exDate": "15-Dec-2020",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE702C01019"
+},
+{
+"symbol": "VISHAL",
+"series": "EQ",
+"exDate": "16-Dec-2020",
+"subject": " Bonus 1:2",
+"isin": "INE755Q01025"
+},
+{
+"symbol": "VALIANTORG",
+"series": "EQ",
+"exDate": "24-Dec-2020",
+"subject": " Bonus 1:1",
+"isin": "INE565V01010"
+},
+{
+"symbol": "PILANIINVS",
+"series": "EQ",
+"exDate": "31-Dec-2020",
+"subject": " Bonus 2:5",
+"isin": "INE417C01014"
+},
+{
+"symbol": "KNRCON",
+"series": "EQ",
+"exDate": "03-Feb-2021",
+"subject": " Bonus 1:1",
+"isin": "INE634I01011"
+},
+{
+"symbol": "BASML",
+"series": "EQ",
+"exDate": "12-Feb-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE186H01014"
+},
+{
+"symbol": "MARINE",
+"series": "EQ",
+"exDate": "18-Feb-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10 Per Share To Rs 2 Per Share",
+"isin": "INE01JE01010"
+},
+{
+"symbol": "ASTRAL",
+"series": "EQ",
+"exDate": "18-Mar-2021",
+"subject": " Bonus 1:3",
+"isin": "INE006I01012"
+},
+{
+"symbol": "DIXON",
+"series": "EQ",
+"exDate": "18-Mar-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE935N01012"
+},
+{
+"symbol": "CCAVENUE",
+"series": "EQ",
+"exDate": "18-Mar-2021",
+"subject": " Bonus 1:1",
+"isin": "INE483S01020"
+},
+{
+"symbol": "LIBAS",
+"series": "EQ",
+"exDate": "06-Apr-2021",
+"subject": " Bonus 1:5",
+"isin": "INE908V01012"
+},
+{
+"symbol": "FINPIPE",
+"series": "EQ",
+"exDate": "15-Apr-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE183A01016"
+},
+{
+"symbol": "SHARDAMOTR",
+"series": "EQ",
+"exDate": "16-Apr-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE597I01010"
+},
+{
+"symbol": "VAIBHAVGBL",
+"series": "EQ",
+"exDate": "07-May-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE884A01019"
+},
+{
+"symbol": "ALKYLAMINE",
+"series": "EQ",
+"exDate": "11-May-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Rs 2/- Per Share",
+"isin": "INE150B01013"
+},
+{
+"symbol": "IRCON",
+"series": "EQ",
+"exDate": "20-May-2021",
+"subject": " Bonus 1:1",
+"isin": "INE962Y01013"
+},
+{
+"symbol": "BRITANNIA",
+"series": "EQ",
+"exDate": "25-May-2021",
+"subject": " Scheme Of Arangement- Bonus - 1 Debenture For 1 Equity Share Held",
+"isin": "INE216A01014"
+},
+{
+"symbol": "JAYBARMARU",
+"series": "EQ",
+"exDate": "07-Jun-2021",
+"subject": " Bonus 1:1",
+"isin": "INE571B01028"
+},
+{
+"symbol": "VBL",
+"series": "EQ",
+"exDate": "10-Jun-2021",
+"subject": " Bonus 1:2",
+"isin": "INE200M01013"
+},
+{
+"symbol": "AARTIIND",
+"series": "EQ",
+"exDate": "22-Jun-2021",
+"subject": " Bonus 1:1",
+"isin": "INE769A01020"
+},
+{
+"symbol": "INVENTURE",
+"series": "EQ",
+"exDate": "24-Jun-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE878H01016"
+},
+{
+"symbol": "SALASAR",
+"series": "EQ",
+"exDate": "13-Jul-2021",
+"subject": " Bonus 1:1",
+"isin": "INE170V01019"
+},
+{
+"symbol": "MOKSH",
+"series": "EQ",
+"exDate": "14-Jul-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE514Y01012"
+},
+{
+"symbol": "VEEDOL",
+"series": "EQ",
+"exDate": "26-Jul-2021",
+"subject": " Bonus 1:1",
+"isin": "INE484C01030"
+},
+{
+"symbol": "VEEDOL",
+"series": "EQ",
+"exDate": "26-Jul-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 2/- Per Share",
+"isin": "INE484C01030"
+},
+{
+"symbol": "POWERGRID",
+"series": "EQ",
+"exDate": "29-Jul-2021",
+"subject": " Bonus 1:3",
+"isin": "INE752E01010"
+},
+{
+"symbol": "MAANALU",
+"series": "EQ",
+"exDate": "02-Aug-2021",
+"subject": " Bonus 1: 1",
+"isin": "INE215I01019"
+},
+{
+"symbol": "GLOBE",
+"series": "EQ",
+"exDate": "03-Aug-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE581X01013"
+},
+{
+"symbol": "GLOBE",
+"series": "EQ",
+"exDate": "03-Aug-2021",
+"subject": " Bonus 2:1",
+"isin": "INE581X01013"
+},
+{
+"symbol": "DVL",
+"series": "EQ",
+"exDate": "05-Aug-2021",
+"subject": " Bonus 1:2",
+"isin": "INE477B01010"
+},
+{
+"symbol": "DHARAN",
+"series": "EQ",
+"exDate": "12-Aug-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE278R01034"
+},
+{
+"symbol": "DHARAN",
+"series": "EQ",
+"exDate": "12-Aug-2021",
+"subject": " Bonus 4:1",
+"isin": "INE278R01034"
+},
+{
+"symbol": "SAGCEM",
+"series": "EQ",
+"exDate": "17-Aug-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE229C01013"
+},
+{
+"symbol": "BCG",
+"series": "EQ",
+"exDate": "18-Aug-2021",
+"subject": " Bonus 1:4",
+"isin": "INE425B01027"
+},
+{
+"symbol": "REDINGTON",
+"series": "EQ",
+"exDate": "18-Aug-2021",
+"subject": " Bonus 1:1",
+"isin": "INE891D01018"
+},
+{
+"symbol": "MITTAL",
+"series": "EQ",
+"exDate": "31-Aug-2021",
+"subject": " Bonus 1:10",
+"isin": "INE997Y01019"
+},
+{
+"symbol": "RAJMET",
+"series": "EQ",
+"exDate": "02-Sep-2021",
+"subject": " Bonus 1:2",
+"isin": "INE00KV01014"
+},
+{
+"symbol": "MHRIL",
+"series": "EQ",
+"exDate": "08-Sep-2021",
+"subject": " Bonus 1:2",
+"isin": "INE998I01010"
+},
+{
+"symbol": "GANGAFORGE",
+"series": "EQ",
+"exDate": "13-Sep-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE691Z01015"
+},
+{
+"symbol": "MAHLIFE",
+"series": "EQ",
+"exDate": "14-Sep-2021",
+"subject": " Bonus 2:1",
+"isin": "INE813A01018"
+},
+{
+"symbol": "KANPRPLA",
+"series": "EQ",
+"exDate": "15-Sep-2021",
+"subject": " Bonus 1:2",
+"isin": "INE694E01014"
+},
+{
+"symbol": "TPLPLASTEH",
+"series": "EQ",
+"exDate": "16-Sep-2021",
+"subject": " Bonus 1:1",
+"isin": "INE413G01014"
+},
+{
+"symbol": "APLAPOLLO",
+"series": "EQ",
+"exDate": "16-Sep-2021",
+"subject": " Bonus 1:1",
+"isin": "INE702C01019"
+},
+{
+"symbol": "CESC",
+"series": "EQ",
+"exDate": "17-Sep-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE486A01013"
+},
+{
+"symbol": "LIBAS",
+"series": "EQ",
+"exDate": "21-Sep-2021",
+"subject": " Bonus 1:5",
+"isin": "INE908V01012"
+},
+{
+"symbol": "ARTEMISMED",
+"series": "EQ",
+"exDate": "23-Sep-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE025R01013"
+},
+{
+"symbol": "KPRMILL",
+"series": "EQ",
+"exDate": "24-Sep-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE930H01015"
+},
+{
+"symbol": "CLEDUCATE",
+"series": "EQ",
+"exDate": "30-Sep-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE201M01011"
+},
+{
+"symbol": "AFFLE",
+"series": "EQ",
+"exDate": "07-Oct-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE00WC01019"
+},
+{
+"symbol": "TIRUPATIFL",
+"series": "EQ",
+"exDate": "07-Oct-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE319Y01016"
+},
+{
+"symbol": "TIRUPATIFL",
+"series": "EQ",
+"exDate": "07-Oct-2021",
+"subject": " Bonus 3:4",
+"isin": "INE319Y01016"
+},
+{
+"symbol": "SRF",
+"series": "EQ",
+"exDate": "13-Oct-2021",
+"subject": " Bonus 4:1",
+"isin": "INE647A01010"
+},
+{
+"symbol": "VISHWARAJ",
+"series": "EQ",
+"exDate": "21-Oct-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE430N01014"
+},
+{
+"symbol": "GPIL",
+"series": "EQ",
+"exDate": "26-Oct-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE177H01013"
+},
+{
+"symbol": "GPIL",
+"series": "EQ",
+"exDate": "26-Oct-2021",
+"subject": " Bonus 1:1",
+"isin": "INE177H01013"
+},
+{
+"symbol": "IRCTC",
+"series": "EQ",
+"exDate": "28-Oct-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE335Y01012"
+},
+{
+"symbol": "NIPPOBATRY",
+"series": "EQ",
+"exDate": "28-Oct-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE567A01010"
+},
+{
+"symbol": "BIGBLOC",
+"series": "EQ",
+"exDate": "15-Nov-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE412U01017"
+},
+{
+"symbol": "MANINFRA",
+"series": "EQ",
+"exDate": "17-Nov-2021",
+"subject": " Bonus 1:2",
+"isin": "INE949H01015"
+},
+{
+"symbol": "SSWL",
+"series": "EQ",
+"exDate": "18-Nov-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE802C01017"
+},
+{
+"symbol": "APOLLOPIPE",
+"series": "EQ",
+"exDate": "02-Dec-2021",
+"subject": " Bonus 2:1",
+"isin": "INE126J01016"
+},
+{
+"symbol": "IEX",
+"series": "EQ",
+"exDate": "03-Dec-2021",
+"subject": " Bonus 2:1",
+"isin": "INE022Q01012"
+},
+{
+"symbol": "TTKPRESTIG",
+"series": "EQ",
+"exDate": "14-Dec-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10 Per Share To Re 1 Per Share",
+"isin": "INE690A01010"
+},
+{
+"symbol": "KKCL",
+"series": "EQ",
+"exDate": "16-Dec-2021",
+"subject": " Bonus 4:1",
+"isin": "INE401H01017"
+},
+{
+"symbol": "PRECWIRE",
+"series": "EQ",
+"exDate": "22-Dec-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE372C01011"
+},
+{
+"symbol": "PTL",
+"series": "EQ",
+"exDate": "23-Dec-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE034D01031"
+},
+{
+"symbol": "ANDHRSUGAR",
+"series": "EQ",
+"exDate": "30-Dec-2021",
+"subject": " Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE715B01013"
+},
+{
+"symbol": "IMFA",
+"series": "EQ",
+"exDate": "07-Jan-2022",
+"subject": "Bonus 1:1",
+"isin": "INE919H01018"
+},
+{
+"symbol": "IPCALAB",
+"series": "EQ",
+"exDate": "10-Jan-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE571A01020"
+},
+{
+"symbol": "ONEPOINT",
+"series": "EQ",
+"exDate": "18-Jan-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE840Y01011"
+},
+{
+"symbol": "ONEPOINT",
+"series": "EQ",
+"exDate": "18-Jan-2022",
+"subject": "Bonus 1:2",
+"isin": "INE840Y01011"
+},
+{
+"symbol": "AURIGROW",
+"series": "EQ",
+"exDate": "20-Jan-2022",
+"subject": "Bonus 1:1",
+"isin": "INE925Y01036"
+},
+{
+"symbol": "AAKASH",
+"series": "EQ",
+"exDate": "03-Feb-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE087Z01016"
+},
+{
+"symbol": "ESSENTIA",
+"series": "EQ",
+"exDate": "03-Feb-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 3/- Per Share To Re 1/- Per Share",
+"isin": "INE418N01035"
+},
+{
+"symbol": "SCHAEFFLER",
+"series": "EQ",
+"exDate": "08-Feb-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE513A01014"
+},
+{
+"symbol": "GREENLAM",
+"series": "EQ",
+"exDate": "10-Feb-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE544R01013"
+},
+{
+"symbol": "JBMA",
+"series": "EQ",
+"exDate": "21-Feb-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Rs 2/- Per Share",
+"isin": "INE927D01010"
+},
+{
+"symbol": "HGS",
+"series": "EQ",
+"exDate": "22-Feb-2022",
+"subject": "Bonus 1:1",
+"isin": "INE170I01016"
+},
+{
+"symbol": "SBC",
+"series": "EQ",
+"exDate": "22-Feb-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE04AK01010"
+},
+{
+"symbol": "SBC",
+"series": "EQ",
+"exDate": "22-Feb-2022",
+"subject": "Bonus 1:1",
+"isin": "INE04AK01010"
+},
+{
+"symbol": "EASEMYTRIP",
+"series": "EQ",
+"exDate": "28-Feb-2022",
+"subject": "Bonus 1:1",
+"isin": "INE07O001018"
+},
+{
+"symbol": "SUPREMEENG",
+"series": "EQ",
+"exDate": "03-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE319Z01013"
+},
+{
+"symbol": "VISHAL",
+"series": "EQ",
+"exDate": "10-Mar-2022",
+"subject": "Bonus 2:1",
+"isin": "INE755Q01025"
+},
+{
+"symbol": "RKFORGE",
+"series": "EQ",
+"exDate": "14-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE399G01015"
+},
+{
+"symbol": "CCAVENUE",
+"series": "EQ",
+"exDate": "14-Mar-2022",
+"subject": "Bonus 1:1",
+"isin": "INE483S01020"
+},
+{
+"symbol": "RAJRATAN",
+"series": "EQ",
+"exDate": "15-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE451D01011"
+},
+{
+"symbol": "BCG",
+"series": "EQ",
+"exDate": "15-Mar-2022",
+"subject": "Bonus 2:3",
+"isin": "INE425B01027"
+},
+{
+"symbol": "DRCSYSTEMS",
+"series": "EQ",
+"exDate": "16-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE03RS01019"
+},
+{
+"symbol": "BSE",
+"series": "EQ",
+"exDate": "21-Mar-2022",
+"subject": "Bonus 2:1",
+"isin": "INE118H01025"
+},
+{
+"symbol": "VTL",
+"series": "EQ",
+"exDate": "24-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE825A01012"
+},
+{
+"symbol": "NDL",
+"series": "EQ",
+"exDate": "24-Mar-2022",
+"subject": "Bonus 2:1",
+"isin": "INE875G01030"
+},
+{
+"symbol": "AURIGROW",
+"series": "EQ",
+"exDate": "24-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE925Y01036"
+},
+{
+"symbol": "GOLDIAM",
+"series": "EQ",
+"exDate": "28-Mar-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE025B01017"
+},
+{
+"symbol": "SUULD",
+"series": "EQ",
+"exDate": "30-Mar-2022",
+"subject": "Bonus 1:1",
+"isin": "INE591Q01016"
+},
+{
+"symbol": "PCBL",
+"series": "EQ",
+"exDate": "11-Apr-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE602A01023"
+},
+{
+"symbol": "ARIHANTCAP",
+"series": "EQ",
+"exDate": "12-Apr-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE420B01028"
+},
+{
+"symbol": "DUCON",
+"series": "EQ",
+"exDate": "18-Apr-2022",
+"subject": "Bonus 1:10",
+"isin": "INE741L01018"
+},
+{
+"symbol": "JUBLFOOD",
+"series": "EQ",
+"exDate": "19-Apr-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE797F01012"
+},
+{
+"symbol": "SAREGAMA",
+"series": "EQ",
+"exDate": "26-Apr-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE979A01017"
+},
+{
+"symbol": "BLS",
+"series": "EQ",
+"exDate": "13-May-2022",
+"subject": "Bonus 1:1",
+"isin": "INE153T01019"
+},
+{
+"symbol": "BBOX",
+"series": "EQ",
+"exDate": "13-May-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE676A01019"
+},
+{
+"symbol": "JETFREIGHT",
+"series": "EQ",
+"exDate": "19-May-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE982V01017"
+},
+{
+"symbol": "VBL",
+"series": "EQ",
+"exDate": "06-Jun-2022",
+"subject": "Bonus 1:2",
+"isin": "INE200M01013"
+},
+{
+"symbol": "AUBANK",
+"series": "EQ",
+"exDate": "09-Jun-2022",
+"subject": "Bonus 1:1",
+"isin": "INE949L01017"
+},
+{
+"symbol": "COSMOFIRST",
+"series": "EQ",
+"exDate": "16-Jun-2022",
+"subject": "Bonus 1:2",
+"isin": "INE757A01017"
+},
+{
+"symbol": "AJANTPHARM",
+"series": "EQ",
+"exDate": "22-Jun-2022",
+"subject": "Bonus- 1:2",
+"isin": "INE031B01015"
+},
+{
+"symbol": "NAZARA",
+"series": "EQ",
+"exDate": "24-Jun-2022",
+"subject": "Bonus 1:1",
+"isin": "INE418L01021"
+},
+{
+"symbol": "SALASAR",
+"series": "EQ",
+"exDate": "27-Jun-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 1/- Per Share",
+"isin": "INE170V01019"
+},
+{
+"symbol": "IOC",
+"series": "EQ",
+"exDate": "30-Jun-2022",
+"subject": "Bonus 1:2",
+"isin": "INE242A01010"
+},
+{
+"symbol": "RATNAMANI",
+"series": "EQ",
+"exDate": "30-Jun-2022",
+"subject": "Bonus 1:2",
+"isin": "INE703B01027"
+},
+{
+"symbol": "PAISALO",
+"series": "EQ",
+"exDate": "30-Jun-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE420C01042"
+},
+{
+"symbol": "XPROINDIA",
+"series": "EQ",
+"exDate": "01-Jul-2022",
+"subject": "Bonus 1:2",
+"isin": "INE445C01015"
+},
+{
+"symbol": "UNOMINDA",
+"series": "EQ",
+"exDate": "07-Jul-2022",
+"subject": "Bonus 1:1",
+"isin": "INE405E01023"
+},
+{
+"symbol": "TORNTPHARM",
+"series": "EQ",
+"exDate": "08-Jul-2022",
+"subject": "Bonus 1:1",
+"isin": "INE685A01028"
+},
+{
+"symbol": "GMMPFAUDLR",
+"series": "EQ",
+"exDate": "11-Jul-2022",
+"subject": "Bonus 2:1",
+"isin": "INE541A01023"
+},
+{
+"symbol": "STEELXIND",
+"series": "EQ",
+"exDate": "12-Jul-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE503B01013"
+},
+{
+"symbol": "SONAMLTD",
+"series": "EQ",
+"exDate": "14-Jul-2022",
+"subject": "Bonus 1:1",
+"isin": "INE00LM01011"
+},
+{
+"symbol": "RGL",
+"series": "EQ",
+"exDate": "19-Jul-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE722H01016"
+},
+{
+"symbol": "HNDFDS",
+"series": "EQ",
+"exDate": "21-Jul-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE254N01018"
+},
+{
+"symbol": "HARDWYN",
+"series": "EQ",
+"exDate": "25-Jul-2022",
+"subject": "Bonus 1:2",
+"isin": "INE626Z01011"
+},
+{
+"symbol": "TATASTEEL",
+"series": "EQ",
+"exDate": "28-Jul-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE081A01012"
+},
+{
+"symbol": "RECLTD",
+"series": "EQ",
+"exDate": "17-Aug-2022",
+"subject": "Bonus 1:3",
+"isin": "INE020B01018"
+},
+{
+"symbol": "MGEL",
+"series": "EQ",
+"exDate": "18-Aug-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE0APB01016"
+},
+{
+"symbol": "RAMASTEEL",
+"series": "EQ",
+"exDate": "25-Aug-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE230R01019"
+},
+{
+"symbol": "PDSL",
+"series": "EQ",
+"exDate": "26-Aug-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE111Q01013"
+},
+{
+"symbol": "KRITIKA",
+"series": "EQ",
+"exDate": "30-Aug-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE00Z501011"
+},
+{
+"symbol": "SOTL",
+"series": "EQ",
+"exDate": "01-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE035D01012"
+},
+{
+"symbol": "GAIL",
+"series": "EQ",
+"exDate": "06-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE129A01019"
+},
+{
+"symbol": "DANGEE",
+"series": "EQ",
+"exDate": "06-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE688Y01014"
+},
+{
+"symbol": "DANGEE",
+"series": "EQ",
+"exDate": "06-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE688Y01014"
+},
+{
+"symbol": "BANSWRAS",
+"series": "EQ",
+"exDate": "08-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE629D01012"
+},
+{
+"symbol": "SONATSOFTW",
+"series": "EQ",
+"exDate": "08-Sep-2022",
+"subject": "Bonus 1:3",
+"isin": "INE269A01021"
+},
+{
+"symbol": "BAJAJFINSV",
+"series": "EQ",
+"exDate": "13-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE918I01018"
+},
+{
+"symbol": "BAJAJFINSV",
+"series": "EQ",
+"exDate": "13-Sep-2022",
+"subject": "Bonus 1:1",
+"isin": "INE918I01018"
+},
+{
+"symbol": "BEL",
+"series": "EQ",
+"exDate": "15-Sep-2022",
+"subject": "Bonus 2:1",
+"isin": "INE263A01016"
+},
+{
+"symbol": "RAJMET",
+"series": "EQ",
+"exDate": "15-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE00KV01014"
+},
+{
+"symbol": "ECLERX",
+"series": "EQ",
+"exDate": "21-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE738I01010"
+},
+{
+"symbol": "CHOICEIN",
+"series": "EQ",
+"exDate": "22-Sep-2022",
+"subject": "Bonus 1:1",
+"isin": "INE102B01014"
+},
+{
+"symbol": "BSHSL",
+"series": "EQ",
+"exDate": "23-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE032Z01012"
+},
+{
+"symbol": "SAKSOFT",
+"series": "EQ",
+"exDate": "23-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE667G01015"
+},
+{
+"symbol": "RUBYMILLS",
+"series": "EQ",
+"exDate": "23-Sep-2022",
+"subject": "Bonus 1:1",
+"isin": "INE301D01018"
+},
+{
+"symbol": "BHARATGEAR",
+"series": "EQ",
+"exDate": "27-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE561C01019"
+},
+{
+"symbol": "LANDSMILL",
+"series": "EQ",
+"exDate": "28-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE688J01023"
+},
+{
+"symbol": "LANDSMILL",
+"series": "EQ",
+"exDate": "28-Sep-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE688J01023"
+},
+{
+"symbol": "RAMRAT",
+"series": "EQ",
+"exDate": "28-Sep-2022",
+"subject": "Bonus 1:1",
+"isin": "INE207E01023"
+},
+{
+"symbol": "INSECTICID",
+"series": "EQ",
+"exDate": "30-Sep-2022",
+"subject": "Bonus 1:2",
+"isin": "INE070I01018"
+},
+{
+"symbol": "MOTHERSON",
+"series": "EQ",
+"exDate": "03-Oct-2022",
+"subject": "Bonus 1:2",
+"isin": "INE775A01035"
+},
+{
+"symbol": "AHLEAST",
+"series": "EQ",
+"exDate": "06-Oct-2022",
+"subject": "Bonus 1:2",
+"isin": "INE926K01017"
+},
+{
+"symbol": "AJOONI",
+"series": "EQ",
+"exDate": "07-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE820Y01013"
+},
+{
+"symbol": "RUCHIRA",
+"series": "EQ",
+"exDate": "10-Oct-2022",
+"subject": "Bonus 1:10",
+"isin": "INE803H01014"
+},
+{
+"symbol": "SBCL",
+"series": "EQ",
+"exDate": "12-Oct-2022",
+"subject": "Bonus 1:2",
+"isin": "INE386D01027"
+},
+{
+"symbol": "HLEGLAS",
+"series": "EQ",
+"exDate": "18-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE461D01010"
+},
+{
+"symbol": "MBAPL",
+"series": "EQ",
+"exDate": "18-Oct-2022",
+"subject": "Bonus 1:1",
+"isin": "INE900L01010"
+},
+{
+"symbol": "GLOBAL",
+"series": "EQ",
+"exDate": "19-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE291W01011"
+},
+{
+"symbol": "TPLPLASTEH",
+"series": "EQ",
+"exDate": "19-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE413G01014"
+},
+{
+"symbol": "AXITA",
+"series": "EQ",
+"exDate": "21-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE02EZ01014"
+},
+{
+"symbol": "KSHITIJPOL",
+"series": "EQ",
+"exDate": "27-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "IN0000000000"
+},
+{
+"symbol": "DIL",
+"series": "EQ",
+"exDate": "27-Oct-2022",
+"subject": "Bonus 1:1",
+"isin": "INE411Y01011"
+},
+{
+"symbol": "SIKKO",
+"series": "EQ",
+"exDate": "28-Oct-2022",
+"subject": "Bonus 1:2",
+"isin": "INE112X01017"
+},
+{
+"symbol": "TDPOWERSYS",
+"series": "EQ",
+"exDate": "31-Oct-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE419M01019"
+},
+{
+"symbol": "SSWL",
+"series": "EQ",
+"exDate": "10-Nov-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Re 1/- Per Share",
+"isin": "INE802C01017"
+},
+{
+"symbol": "NYKAA",
+"series": "EQ",
+"exDate": "10-Nov-2022",
+"subject": "Bonus 5:1",
+"isin": "INE388Y01029"
+},
+{
+"symbol": "GPTINFRA",
+"series": "EQ",
+"exDate": "11-Nov-2022",
+"subject": "Bonus 1:1",
+"isin": "INE390G01014"
+},
+{
+"symbol": "MSUMI",
+"series": "EQ",
+"exDate": "16-Nov-2022",
+"subject": "Bonus 2:5",
+"isin": "INE0FS801015"
+},
+{
+"symbol": "EASEMYTRIP",
+"series": "EQ",
+"exDate": "21-Nov-2022",
+"subject": "Bonus 3:1",
+"isin": "INE07O001018"
+},
+{
+"symbol": "EASEMYTRIP",
+"series": "EQ",
+"exDate": "21-Nov-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE07O001018"
+},
+{
+"symbol": "DEVIT",
+"series": "EQ",
+"exDate": "25-Nov-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE060X01018"
+},
+{
+"symbol": "MAHSEAMLES",
+"series": "EQ",
+"exDate": "25-Nov-2022",
+"subject": "Bonus 1:1",
+"isin": "INE271B01025"
+},
+{
+"symbol": "RAJMET",
+"series": "EQ",
+"exDate": "30-Nov-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE00KV01014"
+},
+{
+"symbol": "LIKHITHA",
+"series": "EQ",
+"exDate": "02-Dec-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE060901019"
+},
+{
+"symbol": "BLS",
+"series": "EQ",
+"exDate": "08-Dec-2022",
+"subject": "Bonus 1:1",
+"isin": "INE153T01019"
+},
+{
+"symbol": "CLEDUCATE",
+"series": "EQ",
+"exDate": "16-Dec-2022",
+"subject": "Bonus 1:1",
+"isin": "INE201M01011"
+},
+{
+"symbol": "LANCER",
+"series": "EQ",
+"exDate": "16-Dec-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE359U01010"
+},
+{
+"symbol": "SFL",
+"series": "EQ",
+"exDate": "21-Dec-2022",
+"subject": "Bonus 1:1",
+"isin": "INE916U01025"
+},
+{
+"symbol": "ZIMLAB",
+"series": "EQ",
+"exDate": "22-Dec-2022",
+"subject": "Bonus 2:1",
+"isin": "INE518E01015"
+},
+{
+"symbol": "PRECWIRE",
+"series": "EQ",
+"exDate": "22-Dec-2022",
+"subject": "Bonus 1:2",
+"isin": "INE372C01011"
+},
+{
+"symbol": "FILATEX",
+"series": "EQ",
+"exDate": "27-Dec-2022",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE816B01019"
+},
+{
+"symbol": "SECURCRED",
+"series": "EQ",
+"exDate": "04-Jan-2023",
+"subject": "Bonus 3:1",
+"isin": "INE195Y01010"
+},
+{
+"symbol": "SPLPETRO",
+"series": "EQ",
+"exDate": "06-Jan-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 4/- Per Share To Rs 2/- Per Share",
+"isin": "INE663A01025"
+},
+{
+"symbol": "RAMASTEEL",
+"series": "EQ",
+"exDate": "06-Jan-2023",
+"subject": "Bonus 4:1",
+"isin": "INE230R01019"
+},
+{
+"symbol": "RADIOCITY",
+"series": "EQ",
+"exDate": "13-Jan-2023",
+"subject": "Scheme Of Arrangement - Bonus Ncrps 1:10",
+"isin": "INE919I01016"
+},
+{
+"symbol": "VISHNU",
+"series": "EQ",
+"exDate": "13-Jan-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE270I01014"
+},
+{
+"symbol": "KPIGREEN",
+"series": "EQ",
+"exDate": "18-Jan-2023",
+"subject": "Bonus 1:1",
+"isin": "INE542W01017"
+},
+{
+"symbol": "SHRADHA",
+"series": "EQ",
+"exDate": "20-Jan-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE715Y01015"
+},
+{
+"symbol": "GVPTECH",
+"series": "EQ",
+"exDate": "23-Jan-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE382T01030"
+},
+{
+"symbol": "SERVOTECH",
+"series": "EQ",
+"exDate": "03-Feb-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE782X01017"
+},
+{
+"symbol": "VCL",
+"series": "EQ",
+"exDate": "15-Feb-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE098201010"
+},
+{
+"symbol": "ACCURACY",
+"series": "EQ",
+"exDate": "15-Feb-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE648Z01015"
+},
+{
+"symbol": "IRB",
+"series": "EQ",
+"exDate": "22-Feb-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE821I01014"
+},
+{
+"symbol": "VINNY",
+"series": "EQ",
+"exDate": "24-Feb-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE01KI01019"
+},
+{
+"symbol": "VINNY",
+"series": "EQ",
+"exDate": "24-Feb-2023",
+"subject": "Bonus 13:10",
+"isin": "INE01KI01019"
+},
+{
+"symbol": "360ONE",
+"series": "EQ",
+"exDate": "02-Mar-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE466L01020"
+},
+{
+"symbol": "360ONE",
+"series": "EQ",
+"exDate": "02-Mar-2023",
+"subject": "Bonus 1:1",
+"isin": "INE466L01020"
+},
+{
+"symbol": "OSIAHYPER",
+"series": "EQ",
+"exDate": "13-Mar-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE06IR01013"
+},
+{
+"symbol": "ASTRAL",
+"series": "EQ",
+"exDate": "14-Mar-2023",
+"subject": "Bonus 1:3",
+"isin": "INE006I01012"
+},
+{
+"symbol": "MEDICO",
+"series": "EQ",
+"exDate": "16-Mar-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE630Y01016"
+},
+{
+"symbol": "HITECH",
+"series": "EQ",
+"exDate": "17-Mar-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE106T01017"
+},
+{
+"symbol": "TVSHLTD",
+"series": "EQ",
+"exDate": "24-Mar-2023",
+"subject": "Bonus Ncrps 1:116",
+"isin": "INE105A01035"
+},
+{
+"symbol": "DEEPINDS",
+"series": "EQ",
+"exDate": "10-Apr-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE0FHS01016"
+},
+{
+"symbol": "TIPSMUSIC",
+"series": "EQ",
+"exDate": "21-Apr-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE716B01029"
+},
+{
+"symbol": "GOYALALUM",
+"series": "EQ",
+"exDate": "25-Apr-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE705X01018"
+},
+{
+"symbol": "APOLLO",
+"series": "EQ",
+"exDate": "04-May-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE713T01010"
+},
+{
+"symbol": "SIRCA",
+"series": "EQ",
+"exDate": "11-May-2023",
+"subject": "Bonus 1:1",
+"isin": "INE792Z01011"
+},
+{
+"symbol": "VISAKAIND",
+"series": "EQ",
+"exDate": "15-May-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE392A01013"
+},
+{
+"symbol": "SRPL",
+"series": "EQ",
+"exDate": "19-May-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE008Z01012"
+},
+{
+"symbol": "VSSL",
+"series": "EQ",
+"exDate": "26-May-2023",
+"subject": "Bonus 1:1",
+"isin": "INE050M01012"
+},
+{
+"symbol": "RADHIKAJWE",
+"series": "EQ",
+"exDate": "26-May-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE583V01013"
+},
+{
+"symbol": "LODHA",
+"series": "EQ",
+"exDate": "31-May-2023",
+"subject": "Bonus 1:1",
+"isin": "INE670K01029"
+},
+{
+"symbol": "HARDWYN",
+"series": "EQ",
+"exDate": "05-Jun-2023",
+"subject": "Bonus 1:3",
+"isin": "INE626Z01011"
+},
+{
+"symbol": "HARDWYN",
+"series": "EQ",
+"exDate": "05-Jun-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE626Z01011"
+},
+{
+"symbol": "IONEXCHANG",
+"series": "EQ",
+"exDate": "12-Jun-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE570A01014"
+},
+{
+"symbol": "VBL",
+"series": "EQ",
+"exDate": "15-Jun-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE200M01013"
+},
+{
+"symbol": "BLUESTARCO",
+"series": "EQ",
+"exDate": "20-Jun-2023",
+"subject": "Bonus 1:1",
+"isin": "INE472A01039"
+},
+{
+"symbol": "INDIAMART",
+"series": "EQ",
+"exDate": "21-Jun-2023",
+"subject": "Bonus 1:1",
+"isin": "INE933S01016"
+},
+{
+"symbol": "GULPOLY",
+"series": "EQ",
+"exDate": "21-Jun-2023",
+"subject": "Bonus 1:5",
+"isin": "INE255D01016"
+},
+{
+"symbol": "AKI",
+"series": "EQ",
+"exDate": "22-Jun-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE642Z01018"
+},
+{
+"symbol": "KANSAINER",
+"series": "EQ",
+"exDate": "04-Jul-2023",
+"subject": "Bonus 1:2",
+"isin": "INE531A01016"
+},
+{
+"symbol": "BEPL",
+"series": "EQ",
+"exDate": "05-Jul-2023",
+"subject": "Bonus 1:2",
+"isin": "INE922A01025"
+},
+{
+"symbol": "SADHNANIQ",
+"series": "EQ",
+"exDate": "05-Jul-2023",
+"subject": "Bonus 2:9",
+"isin": "INE888C01040"
+},
+{
+"symbol": "ROTO",
+"series": "EQ",
+"exDate": "07-Jul-2023",
+"subject": "Bonus 1:1",
+"isin": "INE535D01029"
+},
+{
+"symbol": "APTECHT",
+"series": "EQ",
+"exDate": "14-Jul-2023",
+"subject": "Bonus 2:5",
+"isin": "INE266F01018"
+},
+{
+"symbol": "THANGAMAYL",
+"series": "EQ",
+"exDate": "17-Jul-2023",
+"subject": "Bonus 1:1",
+"isin": "INE085J01014"
+},
+{
+"symbol": "ANMOL",
+"series": "EQ",
+"exDate": "18-Jul-2023",
+"subject": "Bonus 4:1",
+"isin": "INE02AR01019"
+},
+{
+"symbol": "NDRAUTO",
+"series": "EQ",
+"exDate": "24-Jul-2023",
+"subject": "Bonus 1:1",
+"isin": "INE07OG01012"
+},
+{
+"symbol": "SHRIPISTON",
+"series": "EQ",
+"exDate": "24-Jul-2023",
+"subject": "Bonus 1:1",
+"isin": "INE526E01018"
+},
+{
+"symbol": "MAANALU",
+"series": "EQ",
+"exDate": "27-Jul-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE215I01019"
+},
+{
+"symbol": "MAANALU",
+"series": "EQ",
+"exDate": "27-Jul-2023",
+"subject": "Bonus 1:1",
+"isin": "INE215I01019"
+},
+{
+"symbol": "SERVOTECH",
+"series": "EQ",
+"exDate": "28-Jul-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE782X01017"
+},
+{
+"symbol": "AKSHAR",
+"series": "EQ",
+"exDate": "31-Jul-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE256Z01017"
+},
+{
+"symbol": "KAMOPAINTS",
+"series": "EQ",
+"exDate": "01-Aug-2023",
+"subject": "Bonus 1:1",
+"isin": "INE0BTI01029"
+},
+{
+"symbol": "NINSYS",
+"series": "EQ",
+"exDate": "03-Aug-2023",
+"subject": "Bonus 4:5",
+"isin": "INE395U01014"
+},
+{
+"symbol": "SARDAEN",
+"series": "EQ",
+"exDate": "04-Aug-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE385C01013"
+},
+{
+"symbol": "IRISDOREME",
+"series": "EQ",
+"exDate": "11-Aug-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE01GN01017"
+},
+{
+"symbol": "OSWALSEEDS",
+"series": "EQ",
+"exDate": "18-Aug-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE00IK01011"
+},
+{
+"symbol": "GNA",
+"series": "EQ",
+"exDate": "01-Sep-2023",
+"subject": "Bonus 1:1",
+"isin": "INE934S01014"
+},
+{
+"symbol": "JTLIND",
+"series": "EQ",
+"exDate": "07-Sep-2023",
+"subject": "Bonus 1:1",
+"isin": "INE391J01024"
+},
+{
+"symbol": "ADFFOODS",
+"series": "EQ",
+"exDate": "11-Sep-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE982B01019"
+},
+{
+"symbol": "POWERGRID",
+"series": "EQ",
+"exDate": "12-Sep-2023",
+"subject": "Bonus 1:3",
+"isin": "INE752E01010"
+},
+{
+"symbol": "SARVESHWAR",
+"series": "EQ",
+"exDate": "15-Sep-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE324X01018"
+},
+{
+"symbol": "SARVESHWAR",
+"series": "EQ",
+"exDate": "15-Sep-2023",
+"subject": "Bonus 2:1",
+"isin": "INE324X01018"
+},
+{
+"symbol": "JBCHEPHARM",
+"series": "EQ",
+"exDate": "18-Sep-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share",
+"isin": "INE572A01028"
+},
+{
+"symbol": "PFC",
+"series": "EQ",
+"exDate": "21-Sep-2023",
+"subject": "Bonus 1:4",
+"isin": "INE134E01011"
+},
+{
+"symbol": "BERGEPAINT",
+"series": "EQ",
+"exDate": "22-Sep-2023",
+"subject": "Bonus 1:5",
+"isin": "INE463A01020"
+},
+{
+"symbol": "HAL",
+"series": "EQ",
+"exDate": "28-Sep-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE066F01012"
+},
+{
+"symbol": "FOCUS",
+"series": "EQ",
+"exDate": "06-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE593W01010"
+},
+{
+"symbol": "SURYAROSNI",
+"series": "EQ",
+"exDate": "06-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share",
+"isin": "INE335A01012"
+},
+{
+"symbol": "SIGACHI",
+"series": "EQ",
+"exDate": "09-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE0D0K01014"
+},
+{
+"symbol": "THEMISMED",
+"series": "EQ",
+"exDate": "10-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE083B01016"
+},
+{
+"symbol": "GENSOL",
+"series": "EQ",
+"exDate": "17-Oct-2023",
+"subject": "Bonus 2:1",
+"isin": "INE06H201014"
+},
+{
+"symbol": "MBAPL",
+"series": "EQ",
+"exDate": "20-Oct-2023",
+"subject": "Bonus 1:1",
+"isin": "INE900L01010"
+},
+{
+"symbol": "GEEKAYWIRE",
+"series": "EQ",
+"exDate": "23-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE669X01016"
+},
+{
+"symbol": "KRISHANA",
+"series": "EQ",
+"exDate": "25-Oct-2023",
+"subject": "Bonus 1:1",
+"isin": "INE506W01012"
+},
+{
+"symbol": "JAYBARMARU",
+"series": "EQ",
+"exDate": "26-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 5/- Per Share To Rs 2/- Per Share",
+"isin": "INE571B01028"
+},
+{
+"symbol": "TALBROAUTO",
+"series": "EQ",
+"exDate": "27-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE187D01011"
+},
+{
+"symbol": "BCLIND",
+"series": "EQ",
+"exDate": "27-Oct-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE412G01016"
+},
+{
+"symbol": "MITTAL",
+"series": "EQ",
+"exDate": "01-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE997Y01019"
+},
+{
+"symbol": "CANTABIL",
+"series": "EQ",
+"exDate": "02-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE068L01016"
+},
+{
+"symbol": "DPWIRES",
+"series": "EQ",
+"exDate": "08-Nov-2023",
+"subject": "Bonus 1:7",
+"isin": "INE864X01013"
+},
+{
+"symbol": "HPAL",
+"series": "EQ",
+"exDate": "09-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE0GSL01016"
+},
+{
+"symbol": "MKPL",
+"series": "EQ",
+"exDate": "10-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE964W01013"
+},
+{
+"symbol": "HINDCON",
+"series": "EQ",
+"exDate": "10-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE642Y01011"
+},
+{
+"symbol": "ATALREAL",
+"series": "EQ",
+"exDate": "16-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE0ALR01011"
+},
+{
+"symbol": "SHAILY",
+"series": "EQ",
+"exDate": "23-Nov-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
+"isin": "INE151G01010"
+},
+{
+"symbol": "SAFARI",
+"series": "EQ",
+"exDate": "12-Dec-2023",
+"subject": "Bonus 1:1",
+"isin": "INE429E01023"
+},
+{
+"symbol": "SONATSOFTW",
+"series": "EQ",
+"exDate": "12-Dec-2023",
+"subject": "Bonus 1:1",
+"isin": "INE269A01021"
+},
+{
+"symbol": "TPHQ",
+"series": "EQ",
+"exDate": "14-Dec-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE065J01016"
+},
+{
+"symbol": "KRITIKA",
+"series": "EQ",
+"exDate": "19-Dec-2023",
+"subject": "Bonus 2:1",
+"isin": "INE00Z501011"
+},
+{
+"symbol": "AXITA",
+"series": "EQ",
+"exDate": "22-Dec-2023",
+"subject": "Bonus 1:3",
+"isin": "INE02EZ01014"
+},
+{
+"symbol": "HMAAGRO",
+"series": "EQ",
+"exDate": "29-Dec-2023",
+"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
+"isin": "INE0ECP01016"
+}
+]
