@@ -37,6 +37,9 @@ class DarvasOpenPosition:
     current_target:      float
     entry_order_id:      str
     stop_order_id:        str
+    # True from the 09:02 IST pre-open MARKET buy until the 09:16 IST execute
+    # phase confirms the fill and the protective stop is resting.
+    stop_pending:         bool = False
 
 
 def load_open_positions(path: Optional[Path] = None) -> dict[str, DarvasOpenPosition]:

@@ -1,0 +1,22 @@
+[Unit]
+Description=QuantOS Darvas ATR-Stop (Bucket B) -- PRE-OPEN phase: MARKET buys for the evening scan's entries, filled at the open (gated by agent/config.yaml darvas_atr_stop.enabled/dry_run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_darvas_atr_stop_live.py --phase preopen
+Environment=HOME=/home/ubuntu
+
+# 2026-10-05: entries moved from 09:45 IST (LTP, ~0.6% worse than the open on
+# the first real fill) to NSE's pre-open auction. Pre-open accepts no stop
+# orders, so this phase places ENTRIES ONLY; quantos-darvas-atr-stop-live
+# (09:16 IST) confirms each fill and places its protective SL-M stop, or
+# flattens the position if the stop does not rest.
+#
+# Only inside the pre-open order window (09:00-09:08 IST), weekdays. Known
+# gap shared with every unit here: a weekday NSE holiday is not detected
+# (the order is rejected and the 09:16 phase drops the position).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0900 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 0907 ]'

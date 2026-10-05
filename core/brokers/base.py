@@ -175,6 +175,7 @@ class Quote:
     prev_close: float
     change: float = 0.0
     change_pct: float = 0.0
+    open: float = 0.0          # today's opening price (0.0 before the open / if absent)
 
     @property
     def is_advancing(self) -> bool:

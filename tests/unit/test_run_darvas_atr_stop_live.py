@@ -23,6 +23,7 @@ from core.brokers.base import (  # noqa: E402
     OrderResult,
     OrderDirection,
     OrderStatus,
+    OrderType,
     Position,
     ProductType,
 )
@@ -812,3 +813,123 @@ class TestMain:
         mod._write_plan(plan, tmp_path / "plan.json")
         assert mod.main(["--phase", "scan"]) == 0
         assert mod._load_plan(tmp_path / "plan.json")["executed_on"] == "2099-01-01"
+
+
+# ─── Pre-open entries (09:02 IST) + protection at 09:16 IST (2026-10-05) ────
+
+class _PreopenBroker(_FakeBroker):
+    """Entry orders report EXECUTED at `fill_price` with their quantity; stop
+    orders rest (OPEN) unless `stop_rests` is False; quotes carry an open."""
+    def __init__(self, *a, entry_status=OrderStatus.EXECUTED, stop_rests=True, quote_open=101.0, **kw):
+        super().__init__(*a, **kw)
+        self.entry_status, self.stop_rests, self.quote_open = entry_status, stop_rests, quote_open
+
+    def get_order_status(self, order_id):
+        order = self.placed_orders[int(order_id.split("-")[1]) - 1] if order_id.startswith("ORD-") else None
+        is_stop = order is not None and order.order_type in (OrderType.SL, OrderType.SL_M)
+        if is_stop:
+            status = OrderStatus.OPEN if self.stop_rests else OrderStatus.REJECTED
+            return OrderResult(order_id=order_id, status=status, symbol="", direction=OrderDirection.SELL,
+                               quantity=0, filled_quantity=0, average_price=None,
+                               timestamp=datetime.now(timezone.utc))
+        filled = order.quantity if (order and self.entry_status == OrderStatus.EXECUTED) else 0
+        return OrderResult(order_id=order_id, status=self.entry_status, symbol="", direction=OrderDirection.BUY,
+                           quantity=filled, filled_quantity=filled,
+                           average_price=self.fill_price if filled else None,
+                           timestamp=datetime.now(timezone.utc))
+
+    def get_quotes(self, symbols):
+        return {s: SimpleNamespace(ltp=self._ltp.get(s, 0.0), open=self.quote_open) for s in symbols}
+
+
+def _plan(today, **overrides):
+    p = {"bars_as_of": (today - timedelta(days=1)).isoformat(),
+         "entries": [dict(symbol="TEST", initial_stop=90.0, target=150.0, box_ceiling=98.0,
+                          box_width_pct=40.0, last_close=99.0, tags=[])],
+         "position_actions": {}, "failures": {}}
+    p.update(overrides)
+    return p
+
+
+class TestPreopen:
+    TODAY = date(2026, 10, 6)
+
+    def _preopen(self, broker, positions, dry_run):
+        mod.run_preopen(broker, _plan(self.TODAY), positions, TradeHistoryService(), dry_run=dry_run,
+                        equity_fraction=0.09, starting_capital=1_000_000.0, min_capital_floor=0.0,
+                        today=self.TODAY)
+
+    def test_live_preopen_places_a_market_buy_and_no_stop(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        broker, positions = _PreopenBroker(), {}
+        self._preopen(broker, positions, dry_run=False)
+        assert [o.order_type for o in broker.placed_orders] == [OrderType.MARKET]
+        assert broker.placed_orders[0].product_type == ProductType.CNC
+        assert positions["TEST"].stop_pending is True
+        assert positions["TEST"].stop_order_id == ""
+
+    def test_execute_protects_the_fill_with_a_resting_stop_and_enters_nothing_new(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        broker, positions = _PreopenBroker(fill_price=100.5, ltp={"TEST": 101.0}), {}
+        self._preopen(broker, positions, dry_run=False)
+        mod.run_execute(broker, _plan(self.TODAY, preopen_on=self.TODAY.isoformat()), positions,
+                        TradeHistoryService(), dry_run=False, equity_fraction=0.09,
+                        starting_capital=1_000_000.0, min_capital_floor=0.0, today=self.TODAY)
+        types = [o.order_type for o in broker.placed_orders]
+        assert types == [OrderType.MARKET, OrderType.SL_M]
+        assert broker.placed_orders[1].trigger_price == 90.0
+        p = positions["TEST"]
+        assert p.stop_pending is False and p.stop_order_id == "ORD-2" and p.entry_price == 100.5
+
+    def test_dry_run_fill_is_todays_official_open(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        broker, positions = _PreopenBroker(ltp={"TEST": 103.0}, quote_open=101.25), {}
+        self._preopen(broker, positions, dry_run=True)
+        mod.protect_pending(broker, positions, TradeHistoryService(), dry_run=True)
+        assert broker.placed_orders == []
+        assert positions["TEST"].entry_price == 101.25 and positions["TEST"].stop_pending is False
+
+    def test_unfilled_preopen_order_is_dropped(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        broker, positions = _PreopenBroker(entry_status=OrderStatus.REJECTED), {}
+        self._preopen(broker, positions, dry_run=False)
+        mod.protect_pending(broker, positions, TradeHistoryService(), dry_run=False)
+        assert positions == {}
+        assert [o.order_type for o in broker.placed_orders] == [OrderType.MARKET]
+
+    def test_opening_below_the_stop_exits_instead_of_placing_a_stop(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        broker, positions = _PreopenBroker(fill_price=89.0, ltp={"TEST": 88.5}), {}
+        self._preopen(broker, positions, dry_run=False)
+        mod.protect_pending(broker, positions, TradeHistoryService(), dry_run=False)
+        assert positions == {}
+        assert [(o.order_type, o.direction) for o in broker.placed_orders] == [
+            (OrderType.MARKET, OrderDirection.BUY), (OrderType.MARKET, OrderDirection.SELL)]
+
+    def test_stop_not_resting_flattens_and_removes_the_position(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        monkeypatch.setattr("core.execution.order_service.STOP_CONFIRM_ATTEMPTS", 1)
+        monkeypatch.setattr("core.execution.order_service.STOP_CONFIRM_SLEEP_SECONDS", 0, raising=False)
+        broker, positions = _PreopenBroker(stop_rests=False, ltp={"TEST": 101.0}), {}
+        self._preopen(broker, positions, dry_run=False)
+        mod.protect_pending(broker, positions, TradeHistoryService(), dry_run=False)
+        assert positions == {}
+        assert broker.placed_orders[-1].direction == OrderDirection.SELL
+        assert broker.placed_orders[-1].order_type == OrderType.MARKET
+
+    def test_execute_without_a_preopen_run_still_enters_late(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        broker, positions = _PreopenBroker(ltp={"TEST": 101.0}), {}
+        mod.run_execute(broker, _plan(self.TODAY), positions, TradeHistoryService(), dry_run=False,
+                        equity_fraction=0.09, starting_capital=1_000_000.0, min_capital_floor=0.0,
+                        today=self.TODAY)
+        assert [o.order_type for o in broker.placed_orders] == [OrderType.MARKET, OrderType.SL_M]
+        assert positions["TEST"].stop_pending is False
+
+    def test_old_position_files_without_stop_pending_still_load(self, tmp_path):
+        import json
+        from core.darvas_atr_stop.live_positions import load_open_positions
+        f = tmp_path / "p.json"
+        d = {k: v for k, v in _position().__dict__.items() if k != "stop_pending"}
+        f.write_text(json.dumps({"TEST": d}))
+        assert load_open_positions(f)["TEST"].stop_pending is False

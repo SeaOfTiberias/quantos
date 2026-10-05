@@ -445,6 +445,7 @@ class FyersBroker(BrokerAdapter):
                     prev_close=v.get("prev_close_price", 0.0) or 0.0,
                     change=v.get("ch", 0.0) or 0.0,
                     change_pct=v.get("chp", 0.0) or 0.0,
+                    open=v.get("open_price", 0.0) or 0.0,
                 )
         return out
 

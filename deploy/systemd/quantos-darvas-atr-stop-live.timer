@@ -1,14 +1,15 @@
 [Unit]
-Description=Fires the Darvas ATR-Stop (Bucket B) EXECUTE phase once daily at 09:45 IST
+Description=Fires the Darvas ATR-Stop (Bucket B) EXECUTE phase once daily at 09:16:30 IST
 
 [Timer]
-# 04:15 UTC = 09:45 IST. Moved from 09:20 IST on 2026-09-25 (user decision)
-# to stay clear of candidate 18/18b's opening-range minutes and their Fyers
-# calls. Entries now land ~30 min after the open rather than at it -- a
-# small, disclosed drift from the backtest's "next day's open" fill.
+# 03:46:30 UTC = 09:16:30 IST (2026-10-05; was 09:45 IST). New entries now
+# fill at the open in the 09:02 IST pre-open phase
+# (quantos-darvas-atr-stop-preopen); this phase places their protective
+# stops as soon as the market opens, then runs exits and trailing. :30s
+# sits between the ORB/recorder timers' :00/:05/:20/:40/:50 slots.
 #
 # The VM runs in Etc/UTC -- OnCalendar is evaluated in UTC, NOT IST.
-OnCalendar=Mon..Fri *-*-* 04:15:00
+OnCalendar=Mon..Fri *-*-* 03:46:30
 
 # Catch up the same day after a brief VM outage; the .service's
 # market-hours ExecCondition stops a catch-up after the close.

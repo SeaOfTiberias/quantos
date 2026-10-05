@@ -1,5 +1,5 @@
 [Unit]
-Description=QuantOS Darvas ATR-Stop (Bucket B) -- morning EXECUTE phase: places the orders in the evening scan's plan (gated by agent/config.yaml darvas_atr_stop.enabled/dry_run)
+Description=QuantOS Darvas ATR-Stop (Bucket B) -- morning EXECUTE phase: protects the pre-open entries (stop at 09:16 IST), then exits and trailing (gated by agent/config.yaml darvas_atr_stop.enabled/dry_run)
 After=network-online.target
 Wants=network-online.target
 

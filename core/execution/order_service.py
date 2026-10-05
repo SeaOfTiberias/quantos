@@ -122,6 +122,39 @@ class ReconcileResult:
     exit_reason: Optional[str] = None   # "sl_fill" | "manual" | None (still open)
 
 
+def protect_position(broker, *, symbol: str, direction: OrderDirection, quantity: int,
+                     product_type: ProductType, protective_stop_trigger: float, tag: str,
+                     stop_as_limit: bool = False) -> Optional[str]:
+    """Places the protective stop for an already-filled position and confirms
+    it is resting at the broker. Returns the stop's order id, or None after
+    flattening the position at market because the stop was not accepted.
+    `direction` is the ORIGINAL entry direction. Used by enter_position and,
+    on its own, by entries filled in NSE's pre-open auction (which accepts no
+    stop orders, so the stop can only go in after 09:15 IST)."""
+    stop_direction = OrderDirection.SELL if direction == OrderDirection.BUY else OrderDirection.BUY
+    trigger = round_to_tick(protective_stop_trigger)
+    stop_order = Order(
+        symbol=symbol, direction=stop_direction, quantity=quantity,
+        order_type=OrderType.SL if stop_as_limit else OrderType.SL_M, product_type=product_type,
+        price=stop_limit_price(trigger, stop_direction) if stop_as_limit else None,
+        trigger_price=trigger, tag=f"{tag}-sl",
+    )
+    stop_order_id = None
+    try:
+        stop_order_id = broker.place_order(stop_order).order_id
+    except Exception as e:
+        logger.error("Protective stop placement failed for %s: %s", symbol, e)
+
+    if not _stop_is_resting(broker, stop_order_id):
+        logger.error("Protective stop for %s is NOT resting at the broker (order %s) -- "
+                     "flattening the unprotected position at market.", symbol, stop_order_id)
+        flatten_position(broker, symbol=symbol, direction=direction, quantity=quantity,
+                         product_type=product_type, stop_order_id=stop_order_id,
+                         tag=f"{tag}-nostop", dry_run=False)
+        return None
+    return stop_order_id
+
+
 def enter_position(broker, *, symbol: str, direction: OrderDirection, quantity: int,
                     product_type: ProductType, protective_stop_trigger: float,
                     tag: str, dry_run: bool, stop_as_limit: bool = False) -> EntryResult:
@@ -168,31 +201,16 @@ def enter_position(broker, *, symbol: str, direction: OrderDirection, quantity: 
         except Exception:
             break
 
-    stop_direction = OrderDirection.SELL if direction == OrderDirection.BUY else OrderDirection.BUY
-    trigger = round_to_tick(protective_stop_trigger)
-    stop_order = Order(
-        symbol=symbol, direction=stop_direction, quantity=quantity,
-        order_type=OrderType.SL if stop_as_limit else OrderType.SL_M, product_type=product_type,
-        price=stop_limit_price(trigger, stop_direction) if stop_as_limit else None,
-        trigger_price=trigger, tag=f"{tag}-sl",
+    stop_order_id = protect_position(
+        broker, symbol=symbol, direction=direction, quantity=quantity, product_type=product_type,
+        protective_stop_trigger=protective_stop_trigger, tag=tag, stop_as_limit=stop_as_limit,
     )
-    stop_order_id = None
-    try:
-        stop_order_id = broker.place_order(stop_order).order_id
-    except Exception as e:
-        logger.error("Protective stop placement failed for %s: %s", symbol, e)
-
-    if not _stop_is_resting(broker, stop_order_id):
-        logger.error("Protective stop for %s is NOT resting at the broker (order %s) -- "
-                     "flattening the unprotected position at market.", symbol, stop_order_id)
-        flat = flatten_position(broker, symbol=symbol, direction=direction, quantity=quantity,
-                                product_type=product_type, stop_order_id=stop_order_id,
-                                tag=f"{tag}-nostop", dry_run=False)
+    if stop_order_id is None:
         return EntryResult(
             dry_run=False, entry_order_id=result.order_id, stop_order_id=None,
             fill_price=fill_price, quantity=quantity,
             message=(f"entered {direction.value} {symbol} x{quantity} @ {fill_price}, but the stop "
-                     f"was not accepted -- flattened (order {flat.entry_order_id})"),
+                     f"was not accepted -- flattened"),
         )
 
     return EntryResult(

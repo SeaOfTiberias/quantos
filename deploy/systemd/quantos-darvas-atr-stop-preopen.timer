@@ -1,0 +1,18 @@
+[Unit]
+Description=Fires the Darvas ATR-Stop (Bucket B) PRE-OPEN entry phase once daily at 09:02 IST
+
+[Timer]
+# 03:32 UTC = 09:02 IST, inside NSE's pre-open order window (09:00-09:08 IST).
+# MARKET orders placed then fill in the call auction at the official open --
+# the backtest's entry price. Added 2026-10-05; see the .service.
+#
+# The VM runs in Etc/UTC -- OnCalendar is evaluated in UTC, NOT IST.
+OnCalendar=Mon..Fri *-*-* 03:32:00
+
+# Catch up after a brief VM outage; the .service's ExecCondition refuses a
+# catch-up outside the pre-open window, and the 09:16 execute phase then
+# enters late at the LTP instead.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

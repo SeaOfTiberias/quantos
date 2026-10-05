@@ -94,7 +94,8 @@ hours. A plan older than PLAN_MAX_AGE_DAYS is refused, not traded.
 
 Usage:
     python scripts/run_darvas_atr_stop_live.py --phase scan      # ~18:00 IST
-    python scripts/run_darvas_atr_stop_live.py --phase execute   # ~09:45 IST
+    python scripts/run_darvas_atr_stop_live.py --phase preopen   # 09:02 IST: entries at the open
+    python scripts/run_darvas_atr_stop_live.py --phase execute   # 09:16 IST: stops, exits, trailing
 """
 
 from __future__ import annotations
@@ -112,7 +113,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.main import load_config  # noqa: E402
 from agent.risk_guard import IST, read_halt_reason  # noqa: E402
 from core.brokers import get_broker  # noqa: E402
-from core.brokers.base import OHLCV, OrderDirection, ProductType  # noqa: E402
+from core.brokers.base import OHLCV, Order, OrderDirection, OrderStatus, OrderType, ProductType  # noqa: E402
 from core.darvas.weekly_discovery import DEFAULT_CONFIG, analyse_symbol  # noqa: E402
 from core.darvas_atr_stop.dry_run_log import DarvasDryRunTrade, append_dry_run_trade  # noqa: E402
 from core.darvas_atr_stop.live_positions import (  # noqa: E402
@@ -127,6 +128,7 @@ from core.darvas_atr_stop.live_positions import (  # noqa: E402
 from core.execution.order_service import (  # noqa: E402
     enter_position,
     flatten_position,
+    protect_position,
     reconcile_position,
     update_stop,
 )
@@ -577,15 +579,138 @@ def run_scan(broker, symbols: list[str], positions: dict[str, DarvasOpenPosition
     )
 
 
+# ─── Pre-open entries (09:02 IST) and their protection (09:16 IST) ─────────
+# The backtest buys at the next day's OPEN. A MARKET order sent during NSE's
+# pre-open session (09:00-09:08 IST) is filled in the call auction at the
+# official open price, so live entries now match the backtest. Until
+# 2026-10-05 entries went in at 09:45 IST at the LTP, ~0.6% worse on the first
+# real fill (ZYDUSLIFE 09-28) -- most of the rule's ~0.70%/trade edge over the
+# market (docs/DARVAS_ATR_STOP_OOS_RESULTS.md). Pre-open accepts no stop
+# orders, so the stop goes in at 09:16 IST via protect_pending().
+
+def _preopen_entry(broker, signal: dict, positions: dict[str, DarvasOpenPosition],
+                   trade_history: TradeHistoryService, dry_run: bool, equity_fraction: float,
+                   starting_capital: float, min_capital_floor: float, today_iso: str,
+                   positions_path: Optional[Path] = None) -> None:
+    symbol = signal["symbol"]
+    price_estimate = signal["last_close"]          # pre-open has no reliable LTP yet
+    qty, note = _position_size(trade_history.get_trade_history(), positions, starting_capital,
+                                equity_fraction, price_estimate, symbol, min_capital_floor)
+    print(f"  {note}")
+    if qty < 1:
+        return
+    order_id = ""
+    if not dry_run:
+        tag = f"darvas-atr-stop-{symbol.replace(':', '-')}-{today_iso}"
+        order_id = broker.place_order(Order(
+            symbol=symbol, direction=OrderDirection.BUY, quantity=qty,
+            order_type=OrderType.MARKET, product_type=ProductType.CNC, tag=tag,
+        )).order_id
+    add_position(positions, DarvasOpenPosition(
+        symbol=symbol, quantity=qty, entry_price=price_estimate, entry_date=today_iso,
+        box_width_pct=signal["box_width_pct"], seen_ceiling=signal["box_ceiling"],
+        current_stop=signal["initial_stop"], current_target=signal["target"],
+        entry_order_id=order_id or "", stop_order_id="", stop_pending=True,
+    ), path=positions_path)
+    print(f"  {symbol}: PRE-OPEN BUY qty={qty} (fills at the open), stop {signal['initial_stop']:.2f} "
+          f"goes in at 09:16 IST, dry_run={dry_run}")
+
+
+def run_preopen(broker, plan: dict, positions: dict[str, DarvasOpenPosition],
+                trade_history: TradeHistoryService, dry_run: bool, equity_fraction: float,
+                starting_capital: float, min_capital_floor: float, today: date,
+                positions_path: Optional[Path] = None) -> None:
+    """New entries only, as MARKET buys into the pre-open auction. Exits and
+    trailing stay in the 09:16 execute phase (stops cannot be placed or
+    modified in pre-open)."""
+    entries = plan.get("entries", [])
+    if not entries:
+        return
+    halt_reason = read_halt_reason()
+    if halt_reason:
+        print(f"  {len(entries)} planned entr(ies) refused -- trading halted ({halt_reason})")
+        return
+    for signal in entries:
+        if signal["symbol"] in positions:
+            continue
+        try:
+            _preopen_entry(broker, signal, positions, trade_history, dry_run, equity_fraction,
+                           starting_capital, min_capital_floor, today.isoformat(),
+                           positions_path=positions_path)
+        except Exception as e:
+            print(f"  {signal['symbol']}: pre-open entry failed ({e}) -- signal is single-day, not retried.")
+        time.sleep(0.3)
+
+
+def protect_pending(broker, positions: dict[str, DarvasOpenPosition],
+                    trade_history: TradeHistoryService, dry_run: bool,
+                    positions_path: Optional[Path] = None,
+                    dry_run_log_path: Optional[Path] = None) -> set[str]:
+    """For each pre-open entry: confirm the fill (live: the order's average
+    price; dry_run: today's official open), exit at once if the stock is
+    trading at/below its stop, else place the protective stop and confirm it
+    rests (protect_position flattens if it does not). Returns the symbols handled."""
+    handled: set[str] = set()
+    for symbol in sorted(s for s, p in positions.items() if p.stop_pending):
+        p = positions[symbol]
+        handled.add(symbol)
+        try:
+            if dry_run:
+                q = broker.get_quotes([symbol]).get(symbol)
+                fill = (q.open or q.ltp) if q else None
+                ltp = q.ltp if q else None
+            else:
+                st = broker.get_order_status(p.entry_order_id)
+                if st.status != OrderStatus.EXECUTED or not st.filled_quantity:
+                    print(f"  {symbol}: pre-open entry not filled ({st.status.value}) -- dropped.")
+                    remove_position(positions, symbol, path=positions_path)
+                    continue
+                fill, p.quantity = st.average_price, st.filled_quantity
+                ltp = broker.get_ltp([symbol]).get(symbol)
+            if fill:
+                p.entry_price = fill
+            if ltp is not None and ltp <= p.current_stop:
+                print(f"  {symbol}: trading at/below its stop ({ltp} <= {p.current_stop}) after the open -- exiting.")
+                _force_exit(broker, symbol, p, ltp, "stop_at_open", dry_run, positions, trade_history,
+                            positions_path=positions_path, dry_run_log_path=dry_run_log_path)
+                continue
+            if not dry_run:
+                stop_id = protect_position(
+                    broker, symbol=symbol, direction=OrderDirection.BUY, quantity=p.quantity,
+                    product_type=ProductType.CNC, protective_stop_trigger=p.current_stop,
+                    tag=f"darvas-atr-stop-{symbol.replace(':', '-')}-{p.entry_date}",
+                )
+                if stop_id is None:
+                    print(f"  {symbol}: stop NOT accepted by the broker -- position flattened.")
+                    _close_out(symbol, p, ltp, datetime.now(timezone.utc), "no_stop_flattened",
+                               positions, trade_history, positions_path=positions_path)
+                    continue
+                p.stop_order_id = stop_id
+            p.stop_pending = False
+            add_position(positions, p, path=positions_path)
+            print(f"  {symbol}: entry filled @ {p.entry_price:.2f}, stop {p.current_stop:.2f} resting, "
+                  f"dry_run={dry_run}")
+        except Exception as e:
+            print(f"  {symbol}: protecting the pre-open entry FAILED ({e}) -- position may be "
+                  f"UNPROTECTED; check the broker by hand.")
+    return handled
+
+
 def run_execute(broker, plan: dict, positions: dict[str, DarvasOpenPosition],
                 trade_history: TradeHistoryService, dry_run: bool, equity_fraction: float,
                 starting_capital: float, min_capital_floor: float, today: date,
                 positions_path: Optional[Path] = None,
                 dry_run_log_path: Optional[Path] = None) -> None:
     """Place only what the plan says. Open positions are handled first
-    (exits free cash before new entries are sized)."""
+    (exits free cash before new entries are sized). Pre-open entries are
+    protected first; new entries are placed here only as a fallback when the
+    09:02 IST pre-open phase did not run today."""
+    fresh = protect_pending(broker, positions, trade_history, dry_run,
+                            positions_path=positions_path, dry_run_log_path=dry_run_log_path)
     for symbol in sorted(positions):
         existing = positions[symbol]
+        if symbol in fresh or existing.stop_pending:
+            continue
         try:
             if not dry_run:
                 reconcile = reconcile_position(broker, symbol=symbol, stop_order_id=existing.stop_order_id)
@@ -606,6 +731,9 @@ def run_execute(broker, plan: dict, positions: dict[str, DarvasOpenPosition],
     entries = plan.get("entries", [])
     if not entries:
         return
+    if plan.get("preopen_on") == today.isoformat():
+        return          # already entered at the open by run_preopen
+    print(f"  pre-open phase did not run today -- entering {len(entries)} signal(s) late, at the LTP.")
     # Hard kill-switch (agent/risk_guard.py) -- refuses NEW entries only;
     # exit management above is never gated by it.
     halt_reason = read_halt_reason()
@@ -627,7 +755,7 @@ def run_execute(broker, plan: dict, positions: dict[str, DarvasOpenPosition],
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="agent/config.yaml")
-    parser.add_argument("--phase", choices=["scan", "execute"], required=True)
+    parser.add_argument("--phase", choices=["scan", "preopen", "execute"], required=True)
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
@@ -643,13 +771,16 @@ def main(argv: Optional[list] = None) -> int:
     universe_file = cfg.get("universe_file", "agent/universe_nifty500.txt")
     today = datetime.now(IST).date()
 
-    if args.phase == "execute":
+    if args.phase in ("preopen", "execute"):
         plan = _load_plan()
         refusal = plan_refusal_reason(plan, today)
         if refusal:
             print(f"Not executing: {refusal}.")
             # Already-executed is a normal Persistent= catch-up re-fire; anything else is an anomaly.
             return 0 if plan and plan.get("executed_on") else 1
+        if args.phase == "preopen" and plan.get("preopen_on") == today.isoformat():
+            print(f"Pre-open already done today ({plan['preopen_on']}).")
+            return 0
 
     broker = get_broker(config)
     if not broker.connect():
@@ -687,6 +818,13 @@ def main(argv: Optional[list] = None) -> int:
         return 0
 
     trade_history = TradeHistoryService(persist_path=TRADE_HISTORY_PATH)
+    if args.phase == "preopen":
+        run_preopen(broker, plan, positions, trade_history, dry_run, equity_fraction,
+                    starting_capital, min_capital_floor, today)
+        plan["preopen_on"] = today.isoformat()
+        _write_plan(plan)
+        print(f"Pre-open done for plan bars_as_of={plan['bars_as_of']} dry_run={dry_run}.")
+        return 0
     run_execute(broker, plan, positions, trade_history, dry_run, equity_fraction,
                 starting_capital, min_capital_floor, today)
     plan["executed_on"] = today.isoformat()
