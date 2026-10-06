@@ -11,6 +11,10 @@ data the exploratory IV cut never saw); Segments B and C reported only.
 Memory: streams the cache once to learn each day's expiries, then loads
 only the entry and expiry days it needs, instead of holding ~3M rows.
 
+Applies docs/VRP_IV_GATED_ADDENDUM_DATA_QUALITY.md: entry-day prices
+only from contracts that traded (volume > 0), and a zero settlement is
+treated as missing.
+
 Usage:
     python scripts/backtest_vrp_iv_gated.py
     python scripts/backtest_vrp_iv_gated.py --out docs/VRP_IV_GATED_RESULTS.md
@@ -35,6 +39,12 @@ def _day(d: date, cache: Path) -> list:
     return list(load_cached_range(d, d, cache))
 
 
+def _traded(rows: list) -> list:
+    """Addendum rule 1: only contracts that actually traded that day.
+    Untraded legacy rows carry a placeholder close (volume/OI/OHLC all 0)."""
+    return [r for r in rows if r.volume > 0]
+
+
 def _settlement_disagrees(rows: list, expiry: date) -> bool:
     """Methodology data check: on its own expiry day every row for that
     expiry should carry one shared settlement value."""
@@ -51,13 +61,16 @@ def run(cache: Path):
     print(f"{len(expiries_by_date)} trading days, {len(cycles)} entry cycles")
 
     records = []   # (cycle, atm_iv, trades_by_arm)
-    no_atm = 0
+    no_atm = zero_settlement = 0
     bad_settlement: list[date] = []
     fallbacks = {"strangle": 0, "iron_condor_wing": 0}
     for i, c in enumerate(cycles, 1):
-        rows = _day(c.entry_date, cache)
+        rows = _traded(_day(c.entry_date, cache))
         expiry_rows = _day(c.expiry_date, cache)
         settlement = _underlying_settlement(expiry_rows, c.expiry_date)
+        if not settlement:
+            settlement = None   # addendum rule 2: a 0 settlement is missing, never priced at 0
+            zero_settlement += 1
         if expiry_rows and _settlement_disagrees(expiry_rows, c.expiry_date):
             bad_settlement.append(c.expiry_date)
         strangle = select_strangle(rows, c.entry_date, c.expiry_date, c.dte)
@@ -75,6 +88,7 @@ def run(cache: Path):
             print(f"  {i}/{len(cycles)} cycles built")
 
     states = g.gate_states([iv for _, iv, _ in records])
+    print(f"{zero_settlement} cycles with a zero/missing settlement treated as unsettled")
     return records, states, no_atm, bad_settlement, fallbacks
 
 
@@ -110,7 +124,9 @@ def main() -> int:
         "# IV-Gated Short Premium — Results",
         "",
         "Methodology: docs/VRP_IV_GATED_METHODOLOGY.md (pre-committed 2026-10-06, commit 0749279, "
-        "before this ran). All figures NET of costs; returns are on margin, idle weeks count as 0.",
+        "before this ran), with the data-quality rules in docs/VRP_IV_GATED_ADDENDUM_DATA_QUALITY.md "
+        "(traded contracts only; zero settlement = missing). The first run, without them, is void. "
+        "All figures NET of costs; returns are on margin, idle weeks count as 0.",
         "",
         f"- Cycles: {len(records)} ({START} .. {END}); {warmup} without a gate state "
         f"(warm-up or no ATM IV); first gated cycle {first_live}",
