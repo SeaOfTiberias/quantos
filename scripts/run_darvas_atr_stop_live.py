@@ -358,28 +358,44 @@ def _manage_existing_position(broker, symbol: str, daily: list[OHLCV], existing:
 
 
 def _scan_existing(symbol: str, daily: list[OHLCV], existing: DarvasOpenPosition) -> Optional[dict]:
-    """The DECISION half of managing an open position: one day-step of
-    _simulate_exit_atr against the last fully-closed bar -- no broker call.
+    """The DECISION half of managing an open position: _simulate_exit_atr's
+    own day-by-day walk over EVERY fully-closed bar not yet walked against
+    the current stop -- no broker call. Until 2026-10-06 this checked only
+    daily[-1], so a day whose plan never executed (expired token, stale-plan
+    refusal) silently lost its exit: ZYDUSLIFE's 2026-10-01 stop-out vanished
+    when the next scan only looked at 10-05. Walking from the watermark
+    makes a missed day self-healing instead.
     Returns {"action": "exit", ...} / {"action": "trail", ...} / None."""
-    if not daily:
+    since = existing.last_bar_checked or existing.entry_date
+    inclusive = not existing.last_bar_checked   # the entry bar itself is walked, as in the backtest
+    start = next((j for j, b in enumerate(daily)
+                  if (b.timestamp.date().isoformat() >= since if inclusive
+                      else b.timestamp.date().isoformat() > since)), None)
+    if start is None:
         return None
-    bar = daily[-1]
-    if bar.low <= existing.current_stop:
-        return dict(action="exit", reason="stop", boundary=existing.current_stop)
-    if bar.high >= existing.current_target:
-        return dict(action="exit", reason="target", boundary=existing.current_target)
 
-    result = analyse_symbol(symbol, daily, cfg=WIDE_CFG)
-    if result is None or result.box_ceiling is None or result.box_ceiling <= existing.seen_ceiling:
+    stop, target, ceiling = existing.current_stop, existing.current_target, existing.seen_ceiling
+    trailed = False
+    for j in range(start, len(daily)):
+        bar = daily[j]
+        bar_date = bar.timestamp.date().isoformat()
+        if bar.low <= stop:
+            return dict(action="exit", reason="stop", boundary=round(stop, 2), bar_date=bar_date)
+        if bar.high >= target:
+            return dict(action="exit", reason="target", boundary=target, bar_date=bar_date)
+        result = analyse_symbol(symbol, daily[: j + 1], cfg=WIDE_CFG)
+        if result is None or result.box_ceiling is None or result.box_ceiling <= ceiling:
+            continue
+        new_stop = _stop_from_atr(daily, j, result.box_ceiling)
+        if new_stop <= stop:
+            continue
+        stop, ceiling, trailed = new_stop, result.box_ceiling, True
+        if result.mm_target and result.mm_target > target:
+            target = result.mm_target
+    if not trailed:
         return None
-    new_stop = _stop_from_atr(daily, len(daily) - 1, result.box_ceiling)
-    if new_stop <= existing.current_stop:
-        return None
-    new_target = existing.current_target
-    if result.mm_target and result.mm_target > new_target:
-        new_target = result.mm_target
-    return dict(action="trail", new_stop=round(new_stop, 2), new_target=new_target,
-                new_ceiling=result.box_ceiling)
+    return dict(action="trail", new_stop=round(stop, 2), new_target=target,
+                new_ceiling=ceiling, bars_through=daily[-1].timestamp.date().isoformat())
 
 
 def _apply_existing_action(broker, symbol: str, existing: DarvasOpenPosition, action: dict,
@@ -402,7 +418,8 @@ def _apply_existing_action(broker, symbol: str, existing: DarvasOpenPosition, ac
                     new_trigger_price=action["new_stop"], dry_run=dry_run)
     new_target = max(existing.current_target, action["new_target"])
     update_trail(positions, symbol, current_stop=action["new_stop"],
-                current_target=new_target, seen_ceiling=action["new_ceiling"], path=positions_path)
+                current_target=new_target, seen_ceiling=action["new_ceiling"],
+                last_bar_checked=action.get("bars_through"), path=positions_path)
     print(f"  {symbol}: trailed stop {existing.current_stop:.2f} -> {action['new_stop']:.2f} "
           f"(new box ceiling {action['new_ceiling']:.2f})")
 

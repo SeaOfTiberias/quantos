@@ -40,6 +40,12 @@ class DarvasOpenPosition:
     # True from the 09:02 IST pre-open MARKET buy until the 09:16 IST execute
     # phase confirms the fill and the protective stop is resting.
     stop_pending:         bool = False
+    # ISO date of the last daily bar the current stop/target were walked
+    # through when they last trailed. Bars after it (or from entry_date, if
+    # never trailed) are re-walked on every scan, so a missed or refused
+    # plan can never drop an exit. Bars before it must NOT be re-walked: the
+    # stop has since moved up, and an old low would fake a stop-out.
+    last_bar_checked:     str = ""
 
 
 def load_open_positions(path: Optional[Path] = None) -> dict[str, DarvasOpenPosition]:
@@ -77,9 +83,12 @@ def get_position(positions: dict[str, DarvasOpenPosition], symbol: str) -> Optio
 
 def update_trail(positions: dict[str, DarvasOpenPosition], symbol: str, *,
                   current_stop: Optional[float] = None, current_target: Optional[float] = None,
-                  seen_ceiling: Optional[float] = None, path: Optional[Path] = None) -> None:
+                  seen_ceiling: Optional[float] = None, last_bar_checked: Optional[str] = None,
+                  path: Optional[Path] = None) -> None:
     if symbol not in positions:
         return
+    if last_bar_checked is not None:
+        positions[symbol].last_bar_checked = last_bar_checked
     if current_stop is not None:
         positions[symbol].current_stop = current_stop
     if current_target is not None:

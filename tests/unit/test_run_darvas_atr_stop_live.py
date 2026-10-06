@@ -68,7 +68,7 @@ def build_breakout_daily(box_low: float, box_high: float, breakout_close: float,
 
 def _position(symbol="TEST", **overrides) -> DarvasOpenPosition:
     defaults = dict(
-        symbol=symbol, quantity=50, entry_price=140.0, entry_date="2024-01-02",
+        symbol=symbol, quantity=50, entry_price=140.0, entry_date="2024-01-01",
         box_width_pct=40.0, seen_ceiling=140.0, current_stop=130.0, current_target=180.0,
         entry_order_id="ORD-1", stop_order_id="SL-1",
     )
@@ -687,7 +687,8 @@ class TestRunScan:
         broker = _ConnectingBroker(daily_by_symbol={"HELD": [_bar(0, 135, 136, 125, 128)]})
         plan = mod.run_scan(broker, [], {"HELD": _position(symbol="HELD")}, {},
                             through=START.date())
-        assert plan["position_actions"]["HELD"] == {"action": "exit", "reason": "stop", "boundary": 130.0}
+        assert plan["position_actions"]["HELD"] == {"action": "exit", "reason": "stop", "boundary": 130.0,
+                                                     "bar_date": "2024-01-01"}
         assert plan["entries"] == []
 
 
@@ -933,3 +934,43 @@ class TestPreopen:
         d = {k: v for k, v in _position().__dict__.items() if k != "stop_pending"}
         f.write_text(json.dumps({"TEST": d}))
         assert load_open_positions(f)["TEST"].stop_pending is False
+
+
+class TestScanExistingWalksMissedBars:
+    """2026-10-06: _scan_existing used to check only daily[-1], so a day whose
+    plan never executed lost its exit (ZYDUSLIFE's 10-01 stop-out vanished
+    when the next scan only saw 10-05)."""
+
+    def test_stop_hit_on_an_earlier_unwalked_bar_still_exits(self, monkeypatch):
+        monkeypatch.setattr(mod, "analyse_symbol", lambda symbol, daily_arg, cfg=None: None)
+        daily = [_bar(0, 140, 141, 135, 136), _bar(1, 136, 137, 129, 131), _bar(2, 131, 134, 131, 133)]
+        action = mod._scan_existing("TEST", daily, _position())
+        assert action == {"action": "exit", "reason": "stop", "boundary": 130.0, "bar_date": "2024-01-02"}
+
+    def test_bars_before_entry_are_ignored(self, monkeypatch):
+        monkeypatch.setattr(mod, "analyse_symbol", lambda symbol, daily_arg, cfg=None: None)
+        daily = [_bar(0, 128, 129, 120, 125), _bar(1, 140, 141, 135, 136)]   # bar 0 is pre-entry
+        assert mod._scan_existing("TEST", daily, _position(entry_date="2024-01-02")) is None
+
+    def test_bars_up_to_the_watermark_are_not_rewalked_against_a_trailed_stop(self, monkeypatch):
+        monkeypatch.setattr(mod, "analyse_symbol", lambda symbol, daily_arg, cfg=None: None)
+        # Bar 1's low (145) is below the trailed stop (150) but was already walked
+        # against the OLD stop before the trail -- it must not fake a stop-out.
+        daily = [_bar(0, 140, 141, 135, 136), _bar(1, 150, 160, 145, 158), _bar(2, 158, 162, 155, 160)]
+        position = _position(current_stop=150.0, last_bar_checked="2024-01-02")
+        assert mod._scan_existing("TEST", daily, position) is None
+
+    def test_trail_carries_the_walk_watermark_and_apply_persists_it(self, monkeypatch, tmp_path):
+        _patch_common(monkeypatch, tmp_path)
+        monkeypatch.setattr(mod, "analyse_symbol",
+                            lambda symbol, daily_arg, cfg=None: SimpleNamespace(box_ceiling=170.0, mm_target=210.0))
+        monkeypatch.setattr(mod, "_stop_from_atr", lambda daily_arg, idx, ceiling: 150.0)
+        daily = [_bar(0, 150, 160, 149, 158), _bar(1, 158, 165, 155, 162)]
+        existing = _position()
+        positions = {"TEST": existing}
+        action = mod._scan_existing("TEST", daily, existing)
+        assert action["action"] == "trail" and action["bars_through"] == "2024-01-02"
+        mod._apply_existing_action(_FakeBroker(), "TEST", existing, action, dry_run=True,
+                                   positions=positions, trade_history=TradeHistoryService())
+        assert positions["TEST"].last_bar_checked == "2024-01-02"
+        assert positions["TEST"].current_stop == 150.0
