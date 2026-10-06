@@ -188,6 +188,39 @@ EVENTS: list[ReconstitutionEvent] = [
         removed=frozenset({"GSPL"}),
         source="ind_prs04052026.pdf",
     ),
+    # 2026-07-08 and 2026-09-30 were NOT transcribed from press releases
+    # (niftyindices.com is unfetchable here) -- they are the diff between the
+    # 2026-07-16 universe file and NSE's ind_nifty500list.csv downloaded
+    # 2026-10-06, with the 09-30 date confirmed by NSE's announcement. Any
+    # ad-hoc replacement between May and September (e.g. whatever replaced
+    # JBCHEPHARM) is netted into 09-30, so it is dated late by up to ~3 months.
+    # HEG -> HEGAM (rename, 2026-09) is deliberately absent: same company,
+    # same membership, and Fyers serves its history under the new symbol.
+    # HFCL is still a constituent but moved to the BE series, which
+    # build_universe.py drops as untradable, so it is "removed" here.
+    ReconstitutionEvent(
+        effective_date=_d(2026, 7, 8),
+        added=frozenset(),
+        removed=frozenset({"JBCHEPHARM"}),   # amalgamated into TORNTPHARM
+        source="nse-merger-2026-07-08 (Torrent Pharma / J.B. Chemicals scheme)",
+    ),
+    ReconstitutionEvent(
+        effective_date=_d(2026, 9, 30),
+        added=frozenset({
+            "AETHER", "AVANTIFEED", "AZAD", "BBOX", "BHARATCOAL", "CLEANMAX", "CMPDI",
+            "CUPID", "FRACTAL", "INOXINDIA", "KIRLOSBROS", "KSB", "PFOCUS", "PRIVISCL",
+            "RUBICON", "SANSERA", "SHRIPISTON", "TDPOWERSYS", "THANGAMAYL", "VAML",
+            "VEDPOWER", "VISL", "VOGL",
+        }),
+        removed=frozenset({
+            "3MINDIA", "ABFRL", "ABLBL", "BAYERCROP", "BBTC", "BIKAJI", "BLUEDART",
+            "BLUEJET", "CHALET", "DCMSHRIRAM", "ERIS", "GODIGIT", "HFCL", "INDGN",
+            "JSWDULUX", "JUBLPHARMA", "LATENTVIEW", "MAPMYINDIA", "NEWGEN", "NIVABUPA",
+            "PFIZER", "SAPPHIRE", "SAREGAMA", "SBFC", "SONATSOFTW", "SPLPETRO",
+            "THELEELA", "TRAVELFOOD",
+        }),
+        source="ind_nifty500list.csv diff, downloaded 2026-10-06",
+    ),
 ]
 
 

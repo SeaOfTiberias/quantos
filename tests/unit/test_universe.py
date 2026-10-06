@@ -71,9 +71,11 @@ class TestLoadUniverse:
 
 
 class TestCommittedNifty500:
-    def test_exists_and_has_500_symbols(self):
+    def test_exists_and_has_about_500_symbols(self):
+        # Not exactly 500: build_universe.py drops BE-series and DUMMY rows
+        # (7 of them in the 2026-09-30 list), which NSE still counts.
         assert NIFTY500.exists(), f"{NIFTY500} missing — regenerate with scripts/build_universe.py"
-        assert len(_load_universe(str(NIFTY500))) == 500
+        assert 480 <= len(_load_universe(str(NIFTY500))) <= 500
 
     def test_no_duplicates(self):
         syms = _load_universe(str(NIFTY500))
@@ -114,6 +116,19 @@ class TestBuildUniverse:
         symbols, skipped = mod.read_constituents(csv)
         assert symbols == ["ALPHA"]
         assert skipped == ["BETA"]
+
+    def test_drops_dummy_placeholder_rows(self, tmp_path):
+        # NSE's 2026-09-30 list carried DUMMYHEG next to the real HEGAM.
+        csv = tmp_path / "idx.csv"
+        csv.write_text(
+            "Company Name,Industry,Symbol,Series,ISIN Code\n"
+            "Dummy HEG Ltd.,Capital Goods,DUMMYHEG,EQ,DUM545A01024\n"
+            "HEG Advanced Materials Ltd.,Capital Goods,HEGAM,EQ,INE545A01024\n",
+            encoding="utf-8",
+        )
+        symbols, skipped = _load_build_universe().read_constituents(csv)
+        assert symbols == ["HEGAM"]
+        assert skipped == ["DUMMYHEG"]
 
     def test_handles_bom_from_nse_csv(self, tmp_path):
         """NSE ships these CSVs with a UTF-8 BOM, which would otherwise attach

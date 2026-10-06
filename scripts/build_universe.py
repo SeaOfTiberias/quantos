@@ -15,7 +15,10 @@ first place (a universe that moves on its own can't be backtested against).
 
 The CSV's `Symbol` column maps straight to Fyers' NSE:{symbol}-EQ form. Rows
 whose Series is not EQ are dropped — the broker adapters build -EQ symbols
-unconditionally, so a BE/SM series row would 404 at scan time.
+unconditionally, so a BE/SM series row would 404 at scan time. Rows whose
+symbol starts with DUMMY are dropped too: NSE inserts placeholder rows like
+DUMMYHEG (alongside the real HEGAM) around a corporate action, and they are
+not tradable.
 """
 
 import argparse
@@ -44,7 +47,7 @@ def read_constituents(csv_path: Path) -> tuple[list[str], list[str]]:
         sym = (r.get("Symbol") or "").strip().upper()
         if not sym:
             continue
-        if (r.get("Series") or "").strip().upper() != "EQ":
+        if (r.get("Series") or "").strip().upper() != "EQ" or sym.startswith("DUMMY"):
             skipped.append(sym)
             continue
         if sym not in seen:
@@ -95,7 +98,7 @@ def main() -> int:
 
     print(f"Wrote {len(symbols)} symbols to {args.out_path}")
     if skipped:
-        print(f"Skipped {len(skipped)} non-EQ series rows: {', '.join(skipped[:10])}"
+        print(f"Skipped {len(skipped)} non-EQ series / DUMMY placeholder rows: {', '.join(skipped[:10])}"
               + (" ..." if len(skipped) > 10 else ""))
     return 0
 
