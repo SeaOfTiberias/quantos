@@ -56,6 +56,7 @@ SESSION_END_IST = (15, 35)
 RAISE_NOTIFY_EVERY_S = 120     # trail raises can tick every second; message at most this often
 EXIT_REMINDER_EVERY_S = 60
 EXIT_REMINDERS = 3
+STALE_S = 5                    # no websocket tick for this long -> price over REST
 
 
 def _now_ist() -> datetime:
@@ -256,8 +257,11 @@ def main(argv: Optional[list] = None) -> int:
     watcher = Watcher(rules, notifier)
     log_dir = str(Path.home() / ".quantos")
 
+    ws_tick_at: dict[str, float] = {}
+
     def _on_data(msg):
         if isinstance(msg, dict) and "ltp" in msg and "symbol" in msg:
+            ws_tick_at[msg["symbol"]] = time.time()
             watcher.on_tick(msg["symbol"], float(msg["ltp"]))
 
     def _data_connected():
@@ -300,9 +304,38 @@ def main(argv: Optional[list] = None) -> int:
                   + f", trail {rules.trail_pct:g}% after +{rules.trail_after_pct:g}%. "
                   f"{open_n} open option position(s). Alerts only.")
 
+    # Fallback price feed. 2026-10-07, first live trade: a subscribe issued
+    # from the order-socket callback (i.e. outside the data socket's own
+    # on_connect) was silently ignored, so the position got no ticks. Any
+    # managed symbol without a websocket tick for STALE_S seconds is priced
+    # over REST every loop, and the socket subscription is retried.
+    from fyers_apiv3 import fyersModel
+    rest = fyersModel.FyersModel(client_id=app_id, token=token, is_async=False, log_path="")
+    last_resub = 0.0
+
+    def _rest_prices(symbols: list[str]) -> None:
+        resp = rest.quotes({"symbols": ",".join(symbols)})
+        for q in resp.get("d", []) or []:
+            ltp = (q.get("v") or {}).get("lp")
+            if q.get("n") and ltp:
+                watcher.on_tick(q["n"], float(ltp))
+
     token_mtime = TOKEN_PATH.stat().st_mtime
     while True:
         time.sleep(2)
+        stale = [s for s in list(watcher.positions) if time.time() - ws_tick_at.get(s, 0) > STALE_S]
+        if stale:
+            try:
+                _rest_prices(stale)
+            except Exception as e:
+                print(f"REST quote fallback failed ({e})", flush=True)
+            if time.time() - last_resub > 30:
+                last_resub = time.time()
+                try:
+                    data_sock.subscribe(symbols=stale, data_type="SymbolUpdate")
+                    print(f"re-subscribed {stale} on the data socket", flush=True)
+                except Exception as e:
+                    print(f"data socket re-subscribe failed ({e})", flush=True)
         watcher.tick_housekeeping()
         now = _now_ist()
         if (now.hour, now.minute) >= SESSION_END_IST:
