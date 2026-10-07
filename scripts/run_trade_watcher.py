@@ -299,7 +299,14 @@ def main(argv: Optional[list] = None) -> int:
                 watcher.on_tick(q["n"], float(ltp))
 
     token_mtime = TOKEN_PATH.stat().st_mtime
+    last_status = 0.0
     while True:
+        if time.time() - last_status >= 60:
+            last_status = time.time()
+            with watcher.lock:
+                for p in watcher.positions.values():
+                    print(f"[{_now_ist():%H:%M:%S}] {p.symbol} ltp={p.last_ltp} high={p.high} "
+                          f"stop={p.stop} trail={p.trail_on}", flush=True)
         time.sleep(PRICE_EVERY_S)
         with watcher.lock:
             symbols = list(watcher.positions)
