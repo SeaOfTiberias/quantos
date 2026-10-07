@@ -31,6 +31,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import queue
 import sys
 import threading
@@ -44,6 +45,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.main import load_config  # noqa: E402
 from agent.risk_guard import IST  # noqa: E402
 from core.trade_watcher.rules import ExitRules, ManagedPosition, is_option_symbol, on_tick  # noqa: E402
+
+# httpx logs every request URL at INFO, and a Telegram URL carries the bot
+# token -- keep it out of journald.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 TOKEN_PATH = Path.home() / ".quantos" / "fyers_token"
 STATE_PATH = Path.home() / ".quantos" / "trade_watcher_state.json"
