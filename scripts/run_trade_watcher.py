@@ -7,8 +7,7 @@ them (TradingView panel, Fyers app, web). Push-based, no polling:
 
   Fyers order socket  --(position update)-->  new long option position?
       -> start managing it: entry = Fyers' own netAvg, qty = netQty
-      -> subscribe that symbol on the data socket
-  Fyers data socket   --(every LTP tick)-->   core/trade_watcher/rules.py
+  REST quotes, every 2 s (managed symbols only) --> core/trade_watcher/rules.py
       -> stop / breakeven / trailing-stop events -> Telegram
   position goes flat  -> "closed" message with Fyers' realized P&L, stop managing
 
@@ -56,7 +55,7 @@ SESSION_END_IST = (15, 35)
 RAISE_NOTIFY_EVERY_S = 120     # trail raises can tick every second; message at most this often
 EXIT_REMINDER_EVERY_S = 60
 EXIT_REMINDERS = 3
-STALE_S = 5                    # no websocket tick for this long -> price over REST
+PRICE_EVERY_S = 2              # REST quote poll for managed positions
 
 
 def _now_ist() -> datetime:
@@ -251,33 +250,11 @@ def main(argv: Optional[list] = None) -> int:
     token = TOKEN_PATH.read_text().strip()
     ws_token = f"{app_id}:{token}"
 
-    from fyers_apiv3.FyersWebsocket import data_ws, order_ws
+    from fyers_apiv3.FyersWebsocket import order_ws
 
     notifier = Notifier()
     watcher = Watcher(rules, notifier)
     log_dir = str(Path.home() / ".quantos")
-
-    ws_tick_at: dict[str, float] = {}
-
-    def _on_data(msg):
-        if isinstance(msg, dict) and "ltp" in msg and "symbol" in msg:
-            ws_tick_at[msg["symbol"]] = time.time()
-            watcher.on_tick(msg["symbol"], float(msg["ltp"]))
-
-    def _data_connected():
-        symbols = list(watcher.positions)
-        if symbols:
-            data_sock.subscribe(symbols=symbols, data_type="SymbolUpdate")
-        print(f"data socket connected; subscribed {symbols}", flush=True)
-
-    data_sock = data_ws.FyersDataSocket(
-        access_token=ws_token, log_path=log_dir, litemode=True, reconnect=True,
-        on_message=_on_data, on_connect=_data_connected,
-        on_error=lambda m: print(f"data socket error: {m}", flush=True),
-        on_close=lambda m: print(f"data socket closed: {m}", flush=True),
-    )
-    watcher.subscribe = lambda syms: data_sock.subscribe(symbols=syms, data_type="SymbolUpdate")
-    watcher.unsubscribe = lambda syms: data_sock.unsubscribe(symbols=syms, data_type="SymbolUpdate")
 
     def _on_positions(msg):
         p = (msg or {}).get("positions") or {}
@@ -292,7 +269,6 @@ def main(argv: Optional[list] = None) -> int:
         on_close=lambda m: print(f"order socket closed: {m}", flush=True),
     )
 
-    data_sock.connect()
     order_sock.connect()
 
     # Pick up anything already open (e.g. a restart mid-trade).
@@ -304,17 +280,19 @@ def main(argv: Optional[list] = None) -> int:
                   + f", trail {rules.trail_pct:g}% after +{rules.trail_after_pct:g}%. "
                   f"{open_n} open option position(s). Alerts only.")
 
-    # Fallback price feed. 2026-10-07, first live trade: a subscribe issued
-    # from the order-socket callback (i.e. outside the data socket's own
-    # on_connect) was silently ignored, so the position got no ticks. Any
-    # managed symbol without a websocket tick for STALE_S seconds is priced
-    # over REST every loop, and the socket subscription is retried.
+    # Prices come from REST quotes every PRICE_EVERY_S, not the data socket.
+    # 2026-10-07, first two live trades: calling the data socket's
+    # subscribe() from the order-socket callback blocked while holding the
+    # watcher lock, which froze the price loop. REST polling is one call per
+    # loop for all managed symbols, well inside Fyers' rate limits.
     from fyers_apiv3 import fyersModel
     rest = fyersModel.FyersModel(client_id=app_id, token=token, is_async=False, log_path="")
-    last_resub = 0.0
 
     def _rest_prices(symbols: list[str]) -> None:
         resp = rest.quotes({"symbols": ",".join(symbols)})
+        if resp.get("s") != "ok":
+            print(f"quotes error: {resp}", flush=True)
+            return
         for q in resp.get("d", []) or []:
             ltp = (q.get("v") or {}).get("lp")
             if q.get("n") and ltp:
@@ -322,20 +300,14 @@ def main(argv: Optional[list] = None) -> int:
 
     token_mtime = TOKEN_PATH.stat().st_mtime
     while True:
-        time.sleep(2)
-        stale = [s for s in list(watcher.positions) if time.time() - ws_tick_at.get(s, 0) > STALE_S]
-        if stale:
+        time.sleep(PRICE_EVERY_S)
+        with watcher.lock:
+            symbols = list(watcher.positions)
+        if symbols:
             try:
-                _rest_prices(stale)
+                _rest_prices(symbols)
             except Exception as e:
-                print(f"REST quote fallback failed ({e})", flush=True)
-            if time.time() - last_resub > 30:
-                last_resub = time.time()
-                try:
-                    data_sock.subscribe(symbols=stale, data_type="SymbolUpdate")
-                    print(f"re-subscribed {stale} on the data socket", flush=True)
-                except Exception as e:
-                    print(f"data socket re-subscribe failed ({e})", flush=True)
+                print(f"REST quote failed ({e})", flush=True)
         watcher.tick_housekeeping()
         now = _now_ist()
         if (now.hour, now.minute) >= SESSION_END_IST:
@@ -346,7 +318,6 @@ def main(argv: Optional[list] = None) -> int:
             return 75          # systemd Restart=always brings us back with the new token
     try:
         order_sock.close_connection()
-        data_sock.close_connection()
     except Exception:
         pass
     time.sleep(3)              # let the notifier flush
