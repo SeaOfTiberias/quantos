@@ -1,0 +1,27 @@
+[Unit]
+Description=QuantOS trade watcher -- Telegram exit alerts for option positions you open yourself (stage 1: alerts only, places no orders)
+After=network-online.target
+Wants=network-online.target
+# A morning on an expired token fails fast every 60 s until the refresh;
+# don't let systemd's burst limit give up on it before then.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python -u /home/ubuntu/quantos/scripts/run_trade_watcher.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+
+# Long-running during market hours: Fyers' order socket pushes each new
+# position, the data socket streams its premium. The script exits 0 at
+# 15:35 IST and exits 75 when the Fyers token file changes, so Restart=
+# always reconnects with the fresh token. A restart outside market hours
+# is skipped by the ExecCondition below (VM runs in UTC; check is in IST).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0900 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

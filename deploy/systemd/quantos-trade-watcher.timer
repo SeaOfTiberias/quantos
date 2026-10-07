@@ -1,0 +1,10 @@
+[Unit]
+Description=Start the QuantOS trade watcher at 09:05 IST on weekdays
+
+[Timer]
+# 03:35 UTC = 09:05 IST. The VM runs in Etc/UTC -- OnCalendar is UTC.
+OnCalendar=Mon..Fri *-*-* 03:35:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

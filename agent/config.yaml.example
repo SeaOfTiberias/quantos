@@ -350,3 +350,15 @@ vault:
   # - note: some_note_id
   #   symbol: "NIFTY 50"
   #   label: human-readable name for the Telegram message
+
+trade_watcher:
+  # Discretionary trade watcher (scripts/run_trade_watcher.py): manages the
+  # EXIT of option positions you open yourself, however you open them. Fyers'
+  # order socket announces each new position; the data socket streams its
+  # premium; these rules run on every tick and send Telegram alerts.
+  # Stage 1 = alerts only: the script has no order-placing code at all.
+  enabled: false
+  initial_stop_pct: 15     # stop this % below your average buy price
+  breakeven_at_pct: 10     # once up this %, stop moves to entry (0 = off)
+  trail_after_pct: 15      # once up this %, start trailing...
+  trail_pct: 10            # ...this % below the highest premium since entry
