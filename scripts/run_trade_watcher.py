@@ -55,6 +55,16 @@ SESSION_END_IST = (15, 35)
 RAISE_NOTIFY_EVERY_S = 120     # trail raises can tick every second; message at most this often
 EXIT_REMINDER_EVERY_S = 60
 EXIT_REMINDERS = 3
+# Every order QuantOS places carries one of these tags (core/brokers/fyers.py
+# strips non-alphanumerics, and defaults an untagged order to "quantos"). A
+# position whose buy carries one belongs to a QuantOS strategy with its own
+# exit logic, so the watcher leaves it alone -- it only manages trades you
+# placed yourself.
+QUANTOS_TAG_PREFIXES = ("quantos", "orb", "darvas", "rotation")
+
+
+def is_quantos_tag(tag: Optional[str]) -> bool:
+    return bool(tag) and str(tag).lower().startswith(QUANTOS_TAG_PREFIXES)
 PRICE_EVERY_S = 2              # REST quote poll for managed positions
 
 
@@ -95,6 +105,10 @@ class Watcher:
         self.lock = threading.Lock()
         self.positions: dict[str, ManagedPosition] = {}
         self.ignored_short: set[str] = set()
+        self.system_symbols: set[str] = set()     # opened by a QuantOS strategy: never managed
+        # symbol -> the QuantOS tag on one of today's buys of it, or None.
+        # Wired to the Fyers tradebook in main(); called OUTSIDE the lock.
+        self.tag_lookup = lambda symbol: None
         self.last_raise_sent: dict[str, float] = {}
         self.pending_raise: dict[str, float] = {}
         self.exit_reminders: dict[str, tuple[float, int]] = {}
@@ -120,6 +134,18 @@ class Watcher:
         if not is_option_symbol(symbol):
             return
         net_qty = int(p.get("netQty") or 0)
+        if symbol in self.system_symbols:
+            return
+        if net_qty > 0 and symbol not in self.positions:
+            try:
+                tag = self.tag_lookup(symbol)
+            except Exception as e:
+                tag = None
+                print(f"tradebook tag lookup failed for {symbol} ({e}); managing it as manual", flush=True)
+            if is_quantos_tag(tag):
+                self.system_symbols.add(symbol)
+                print(f"{symbol}: opened by QuantOS (tag {tag}) -- not managed", flush=True)
+                return
         with self.lock:
             managed = self.positions.get(symbol)
             if net_qty > 0:
@@ -226,6 +252,19 @@ class Watcher:
         return symbol.split(":", 1)[-1]
 
 
+def tag_from_tradebook(trades: list[dict], symbol: str) -> Optional[str]:
+    """The QuantOS tag on any of today's BUY fills of `symbol`, else None
+    (side 1 = buy in Fyers' tradebook). Conservative on purpose: if a QuantOS
+    strategy bought this symbol at all today, the watcher stays out of it."""
+    for t in trades:
+        if t.get("symbol") != symbol or int(t.get("side") or 0) != 1:
+            continue
+        tag = t.get("orderTag") or t.get("ordertag")
+        if is_quantos_tag(tag):
+            return tag
+    return None
+
+
 def _read_rest_positions(app_id: str, token: str) -> list[dict]:
     from fyers_apiv3 import fyersModel
     client = fyersModel.FyersModel(client_id=app_id, token=token, is_async=False, log_path="")
@@ -269,6 +308,16 @@ def main(argv: Optional[list] = None) -> int:
         on_close=lambda m: print(f"order socket closed: {m}", flush=True),
     )
 
+    from fyers_apiv3 import fyersModel
+    rest = fyersModel.FyersModel(client_id=app_id, token=token, is_async=False, log_path="")
+
+    def _tag_lookup(symbol: str) -> Optional[str]:
+        resp = rest.tradebook()
+        if resp.get("s") != "ok":
+            raise RuntimeError(f"tradebook read failed: {resp}")
+        return tag_from_tradebook(resp.get("tradeBook", []) or [], symbol)
+
+    watcher.tag_lookup = _tag_lookup
     order_sock.connect()
 
     # Pick up anything already open (e.g. a restart mid-trade).
@@ -285,9 +334,6 @@ def main(argv: Optional[list] = None) -> int:
     # subscribe() from the order-socket callback blocked while holding the
     # watcher lock, which froze the price loop. REST polling is one call per
     # loop for all managed symbols, well inside Fyers' rate limits.
-    from fyers_apiv3 import fyersModel
-    rest = fyersModel.FyersModel(client_id=app_id, token=token, is_async=False, log_path="")
-
     def _rest_prices(symbols: list[str]) -> None:
         resp = rest.quotes({"symbols": ",".join(symbols)})
         if resp.get("s") != "ok":

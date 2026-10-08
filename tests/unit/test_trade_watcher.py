@@ -155,3 +155,43 @@ class TestWatcher:
         w, n, _ = watcher
         w.on_tick("NSE:NIFTY26OCT25000CE", 50.0)
         assert n.sent == []
+
+
+class TestQuantosTagSkip:
+    def test_strategy_tagged_position_is_not_managed(self, watcher):
+        w, n, _ = watcher
+        w.tag_lookup = lambda s: "orbBANKNIFTY20261008"
+        w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
+        w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
+        assert w.positions == {} and SYM in w.system_symbols and n.sent == []
+
+    def test_manual_position_still_managed(self, watcher):
+        w, n, _ = watcher
+        w.tag_lookup = lambda s: None
+        w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
+        assert SYM in w.positions
+
+    def test_lookup_failure_falls_back_to_managing(self, watcher):
+        w, n, _ = watcher
+        def boom(s):
+            raise RuntimeError("tradebook down")
+        w.tag_lookup = boom
+        w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
+        assert SYM in w.positions
+
+    def test_tag_from_tradebook(self, watcher):
+        _, _, mod = watcher
+        trades = [
+            {"symbol": SYM, "side": -1, "orderTag": "orbBANKNIFTYexit"},   # a sell: ignored
+            {"symbol": "NSE:NIFTY26OCT25000CE", "side": 1, "orderTag": "orbNIFTY"},
+            {"symbol": SYM, "side": 1, "orderTag": ""},                      # manual buy
+        ]
+        assert mod.tag_from_tradebook(trades, SYM) is None
+        trades.append({"symbol": SYM, "side": 1, "orderTag": "darvasatrstopX"})
+        assert mod.tag_from_tradebook(trades, SYM) == "darvasatrstopX"
+
+    @pytest.mark.parametrize("tag, ok", [("quantos", True), ("ORBnifty", True), ("rotationpilot", True),
+                                         ("", False), (None, False), ("TV12345", False)])
+    def test_is_quantos_tag(self, watcher, tag, ok):
+        _, _, mod = watcher
+        assert mod.is_quantos_tag(tag) is ok
