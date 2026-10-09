@@ -8,10 +8,12 @@ into Telegram messages.
 The rules, all on the option's own premium:
   - initial stop at `initial_stop_pct` below the entry price
   - once the premium has been `breakeven_at_pct` above entry, the stop
-    moves to entry (0 = off)
+    moves to entry + `breakeven_lock_pct` (0 = plain breakeven; set it to
+    cover brokerage and keep a small profit). breakeven_at_pct 0 = off
   - once it has been `trail_after_pct` above entry, the stop trails at
     `trail_pct` below the highest premium seen since entry
-  - the stop only ever moves up
+  - the stop only ever moves up -- except rearm(), after the user has held
+    through an exit alert, which re-arms it below the current price
 
 Stage 1 (this module's only consumer today) never places orders: an
 "exit" event is a message telling the user to exit.
@@ -22,13 +24,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
-DEFAULT_RULES = dict(initial_stop_pct=15.0, breakeven_at_pct=10.0, trail_after_pct=15.0, trail_pct=10.0)
+DEFAULT_RULES = dict(initial_stop_pct=15.0, breakeven_at_pct=10.0, breakeven_lock_pct=0.0,
+                     trail_after_pct=15.0, trail_pct=10.0)
 
 
 @dataclass(frozen=True)
 class ExitRules:
     initial_stop_pct: float = DEFAULT_RULES["initial_stop_pct"]
     breakeven_at_pct: float = DEFAULT_RULES["breakeven_at_pct"]
+    breakeven_lock_pct: float = DEFAULT_RULES["breakeven_lock_pct"]
     trail_after_pct:  float = DEFAULT_RULES["trail_after_pct"]
     trail_pct:        float = DEFAULT_RULES["trail_pct"]
 
@@ -91,12 +95,13 @@ def on_tick(pos: ManagedPosition, ltp: float, rules: ExitRules) -> list[Event]:
     events: list[str] = []
 
     pos.high = max(pos.high, ltp)
-    gain_pct = (pos.high / pos.entry - 1) * 100
+    gain_pct = round((pos.high / pos.entry - 1) * 100, 6)   # 115/100 must read as +15%, not 14.999..
     new_stop = pos.stop
     if rules.breakeven_at_pct > 0 and gain_pct >= rules.breakeven_at_pct and not pos.breakeven_on:
         pos.breakeven_on = True
-        if pos.entry > new_stop:
-            new_stop = pos.entry
+        lock = round(pos.entry * (1 + rules.breakeven_lock_pct / 100), 2)
+        if lock > new_stop:
+            new_stop = lock
             events.append("breakeven")
     if gain_pct >= rules.trail_after_pct:
         if not pos.trail_on:
@@ -111,6 +116,20 @@ def on_tick(pos: ManagedPosition, ltp: float, rules: ExitRules) -> list[Event]:
     out = [Event(kind, ltp, pos.stop) for kind in events]
     pos.events_seen.extend(out)
     return out
+
+
+def rearm(pos: ManagedPosition, rules: ExitRules) -> Optional[float]:
+    """The user held through an EXIT NOW and its reminders: arm a fresh stop
+    `initial_stop_pct` below the last price, as if the position were opened
+    there, so a further fall is still caught. The high resets to that price,
+    so a trail already on continues from it instead of firing at once off the
+    old high. Returns the new stop, or None with no price to arm from."""
+    if not pos.last_ltp or pos.last_ltp <= 0:
+        return None
+    pos.high = pos.last_ltp
+    pos.stop = round(pos.last_ltp * (1 - rules.initial_stop_pct / 100), 2)
+    pos.exit_alerted = False
+    return pos.stop
 
 
 def is_option_symbol(symbol: str) -> bool:

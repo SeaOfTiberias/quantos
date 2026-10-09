@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core.trade_watcher.rules import ExitRules, ManagedPosition, is_option_symbol, on_tick
+from core.trade_watcher.rules import ExitRules, ManagedPosition, is_option_symbol, on_tick, rearm
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYM = "NSE:BANKNIFTY26OCT54900CE"
@@ -50,10 +50,32 @@ class TestRules:
         on_tick(p, 130.0, RULES)                      # stop now 117
         assert _kinds(on_tick(p, 117.0, RULES)) == ["exit"]
 
+    def test_breakeven_lock_protects_profit(self):
+        rules = ExitRules(initial_stop_pct=10, breakeven_at_pct=10, breakeven_lock_pct=5,
+                          trail_after_pct=15, trail_pct=10)
+        p = ManagedPosition.open(SYM, 100.0, 30, rules)
+        assert _kinds(on_tick(p, 110.0, rules)) == ["breakeven"] and p.stop == 105.0
+        assert _kinds(on_tick(p, 115.0, rules)) == ["trail_on"]
+        assert p.stop == 105.0                        # trail (103.5) below the lock: lock holds
+        assert _kinds(on_tick(p, 120.0, rules)) == ["stop_raised"] and p.stop == 108.0
+        assert _kinds(on_tick(p, 104.0, rules)) == ["exit"]
+
     def test_breakeven_off(self):
         rules = ExitRules(initial_stop_pct=15, breakeven_at_pct=0, trail_after_pct=50, trail_pct=10)
         p = ManagedPosition.open(SYM, 100.0, 30, rules)
         assert on_tick(p, 140.0, rules) == [] and p.stop == 85.0
+
+    def test_rearm_after_trailed_exit_resets_high(self):
+        p = _pos()
+        on_tick(p, 130.0, RULES)                      # trailing, stop 117
+        on_tick(p, 115.0, RULES)                      # exit alerted
+        assert rearm(p, RULES) == 97.75               # 15% below 115
+        assert p.high == 115.0 and not p.exit_alerted
+        assert _kinds(on_tick(p, 118.0, RULES)) == ["stop_raised"]
+        assert p.stop == 106.2                       # trails off the new high, not the old 130
+
+    def test_rearm_needs_a_price(self):
+        assert rearm(_pos(), RULES) is None
 
     def test_bad_ticks_ignored(self):
         p = _pos()
@@ -96,17 +118,14 @@ def watcher(tmp_path):
     mod = _load_runner()
     n = _FakeNotifier()
     w = mod.Watcher(RULES, n, state_path=tmp_path / "state.json")
-    w.subs, w.unsubs = [], []
-    w.subscribe = lambda s: w.subs.extend(s)
-    w.unsubscribe = lambda s: w.unsubs.extend(s)
     return w, n, mod
 
 
 class TestWatcher:
-    def test_new_long_option_is_managed_and_subscribed(self, watcher):
+    def test_new_long_option_is_managed(self, watcher):
         w, n, _ = watcher
         w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
-        assert SYM in w.positions and w.subs == [SYM]
+        assert SYM in w.positions
         assert "Managing" in n.sent[0] and "85.00" in n.sent[0]
 
     def test_equity_and_short_positions_not_managed(self, watcher):
@@ -120,7 +139,7 @@ class TestWatcher:
         w, n, _ = watcher
         w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
         w.on_position({"symbol": SYM, "netQty": 0, "realized_profit": 817.5})
-        assert w.positions == {} and w.unsubs == [SYM]
+        assert w.positions == {}
         assert "closed" in n.sent[-1] and "818" in n.sent[-1]
 
     def test_tick_exit_alert(self, watcher):
@@ -147,9 +166,48 @@ class TestWatcher:
         w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
         w.on_tick(SYM, 130.0)
         w2 = mod.Watcher(RULES, _FakeNotifier(), state_path=tmp_path / "state.json")
-        w2.subscribe = lambda s: None
         w2.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
         assert w2.positions[SYM].stop == 117.0
+
+    def test_ignored_exit_rearms_after_reminders(self, watcher, monkeypatch):
+        w, n, mod = watcher
+        monkeypatch.setattr(mod, "EXIT_REMINDER_EVERY_S", 0)
+        w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
+        w.on_tick(SYM, 84.0)                           # EXIT NOW at stop 85
+        w.on_tick(SYM, 80.0)
+        for _ in range(mod.EXIT_REMINDERS):
+            w.tick_housekeeping()
+        assert sum("Still open" in m for m in n.sent) == mod.EXIT_REMINDERS
+        w.tick_housekeeping()                          # reminders spent: re-arm, not silence
+        p = w.positions[SYM]
+        assert "Fresh stop 68.00" in n.sent[-1] and p.stop == 68.0 and not p.exit_alerted
+        assert SYM not in w.exit_reminders
+        w.on_tick(SYM, 67.0)                           # the further fall is caught
+        assert "EXIT NOW" in n.sent[-1] and "68.00" in n.sent[-1]
+
+    def test_closed_during_reminders_drops_them(self, watcher, monkeypatch):
+        w, n, mod = watcher
+        monkeypatch.setattr(mod, "EXIT_REMINDER_EVERY_S", 0)
+        w.on_position({"symbol": SYM, "netQty": 30, "netAvg": 100.0})
+        w.on_tick(SYM, 84.0)
+        w.on_position({"symbol": SYM, "netQty": 0, "realized_profit": -480})
+        before = len(n.sent)
+        w.tick_housekeeping()
+        assert len(n.sent) == before and w.exit_reminders == {}
+
+    def test_rest_session_gets_default_timeout(self, watcher):
+        _, _, mod = watcher
+        seen = {}
+
+        class _Session:
+            def request(self, method, url, **kw):
+                seen.update(kw)
+
+        s = mod.with_default_timeout(_Session(), 7)
+        s.request("GET", "u")
+        assert seen["timeout"] == 7
+        s.request("GET", "u", timeout=1)
+        assert seen["timeout"] == 1
 
     def test_unrelated_untracked_tick_ignored(self, watcher):
         w, n, _ = watcher
