@@ -9,6 +9,8 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_fno_screener.py
 Environment=HOME=/home/ubuntu
+# Telegram credentials (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID), same file as the trade watcher.
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
 
 # Places NO orders. Reads ~210 symbols' daily history from Fyers and NSE's
 # F&O bhavcopy, which is published some time after the close -- the script

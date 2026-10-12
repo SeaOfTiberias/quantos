@@ -169,10 +169,9 @@ def _chunks(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     return out
 
 
-def _send(text: str) -> None:
+def _send(text: str) -> bool:
     from cloud.api.notifier import send_telegram
-    for part in _chunks(text):
-        asyncio.run(send_telegram(part))
+    return all([asyncio.run(send_telegram(part)) for part in _chunks(text)])
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -235,8 +234,9 @@ def main(argv: Optional[list] = None) -> int:
 
     message = format_telegram(result, rules, cfg)
     print(message)
-    if not args.no_telegram:
-        _send(message)
+    if not args.no_telegram and not _send(message):
+        print("ERROR: Telegram send failed (credentials missing or API error) -- see warnings above.")
+        return 1
     return 0
 
 
