@@ -1,0 +1,17 @@
+[Unit]
+Description=QuantOS F&O option-buy candidate screener -- post-market: ranks stock F&O call/put setups, picks a slightly-ITM contract each, sends the top candidates to Telegram (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_fno_screener.py
+Environment=HOME=/home/ubuntu
+
+# Places NO orders. Reads ~210 symbols' daily history from Fyers and NSE's
+# F&O bhavcopy, which is published some time after the close -- the script
+# waits up to 150 min for it, hence the long start timeout.
+TimeoutStartSec=4h
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ]'

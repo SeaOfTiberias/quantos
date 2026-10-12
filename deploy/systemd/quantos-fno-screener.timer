@@ -1,0 +1,11 @@
+[Unit]
+Description=Fires the F&O option-buy candidate screener once daily at 18:15 IST
+
+[Timer]
+# 12:45 UTC = 18:15 IST -- after the Darvas scan (18:00, ~3 min) so their
+# Fyers history calls never overlap. The VM runs in Etc/UTC.
+OnCalendar=Mon..Fri *-*-* 12:45:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -363,3 +363,19 @@ trade_watcher:
   breakeven_lock_pct: 5    # profit locked at that point -- covers brokerage + a little (0 = plain breakeven)
   trail_after_pct: 12      # once up this %, start trailing...
   trail_pct: 8             # ...this % below the highest premium since entry
+
+fno_screener:
+  # Evening F&O option-buy candidate screener (scripts/run_fno_screener.py):
+  # ranks stock F&O names for call / put setups (momentum + Darvas box
+  # breakout, futures OI build-up as confirmation), names one slightly-ITM
+  # contract each and sends the top ones to Telegram. A screening aid for
+  # discretionary trades -- it places no orders; the trade watcher manages
+  # the exit once you buy. 18:15 IST weekdays (quantos-fno-screener.timer).
+  enabled: false
+  top_n: 5                 # candidates per side
+  max_lot_cost: 25000      # premium x lot size, rupees
+  min_dte: 10              # never a contract with fewer calendar days left
+  min_oi_lots: 50          # contract open interest, in lots
+  min_volume: 20           # contracts traded on the day
+  max_itm_strikes: 2       # how deep in the money to look
+  oi_lookback_sessions: 5  # futures OI build-up window
