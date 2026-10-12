@@ -159,3 +159,11 @@ def test_sanitized_handles_exception_objects():
     assert clean.startswith("ValueError")
     assert TOKEN not in clean
     assert "/bot" not in clean
+
+
+def test_httpx_request_log_is_quieted():
+    """httpx logs every request URL at INFO, and Telegram's URL carries the
+    bot token -- importing the notifier must keep that line out of the logs."""
+    import logging
+    import cloud.api.notifier  # noqa: F401
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING

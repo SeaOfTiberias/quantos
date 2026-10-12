@@ -31,6 +31,11 @@ RETRY_BACKOFF_SECONDS = 1.0
 # the logs is a token leak (P1-5).
 _BOT_URL_RE = re.compile(r"/bot[^/\s'\"]*")
 
+# httpx's own INFO line ("HTTP Request: POST https://api.telegram.org/bot<token>/...")
+# is the same leak on every SUCCESSFUL send -- seen in the VM journal 2026-10-12
+# from the F&O screener. Quiet it here so every caller is covered.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def _sanitized(err: BaseException | str, token: str = "") -> str:
     """Render an error for logging with the bot token scrubbed out."""
