@@ -8,7 +8,7 @@ quantos:
 
 # Vault index
 
-Regenerated 2026-09-17 by `python scripts/vault.py index`. Do not hand-edit.
+Regenerated 2026-10-13 by `python scripts/vault.py index`. Do not hand-edit.
 
 ## brain/ (3 — executable)
 
@@ -18,19 +18,26 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (24 — not executable)
+## wiki/ (38 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
 - [[atm-iv-term-structure]] — NIFTY / BankNifty ATM IV Term Structure
 - [[breakout-1010-banknifty-candidate-15]] — 10:10 Breakout on BankNifty Options (Candidate 15)
 - [[candle-confirm-momentum-gutcheck-candidate-19]] — Candle-Confirm Momentum (Candidate 19, Gut-Check)
+- [[capital-readiness-validation]] — Capital-Readiness Validation
+- [[darvas-atr-stop-bucket-b]] — Darvas ATR-Scaled Stop, Bucket B
+- [[darvas-box-width]] — Darvas Box-Width Buckets (Static Exit)
 - [[darvas-sepa-s7-3]] — Darvas Box / SEPA Breakout (S7-3)
+- [[darvas-trailing-stop]] — Darvas Trailing Stop/Target
 - [[dow-theory-trend-candidate-14]] — Dow Theory / Market Structure Trend Following (Candidate 14)
+- [[ema8-second-trade]] — EMA-8 Slope, Second Trade of the Day
 - [[event-proximity-vol]] — Known-Event (RBI/Budget) Proximity vs Forward Volatility
 - [[expiry-day-effect-gutcheck-candidate-13]] — F&O Monthly Expiry-Day Effect (Candidate 13, Gut-Check)
+- [[fno-screener]] — F&O Screener (Evening Call/Put Candidates)
 - [[goodnight-scalper-candidate-20]] — Good Night Stock-Options Scalper (Candidate 20)
 - [[index]] — Vault index
+- [[index-reconstitution-effect]] — Index Reconstitution Effect
 - [[iv-minus-rv-vol-spread]] — IV-minus-RV Vol Spread
 - [[log]] — Compile log
 - [[mean-reversion-alpha50-gutcheck-s2]] — Mean-Reversion on Nifty Alpha 50 (Strategy 2, Gut-Check)
@@ -38,16 +45,23 @@ _agent-compiled entity pages — context and retrieval only_
 - [[momentum-turnover-candidate-11]] — Momentum Turnover Ablation / Walk-Forward (Candidate 11)
 - [[nifty-banknifty-option-skew]] — NIFTY / BankNifty Option Skew
 - [[nifty-ema-options-s8-4]] — NIFTY EMA9/21 Options Strategy (S8-4)
+- [[orb-entry-filter-candidate-18b]] — ORB Entry Filter (Candidate 18b)
 - [[orb-options-scalping-candidate-18]] — ORB Options Scalping (Candidate 18)
 - [[pairs-trading-candidate-12]] — Sector-Cointegrated Stock-Futures Pairs Trading (Candidate 12)
 - [[pairs-trading-v2-candidate-17]] — Sector-Cointegrated Pairs Trading v2, Bug-Fixed (Candidate 17)
+- [[pead-earnings-drift]] — PEAD (Post-Earnings Announcement Drift)
 - [[regime-classifier-s8-1]] — VIX-Level Regime Classifier (S8-1)
 - [[regime-filtered-dual-momentum-s1]] — Regime-Filtered Dual-Momentum (Strategy 1)
 - [[rs-momentum-rotation-s8-3]] — 52-Week-High RS Momentum Rotation (S8-3)
+- [[statarb-residual-mean-reversion]] — StatArb Residual Mean Reversion ("Straying Duckling")
+- [[strategy-register-2026-10-13]] — Strategy register — 2026-10-13
 - [[strategy-search]] — Strategy Search
+- [[trade-watcher]] — Trade Watcher (Discretionary Exit Alerts)
+- [[trend-day-filter-candidate-21]] — Trend-Day Filter (Candidate 21)
+- [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (54 — not executable)
+## raw/ (94 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -105,6 +119,46 @@ _immutable ingested sources — never edited after landing_
 - [[2026-09-17-strategy-1-regime-filtered-dual-momentum-backtest]] — Strategy 1 — Regime-Filtered Dual-Momentum Backtest
 - [[2026-09-17-vrp-iv-conditional-gut-check-results-exploratory-not-pre-reg]] — VRP IV-Conditional Gut-Check — Results (exploratory, NOT pre-registered)
 - [[2026-09-17-vrp-short-strangle-backtest-gross-vs-net-result]] — VRP Short Strangle Backtest -- Gross vs Net Result
+- [[2026-10-13-banknifty-residual-mean-reversion-results]] — BankNifty Residual Mean Reversion — Results
+- [[2026-10-13-banknifty-straying-duckling-residual-mean-reversion-methodol]] — BankNifty "Straying Duckling" Residual Mean Reversion — Methodology, Pre-Committed 2026-10-13 Before Any Result Exists
+- [[2026-10-13-candidate-18-fix-2-results-banknifty-expiry-day-entry-lag]] — Candidate 18 — fix 2 results (BANKNIFTY expiry day + entry lag)
+- [[2026-10-13-candidate-18-independent-verification-in-tradingview-2026-09]] — Candidate 18 — independent verification in TradingView (2026-09-30)
+- [[2026-10-13-candidate-18-orb-options-scalping-capital-allocation-positio]] — Candidate 18 (ORB Options Scalping) — Capital Allocation / Position Sizing
+- [[2026-10-13-candidate-18-orb-options-scalping-real-capital-tracked-equit]] — Candidate 18 (ORB Options Scalping) — Real Capital-Tracked Equity Curve
+- [[2026-10-13-candidate-18-under-the-calibrated-time-convention]] — Candidate 18 under the calibrated time convention
+- [[2026-10-13-candidate-18b-filters-edge-in-index-points]] — Candidate 18b filters — edge in index points?
+- [[2026-10-13-candidate-18b-orb-entry-filter-methodology-pre-committed-202]] — Candidate 18b — ORB Entry-Filter Methodology, Pre-Committed 2026-09-22 Before Any New Result Exists
+- [[2026-10-13-darvas-atr-scaled-stop-backtest-pre-committed-2026-09-23-bef]] — Darvas ATR-Scaled Stop Backtest — Pre-Committed 2026-09-23 Before Any Result Exists
+- [[2026-10-13-darvas-atr-scaled-stop-backtest-results]] — Darvas ATR-Scaled Stop Backtest — Results
+- [[2026-10-13-darvas-atr-stop-bucket-b-real-capital-tracked-equity-curve-p]] — Darvas ATR-Stop (Bucket B) — Real Capital-Tracked Equity Curve & Position Sizing
+- [[2026-10-13-darvas-atr-stop-falsification-pass]] — Darvas ATR-stop — falsification pass
+- [[2026-10-13-darvas-atr-stop-out-of-sample-2016-2023]] — Darvas ATR-stop — out-of-sample 2016-2023
+- [[2026-10-13-darvas-box-width-backtest-pre-committed-2026-09-22-before-an]] — Darvas Box-Width Backtest — Pre-Committed 2026-09-22 Before Any Result Exists
+- [[2026-10-13-darvas-box-width-backtest-results]] — Darvas Box-Width Backtest — Results
+- [[2026-10-13-darvas-box-width-sensitivity-pre-committed-2026-09-22-before]] — Darvas Box-Width Sensitivity — Pre-Committed 2026-09-22 Before Any Result Exists
+- [[2026-10-13-darvas-box-width-sensitivity-results]] — Darvas Box-Width Sensitivity — Results
+- [[2026-10-13-darvas-trailing-stop-backtest-pre-committed-2026-09-22-befor]] — Darvas Trailing-Stop Backtest — Pre-Committed 2026-09-22 Before Any Result Exists
+- [[2026-10-13-darvas-trailing-stop-backtest-results]] — Darvas Trailing-Stop Backtest — Results
+- [[2026-10-13-ema-8-slope-second-trade-of-the-day-vs-the-first]] — EMA 8 slope — second trade of the day vs the first
+- [[2026-10-13-iv-gated-short-premium-addendum-data-quality-rules-2026-10-0]] — IV-Gated Short Premium — Addendum: Data-Quality Rules (2026-10-06)
+- [[2026-10-13-iv-gated-short-premium-results]] — IV-Gated Short Premium — Results
+- [[2026-10-13-iv-gated-short-premium-strangle-straddle-iron-condor-methodo]] — IV-Gated Short Premium (Strangle / Straddle / Iron Condor) — Methodology, Pre-Committed 2026-10-06 Before Any Result Exists
+- [[2026-10-13-nifty-50-eigen-factor-residual-mean-reversion-methodology-pr]] — Nifty 50 Eigen-Factor Residual Mean Reversion — Methodology, Pre-Committed 2026-10-13 Before Any Result Exists
+- [[2026-10-13-nifty-50-residual-mean-reversion-results]] — Nifty 50 Residual Mean Reversion — Results
+- [[2026-10-13-opening-range-breakout-options-scalping-methodology-pre-comm]] — Opening-Range-Breakout Options Scalping — Methodology, Pre-Committed 2026-07-28 Before Any Result Exists
+- [[2026-10-13-orb-condition-mining-results]] — ORB Condition-Mining — Results
+- [[2026-10-13-orb-exit-policy-study-calibrated-pricing-futures]] — ORB exit-policy study (calibrated pricing + futures)
+- [[2026-10-13-orb-option-pricing-time-convention-calibration]] — ORB option-pricing time convention — calibration
+- [[2026-10-13-orb-options-scalping-arm-threshold-give-back-analysis-candid]] — ORB Options Scalping — Arm-Threshold Give-Back Analysis (Candidate 18)
+- [[2026-10-13-orb-options-scalping-arm-threshold-grid-results-candidate-18]] — ORB Options Scalping — Arm-Threshold Grid Results (Candidate 18)
+- [[2026-10-13-orb-options-scalping-arm-threshold-methodology-pre-committed]] — ORB Options Scalping — Arm-Threshold Methodology, Pre-Committed 2026-09-21 Before Any Result Exists
+- [[2026-10-13-orb-options-scalping-backtest-results-candidate-18]] — ﻿# ORB Options Scalping — Backtest Results (Candidate 18)
+- [[2026-10-13-orb-options-scalping-net-profit-by-arm-bucket-candidate-18]] — ORB Options Scalping — Net Profit by Arm Bucket (Candidate 18)
+- [[2026-10-13-quantos-full-project-state-for-external-review]] — QuantOS — Full Project State for External Review
+- [[2026-10-13-s7-2-expectancy-arithmetic-does-darvass-plausible-edge-clear]] — S7-2 — Expectancy Arithmetic: Does Darvas's Plausible Edge Clear Its Own Costs?
+- [[2026-10-13-statistical-arbitrage-via-eigen-factor-residual-mean-reversi]] — Statistical Arbitrage via Eigen-Factor Residual Mean Reversion
+- [[2026-10-13-strategy-status-snapshot-2026-10-13]] — Strategy Status Snapshot — 2026-10-13
+- [[2026-10-13-trend-day-filter-candidate-21-stage-1-index-points]] — Trend-day filter (candidate 21) — stage 1, index points
 
 ## loose/ (1 — not executable)
 

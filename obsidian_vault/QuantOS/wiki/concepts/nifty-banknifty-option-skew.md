@@ -1,10 +1,23 @@
 ---
 title: NIFTY / BankNifty Option Skew
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
-  - vol-conditioning
+strategy_id: nifty-banknifty-option-skew
+candidate: "—"
+family: vol-conditioning
+instrument: index-options
+status: closed
+verdict: FAIL
+first_tested: 2026-07-25
+verdict_date: 2026-07-25
+profit_factor: 
+sharpe: 
+trades: 
+bar: "Positive Q5−Q1 forward-RV gap AND monotonic Q1→Q5, both underlyings"
+headline: "Option skew showed an endpoint gap but no monotonic forward-volatility ordering on either NIFTY or BankNifty."
 quantos:
   layer: wiki
   generated: true

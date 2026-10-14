@@ -1,13 +1,27 @@
 ---
 title: Dow Theory / Market Structure Trend Following (Candidate 14)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: dow-theory-trend-candidate-14
+candidate: 14
+family: trend
+instrument: index-futures
+status: closed
+verdict: FAIL
+first_tested: 2026-07-26
+verdict_date: 2026-07-27
+profit_factor: 0.88
+sharpe: 2.23
+trades: 3650
+bar: "PF > 1 and Sharpe > 0.5"
+headline: "Sharpe 2.23 looked strong but profit factor stayed below 1 in every year except 2024: a real rupee loss, with costs 2.6× the gross edge."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-dow-theory-market-structure-trend-following-nifty-methodolog, 2026-09-17-dow-theory-market-structure-trend-following-backtest-results
+  compiled_from: 2026-09-17-dow-theory-market-structure-trend-following-nifty-methodolog, 2026-09-17-dow-theory-market-structure-trend-following-backtest-results, 2026-10-13-quantos-full-project-state-for-external-review
 ---
 
 # Dow Theory / Market Structure Trend Following (Candidate 14)
@@ -38,6 +52,10 @@ An unsourced retail intraday-trading idea (swing-structure breakout with staged 
 | 2024 | 808 | 60.0% | **1.05** | 2.89 | +59.5% |
 
 Profit factor stays below 1.0 in every single year except 2024 — a real net loss in real rupee terms — while the Sharpe and summed net-P&L-% figures look strong throughout, because those are computed as an uncompounded, non-capital-weighted sum of each trade's own percentage return, not a real account balance. A `has_positive_edge` read that only looked at Sharpe would have wrongly called this a pass.
+
+## Later note
+
+The project-state review summarises the result as a real net loss, with transaction costs at 2.6 times the gross edge `[[2026-10-13-quantos-full-project-state-for-external-review]]`.
 
 ## Relation to other concepts
 

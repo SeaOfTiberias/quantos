@@ -1,9 +1,23 @@
 ---
 title: Sector-Cointegrated Stock-Futures Pairs Trading (Candidate 12)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: pairs-trading-candidate-12
+candidate: 12
+family: stat-arb
+instrument: stock-futures
+status: closed
+verdict: FAIL
+first_tested: 2026-07-25
+verdict_date: 2026-07-26
+profit_factor: 0.94
+sharpe: -0.17
+trades: 4705
+bar: "PF > 1 and Sharpe > 0.5 pooled over 8 walk-forward folds"
+headline: "Same-sector cointegrated stock-futures pairs: folds 1–5 profitable, folds 6–8 collapse, net −₹38.2L."
 quantos:
   layer: wiki
   generated: true
@@ -34,3 +48,4 @@ A classic statistical-arbitrage pairs trade, using single-stock futures (not cas
 ## Relation to other concepts
 
 A later independent review found two real, previously undisclosed construction bugs (unadjusted corporate-action jumps, unadjusted futures-roll splicing) — see [[pairs-trading-v2-candidate-17]] for the bug-fixed re-run and whether fixing them changed this verdict.
+- [[statarb-residual-mean-reversion]] tested the stock-versus-family version (a residual against a factor basket, not one partner stock) on the same futures data and cost model. It also failed, retiring mean reversion on NSE stock futures.

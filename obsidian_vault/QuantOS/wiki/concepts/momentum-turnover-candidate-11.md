@@ -1,13 +1,30 @@
 ---
 title: Momentum Turnover Ablation / Walk-Forward (Candidate 11)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/open
+strategy_id: momentum-turnover-candidate-11
+candidate: 11
+family: momentum
+instrument: equity-cash
+status: live-paper
+verdict: OPEN
+first_tested: 2026-07-25
+verdict_date: 
+profit_factor: 
+sharpe: 0.81
+trades: 244
+bar: "Out-of-sample walk-forward Sharpe > 0.5 after ≥ 4 quarters (INCONCLUSIVE 0.34–0.5, FAIL ≤ 0.34); in-sample numbers shown"
+headline: "Quarterly rebalance of the S8-3 ranking closed most of the in-sample Sharpe gap (0.81 vs 0.34); now a ₹10L quarterly paper walk-forward, no verdict before 4 quarters."
+capital: "₹10,00,000 paper"
+next_gate: "Verdict only after 4 completed out-of-sample quarters; next quarterly rebalance 2026-12-31"
+next_gate_date: 2026-12-31
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-momentum-turnover-ablation-methodology-pre-committed-2026-07, 2026-09-17-momentum-turnover-ablation-results, 2026-09-17-momentum-turnover-ablation-follow-up-diagnostics-pre-committ, 2026-09-17-momentum-turnover-ablation-follow-up-diagnostics, 2026-09-17-momentum-turnover-walk-forward-methodology-pre-committed-202
+  compiled_from: 2026-09-17-momentum-turnover-ablation-methodology-pre-committed-2026-07, 2026-09-17-momentum-turnover-ablation-results, 2026-09-17-momentum-turnover-ablation-follow-up-diagnostics-pre-committ, 2026-09-17-momentum-turnover-ablation-follow-up-diagnostics, 2026-09-17-momentum-turnover-walk-forward-methodology-pre-committed-202, 2026-10-13-quantos-full-project-state-for-external-review, 2026-10-13-strategy-status-snapshot-2026-10-13
 ---
 
 # Momentum Turnover Ablation / Walk-Forward (Candidate 11)
@@ -40,6 +57,10 @@ Despite the clean diagnostics, this was **not promoted to a pre-registered strat
 Deployed as a daily-gated, quarter-triggered paper simulation on the production VM (`~/.quantos/paper_rotation_positions.json`, never touches real capital, never calls `place_order()`), using real, never-backtested prices going forward from the methodology's commit date `[[2026-09-17-momentum-turnover-walk-forward-methodology-pre-committed-202]]`.
 
 **Pass/inconclusive/fail bar, fixed before any live quarter exists**: PASS if OOS Sharpe > 0.5; INCONCLUSIVE if between 0.34 (the weekly control) and 0.5; FAIL if ≤0.34. **No verdict before at least 4 completed quarters** (~1 year) — a good or bad first quarter is one data point, not a sample.
+
+## Status as of 2026-10-13
+
+Still running as a quarterly paper walk-forward with ₹10,00,000 paper capital. It rebalanced on 2026-09-30, the next rebalance is 2026-12-31, and it needs 4 quarters of out-of-sample results before a verdict `[[2026-10-13-strategy-status-snapshot-2026-10-13]]`. The 2026-09-25 project-state review put its earliest verdict at roughly 2027 Q3, and flagged it as running unattended toward no near-term capital decision `[[2026-10-13-quantos-full-project-state-for-external-review]]`.
 
 ## Relation to other concepts
 

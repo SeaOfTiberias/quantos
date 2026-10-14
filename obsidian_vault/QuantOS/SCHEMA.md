@@ -78,6 +78,65 @@ Only `tags` and `quantos.id` are load-bearing. Everything else is yours.
 
 ---
 
+## Strategy records
+
+**This vault is the record of every strategy the project has tested or
+run.** Each strategy (each pre-registered candidate, live process, or
+discretionary trading aid) gets ONE wiki page tagged `wiki/strategy`,
+carrying the flat properties below. `python scripts/vault.py report`,
+`wiki/Strategy Register.base` and `vault lint` all read these properties,
+so keep them exact.
+
+```yaml
+---
+title: Darvas ATR-Scaled Stop, Bucket B
+tags:
+  - wiki/concept
+  - wiki/strategy
+strategy_id: darvas-atr-stop-bucket-b   # = file stem
+candidate: S7-3c                        # project numbering, free text
+family: breakout                        # vocabulary below
+instrument: equity-cash                 # vocabulary below
+status: live-paper                      # vocabulary below
+verdict: PASS                           # vocabulary below
+first_tested: 2026-09-23
+verdict_date: 2026-10-05                # date of the doc that set the verdict
+profit_factor: 1.46                     # headline numbers from the GATING test
+sharpe: 1.79                            #   (blank if the test had none)
+trades: 991
+bar: "PF > 1, Sharpe > 0.5, beats EW universe, bootstrap CI > 0"
+headline: "One sentence a reader can act on."
+capital: "₹5L paper, 9% of equity per position"   # live / paper only
+next_gate: "User go-ahead to flip dry_run"        # what decides the next step
+next_gate_date:                                    # if the gate has a date
+quantos:
+  layer: wiki
+  generated: true
+  compiled_from: ...
+---
+```
+
+| Property | Vocabulary |
+|---|---|
+| `status` | `live-capital` real money · `live-paper` running on paper · `live-tool` discretionary aid running · `open` under test, nothing running · `closed` verdict reached, never ran · `retired` ran (paper or live), then switched off · `shelved` parked without a verdict |
+| `verdict` | `PASS` · `FAIL` · `MIXED` (passes one reading, fails another) · `INCONCLUSIVE` · `OPEN` (no verdict yet) · `N/A` (tools) |
+| `family` | `breakout` · `momentum` · `trend` · `mean-reversion` · `stat-arb` · `volatility-premium` · `vol-conditioning` · `intraday-options` · `calendar-effect` · `event-drift` · `ml-factor` · `discretionary-aid` |
+| `instrument` | `equity-cash` · `stock-futures` · `index-futures` · `index-options` · `stock-options` · `mixed` |
+
+Required on every strategy page: `strategy_id`, `family`, `instrument`,
+`status`, `verdict`, `headline`, and `verdict_date` unless the verdict is
+`OPEN` or `N/A`. Status and verdict are separate on purpose. A PASS can
+be retired (candidate 18 passed, then failed a later re-pricing and was
+switched off), and a FAIL is normally `closed`.
+
+The numbers are the **headline of the test that set the verdict**, copied
+from its results source. They never replace the page's own verdict table,
+and they are not a claim of profitability. A status that comes from an
+operational decision rather than a results doc cites the dated
+`strategy-status-snapshot` source that records it.
+
+---
+
 ## Rule blocks
 
 Only meaningful in `brain/`. A rule block anywhere else is a **lint error** —

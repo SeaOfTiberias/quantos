@@ -1,13 +1,27 @@
 ---
 title: Options VRP Short Strangle
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: vrp-short-strangle
+candidate: "VRP"
+family: volatility-premium
+instrument: index-options
+status: closed
+verdict: FAIL
+first_tested: 2026-07-23
+verdict_date: 2026-07-23
+profit_factor: 1.034
+sharpe: 0.092
+trades: 157
+bar: "PF > 1 and Sharpe > 0.5 (net)"
+headline: "Selling weekly NIFTY strangles wins 70.7% of the time but the occasional large loss leaves Sharpe at 0.09 net."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-options-vrp-variance-risk-premium-backtest-methodology-pre-c, 2026-09-17-vrp-short-strangle-backtest-gross-vs-net-result, 2026-09-17-vrp-iv-conditional-gut-check-results-exploratory-not-pre-reg
+  compiled_from: 2026-09-17-options-vrp-variance-risk-premium-backtest-methodology-pre-c, 2026-09-17-vrp-short-strangle-backtest-gross-vs-net-result, 2026-09-17-vrp-iv-conditional-gut-check-results-exploratory-not-pre-reg, 2026-10-13-iv-gated-short-premium-results
 ---
 
 # Options VRP Short Strangle
@@ -41,6 +55,10 @@ A 70.7% win rate with a Sharpe of 0.09 describes a strategy that wins often in s
 ### Exploratory follow-up (not pre-registered)
 
 A post-hoc IV-tercile cut of the same 158 trades found a directionally sensible pattern — high entry-IV trades did much better (PF 1.661, Sharpe 1.465) than low entry-IV trades (PF 0.787, Sharpe -0.595) `[[2026-09-17-vrp-iv-conditional-gut-check-results-exploratory-not-pre-reg]]`. Explicitly flagged as not yet a finding: the tercile boundaries were computed in-sample over the whole 2023–2026 window (a live system couldn't have known them in real time), the bucket sizes (~52–54 trades) may represent far fewer independent volatility episodes than their raw count suggests, and raw IV level was used rather than a rolling percentile. A proper follow-up would need all three fixed and pre-registered before rerunning — not done as of this writing.
+
+## The follow-up was run (2026-10-06)
+
+The pre-registered test of the IV-tercile pattern is [[vrp-iv-gated-short-premium]]. It used a trailing IV percentile and judged only never-seen 2019–2023 data. It **failed**: the gated strangle's PF was 0.709 and Sharpe −0.397, worse than always-on selling, because the gate opened into the 2020 COVID crash `[[2026-10-13-iv-gated-short-premium-results]]`. The exploratory pattern above did not generalise.
 
 ## Relation to other concepts
 

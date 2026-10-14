@@ -1,9 +1,23 @@
 ---
 title: Candle-Confirm Momentum (Candidate 19, Gut-Check)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
-  - strategy/no-edge
+  - wiki/strategy
+  - strategy/failed
+strategy_id: candle-confirm-momentum-gutcheck-candidate-19
+candidate: 19
+family: intraday-options
+instrument: index-options
+status: closed
+verdict: FAIL
+first_tested: 2026-08-04
+verdict_date: 2026-08-04
+profit_factor: 
+sharpe: 
+trades: 1133
+bar: "Signal-conditioned move beats the unconditional baseline (gut-check, spot index)"
+headline: "Candle-agreement entries won about 50% of the time with returns indistinguishable from baseline: no edge to take further."
 quantos:
   layer: wiki
   generated: true

@@ -1,9 +1,23 @@
 ---
 title: NIFTY EMA9/21 Options Strategy (S8-4)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: nifty-ema-options-s8-4
+candidate: "S8-4"
+family: intraday-options
+instrument: index-options
+status: closed
+verdict: FAIL
+first_tested: 2026-07-19
+verdict_date: 2026-07-19
+profit_factor: 1.00
+sharpe: 0.03
+trades: 693
+bar: "PF > 1 and Sharpe > 0.5"
+headline: "Backtest of the live discretionary NIFTY EMA9/21 options exits: the baseline sits at breakeven (PF 1.00, Sharpe 0.03) and neither proposed fix clears the bar."
 quantos:
   layer: wiki
   generated: true

@@ -1,10 +1,23 @@
 ---
 title: VIX-Level Regime Classifier (S8-1)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
-  - vol-conditioning
+strategy_id: regime-classifier-s8-1
+candidate: "S8-1"
+family: vol-conditioning
+instrument: mixed
+status: closed
+verdict: FAIL
+first_tested: 2026-07-19
+verdict_date: 2026-07-19
+profit_factor: 
+sharpe: 
+trades: 
+bar: "Regime labels separate forward return and volatility in the expected order"
+headline: "The live regime classifier does not separate forward outcomes; VOLATILE, where the system cuts size, preceded the best forward returns."
 quantos:
   layer: wiki
   generated: true

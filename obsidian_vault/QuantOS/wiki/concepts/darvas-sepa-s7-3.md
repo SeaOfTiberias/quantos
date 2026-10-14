@@ -1,13 +1,27 @@
 ---
 title: Darvas Box / SEPA Breakout (S7-3)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: darvas-sepa-s7-3
+candidate: "S7-3"
+family: breakout
+instrument: equity-cash
+status: closed
+verdict: FAIL
+first_tested: 2026-07-16
+verdict_date: 2026-07-19
+profit_factor: 0.75
+sharpe: -1.25
+trades: 690
+bar: "PF > 1 and Sharpe > 0.5 at realistic 20 bps slippage"
+headline: "The original Darvas/SEPA breakout failed its first pre-registered backtest; even zero-slippage costs missed the Sharpe bar (0.22)."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-s7-3-backtest-sample-pre-committed-2026-07-16-before-any-res, 2026-09-17-s7-3-backtest-results-go-no-go-verdict
+  compiled_from: 2026-09-17-s7-3-backtest-sample-pre-committed-2026-07-16-before-any-res, 2026-09-17-s7-3-backtest-results-go-no-go-verdict, 2026-10-13-s7-2-expectancy-arithmetic-does-darvass-plausible-edge-clear
 ---
 
 # Darvas Box / SEPA Breakout (S7-3)
@@ -36,7 +50,12 @@ Even the unrealistic zero-friction case fails the Sharpe half of the bar (0.22 a
 
 The sample is drawn from *current* Nifty 500 / Smallcap 250 constituents, an upper-bound survivorship bias — the negative verdict is read as conclusive precisely because costs beat the edge even with that bias helping.
 
+## Before the backtest: S7-2 expectancy arithmetic
+
+A zero-code check run on 2026-07-16, before S7-3, asking whether a plausible Darvas edge clears its own costs. Round-trip cost from the calibrated cost model: 0.36–0.41% of notional for a liquid fill (15 bps slippage), 0.92% for an illiquid breakout fill (40 bps). Plausible breakout ranges (30–45% win rate, 1.5–2.5R winners, about 1R losers) give 0.05–0.2R gross expectancy. With 1R at 3–5% of price, cost runs 0.07–0.31R. Net expectancy therefore ranges from about +0.13R (wide box, liquid) to −0.26R (tight box, illiquid). **The arithmetic cannot sign the edge**, which is why S7-3 was run `[[2026-10-13-s7-2-expectancy-arithmetic-does-darvass-plausible-edge-clear]]`.
+
 ## Relation to other concepts
 
 - [[Mark_Minervini_VCP_Strategy]] and [[Stan_Weinstein_Stage_Analysis]] describe the same family of breakout/momentum chart pattern this strategy traded on, as hand-authored discretionary screening rules rather than a backtested system — this page's FAIL does not bear on whether those patterns are useful for manual screening.
 - The FAIL here is the reason this project moved to [[rs-momentum-rotation-s8-3]] as its next rotation-style candidate, per Fable's post-Darvas review naming 52-week-high momentum as the strongest remaining academically-grounded candidate.
+- The Darvas signal was reopened in September 2026 from the box-width angle: [[darvas-box-width]] (static exit, failed), then [[darvas-trailing-stop]] (breakeven), then [[darvas-atr-stop-bucket-b]]. The last, with a volatility-scaled stop instead of a fixed buffer, passed and is the project's only live (paper) strategy.

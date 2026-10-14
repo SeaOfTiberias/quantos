@@ -1,0 +1,96 @@
+filters:
+  and:
+    - file.hasTag("wiki/strategy")
+properties:
+  file.name:
+    displayName: Strategy
+  note.candidate:
+    displayName: Cand.
+  note.family:
+    displayName: Family
+  note.instrument:
+    displayName: Instrument
+  note.status:
+    displayName: Status
+  note.verdict:
+    displayName: Verdict
+  note.verdict_date:
+    displayName: Verdict date
+  note.profit_factor:
+    displayName: PF
+  note.sharpe:
+    displayName: Sharpe
+  note.trades:
+    displayName: Trades
+  note.headline:
+    displayName: Headline
+  note.capital:
+    displayName: Capital
+  note.next_gate:
+    displayName: Next gate
+  note.next_gate_date:
+    displayName: Gate date
+views:
+  - type: table
+    name: All strategies
+    order:
+      - file.name
+      - note.candidate
+      - note.family
+      - note.instrument
+      - note.status
+      - note.verdict
+      - note.verdict_date
+      - note.profit_factor
+      - note.sharpe
+      - note.trades
+      - note.headline
+    sort:
+      - property: note.verdict_date
+        direction: DESC
+  - type: table
+    name: Running now
+    filters:
+      or:
+        - note.status == "live-capital"
+        - note.status == "live-paper"
+        - note.status == "live-tool"
+    order:
+      - file.name
+      - note.status
+      - note.verdict
+      - note.capital
+      - note.next_gate
+      - note.next_gate_date
+  - type: table
+    name: By family
+    groupBy:
+      property: note.family
+      direction: ASC
+    order:
+      - file.name
+      - note.verdict
+      - note.status
+      - note.verdict_date
+      - note.profit_factor
+      - note.sharpe
+      - note.headline
+    sort:
+      - property: note.verdict_date
+        direction: DESC
+  - type: table
+    name: Passed or open
+    filters:
+      or:
+        - note.verdict == "PASS"
+        - note.verdict == "OPEN"
+        - note.verdict == "MIXED"
+    order:
+      - file.name
+      - note.verdict
+      - note.status
+      - note.verdict_date
+      - note.profit_factor
+      - note.sharpe
+      - note.trades
+      - note.headline

@@ -1,13 +1,27 @@
 ---
 title: Sector-Cointegrated Pairs Trading v2, Bug-Fixed (Candidate 17)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: pairs-trading-v2-candidate-17
+candidate: 17
+family: stat-arb
+instrument: stock-futures
+status: closed
+verdict: FAIL
+first_tested: 2026-07-27
+verdict_date: 2026-07-27
+profit_factor: 1.04
+sharpe: 0.14
+trades: 4535
+bar: "PF > 1 and Sharpe > 0.5 pooled over 8 walk-forward folds"
+headline: "Bug-fixed pairs re-run turned net P&L positive (+₹23.5L) but Sharpe stayed 0.14; the late-fold collapse persisted, read as a regime shift."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-pairs-trading-v2-roll-adjustment-corporate-action-fix-pre-co, 2026-09-17-pairs-trading-v2-backtest-results-candidate-17
+  compiled_from: 2026-09-17-pairs-trading-v2-roll-adjustment-corporate-action-fix-pre-co, 2026-09-17-pairs-trading-v2-backtest-results-candidate-17, 2026-10-13-quantos-full-project-state-for-external-review
 ---
 
 # Sector-Cointegrated Pairs Trading v2, Bug-Fixed (Candidate 17)
@@ -37,6 +51,11 @@ A bug-fix re-run of [[pairs-trading-candidate-12]], not a new hypothesis. An ind
 
 Net P&L flips from a real loss to a real gain, and profit factor crosses 1.0 — but Sharpe (0.14) remains far short of the 0.5 bar. 405 pairs were excluded across all folds by the corporate-action guard; zero futures-roll seams were left unadjusted. Folds 6-8 (candidate 12's original collapse) still show the weakest performance (PF 0.88, 0.83, 0.87) even after both fixes — consistent with a genuine regime shift in those quarters rather than either bug explaining the collapse.
 
+## Later note: the Sharpe annualisation fix
+
+After the project-wide fix of 2026-09-24, the pooled Sharpe moved from −0.17 to about 0.14, then to about 0.56 once correctly annualised. That technically crosses the 0.5 bar on an approximated window. It was reported as a fragile, unresolved flip and the candidate was not re-opened `[[2026-10-13-quantos-full-project-state-for-external-review]]`.
+
 ## Relation to other concepts
 
 Confirms [[pairs-trading-candidate-12]]'s FAIL was not an artifact of these two specific bugs. An intra-window adaptive hedge-ratio re-estimation was explicitly named as the next candidate hypothesis if this re-run didn't resolve the fold 6-8 question — not built as of this writing.
+- [[statarb-residual-mean-reversion]] reused this candidate's roll-adjusted futures series and cost model for the stock-versus-family version of the same idea. It also failed.

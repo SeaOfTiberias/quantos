@@ -24,6 +24,12 @@ Karpathy's three LLM-wiki operations, plus the housekeeping they imply.
     python scripts/vault.py status        # what is where
     python scripts/vault.py graph VCP     # links in and out of a note
 
+    # strategy register (every wiki/strategy page's record properties)
+    python scripts/vault.py report                      # full register -> wiki/reports/
+    python scripts/vault.py report --live               # only what is running
+    python scripts/vault.py report --verdict FAIL --family stat-arb --since 2026-07-01
+    python scripts/vault.py report --print              # to the terminal, write nothing
+
 `ingest`, `query`, `lint`, `index`, `status` and `graph` need no API key and no
 network. Only `compile` calls a model, and even that is better run through the
 agent skill than through this command.
@@ -48,6 +54,10 @@ from core.vault.index import VaultIndex, VaultNotFoundError  # noqa: E402
 from core.vault.ingest import IngestError, ingest_file, ingest_inbox  # noqa: E402
 from core.vault.layers import Layer, VaultPaths  # noqa: E402
 from core.vault.lint import Severity, lint_vault  # noqa: E402
+from core.vault.strategies import (  # noqa: E402
+    FAMILIES, INSTRUMENTS, STATUSES, VERDICTS, filter_records, load_records,
+    render_report, write_report,
+)
 
 logger = logging.getLogger("quantos.vault")
 
@@ -211,6 +221,35 @@ def cmd_lint(args) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_report(args) -> int:
+    from datetime import date
+
+    index = _load(args)
+    records = load_records(index.notes)
+    since = date.fromisoformat(args.since) if args.since else None
+    chosen = filter_records(records, status=args.status or None, verdict=args.verdict or None,
+                            family=args.family or None, instrument=args.instrument or None,
+                            since=since, live_only=args.live)
+    parts = [f"{k} = {', '.join(v)}" for k, v in (
+        ("status", args.status), ("verdict", args.verdict), ("family", args.family),
+        ("instrument", args.instrument)) if v]
+    if since:
+        parts.append(f"tested or decided since {since.isoformat()}")
+    if args.live:
+        parts.append("running now")
+    today = date.today()
+    title = args.title or ("Strategy register" if not parts else "Strategy report")
+    text = render_report(chosen, today=today, title=title, filters="; ".join(parts))
+    if args.print:
+        print(text)
+        return 0
+    slug = args.slug or ("strategy-register" if not parts else "strategy-report")
+    path = write_report(index.paths, text, today=today, slug=slug,
+                        out=Path(args.out) if args.out else None)
+    print(f"Wrote {path} ({len(chosen)} of {len(records)} strategy records)")
+    return 0
+
+
 def cmd_index(args) -> int:
     index = _load(args)
     path = write_index(index.paths, index.notes)
@@ -322,6 +361,20 @@ def main() -> int:
 
     p = sub.add_parser("lint", parents=[common], help="Check integrity, links and layer safety")
     p.set_defaults(func=cmd_lint)
+
+    p = sub.add_parser("report", parents=[common],
+                       help="Strategy register from wiki/strategy pages -> wiki/reports/")
+    p.add_argument("--status", action="append", choices=STATUSES, help="Repeatable")
+    p.add_argument("--verdict", action="append", choices=VERDICTS, help="Repeatable")
+    p.add_argument("--family", action="append", choices=FAMILIES, help="Repeatable")
+    p.add_argument("--instrument", action="append", choices=INSTRUMENTS, help="Repeatable")
+    p.add_argument("--since", help="YYYY-MM-DD: tested or decided on/after this date")
+    p.add_argument("--live", action="store_true", help="Only strategies running now")
+    p.add_argument("--title", help="Report heading")
+    p.add_argument("--slug", help="File name stem (default strategy-register / strategy-report)")
+    p.add_argument("--out", help="Write here instead of wiki/reports/")
+    p.add_argument("--print", action="store_true", help="Print to the terminal, write nothing")
+    p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("index", parents=[common], help="Regenerate wiki/index.md")
     p.set_defaults(func=cmd_index)

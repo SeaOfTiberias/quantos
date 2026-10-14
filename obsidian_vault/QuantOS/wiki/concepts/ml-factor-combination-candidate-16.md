@@ -1,9 +1,23 @@
 ---
 title: ML Multi-Factor Stock Ranking (Candidate 16)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: ml-factor-combination-candidate-16
+candidate: 16
+family: ml-factor
+instrument: equity-cash
+status: closed
+verdict: FAIL
+first_tested: 2026-07-27
+verdict_date: 2026-07-27
+profit_factor: 
+sharpe: 0.29
+trades: 236
+bar: "All 4: CAGR > 0 and Sharpe > 0.5; beats Nifty 500; beats Nifty Alpha 50; beats the single-factor baseline"
+headline: "The ML ranking's apparent win over the single-factor baseline was a turnover-cost artifact; gross, the baseline was as good. Sharpe 0.29."
 quantos:
   layer: wiki
   generated: true

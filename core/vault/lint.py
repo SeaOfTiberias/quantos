@@ -99,6 +99,7 @@ def lint_vault(index: VaultIndex) -> LintReport:
     findings += _check_index_freshness(index)
     findings += _check_links(index)
     findings += _check_layer_placement(index)
+    findings += _check_strategy_records(index)
 
     report = LintReport(findings=findings)
     logger.info("Vault lint: %s", report.summary())
@@ -291,3 +292,23 @@ def _check_layer_placement(index: VaultIndex) -> list[Finding]:
         severity=severity, code="unlayered-note",
         message=f"{len(loose)} note(s) sit outside brain/, raw/ and wiki/.{detail}",
     )]
+
+
+def _check_strategy_records(index: VaultIndex) -> list[Finding]:
+    """Strategy pages (tagged `wiki/strategy`) must carry complete, in-
+    vocabulary record properties, or `vault report` and the Bases views
+    silently drop or mis-count them. WARNING, not ERROR: an incomplete record
+    degrades reporting, it cannot release money."""
+    from core.vault.strategies import is_strategy_note, validate
+
+    findings = []
+    for note in index.notes:
+        if not is_strategy_note(note):
+            continue
+        for problem in validate(note):
+            findings.append(Finding(
+                severity=Severity.WARNING, code="strategy-record", note=note.name,
+                path=note.path,
+                message=f"{problem} -- see SCHEMA.md, \"Strategy records\"",
+            ))
+    return findings

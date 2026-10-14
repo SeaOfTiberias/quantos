@@ -1,13 +1,27 @@
 ---
 title: Regime-Filtered Dual-Momentum (Strategy 1)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/mixed
+strategy_id: regime-filtered-dual-momentum-s1
+candidate: "S1"
+family: momentum
+instrument: equity-cash
+status: closed
+verdict: MIXED
+first_tested: 2026-07-24
+verdict_date: 2026-07-24
+profit_factor: 1.24
+sharpe: 0.82
+trades: 873
+bar: "PF > 1 and Sharpe > 0.5 pooled; this project also requires equity-curve Sharpe > 0.5 for rotations"
+headline: "Pooled-trade pass (PF 1.24, Sharpe 0.82) but equity-curve Sharpe 0.45 in the clean sub-period, a half-split degradation flag and a −53 pt gap to Alpha 50; not adopted."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-regime-filtered-dual-momentum-methodology-pre-committed-2026, 2026-09-17-strategy-1-regime-filtered-dual-momentum-backtest
+  compiled_from: 2026-09-17-regime-filtered-dual-momentum-methodology-pre-committed-2026, 2026-09-17-strategy-1-regime-filtered-dual-momentum-backtest, 2026-10-13-quantos-full-project-state-for-external-review
 ---
 
 # Regime-Filtered Dual-Momentum (Strategy 1)
@@ -37,6 +51,10 @@ One of three fully-specified strategy proposals brought in the same session; the
 | Coverage-clean (2023-09-29+) | 767 | 1.14 | 0.51 | **0.45** |
 
 The unfiltered pooled-trade result clears `has_positive_edge` comfortably. But: it loses to Nifty Alpha 50 buy-and-hold by -53.2pt total return / -12.0pt CAGR (it does beat plain Nifty 50, by +5.5pt); the coverage-clean sub-period (removing the pre-point-in-time-data static-snapshot years) drops the equity-curve Sharpe to 0.45, just under the 0.5 bar this project's own precedent treats as the real threshold for a rotation strategy; and a first-half/second-half stability check flags real degradation (first half Sharpe 1.37, second half -0.01, a gap over the 0.5 threshold that marks a real warning).
+
+## Later note: not adopted
+
+The 2026-09-25 project-state review records S1 as **mixed / not adopted**. The pooled per-trade Sharpe clears the bar (0.51–0.82 across variants), but the daily equity-curve Sharpe fails in the most realistic sub-period (0.45) `[[2026-10-13-quantos-full-project-state-for-external-review]]`.
 
 ## Relation to other concepts
 

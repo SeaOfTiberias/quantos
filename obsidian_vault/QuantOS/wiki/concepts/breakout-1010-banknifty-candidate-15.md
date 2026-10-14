@@ -1,13 +1,27 @@
 ---
 title: 10:10 Breakout on BankNifty Options (Candidate 15)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/mixed
+strategy_id: breakout-1010-banknifty-candidate-15
+candidate: 15
+family: intraday-options
+instrument: index-options
+status: shelved
+verdict: MIXED
+first_tested: 2026-07-27
+verdict_date: 2026-07-27
+profit_factor: 1.11
+sharpe: 0.65
+trades: 1273
+bar: "PF > 1 and Sharpe > 0.5 (synthetic Black-Scholes premiums)"
+headline: "A marginal mechanical pass (₹54/trade average) on synthetic option prices only, an edge a real spread could erase; shelved, never re-opened."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-09-17-10-10-breakout-on-banknifty-options-methodology-pre-committe, 2026-09-17-10-10-breakout-on-banknifty-options-backtest-results-candida, 2026-09-17-candidate-15-10-10-breakout-option-intraday-data-feasibility
+  compiled_from: 2026-09-17-10-10-breakout-on-banknifty-options-methodology-pre-committe, 2026-09-17-10-10-breakout-on-banknifty-options-backtest-results-candida, 2026-09-17-candidate-15-10-10-breakout-option-intraday-data-feasibility, 2026-10-13-quantos-full-project-state-for-external-review
 ---
 
 # 10:10 Breakout on BankNifty Options (Candidate 15)
@@ -40,6 +54,10 @@ An unsourced retail day-trading idea keyed to the 12th 5-minute candle of the se
 The real-INR aggregate is a net gain of **₹68,687** across 1273 trades — an average of **₹54/trade**. Per-year results are inconsistent (2022 and 2024 strong, 2021/2025/2026 negative or flat), and the win rate (18.1%) is low even where profit factor clears 1.0, meaning the edge depends on a small number of large winners.
 
 **The central caveat, disclosed before this result existed**: every premium is theoretical, not traded — real bid-ask spread, skew, and slippage are unmeasured. A ₹54/trade average edge is exactly the size of gap a realistic option spread can consume entirely; this is disclosed in the methodology doc as the specific risk that would need checking against real, current option-chain quotes before any live-capital step, and as of this writing that follow-up check has not been recorded in a wiki-citable source.
+
+## Later note: shelved, not re-opened
+
+The 2026-09-25 project-state review records this candidate as effectively shelved ("edge smaller than realistic spread"). The 2026-09-24 Sharpe annualisation fix would raise its pooled Sharpe to about 0.85, and that was never revisited as a reason to reopen it `[[2026-10-13-quantos-full-project-state-for-external-review]]`.
 
 ## Relation to other concepts
 

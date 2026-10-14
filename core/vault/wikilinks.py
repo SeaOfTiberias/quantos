@@ -41,6 +41,11 @@ _WIKILINK_RE = re.compile(r"(!)?\[\[([^\[\]|#]+)(#[^\[\]|]+)?(?:\|([^\[\]]+))?\]
 _FENCE_RE = re.compile(r"^```.*?^```", re.DOTALL | re.MULTILINE)
 _INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 
+# Obsidian resolves links to these files natively (Bases views, canvases,
+# attachments), but the vault only indexes `.md` notes. A link to one is not
+# a "page worth writing", so it is never reported as unresolved.
+NON_NOTE_SUFFIXES = (".base", ".canvas", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf")
+
 
 @dataclass(frozen=True)
 class WikiLink:
@@ -83,10 +88,14 @@ def parse_links(text: str) -> tuple[WikiLink, ...]:
     """
     links = []
     for embed, target, heading, alias in _WIKILINK_RE.findall(strip_code(text)):
-        if not target.strip():
+        # Inside a markdown table Obsidian requires the alias pipe escaped as
+        # `[[note\|alias]]`; the backslash belongs to the escape, not the name.
+        target = target.strip().rstrip("\\").strip()
+        heading = heading.rstrip("\\") if heading else heading
+        if not target:
             continue
         links.append(WikiLink(
-            target=target.strip(),
+            target=target,
             alias=alias.strip() or None if alias else None,
             heading=heading.lstrip("#").strip() or None if heading else None,
             is_embed=bool(embed),
@@ -168,7 +177,7 @@ class NoteGraph:
         """
         missing: dict[str, list[str]] = {}
         for target, sources in self._back.items():
-            if target in self._names:
+            if target in self._names or target.endswith(NON_NOTE_SUFFIXES):
                 continue
             missing[target] = sorted(self._names.get(s, s) for s in sources)
         return dict(sorted(missing.items()))

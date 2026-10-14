@@ -1,10 +1,23 @@
 ---
 title: Known-Event (RBI/Budget) Proximity vs Forward Volatility
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
-  - vol-conditioning
+strategy_id: event-proximity-vol
+candidate: "—"
+family: vol-conditioning
+instrument: index-options
+status: closed
+verdict: FAIL
+first_tested: 2026-07-27
+verdict_date: 2026-07-27
+profit_factor: 
+sharpe: 
+trades: 
+bar: "Days near RBI/Budget events show higher forward realised volatility"
+headline: "Days near known RBI and Budget events showed lower forward volatility than ordinary days, the opposite of the hypothesis; fifth vol-conditioning fail."
 quantos:
   layer: wiki
   generated: true

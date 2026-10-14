@@ -1,10 +1,23 @@
 ---
 title: IV-minus-RV Vol Spread
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
-  - vol-conditioning
+strategy_id: iv-minus-rv-vol-spread
+candidate: "—"
+family: vol-conditioning
+instrument: index-options
+status: closed
+verdict: FAIL
+first_tested: 2026-07-24
+verdict_date: 2026-07-24
+profit_factor: 
+sharpe: 
+trades: 1228
+bar: "Q5 (richest IV−RV spread) earns more premium and a higher hit rate than Q1"
+headline: "The richest IV-minus-RV quintile earned less premium and hit less often than the cheapest: wrong direction."
 quantos:
   layer: wiki
   generated: true

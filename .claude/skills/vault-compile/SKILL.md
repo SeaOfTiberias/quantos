@@ -75,6 +75,28 @@ and let the user write it. Do not write it for them.
 8. **Report** which sources you read, which pages you created vs updated, and
    anything you deliberately did not write.
 
+## Strategy pages are records
+
+The vault is the project's record of every strategy, and reports are built
+from it. When a source is about a strategy (a methodology, a result, a status
+change), its page must be tagged `wiki/strategy` and carry the record
+properties in SCHEMA.md, "Strategy records" (status, verdict, family,
+instrument, dates, headline numbers, next gate). Update them whenever a new
+source moves the verdict or status. A status that comes from a decision rather
+than a results doc (switched on, switched off, capital changed) needs a dated
+status-snapshot source in `raw/`, the way
+`2026-10-13-strategy-status-snapshot-2026-10-13` does. Write a new snapshot;
+never edit an old one.
+
+After compiling strategy pages, also run:
+
+```bash
+python scripts/vault.py report     # regenerates wiki/reports/strategy-register-<date>.md
+```
+
+`vault lint` warns (`strategy-record`) on any incomplete or off-vocabulary
+record. Fix those like errors.
+
 ## Page format
 
 ```markdown

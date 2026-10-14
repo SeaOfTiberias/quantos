@@ -1,9 +1,23 @@
 ---
 title: Mean-Reversion on Nifty Alpha 50 (Strategy 2, Gut-Check)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
-  - strategy/weak
+  - wiki/strategy
+  - strategy/inconclusive
+strategy_id: mean-reversion-alpha50-gutcheck-s2
+candidate: "S2"
+family: mean-reversion
+instrument: equity-cash
+status: closed
+verdict: INCONCLUSIVE
+first_tested: 2026-07-24
+verdict_date: 2026-07-24
+profit_factor: 
+sharpe: 
+trades: 1159
+bar: "Signal-day forward return visibly exceeds baseline (gut-check)"
+headline: "RSI mean-reversion on Alpha 50 stocks showed a small, inconsistent gap (+0.06 pp at 20 days) on about 394 independent dates; no backtest built."
 quantos:
   layer: wiki
   generated: true

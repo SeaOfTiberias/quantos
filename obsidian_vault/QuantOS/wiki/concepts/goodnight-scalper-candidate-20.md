@@ -1,9 +1,23 @@
 ---
 title: Good Night Stock-Options Scalper (Candidate 20)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
+  - wiki/strategy
   - strategy/failed
+strategy_id: goodnight-scalper-candidate-20
+candidate: 20
+family: intraday-options
+instrument: stock-options
+status: closed
+verdict: FAIL
+first_tested: 2026-09-04
+verdict_date: 2026-09-17
+profit_factor: 0.54
+sharpe: -2.80
+trades: 444
+bar: "PF > 1 and Sharpe > 0.5 on the Stressed (real measured spread) variant"
+headline: "Overnight-gap stock-option scalp passed with clean costs but inverted under real measured spreads (PF 0.54, Sharpe −2.80)."
 quantos:
   layer: wiki
   generated: true

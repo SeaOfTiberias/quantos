@@ -1,9 +1,23 @@
 ---
 title: F&O Monthly Expiry-Day Effect (Candidate 13, Gut-Check)
-compiled: 2026-09-17
+compiled: 2026-10-13
 tags:
   - wiki/concept
-  - strategy/weak
+  - wiki/strategy
+  - strategy/inconclusive
+strategy_id: expiry-day-effect-gutcheck-candidate-13
+candidate: 13
+family: calendar-effect
+instrument: index-options
+status: closed
+verdict: INCONCLUSIVE
+first_tested: 2026-07-26
+verdict_date: 2026-07-26
+profit_factor: 
+sharpe: 
+trades: 31
+bar: "Expiry-day move visibly exceeds an ordinary day's (gut-check)"
+headline: "Expiry days were quieter, not louder, than ordinary days on only 31 expiries; no full backtest built."
 quantos:
   layer: wiki
   generated: true
