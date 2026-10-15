@@ -11,13 +11,15 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import pandas as pd
 
 from core.backtest.parser import BacktestTrade, _compute_metrics
-from core.statarb.residuals import Panel
+
+if TYPE_CHECKING:   # annotation only: the runtime chain pulls in statsmodels, absent on the VM
+    from core.statarb.residuals import Panel
 
 KS = (0, 1, 2, 3)
 WS = (1, 2, 3, 4)
