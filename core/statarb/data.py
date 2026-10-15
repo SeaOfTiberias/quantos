@@ -251,14 +251,16 @@ def fetch_results_board_meetings(
     *,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     delay: float = 1.0,
+    refresh_current: bool = True,
 ) -> dict[str, list[date]]:
     """{symbol: sorted board-meeting dates whose purpose includes financial
     results}, past AND scheduled. Needed because NSE's
     corporates-financial-results metadata returns almost nothing after
     ~2025-02 (found 2026-10-13: every bank 2 filings in 2025, 0 in 2026),
     and because it is the only source of UPCOMING results dates. Same
-    per-(symbol, year) caching as fetch_results_broadcasts; the current and
-    next year are always re-fetched."""
+    per-(symbol, year) cache as fetch_results_broadcasts; the current and
+    next year are re-fetched unless refresh_current=False (a historical
+    study does not need today's newly scheduled meetings)."""
     from core.fundamentals.pead.nse_client import NseSession, NseSessionError, _get_json
 
     cache_path = cache_dir / "results_board_meetings.json"
@@ -269,26 +271,41 @@ def fetch_results_board_meetings(
     this_year = date.today().year
     nse: Optional[NseSession] = None
     dirty = False
-    for symbol in symbols:
+    for n, symbol in enumerate(symbols, 1):
         per_year = cache.setdefault(symbol, {})
-        for year in range(first_year, max(last_year, this_year + 1) + 1):
-            if str(year) in per_year and year < this_year:
+        years = range(first_year, max(last_year, this_year + 1) + 1)
+        wanted = [y for y in years
+                  if str(y) not in per_year or (refresh_current and y >= this_year)]
+        if not wanted:
+            continue
+        # One request covers every missing year: unlike the filings API,
+        # this endpoint returned a full 2019-2026 history in one call
+        # (verified 2026-10-15, INFY: 38 results meetings).
+        nse = nse or NseSession()
+        params = {"index": "equities", "symbol": symbol,
+                  "from_date": f"01-01-{min(wanted)}", "to_date": f"31-12-{max(wanted)}"}
+        try:
+            rows = _get_json(nse, _BOARD_MEETINGS_URL, params)
+        except NseSessionError as e:
+            print(f"  board-meeting fetch failed {symbol}: {e}")
+            continue
+        rows = rows if isinstance(rows, list) else []
+        by_year: dict[str, set[str]] = {str(y): set() for y in wanted}
+        for r in rows:
+            if "financial result" not in (r.get("bm_purpose") or "").lower() or not r.get("bm_date"):
                 continue
-            nse = nse or NseSession()
-            params = {"index": "equities", "symbol": symbol,
-                      "from_date": f"01-01-{year}", "to_date": f"31-12-{year}"}
             try:
-                rows = _get_json(nse, _BOARD_MEETINGS_URL, params)
-            except NseSessionError as e:
-                print(f"  board-meeting fetch failed {symbol} {year}: {e}")
+                y = str(datetime.strptime(r["bm_date"], "%d-%b-%Y").year)
+            except ValueError:
                 continue
-            rows = rows if isinstance(rows, list) else []
-            per_year[str(year)] = sorted({
-                r["bm_date"] for r in rows
-                if "financial result" in (r.get("bm_purpose") or "").lower() and r.get("bm_date")
-            })
-            dirty = True
-            time.sleep(delay)
+            if y in by_year:
+                by_year[y].add(r["bm_date"])
+        for y, days in by_year.items():
+            per_year[y] = sorted(days)
+        dirty = True
+        if n % 50 == 0:
+            print(f"  results dates: {n}/{len(symbols)} symbols")
+        time.sleep(delay)
 
     if dirty:
         cache_path.parent.mkdir(parents=True, exist_ok=True)

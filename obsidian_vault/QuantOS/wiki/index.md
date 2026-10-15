@@ -8,7 +8,7 @@ quantos:
 
 # Vault index
 
-Regenerated 2026-10-13 by `python scripts/vault.py index`. Do not hand-edit.
+Regenerated 2026-10-15 by `python scripts/vault.py index`. Do not hand-edit.
 
 ## brain/ (3 — executable)
 
@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (38 — not executable)
+## wiki/ (41 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -55,13 +55,16 @@ _agent-compiled entity pages — context and retrieval only_
 - [[rs-momentum-rotation-s8-3]] — 52-Week-High RS Momentum Rotation (S8-3)
 - [[statarb-residual-mean-reversion]] — StatArb Residual Mean Reversion ("Straying Duckling")
 - [[strategy-register-2026-10-13]] — Strategy register — 2026-10-13
+- [[strategy-register-2026-10-15]] — Strategy register — 2026-10-15
 - [[strategy-search]] — Strategy Search
+- [[surge-spread-candidate-23]] — Surge Option Spreads (Candidate 23)
+- [[surge-spread-forward-23b]] — Wide Surge Bull Call Spreads, Forward Paper Test (Candidate 23b)
 - [[trade-watcher]] — Trade Watcher (Discretionary Exit Alerts)
 - [[trend-day-filter-candidate-21]] — Trend-Day Filter (Candidate 21)
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (94 — not executable)
+## raw/ (101 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -159,6 +162,13 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-13-statistical-arbitrage-via-eigen-factor-residual-mean-reversi]] — Statistical Arbitrage via Eigen-Factor Residual Mean Reversion
 - [[2026-10-13-strategy-status-snapshot-2026-10-13]] — Strategy Status Snapshot — 2026-10-13
 - [[2026-10-13-trend-day-filter-candidate-21-stage-1-index-points]] — Trend-day filter (candidate 21) — stage 1, index points
+- [[2026-10-15-candidate-23-stage-1-5-surge-direction-results]] — Candidate 23 Stage 1 — +5% Surge Direction — Results
+- [[2026-10-15-candidate-23-stage-1-does-a-5-stock-surge-continue-or-fade-m]] — Candidate 23, Stage 1 — Does a +5% Stock Surge Continue or Fade? Methodology, Pre-Committed 2026-10-15 Before Any Result Exists
+- [[2026-10-15-candidate-23-stage-2-bull-call-spreads-on-non-52-week-high-s]] — Candidate 23, Stage 2 — Bull Call Spreads on Non-52-Week-High Surges: Methodology, Pre-Committed 2026-10-15 Before Any Result Exists
+- [[2026-10-15-candidate-23-stage-2-bull-call-spreads-on-non-52-week-high-s-2]] — Candidate 23 Stage 2 — Bull Call Spreads on Non-52-Week-High Surges — Results
+- [[2026-10-15-candidate-23b-part-c-surge-follow-through-persistence-result]] — Candidate 23b Part C — Surge Follow-Through Persistence — Results
+- [[2026-10-15-candidate-23b-wide-bull-call-spreads-on-surges-forward-paper]] — Candidate 23b — Wide Bull Call Spreads on Surges, Forward Paper Test with Real Quotes: Methodology, Pre-Committed 2026-10-15 Before Any Forward Data Exists
+- [[2026-10-15-quantos-strategy-specification-single-day-stock-surge-bear-c]] — QuantOS Strategy Specification: Single-Day Stock Surge Bear Call Spread (`S19_SURGE_BEAR_CALL`)
 
 ## loose/ (1 — not executable)
 

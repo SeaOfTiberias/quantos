@@ -1,0 +1,18 @@
+# Candidate 23b forward paper test (scripts/run_surge_23b.py): at 15:15 IST,
+# paper-enters L2W4 bull call spreads on +5% F&O surges below the 52-week high
+# and prices due exits, all at live bid/ask. READ-ONLY: no order code.
+# docs/SURGE_23B_METHODOLOGY.md. Enable once:
+#   sudo systemctl enable --now quantos-surge-23b.timer
+
+[Unit]
+Description=QuantOS candidate 23b surge-spread paper log (15:15 IST, read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_surge_23b.py
+Environment=HOME=/home/ubuntu
+TimeoutStartSec=900

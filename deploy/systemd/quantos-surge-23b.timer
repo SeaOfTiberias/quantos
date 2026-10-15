@@ -1,0 +1,11 @@
+[Unit]
+Description=Fires the candidate 23b surge-spread paper log at 15:15 IST on weekdays
+
+[Timer]
+# 09:45 UTC = 15:15 IST. Holidays are detected by the script (no NIFTY bar today).
+# :00 seconds stays clear of the option-chain recorder's :50 slot.
+OnCalendar=Mon..Fri *-*-* 09:45:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
