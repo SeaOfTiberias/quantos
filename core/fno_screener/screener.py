@@ -336,7 +336,9 @@ def _contract_lines(c: Candidate, rules: ExitRules) -> list[str]:
     ]
 
 
-def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig) -> str:
+def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
+                    spread_lines: Optional[dict[tuple[str, str], str]] = None) -> str:
+    """`spread_lines` maps (side, symbol) -> one line from core/fno_screener/spreads.spread_line."""
     lines = [f"🎯 F&O option-buy candidates · close of {result.trade_date:%a %d %b}",
              f"Screening aid, not a signal. {result.scanned} F&O stocks scanned. "
              "Premiums are the bhavcopy close -- check the live bid/ask before buying."]
@@ -351,6 +353,8 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig)
             lines.append(f"{i}. {c.symbol} {_px(c.close)} -- {_setup_text(c)} · {_strength_text(c)}")
             lines.append(f"   {_oi_text(c, cfg.oi_lookback_sessions)}")
             lines.extend(_contract_lines(c, rules))
+            if spread_lines and (c.side.value, c.symbol) in spread_lines:
+                lines.append(spread_lines[(c.side.value, c.symbol)])
             if c.box_level:
                 below, above = ("below", "above") if side == OptionType.CALL else ("above", "below")
                 if c.breakout_state == "NEAR":

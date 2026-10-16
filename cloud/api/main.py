@@ -55,6 +55,7 @@ from cloud.api.reconciliation_routes import router as reconciliation_router
 from cloud.api.rotation_routes import router as rotation_router
 from cloud.api.darvas_atr_stop_routes import router as darvas_atr_stop_router
 from cloud.api.reports_routes import router as reports_router
+from cloud.api.fno_picks_routes import router as fno_picks_router
 from cloud.api.fyers_auth_routes import router as fyers_auth_router
 from cloud.api import metrics
 from core import prompts
@@ -95,6 +96,7 @@ app.include_router(reconciliation_router)
 app.include_router(rotation_router)
 app.include_router(darvas_atr_stop_router)
 app.include_router(reports_router)
+app.include_router(fno_picks_router)
 app.include_router(fyers_auth_router)
 
 app.add_middleware(

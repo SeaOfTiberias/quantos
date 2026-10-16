@@ -17,13 +17,21 @@ Data:
     session.
   - Fyers daily bars (~400 days, chunked) for the setup logic.
 
+Each pick also gets debit-spread alternatives (core/fno_screener/spreads.py:
+bull call for calls, bear put for puts), priced at the Fyers bid/ask when
+both legs have a two-sided quote, else at bhavcopy closes and marked so.
+
 Writes ~/.quantos/fno_screener_latest.json and appends each run to
-~/.quantos/fno_screener_history.jsonl, so how the candidates actually
-played out can be checked later.
+~/.quantos/fno_screener_history.jsonl. Then rebuilds
+~/.quantos/fno_screener_outcomes.json: every pick of the last
+OUTCOME_LOOKBACK_DAYS tracked through its next 5 sessions from the cached
+bhavcopies (core/fno_screener/outcomes.py). The cockpit's #/picks page reads
+all three (cloud/api/fno_picks_routes.py).
 
 Usage:
     python scripts/run_fno_screener.py                  # VM timer, ~18:15 IST
     python scripts/run_fno_screener.py --no-telegram    # print only
+    python scripts/run_fno_screener.py --outcomes-only  # just rebuild the outcome log
 """
 
 from __future__ import annotations
@@ -43,9 +51,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.main import load_config  # noqa: E402
 from core.brokers import get_broker  # noqa: E402
 from core.fno_screener.bhavcopy import FnoDay, parse_fno_day  # noqa: E402
+from core.fno_screener.outcomes import pick_key, track_pick  # noqa: E402
 from core.fno_screener.screener import (  # noqa: E402
     IST, Candidate, ScreenerConfig, ScreenResult, bar_date, build_candidates, format_telegram,
 )
+from core.fno_screener.spreads import build_spreads, spread_line  # noqa: E402
+from core.marketdata.option_chain_recorder import parse_expiries  # noqa: E402
+from core.options.models import OptionType  # noqa: E402
 from core.options.fyers_symbol_master import SymbolMasterError, resolve_option_symbol  # noqa: E402
 from core.options.vrp.bhavcopy import BhavcopyNotAvailable, fetch_raw  # noqa: E402
 from core.trade_watcher.rules import ExitRules  # noqa: E402
@@ -54,6 +66,10 @@ QUANTOS_DIR = Path.home() / ".quantos"
 BHAVCOPY_DIR = QUANTOS_DIR / "nse_fo_bhavcopy"
 LATEST_PATH = QUANTOS_DIR / "fno_screener_latest.json"
 HISTORY_PATH = QUANTOS_DIR / "fno_screener_history.jsonl"
+OUTCOMES_PATH = QUANTOS_DIR / "fno_screener_outcomes.json"
+OUTCOME_LOOKBACK_DAYS = 20       # a pick is complete after 5 sessions; inside the 21-day bhavcopy cache
+CHAIN_STRIKES = 15               # strikes each side of ATM in a Fyers option-chain call
+CHAIN_SPACING_S = 0.4
 BHAVCOPY_KEEP_DAYS = 21
 FETCH_WINDOW_DAYS = 400          # > 252 sessions for the 52-week-high window
 REFERENCE_SYMBOL = "RELIANCE"    # tells us whether today was a session
@@ -147,8 +163,105 @@ def _jsonable(obj):
     raise TypeError(type(obj))
 
 
-def _save(result: ScreenResult) -> None:
+# ─── Spreads ─────────────────────────────────────────────────────────────────
+
+def _chain_quotes(client, fyers_symbol_fn, symbol: str, expiry: date, side: OptionType) -> dict:
+    """strike -> (bid, ask) for one expiry and side, or {} on any failure.
+    Two calls: the first lists the expiries (and their epochs)."""
+    def call(epoch: str = "") -> dict:
+        resp = client.optionchain(data={"symbol": fyers_symbol_fn(symbol), "strikecount": CHAIN_STRIKES,
+                                        "timestamp": epoch})
+        time.sleep(CHAIN_SPACING_S)
+        return (resp.get("data") or {}) if resp.get("code") == 200 else {}
+    try:
+        first = call()
+        epoch = next((ep for d, ep, _ in parse_expiries(first) if d == expiry), None)
+        if epoch is None:
+            return {}
+        data = call(epoch)
+    except Exception as e:                                   # quotes are optional; close prices still work
+        print(f"  {symbol}: option chain failed ({e}) -- spreads priced at bhavcopy closes.")
+        return {}
+    return {float(r.get("strike_price") or 0): (float(r.get("bid") or 0), float(r.get("ask") or 0))
+            for r in data.get("optionsChain", []) or [] if r.get("option_type") == side.value}
+
+
+def _spreads_for(cands: list[Candidate], day: FnoDay, broker) -> dict:
+    """(side, symbol) -> SpreadSet, for the picks that have one."""
+    from core.brokers.fyers import _fyers_symbol
+    client = getattr(broker, "_client", None)
+    out = {}
+    for c in cands:
+        q = c.contract.quote
+        quotes = _chain_quotes(client, _fyers_symbol, c.symbol, q.expiry, c.side) if client else {}
+        s = build_spreads(day, c.symbol, c.side, q.expiry, q.strike, c.contract.dte, c.contract.iv, quotes)
+        if s is not None:
+            out[(c.side.value, c.symbol)] = s
+    return out
+
+
+# ─── Outcomes ────────────────────────────────────────────────────────────────
+
+def _days_after(trade_date: date, through: date, cache: dict) -> list[FnoDay]:
+    """Bhavcopy days after trade_date and before `through`, at most 5."""
+    out, d = [], trade_date
+    while len(out) < 5:
+        d += timedelta(days=1)
+        if d >= through:
+            break
+        if d.weekday() >= 5:
+            continue
+        if d not in cache:
+            cache[d] = _fetch_day(d)
+        if cache[d] is not None:
+            out.append(cache[d])
+    return out
+
+
+def _update_outcomes(through: date) -> int:
+    """Rebuild the outcome record of every unfinished pick of the last
+    OUTCOME_LOOKBACK_DAYS; complete records are kept as they are."""
+    try:
+        existing = json.loads(OUTCOMES_PATH.read_text())
+    except (OSError, ValueError):
+        existing = {}
+    if not HISTORY_PATH.exists():
+        return 0
+    records = {}
+    for line in HISTORY_PATH.read_text().splitlines():          # a re-run of a day replaces its picks
+        if line.strip():
+            r = json.loads(line)
+            records[r["trade_date"]] = r
+    cutoff = through - timedelta(days=OUTCOME_LOOKBACK_DAYS)
+    cache: dict = {}
+    n = 0
+    for td, r in sorted(records.items()):
+        trade_date = date.fromisoformat(td)
+        if trade_date < cutoff:
+            continue
+        for cand in r.get("calls", []) + r.get("puts", []):
+            key = pick_key(td, cand["side"], cand["symbol"])
+            if existing.get(key, {}).get("complete"):
+                continue
+            if not cand.get("spreads"):                          # logged before spreads existed: rebuild from closes
+                if trade_date not in cache:
+                    cache[trade_date] = _fetch_day(trade_date)
+                pick_day, q = cache[trade_date], cand["contract"]["quote"]
+                s = pick_day and build_spreads(pick_day, cand["symbol"], OptionType(cand["side"]),
+                                               date.fromisoformat(q["expiry"]), float(q["strike"]),
+                                               cand["contract"]["dte"], cand["contract"].get("iv"))
+                cand = {**cand, "spreads": dataclasses.asdict(s) if s else None}
+            existing[key] = track_pick(td, cand, _days_after(trade_date, through, cache))
+            n += 1
+    OUTCOMES_PATH.write_text(json.dumps(existing, default=_jsonable))
+    return n
+
+
+def _save(result: ScreenResult, spreads: Optional[dict] = None) -> None:
     record = {"generated_at": datetime.now(timezone.utc).isoformat(), **dataclasses.asdict(result)}
+    for cand in record["calls"] + record["puts"]:
+        s = (spreads or {}).get((cand["side"].value, cand["symbol"]))
+        cand["spreads"] = dataclasses.asdict(s) if s else None
     text = json.dumps(record, default=_jsonable)
     LATEST_PATH.write_text(json.dumps(record, default=_jsonable, indent=2))
     with HISTORY_PATH.open("a") as f:
@@ -182,7 +295,15 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--no-telegram", action="store_true")
     ap.add_argument("--wait-minutes", type=int, default=150,
                     help="how long to wait for today's bhavcopy to be published")
+    ap.add_argument("--outcomes-only", action="store_true",
+                    help="rebuild ~/.quantos/fno_screener_outcomes.json from the history and exit")
     args = ap.parse_args(argv)
+
+    if args.outcomes_only:
+        BHAVCOPY_DIR.mkdir(parents=True, exist_ok=True)
+        n = _update_outcomes(datetime.now(IST).date() + timedelta(days=1))
+        print(f"Outcome log rebuilt: {n} pick(s) updated -> {OUTCOMES_PATH}")
+        return 0
 
     config = load_config(args.config)
     raw_cfg = config.get("fno_screener", {}) or {}
@@ -230,9 +351,15 @@ def main(argv: Optional[list] = None) -> int:
     result = build_candidates(bars, day, past, cfg)
     result.calls = _with_fyers_symbols(result.calls)
     result.puts = _with_fyers_symbols(result.puts)
-    _save(result)
+    spreads = _spreads_for(result.calls + result.puts, day, broker)
+    _save(result, spreads)
+    try:
+        print(f"Outcome log: {_update_outcomes(trade_date + timedelta(days=1))} pick(s) updated.")
+    except Exception as e:                                       # never let the log block tonight's message
+        print(f"WARNING: outcome log update failed: {e}")
 
-    message = format_telegram(result, rules, cfg)
+    lines = {k: line for k, s in spreads.items() if (line := spread_line(s))}
+    message = format_telegram(result, rules, cfg, lines)
     print(message)
     if not args.no_telegram and not _send(message):
         print("ERROR: Telegram send failed (credentials missing or API error) -- see warnings above.")
