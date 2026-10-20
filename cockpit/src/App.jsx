@@ -1486,6 +1486,8 @@ function SystemHealthPanel({ obs, error }) {
 
       <Divider />
       <FyersTokenRefresh />
+      <div style={{ height: 1, background: C.border, margin: "14px 0" }} />
+      <BreezeSession />
     </Card>
   );
 }
@@ -1596,6 +1598,114 @@ function FyersTokenRefresh() {
         {message && (
           <div style={{ fontSize: 10, color: status === "error" ? C.red : C.mid }}>{message}</div>
         )}
+      </div>
+    </>
+  );
+}
+
+// ICICI Direct (Breeze) daily session -- cloud/api/breeze_auth_routes.py.
+// Like Fyers the login itself (password + OTP on ICICI's page) is manual,
+// but ICICI redirects to the VM's /auth/breeze/callback with the token, so
+// once the Breeze app's redirect URL points there nothing needs pasting:
+// this panel just polls /status until the session shows up. The paste box
+// is the fallback for a redirect that doesn't reach the VM.
+async function fetchBreezeStatus() {
+  try {
+    const res = await fetch(`${CLOUD_API_URL}/auth/breeze/status`);
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
+function BreezeSession() {
+  const [state, setState] = useState({ connected: false, at: null });
+  const [phase, setPhase] = useState("idle"); // idle | waiting | completing | error
+  const [code, setCode] = useState("");
+  const [message, setMessage] = useState("");
+
+  const apply = d => {
+    if (d) setState({ connected: d.connected_today, at: d.created_at });
+    return Boolean(d?.connected_today);
+  };
+  const refresh = async () => apply(await fetchBreezeStatus());
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchBreezeStatus().then(d => { if (!cancelled && d) setState({ connected: d.connected_today, at: d.created_at }); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "waiting") return undefined;
+    let tries = 0;
+    const id = setInterval(async () => {
+      tries += 1;
+      const d = await fetchBreezeStatus();
+      if (d?.connected_today) {
+        setState({ connected: true, at: d.created_at });
+        setPhase("idle"); setMessage("Session captured."); clearInterval(id);
+      } else if (tries > 60) clearInterval(id);       // ~3 min; the paste box still works
+    }, 3000);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  const start = async () => {
+    setMessage("");
+    try {
+      const res = await fetch(`${CLOUD_API_URL}/auth/breeze/start`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.detail || `start failed (${res.status})`);
+      window.open(d.auth_url, "_blank", "noopener,noreferrer");
+      setPhase("waiting");
+    } catch (e) { setPhase("error"); setMessage(String(e.message || e)); }
+  };
+
+  const complete = async () => {
+    if (!code.trim()) return;
+    setPhase("completing");
+    try {
+      const res = await fetch(`${CLOUD_API_URL}/auth/breeze/complete`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.detail || `complete failed (${res.status})`);
+      setCode(""); setPhase("idle"); setMessage("Session saved."); refresh();
+    } catch (e) { setPhase("error"); setMessage(String(e.message || e)); }
+  };
+
+  const at = state.at ? new Date(state.at).toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false,
+  }) : null;
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Label>ICICI Direct session</Label>
+        <span style={{ fontSize: 10, fontWeight: 600, color: state.connected ? C.green : C.gold }}>
+          {state.connected ? `connected ${at}` : "not connected today"}
+        </span>
+      </div>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+        <button onClick={start} disabled={phase === "completing"} style={{
+          alignSelf: "flex-start", fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 4,
+          border: `1px solid ${C.accent}`, background: "transparent", color: C.accent, cursor: "pointer",
+        }}>
+          {phase === "waiting" ? "Waiting for ICICI login…" : "Log in to ICICI Direct"}
+        </button>
+        {(phase === "waiting" || phase === "error") && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="text" value={code} onChange={e => setCode(e.target.value)}
+              placeholder="Only if it doesn't connect by itself: paste the redirect URL or apisession"
+              style={{ flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 4,
+                       border: `1px solid ${C.panel}`, background: C.bg, color: C.white }} />
+            <button onClick={complete} disabled={!code.trim()} style={{
+              fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 4,
+              border: `1px solid ${C.green}`, background: "transparent", color: C.green,
+              cursor: code.trim() ? "pointer" : "default", opacity: code.trim() ? 1 : 0.6,
+            }}>Submit</button>
+          </div>
+        )}
+        {message && <div style={{ fontSize: 10, color: phase === "error" ? C.red : C.mid }}>{message}</div>}
       </div>
     </>
   );

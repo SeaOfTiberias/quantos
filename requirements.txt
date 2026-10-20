@@ -11,6 +11,7 @@ anthropic>=0.28.0
 # Broker SDKs
 fyers-apiv3>=3.0.0
 kiteconnect>=5.0.0
+breeze-connect>=1.0.69  # ICICI Direct (spouse account): read-only positions/quotes for the spread watcher
 
 # Data & quant
 pandas>=2.2.0
