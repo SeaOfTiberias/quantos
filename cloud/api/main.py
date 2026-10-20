@@ -57,6 +57,7 @@ from cloud.api.darvas_atr_stop_routes import router as darvas_atr_stop_router
 from cloud.api.reports_routes import router as reports_router
 from cloud.api.fno_picks_routes import router as fno_picks_router
 from cloud.api.breeze_auth_routes import router as breeze_auth_router
+from cloud.api.spreads_routes import router as spreads_router
 from cloud.api.fyers_auth_routes import router as fyers_auth_router
 from cloud.api import metrics
 from core import prompts
@@ -99,6 +100,7 @@ app.include_router(darvas_atr_stop_router)
 app.include_router(reports_router)
 app.include_router(fno_picks_router)
 app.include_router(breeze_auth_router)
+app.include_router(spreads_router)
 app.include_router(fyers_auth_router)
 
 app.add_middleware(

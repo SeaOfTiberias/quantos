@@ -56,6 +56,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 QUANTOS_DIR = Path.home() / ".quantos"
 STATE_PATH = QUANTOS_DIR / "spread_watcher_state.json"
 LEVELS_PATH = QUANTOS_DIR / "spread_watcher_levels.json"
+HEARTBEAT_PATH = QUANTOS_DIR / "spread_watcher_heartbeat.json"   # read by GET /spreads (cockpit #/spreads)
+ALERTS_PATH = QUANTOS_DIR / "spread_watcher_alerts.jsonl"
 CONFIG_PATH = Path("agent/config.yaml")
 POSITIONS_EVERY_S = 60
 PRICES_EVERY_S = 20
@@ -80,6 +82,11 @@ class Notifier:
         print(f"[{now_ist():%H:%M:%S}] {'TELEGRAM' if self.enabled else 'ALERT'}: {text}", flush=True)
         if self.enabled:
             self.q.put(text)
+            try:                                      # the cockpit's alert timeline
+                with ALERTS_PATH.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps({"at": now_ist().isoformat(timespec="seconds"), "text": text}) + "\n")
+            except OSError:
+                pass
 
     def _run(self) -> None:
         from cloud.api.notifier import send_telegram
@@ -177,11 +184,25 @@ class SpreadWatcher:
         self.spreads: dict[str, Spread] = {}
         self.states: dict[str, SpreadState] = {k: SpreadState.from_dict(v) for k, v in load_json(STATE_PATH).items()}
         self.naked_last: dict[str, float] = {}
+        self.naked: list = []
+        self.views: dict[str, dict] = {}          # display-only extras for the cockpit, per spread
 
     def save(self) -> None:
         if self.dry:                      # --once must not mark alerts as sent for the real watcher
             return
-        STATE_PATH.write_text(json.dumps({k: s.to_dict() for k, s in self.states.items()}))
+        STATE_PATH.write_text(json.dumps({k: {**s.to_dict(), "view": self.views.get(k)}
+                                          for k, s in self.states.items()}))
+
+    def heartbeat(self, session_ok: bool) -> None:
+        if self.dry:
+            return
+        HEARTBEAT_PATH.write_text(json.dumps({
+            "at": now_ist().isoformat(timespec="seconds"), "session_ok": session_ok,
+            "spreads": len(self.spreads),
+            "naked": [{"stock_code": x.stock_code, "label": x.label, "expiry": x.expiry.isoformat(),
+                       "qty": -x.qty, "avg_price": x.avg_price} for x in self.naked],
+            "rules": self.rules.__dict__,
+        }))
 
     def ensure_client(self) -> bool:
         if self.client is not None:
@@ -213,13 +234,23 @@ class SpreadWatcher:
                 st.level = levels.get(sp.long.stock_code)
                 self.notify.send(watching_text(sp, st, self.rules))
             else:
-                st.level = levels.get(sp.long.stock_code, st.level)
+                st.level = levels.get(sp.long.stock_code)        # cleared in the cockpit -> back to the trail
         for key in (set(self.spreads) | set(self.states)) - set(current):   # states too: closed while we were down
             st = self.states.pop(key, None)
             last = f" Last P&L seen ≈ ₹{st.last_pnl:,.0f}." if st and st.last_pnl is not None else ""
             label = name(self.spreads[key]) if key in self.spreads else key.replace("|", " ")
             self.notify.send(f"✅ {label} is no longer open.{last}")
         self.spreads = current
+        self.naked = naked
+        for key, sp in current.items():
+            self.views.setdefault(key, {})
+            self.views[key].update(stock_code=sp.long.stock_code, kind=sp.kind, right=sp.long.right,
+                                   expiry=sp.long.expiry.isoformat(), long_strike=sp.long.strike,
+                                   short_strike=sp.short.strike, qty=sp.qty,
+                                   long_avg=sp.long.avg_price, short_avg=sp.short.avg_price)
+        for key in list(self.views):
+            if key not in current:
+                del self.views[key]
         for leg in naked:
             k = f"{leg.stock_code}|{leg.expiry}|{leg.right}|{leg.strike:g}"
             if time.monotonic() - self.naked_last.get(k, -1e9) >= NAKED_REMIND_EVERY_S:
@@ -238,6 +269,8 @@ class SpreadWatcher:
             ql, qs = option_quote(self.client, sp.long), option_quote(self.client, sp.short)
             quoted = ql[0] > 0 and qs[1] > 0
             value = (ql[0] - qs[1]) if quoted else (ql[2] - qs[2])
+            self.views.setdefault(key, {}).update(long_quote=list(ql), short_quote=list(qs), quoted=quoted,
+                                                  updated_at=now_ist().isoformat(timespec="seconds"))
             for ev in evaluate(st, spot, value, today, now, self.rules):
                 head = "🔴 CLOSE" if ev.close else "ℹ️"
                 orders = f"\nClose both legs: {close_orders(sp, ql, qs)}" if ev.close else ""
@@ -254,7 +287,8 @@ class SpreadWatcher:
             if not once and (t.hour, t.minute) >= SESSION_END:
                 print("Session over.", flush=True)
                 return 0
-            if self.ensure_client():
+            ok = self.ensure_client()
+            if ok:
                 try:
                     if time.monotonic() - last_pos >= POSITIONS_EVERY_S:
                         self.refresh_positions()
@@ -262,6 +296,8 @@ class SpreadWatcher:
                     self.price_spreads()
                 except Exception as e:
                     self.drop_client(e)
+                    ok = False
+            self.heartbeat(ok)
             if once:
                 for k, st in self.states.items():
                     print(f"  {k}: P&L {st.last_pnl} best {st.peak_pnl} stop {st.stock_stop} sent {st.sent}")

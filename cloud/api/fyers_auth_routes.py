@@ -46,7 +46,7 @@ import subprocess
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from agent.auth.fyers_auth import exchange_auth_code, generate_auth_url, load_config, save_token
+from agent.auth.fyers_auth import TOKEN_PATH, exchange_auth_code, generate_auth_url, load_config, save_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/fyers", tags=["auth"])
@@ -110,3 +110,17 @@ def _restart_agent() -> tuple[bool, str]:
     except Exception as e:
         logger.error("Agent restart failed: %s", e)
         return False, str(e)
+
+
+@router.get("/status")
+async def fyers_status():
+    """Whether the Fyers token file was written today (IST). Fyers tokens
+    expire daily, so 'written today' is what the cockpit's header chip shows;
+    it doesn't call Fyers."""
+    from datetime import datetime, timedelta, timezone
+    ist = timezone(timedelta(hours=5, minutes=30))
+    try:
+        at = datetime.fromtimestamp(TOKEN_PATH.stat().st_mtime, ist)
+    except OSError:
+        return {"refreshed_today": False, "at": None}
+    return {"refreshed_today": at.date() == datetime.now(ist).date(), "at": at.isoformat(timespec="seconds")}

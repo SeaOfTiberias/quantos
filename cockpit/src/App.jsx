@@ -1746,12 +1746,12 @@ function TopBar({ lastRefresh, jobs, obsError }) {
       <div style={{ width: 1, height: 18, background: C.border }} />
       <span style={{ fontSize: 11, color: C.muted }}>Bloomberg. But Smarter.</span>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
-        {/* Options picks page (cockpit/src/Picks.jsx), hash-routed in main.jsx */}
-        <a href="#/picks" style={{
+        {/* Trading pages (cockpit/src/trading/: Spreads, Options picks), hash-routed in main.jsx */}
+        <a href="#/spreads" style={{
           fontSize: 11, color: C.accent, textDecoration: "none", fontWeight: 700,
           border: `1px solid ${C.border}`, borderRadius: 4, padding: "3px 8px",
         }}>
-          Options picks →
+          Trading →
         </a>
         {/* Paper-strategy reports page (cockpit/src/Reports.jsx), hash-routed in main.jsx */}
         <a href="#/reports" style={{
