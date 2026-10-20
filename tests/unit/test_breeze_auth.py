@@ -88,6 +88,10 @@ def test_routes(home):
         r = c.get("/auth/breeze/callback", params={"apisession": "57401630"})
     assert r.status_code == 200 and "connected" in r.text and "57401630" not in r.text
     assert c.get("/auth/breeze/status").json()["connected_today"] is True
+    with p:                                            # ICICI actually POSTs back (query or form)
+        assert c.post("/auth/breeze/callback?apisession=57401832").status_code == 200
+        assert c.post("/auth/breeze/callback", data={"apisession": "57401833"}).status_code == 200
+    assert ba.load_session()["session_token"] == "57401833"
 
     p, _ = _fake_sdk(reject=True)
     with p:

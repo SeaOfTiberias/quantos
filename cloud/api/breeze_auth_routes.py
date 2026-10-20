@@ -7,7 +7,7 @@ redirects the browser to the app's registered redirect URL with
 token is captured with nothing to paste.
 
   POST /auth/breeze/start     -> ICICI login URL for the browser to open
-  GET  /auth/breeze/callback  -> ICICI's redirect lands here; validates and
+  GET|POST /auth/breeze/callback -> ICICI's redirect lands here; validates and
                                  saves the session, shows a one-line page
   POST /auth/breeze/complete  -> paste fallback (redirect URL or bare token)
   GET  /auth/breeze/status    -> whether today's session exists (no token in it)
@@ -23,7 +23,8 @@ from __future__ import annotations
 import html
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -51,10 +52,19 @@ def _page(ok: bool, text: str) -> HTMLResponse:
     return HTMLResponse(body, status_code=200 if ok else 400)
 
 
-@router.get("/callback")
-def breeze_callback(apisession: str = ""):
+@router.api_route("/callback", methods=["GET", "POST"])
+async def breeze_callback(request: Request):
+    """ICICI returns the browser here with a form POST (seen 2026-10-20: the
+    token rides in the query string of a POST), so accept both methods and
+    take apisession from the query or the form body."""
+    token = request.query_params.get("apisession", "")
+    if not token and request.method == "POST":
+        try:
+            token = str((await request.form()).get("apisession") or "")
+        except Exception:
+            token = ""
     try:
-        record = breeze_auth.create_session(apisession)
+        record = await run_in_threadpool(breeze_auth.create_session, token)
     except breeze_auth.BreezeAuthError as e:
         return _page(False, f"{e}. Log in again from the cockpit.")
     except Exception as e:
