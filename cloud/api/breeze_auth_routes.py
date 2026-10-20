@@ -80,7 +80,19 @@ def complete_breeze_login(body: CompleteRequest):
 
 
 @router.get("/status")
-def breeze_status():
+def breeze_status(check: bool = False):
+    """`connected_today` = a session was saved today. ICICI keeps only ONE
+    live API session per app, so a later login anywhere (another browser, a
+    token captured elsewhere) silently kills the saved one -- `check=true`
+    asks ICICI whether it still works (one get_funds call)."""
     record = breeze_auth.load_session()
-    return {"connected_today": breeze_auth.session_is_today(record),
-            "created_at": record.get("created_at") if record else None}
+    out = {"connected_today": breeze_auth.session_is_today(record),
+           "created_at": record.get("created_at") if record else None}
+    if check:
+        out["valid"] = False
+        if out["connected_today"]:
+            try:
+                out["valid"] = (breeze_auth.connect().get_funds() or {}).get("Status") == 200
+            except Exception as e:
+                out["detail"] = str(e)
+    return out

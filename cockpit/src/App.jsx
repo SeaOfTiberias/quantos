@@ -1609,9 +1609,9 @@ function FyersTokenRefresh() {
 // once the Breeze app's redirect URL points there nothing needs pasting:
 // this panel just polls /status until the session shows up. The paste box
 // is the fallback for a redirect that doesn't reach the VM.
-async function fetchBreezeStatus() {
+async function fetchBreezeStatus(check = false) {
   try {
-    const res = await fetch(`${CLOUD_API_URL}/auth/breeze/status`);
+    const res = await fetch(`${CLOUD_API_URL}/auth/breeze/status${check ? "?check=true" : ""}`);
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }
@@ -1622,15 +1622,18 @@ function BreezeSession() {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
 
+  const [startedAt, setStartedAt] = useState(0);
+  // Green only for a session ICICI confirms is live: it keeps one API
+  // session per app, so a later login elsewhere kills a saved one.
   const apply = d => {
-    if (d) setState({ connected: d.connected_today, at: d.created_at });
-    return Boolean(d?.connected_today);
+    if (d) setState({ connected: Boolean(d.valid), at: d.created_at });
+    return Boolean(d?.valid);
   };
-  const refresh = async () => apply(await fetchBreezeStatus());
+  const refresh = async () => apply(await fetchBreezeStatus(true));
 
   useEffect(() => {
     let cancelled = false;
-    fetchBreezeStatus().then(d => { if (!cancelled && d) setState({ connected: d.connected_today, at: d.created_at }); });
+    fetchBreezeStatus(true).then(d => { if (!cancelled && d) setState({ connected: Boolean(d.valid), at: d.created_at }); });
     return () => { cancelled = true; };
   }, []);
 
@@ -1639,17 +1642,20 @@ function BreezeSession() {
     let tries = 0;
     const id = setInterval(async () => {
       tries += 1;
+      // Only a session saved AFTER this click counts -- an older one from
+      // earlier today would otherwise read as this login having worked.
       const d = await fetchBreezeStatus();
-      if (d?.connected_today) {
+      if (d?.created_at && new Date(d.created_at).getTime() > startedAt) {
         setState({ connected: true, at: d.created_at });
         setPhase("idle"); setMessage("Session captured."); clearInterval(id);
       } else if (tries > 60) clearInterval(id);       // ~3 min; the paste box still works
     }, 3000);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [phase, startedAt]);
 
   const start = async () => {
     setMessage("");
+    setStartedAt(Date.now() - 5000);
     try {
       const res = await fetch(`${CLOUD_API_URL}/auth/breeze/start`, { method: "POST" });
       const d = await res.json().catch(() => ({}));
@@ -1682,7 +1688,7 @@ function BreezeSession() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Label>ICICI Direct session</Label>
         <span style={{ fontSize: 10, fontWeight: 600, color: state.connected ? C.green : C.gold }}>
-          {state.connected ? `connected ${at}` : "not connected today"}
+          {state.connected ? `connected ${at}` : "not connected"}
         </span>
       </div>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>

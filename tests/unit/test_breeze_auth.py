@@ -96,3 +96,17 @@ def test_routes(home):
     p, _ = _fake_sdk()
     with p:
         assert c.post("/auth/breeze/complete", json={"code": "x?apisession=11112222"}).json()["status"] == "ok"
+
+
+def test_status_check_asks_icici(home):
+    from cloud.api.main import app
+    c = TestClient(app)
+    assert c.get("/auth/breeze/status", params={"check": "true"}).json()["valid"] is False   # nothing saved
+    p, _ = _fake_sdk()
+    with p:
+        ba.create_session("57401630")
+        assert c.get("/auth/breeze/status", params={"check": "true"}).json()["valid"] is True
+    p, _ = _fake_sdk(reject=True)                     # ICICI killed it (a later login elsewhere)
+    with p:
+        body = c.get("/auth/breeze/status", params={"check": "true"}).json()
+    assert body["connected_today"] is True and body["valid"] is False and "rejected" in body["detail"]
