@@ -1,0 +1,26 @@
+[Unit]
+Description=QuantOS spread watcher -- Telegram exit alerts for option spreads in the ICICI Direct account (stage 1: alerts only, places no orders)
+After=network-online.target
+Wants=network-online.target
+# A morning before the ICICI login fails fast and retries; don't let the
+# burst limit give up on it before then.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python -u /home/ubuntu/quantos/scripts/run_spread_watcher.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+
+# Polls Breeze every 20 s during market hours and exits 0 at 15:31 IST. With
+# no ICICI session yet it waits and picks the session up as soon as the
+# cockpit login saves it. A restart outside market hours is skipped by the
+# ExecCondition (VM runs in UTC; check is in IST).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

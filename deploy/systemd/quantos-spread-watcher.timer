@@ -1,0 +1,10 @@
+[Unit]
+Description=Start the QuantOS spread watcher at 09:15 IST on weekdays
+
+[Timer]
+# 03:45 UTC = 09:15 IST. The VM runs in Etc/UTC -- OnCalendar is UTC.
+OnCalendar=Mon..Fri *-*-* 03:45:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
