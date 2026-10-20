@@ -72,27 +72,29 @@ def ev(st, spot, value, day=date(2026, 10, 19), at=time(10, 0)):
     return [e.kind for e in evaluate(st, spot, value, day, at, R)]
 
 
-def test_techm_replay_stock_trail_fires():
+def test_techm_replay_giveback_fires_first():
     """19-Oct as it happened: +Rs2,190 at the open, +Rs3,300 by 09:53, then
-    TechM slid. Best P&L was 16% of max, under the 20% give-back arm, so the
-    stock trail is what fires: 0.8% behind the 1,790 best = 1,775.68."""
+    TechM slid. Best P&L = 16% of max, past the 15% arm, so the give-back
+    fires at half of 3,300 -- before the stock trail (0.8% behind the 1,790
+    best = 1,775.68) is reached. The trade was closed at about -Rs1,260."""
     st = SpreadState.open(techm())
     assert ev(st, 1789.0, 29.95) == ["trail_armed"]
     assert ev(st, 1790.0, 31.80) == [] and st.peak_pnl == pytest.approx(3300)
     assert st.stock_stop == pytest.approx(1775.68)
-    assert ev(st, 1779.0, 28.0) == []
-    out = evaluate(st, 1775.5, 27.2, date(2026, 10, 19), time(11, 0), R)
-    assert [e.kind for e in out] == ["trail_stock"] and out[0].close
-    assert ev(st, 1770.0, 26.0) == []                        # fires once
+    out = evaluate(st, 1781.0, 28.8, date(2026, 10, 19), time(11, 0), R)     # +1,500 <= 1,650
+    assert [e.kind for e in out] == ["giveback"] and out[0].close
+    assert ev(st, 1775.5, 27.2) == ["trail_stock"]                            # then the stock trail, once
+    assert ev(st, 1770.0, 26.0) == []
 
 
-def test_giveback_arms_at_20pct_and_fires_at_half():
+def test_giveback_arms_at_15pct_and_fires_at_half():
     st = SpreadState.open(techm())
-    ev(st, 1800.0, 26.30 + 7000 / 600)                         # +7,000 > 20% of 20,220
-    assert "giveback" in ev(st, 1799.0, 26.30 + 3400 / 600)     # <= half of 7,000
+    ev(st, 1800.0, 26.30 + 7000 / 600)
+    assert "giveback" in ev(st, 1799.0, 26.30 + 3400 / 600)
     st2 = SpreadState.open(techm())
-    ev(st2, 1790.0, 26.30 + 3300 / 600)                         # +3,300 < 4,044: not armed
+    ev(st2, 1790.0, 26.30 + 2900 / 600)                         # +2,900 < 15% of 20,220 = 3,033: not armed
     assert "giveback" not in ev(st2, 1789.0, 26.30 + 100 / 600)
+    assert SpreadRules.from_config({"giveback_arm_pct": 20}).giveback_arm_pct == 20.0
 
 
 def test_breakeven_rearms_and_near_max():
@@ -124,6 +126,36 @@ def test_user_level_and_bearish_trail():
     ev(bear, 695.0, 15.0)
     assert bear.stock_stop == pytest.approx(695 * 1.008)
     assert "trail_stock" in ev(bear, 701.0, 12.5)
+
+
+def bear_put() -> Spread:
+    return Spread(Leg("HDFBAN", OCT27, "put", 710.0, 650, 17.4), Leg("HDFBAN", OCT27, "put", 670.0, -650, 5.9))
+
+
+def test_bear_put_full_scenario():
+    """Debit put spread on a falling stock: profit as it falls, trail sits
+    ABOVE the lowest price, breakeven warning when it climbs back over 698.5."""
+    st = SpreadState.open(bear_put())
+    assert ev(st, 712.0, 11.0) == []                             # not in profit yet (entry 11.50)
+    assert ev(st, 700.0, 16.0) == ["trail_armed"]                # +2,925 = 16% of 18,525: B armed too
+    ev(st, 690.0, 22.0)                                          # best 690, P&L +6,825
+    assert st.best_spot == 690.0 and st.stock_stop == pytest.approx(695.52)
+    assert ev(st, 693.0, 20.0) == []                             # still under the stop
+    assert ev(st, 696.0, 17.0) == ["trail_stock"]                # back up through 695.52
+    assert "giveback" in ev(st, 698.0, 14.8)                     # +2,145 <= half of 6,825
+    assert "breakeven" in ev(st, 699.5, 12.5)                    # over 698.50 at expiry terms
+
+
+def test_bear_call_credit_spread():
+    """Credit call spread (sell 1800, buy 1840 for protection): received
+    15.90, profits as the stock falls or stays under 1800."""
+    sp = Spread(Leg("TECMAH", OCT27, "call", 1840.0, 600, 6.1), Leg("TECMAH", OCT27, "call", 1800.0, -600, 22.0))
+    st = SpreadState.open(sp)
+    assert st.entry == pytest.approx(-15.9) and not st.bullish
+    assert ev(st, 1785.0, -12.0) == ["trail_armed"]              # cost to close fell to 12: +2,340
+    assert st.stock_stop == pytest.approx(1785 * 1.008)
+    assert "trail_stock" in ev(st, 1800.0, -16.5)                # stock rallied through the stop
+    assert st.last_pnl == pytest.approx(-0.6 * 600)
 
 
 def test_state_roundtrip():
@@ -174,6 +206,16 @@ def test_watcher_end_to_end(tmp_path, monkeypatch):
     watcher.refresh_positions()
     assert any(m.startswith("✅ TECMAH bull call") for m in sent)
     assert sent[-1].startswith("🚨 UNCOVERED SHORT: TECMAH 1800 CE")
+    # bear put: CLOSE alert sells the long put at the bid, buys the short put back at the ask
+    fake.rows = [row("Buy", "Put", 710, qty=650, price=17.4, code="HDFBAN"),
+                 row("Sell", "Put", 670, qty=650, price=5.9, code="HDFBAN")]
+    fake.spot, fake.quotes = 695.0, {710.0: (19.0, 19.3), 670.0: (3.1, 3.2)}
+    watcher.refresh_positions()
+    assert any(m.startswith("👀 Watching HDFBAN bear put 710/670 PE 27-Oct ×650") for m in sent)
+    watcher.price_spreads()
+    fake.spot, fake.quotes = 705.0, {710.0: (12.0, 12.3), 670.0: (2.4, 2.5)}
+    watcher.price_spreads()
+    assert any(m.startswith("🔴 CLOSE HDFBAN") and "SELL 710 PE @ bid 12.00, BUY 670 PE @ ask 2.50" in m for m in sent)
     # a restart reloads the state file; a spread closed while down is reported once
     fake.rows = [row("Buy", "Call", 1740, price=45.5), row("Sell", "Call", 1800, price=19.2)]
     watcher.refresh_positions()

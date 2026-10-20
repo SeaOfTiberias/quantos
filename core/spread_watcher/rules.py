@@ -15,8 +15,9 @@ re-tuned on the user's own spreads once there are 20-30):
      user replaces the trail. Crossing it -> CLOSE.
   B. Profit give-back. Once the P&L has reached `giveback_arm_pct` % of
      max profit, falling to `giveback_keep` x the best P&L seen -> CLOSE.
-     (TechM 1740/1800 on 2026-10-19: best ~+Rs3,300, so this fires at
-     ~+Rs1,650; the trade was instead closed at about -Rs1,260.)
+     (TechM 1740/1800 on 2026-10-19: best ~+Rs3,300 = 16% of max, so at
+     15% this arms and fires at ~+Rs1,650; the trade was instead closed at
+     about -Rs1,260. At the original 20% it would not have armed.)
   - Breakeven: after being in profit, the stock crossing back through the
     expiry breakeven -> warning (re-armed once back on the profit side).
   - Near max: P&L at `near_max_pct` % of max profit -> "little left to gain".
@@ -39,7 +40,7 @@ from core.spread_watcher.legs import Spread
 @dataclass(frozen=True)
 class SpreadRules:
     stock_trail_pct:  float = 0.8
-    giveback_arm_pct: float = 20.0
+    giveback_arm_pct: float = 15.0      # 20 -> 15 on 2026-10-20 (user), so a TechM-sized peak arms it
     giveback_keep:    float = 0.5
     near_max_pct:     float = 90.0
     exit_sessions_before_expiry: int = 1
