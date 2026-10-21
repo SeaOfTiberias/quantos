@@ -60,7 +60,8 @@ def fetch_chain(client, symbol: str, steps: int = 10) -> Chain:
 def report(chain: Chain, view: View, p: float) -> str:
     ranked = candidates(chain, view, p=p)
     lines = [f"{chain.symbol} spot {chain.spot:g} · lot {chain.lot} · view {'BULL' if view.direction > 0 else 'BEAR'} "
-             f"target {view.target:g} stop {view.stop:g} in {view.horizon_days}d · budget ₹{view.risk_budget:,.0f} · p={p}",
+             f"target {view.target:g} stop {view.stop:g} in {view.horizon_days}d · "
+             f"{'budget ₹{:,.0f}'.format(view.risk_budget) if view.risk_budget else 'research mode (no budget)'} · p={p}",
              f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'worst':>9}{'needs p':>9}{'EV/worst':>10}{'lots':>6}"]
     def row(c):
         return (f"{c.name:<30}{c.expiry.isoformat() if c.expiry else '':<12}{c.entry:>8.2f}{c.gain_target:>11,.0f}"
@@ -69,6 +70,10 @@ def report(chain: Chain, view: View, p: float) -> str:
     lines += [row(c) for c in best_by_family(ranked)]
     lines.append("— top 8 overall —")
     lines += [row(c) for c in ranked[:8]]
+    futs = [c for c in ranked if "future" in c.name]
+    if futs and futs[0] not in ranked[:8]:
+        lines.append("— futures (worst = stop + gap allowance; needs the stop order actually placed) —")
+        lines += [row(c) for c in futs[:2]]
     return "\n".join(lines)
 
 
@@ -81,7 +86,7 @@ def main(argv=None) -> int:
     ap.add_argument("--target", type=float, required=True)
     ap.add_argument("--stop", type=float, required=True)
     ap.add_argument("--days", type=int, required=True, help="horizon in trading days")
-    ap.add_argument("--budget", type=float, default=10000)
+    ap.add_argument("--budget", type=float, default=10000, help="max loss per trade; 0 = research mode (no filter)")
     ap.add_argument("--p", type=float, default=0.5, help="chance the target comes before the stop")
     ap.add_argument("--intraday", action="store_true", help="closed before today's close (no overnight gap)")
     ap.add_argument("--vol-shift", type=float, default=0.0)
@@ -95,7 +100,7 @@ def main(argv=None) -> int:
         return 1
     chain = fetch_chain(b._client, args.symbol.upper())
     view = View(direction=1 if args.bull else -1, target=args.target, stop=args.stop, horizon_days=args.days,
-                risk_budget=args.budget, overnight=not args.intraday, vol_shift=args.vol_shift)
+                risk_budget=args.budget or None, overnight=not args.intraday, vol_shift=args.vol_shift)
     print(report(chain, view, args.p))
     return 0
 

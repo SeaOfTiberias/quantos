@@ -103,7 +103,7 @@ class View:
     target: float
     stop: float
     horizon_days: int         # trading days
-    risk_budget: float = 10000.0
+    risk_budget: Optional[float] = 10000.0   # None = research mode: no budget filter, 1 lot each
     overnight: bool = True    # held past today's close (futures gap risk applies)
     gap_pct: float = 2.0
     vol_shift: float = 0.0    # e.g. -0.05 to model post-results IV crush
@@ -136,11 +136,14 @@ def _option_value(chain: Chain, iv: dict, key, spot: float, elapsed_cal: float, 
     return bs_price(spot, strike, t, max(iv[key] + vol_shift, 0.01), right)
 
 
-def _score(c: Candidate, p: float, budget: float) -> Candidate:
+def _score(c: Candidate, p: float, budget: Optional[float]) -> Candidate:
     span = c.gain_target - c.loss_stop
     c.be_p = round(-c.loss_stop / span, 3) if span > 0 else 1.0
     c.ev = p * c.gain_target + (1 - p) * c.loss_stop
-    c.lots = int(budget // c.worst_case) if c.worst_case > 0 else 0
+    if not budget:
+        c.lots = 1                                   # research mode: compare per lot, filter nothing
+    else:
+        c.lots = int(budget // c.worst_case) if c.worst_case > 0 else 0
     c.score = c.ev / c.worst_case if c.worst_case > 0 else float("-inf")
     return c
 

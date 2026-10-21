@@ -76,3 +76,10 @@ def test_bull_view_uses_calls_and_put_credits():
     assert any(c.name.startswith("bull call") for c in ranked)
     assert any(c.name.startswith("bull put") for c in ranked)
     assert not any(c.name.startswith("bear") for c in ranked)
+
+
+def test_research_mode_filters_nothing():
+    v = View(-1, 1200, 1245, 5, risk_budget=None)
+    ranked = candidates(_chain(), v)
+    assert "short future" in {c.name for c in ranked} and all(c.lots == 1 for c in ranked)
+    assert len(ranked) > len(candidates(_chain(), View(-1, 1200, 1245, 5, risk_budget=12000)))
