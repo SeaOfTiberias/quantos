@@ -1,0 +1,10 @@
+[Unit]
+Description=Scores the trade-idea log daily at 15:25 IST, while option quotes are still live
+
+[Timer]
+# 09:55 UTC = 15:25 IST. The VM runs in Etc/UTC.
+OnCalendar=Mon..Fri *-*-* 09:55:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

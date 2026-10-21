@@ -1,0 +1,15 @@
+[Unit]
+Description=QuantOS trade-idea log -- marks open ideas' option legs and re-scores every logged idea against the market (no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/trade_ideas.py evaluate
+Environment=HOME=/home/ubuntu
+# Telegram credentials (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID), same file as the trade watcher.
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=15min
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ]'
