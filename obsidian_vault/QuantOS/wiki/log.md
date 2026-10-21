@@ -111,3 +111,4 @@ Append-only. `compile` reads this to skip sources it has already seen.
 - 2026-10-15T14:00:00+00:00 — compiled [[2026-10-15-candidate-23-stage-2-bull-call-spreads-on-non-52-week-high-s-2]] -> [[surge-spread-candidate-23]]
 - 2026-10-15T15:00:00+00:00 — compiled [[2026-10-15-candidate-23b-wide-bull-call-spreads-on-surges-forward-paper]] -> [[surge-spread-forward-23b]]
 - 2026-10-15T15:00:00+00:00 — compiled [[2026-10-15-candidate-23b-part-c-surge-follow-through-persistence-result]] -> [[surge-spread-forward-23b]]
+- 2026-10-21T05:17:17+00:00 — compiled [[2026-10-21-earnings-gap-drift-gut-check-price-volume-proxy-for-pead]] -> [[earnings-gap-drift]], [[pead-earnings-drift]]

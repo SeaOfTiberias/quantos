@@ -39,4 +39,6 @@ No methodology, sample or numbers. `verdict_date` is the date of the review that
 
 ## Relation to other concepts
 
+[[earnings-gap-drift]] (2026-10-21) tested a price/volume proxy for the same anomaly — ±5% days on ≥ 4× volume, 2016–2026 — and found no long-side drift for a next-day entry and only a small, fading short-side drift. It does not settle the fundamental-surprise version shelved here, which needs results data.
+
 [[regime-filtered-dual-momentum-s1]]'s page records that an earnings-beat breakout proposal from the same session was rejected outright as "PEAD's already-shelved anomaly with a new execution layer".
