@@ -125,3 +125,24 @@ def test_closed_trade_keeps_paper_and_actual():
     ev = evaluate(i, closes, today=date(2026, 11, 25))
     assert ev["status"] == "closed" and ev["actual_pnl"] == 1800 and ev["pnl"] == pytest.approx((50 - 20.4) * 500)
     assert scoreboard([(i, ev)])["enter_now"]["actual_pnl"] == 1800
+
+
+def test_structure_route_validates_and_serialises(tmp_path, monkeypatch):
+    monkeypatch.setenv("QUANTOS_HOME_DIR", str(tmp_path))
+    import cloud.api.ideas_routes as r
+    from core.ideas.structure import Candidate
+    from cloud.api.main import app
+    c = TestClient(app)
+    body = {"symbol": "nestleind", "direction": "bear", "target": 1180, "stop": 1232, "days": 5}
+    assert c.post("/ideas/structure", json={**body, "symbol": "../x"}).status_code == 400
+    assert c.post("/ideas/structure", json={**body, "direction": "sideways"}).status_code == 422
+    seen = {}
+
+    def fake_run(req):
+        seen["sym"] = req.symbol
+        cand = Candidate("bear put 1200/1120", date(2026, 11, 23), [(1, None, 1200, "PE")], 19.65, 3912.0, -3690.0, 9825.0, be_p=0.48)
+        return {"symbol": req.symbol, "best": [r._row(cand)], "top": [r._row(cand)]}
+    monkeypatch.setattr(r, "_run", fake_run)
+    out = c.post("/ideas/structure", json=body).json()
+    assert seen["sym"] == "NESTLEIND" and out["best"][0]["family"] == "debit" and out["best"][0]["expiry"] == "2026-11-23"
+    assert "legs" not in out["best"][0]
