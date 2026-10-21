@@ -126,12 +126,13 @@ def run_evaluate(telegram: bool = True, path: Optional[Path] = None) -> list[str
     market_hours = now.weekday() < 5 and (9, 15) <= (now.hour, now.minute) <= (15, 30)
     changes = []
     history: dict[str, list] = {}
+    # Before 15:15 today's candle is still forming; a trigger on it would be an
+    # intraday touch, not the close the levels are written against.
+    drop_today = market_hours and (now.hour, now.minute) < (15, 15)
     for idea in ideas:
-        if idea.get("closed"):
-            continue
         s = idea.get("structure")
         prev = (idea.get("eval") or {}).get("status")
-        if s and market_hours and date.fromisoformat(s["expiry"]) >= now.date():
+        if s and market_hours and not idea.get("closed") and date.fromisoformat(s["expiry"]) >= now.date():
             try:
                 m = _mark(client, idea, today)
                 if m:
@@ -144,8 +145,7 @@ def run_evaluate(telegram: bool = True, path: Optional[Path] = None) -> list[str
             first = min(i["created_at"][:10] for i in ideas if i["symbol"] == sym)
             history[sym] = _closes(client, sym, first)
             time.sleep(1)                               # Fyers rate-limits bursts
-        closes = history[sym]
-        # During market hours today's candle is still forming: score on the live price.
+        closes = [r for r in history[sym] if not (drop_today and r[0] == today)]
         ev = evaluate(idea, closes)
         idea["eval"] = ev
         idea["evaluated_at"] = now.isoformat(timespec="seconds")

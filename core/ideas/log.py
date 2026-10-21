@@ -148,7 +148,18 @@ def evaluate(idea: dict, closes: list[tuple[str, float]], today: Optional[date] 
     day's mark, exit at the stop day's mark, at expiry intrinsic, else the
     latest mark); None when there is no structure or no usable quote.
     """
-    today = today or datetime.now(IST).date()
+    out = _evaluate(idea, closes, today or datetime.now(IST).date())
+    # What the user actually did sits beside the paper result, never replaces it:
+    # the gap between the two is the cost (or saving) of how the trade was managed.
+    if idea.get("closed"):
+        out["actual_pnl"] = idea["closed"].get("pnl")
+        out["status"] = "closed"
+    elif idea.get("taken"):
+        out["status"] = "taken"
+    return out
+
+
+def _evaluate(idea: dict, closes: list[tuple[str, float]], today: date) -> dict:
     created = idea["created_at"][:10]
     rows = [(d, float(c)) for d, c in closes if d >= created]
     s = idea.get("structure")
@@ -233,11 +244,17 @@ def evaluate(idea: dict, closes: list[tuple[str, float]], today: Optional[date] 
 
 
 def scoreboard(evals: list[tuple[dict, dict]]) -> dict:
-    """Aggregate by action: count, how many triggered, paper P&L where known."""
+    """Aggregate by action: count, how many triggered, paper P&L where known,
+    and the actual P&L of trades the user took and closed."""
     out: dict = {}
     for idea, ev in evals:
-        a = out.setdefault(idea["action"], {"ideas": 0, "triggered": 0, "scored": 0, "pnl": 0.0, "wins": 0})
+        a = out.setdefault(idea["action"], {"ideas": 0, "triggered": 0, "scored": 0, "pnl": 0.0, "wins": 0,
+                                            "taken": 0, "actual_pnl": 0.0})
         a["ideas"] += 1
+        if idea.get("taken"):
+            a["taken"] += 1
+        if (idea.get("closed") or {}).get("pnl") is not None:
+            a["actual_pnl"] += idea["closed"]["pnl"]
         if ev.get("trigger_date"):
             a["triggered"] += 1
         if ev.get("pnl") is not None:

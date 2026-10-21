@@ -96,7 +96,7 @@ def test_scoreboard_counts():
     a = make_idea(NESTLE, now=NOW)
     b = make_idea({**NESTLE, "symbol": "DLF", "action": "avoid"}, now=NOW)
     sb = scoreboard([(a, {"trigger_date": "2026-10-22", "pnl": 2000}), (b, {"trigger_date": "2026-10-21", "pnl": -500})])
-    assert sb["enter_if"] == {"ideas": 1, "triggered": 1, "scored": 1, "pnl": 2000, "wins": 1}
+    assert sb["enter_if"] == {"ideas": 1, "triggered": 1, "scored": 1, "pnl": 2000, "wins": 1, "taken": 0, "actual_pnl": 0}
     assert sb["avoid"]["wins"] == 0
 
 
@@ -114,3 +114,14 @@ def test_cli_storage_and_route(tmp_path, monkeypatch):
     from cloud.api.main import app
     body = TestClient(app).get("/ideas").json()
     assert len(body["ideas"]) == 2 and body["scoreboard"]["enter_if"]["ideas"] == 2
+
+
+def test_closed_trade_keeps_paper_and_actual():
+    i = make_idea({**NESTLE, "action": "enter_now", "trigger": None, "stop": None}, now=NOW)
+    i["taken"] = {"debit": 20.4, "lots": 1}
+    closes = [("2026-10-21", 1236.0), ("2026-11-23", 1190.0)]
+    assert evaluate(i, closes, today=date(2026, 10, 22))["status"] == "taken"
+    i["closed"] = {"value": 24.0, "pnl": 1800}
+    ev = evaluate(i, closes, today=date(2026, 11, 25))
+    assert ev["status"] == "closed" and ev["actual_pnl"] == 1800 and ev["pnl"] == pytest.approx((50 - 20.4) * 500)
+    assert scoreboard([(i, ev)])["enter_now"]["actual_pnl"] == 1800
