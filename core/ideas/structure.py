@@ -21,8 +21,9 @@ Scenario model (deliberately simple, stated so it can be argued with):
     solved from today's mid, held constant (no vol crush unless asked)
   - entry pays the ask on longs and receives the bid on shorts; exit gives up
     half of today's bid/ask spread on every leg again
-  - futures lose more than the stop distance when held overnight: a gap of
-    `gap_pct` of spot is added to their stop-scenario loss and worst case
+  - futures: a stop-out costs the stop distance plus 0.1% slippage; held
+    overnight, their WORST case adds a gap of `gap_pct` of spot (the tail an
+    option structure caps by construction and a stop order cannot)
 Ranking metric: EV(p) / worst_case, where EV(p) = p*gain_target +
 (1-p)*loss and `loss` is the WORSE of the stop and stall outcomes (risk-averse) and worst_case is the most a lot can lose (premium or spread
 max loss for options; stop distance + gap for futures). `be_p` is the hit
@@ -190,11 +191,13 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
         entry = q.ask if d > 0 else q.bid
         gain = d * ((view.target + basis) - entry) * lot - q.half_spread * lot
         stop_dist = abs(view.stop - chain.spot)
-        gap = chain.spot * view.gap_pct / 100 if view.overnight else chain.spot * 0.001
-        loss = -(stop_dist + gap) * lot - q.half_spread * lot
+        slip = chain.spot * 0.001                    # a normal stop-out: stop distance + slippage
+        gap = chain.spot * view.gap_pct / 100 if view.overnight else slip
+        loss = -(stop_dist + slip) * lot - q.half_spread * lot
+        worst = (stop_dist + gap) * lot + q.half_spread * lot   # the tail: a gap through the stop
         stall = d * ((mid_spot + basis) - entry) * lot - q.half_spread * lot
         out.append(Candidate(f"{'long' if d > 0 else 'short'} future", expiry, [("FUT", expiry)], entry,
-                             gain, min(loss, stall), -loss, stall=stall, note=f"stop {view.stop:g}, +{view.gap_pct if view.overnight else 0.1}% gap allowance"))
+                             gain, min(loss, stall), worst, stall=stall, note=f"stop {view.stop:g}, +{view.gap_pct if view.overnight else 0.1}% gap allowance"))
 
     expiries = sorted({k[0] for k in iv if (k[0] - chain.today).days >= min_days_left})
     right = "CE" if d > 0 else "PE"
