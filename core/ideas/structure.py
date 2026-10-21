@@ -146,10 +146,17 @@ def _score(c: Candidate, p: float, budget: float) -> Candidate:
 
 
 def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2) -> list[Candidate]:
-    """All priced candidates, best first. Structures whose expiry falls
-    inside the horizon are valued at expiry intrinsic."""
+    """All priced candidates, best first.
+
+    A structure must outlive the view: an expiry that falls inside the
+    horizon would need the target to arrive before it expires, which is a
+    different (much less likely) bet than the `p` the view is scored at.
+    Debit structures priced under 5% of their width (or a single option
+    under Rs 1) are dropped -- at that price the quote is usually stale and
+    the "needs 2%" hit rate it implies is an artefact."""
     d, lot = view.direction, chain.lot
     h_cal = view.horizon_days * TRADING_TO_CAL
+    min_days_left = max(min_days_left, math.ceil(h_cal) + 1)
     stop_cal = h_cal / 2
     mid_spot = (chain.spot + view.target) / 2
     out: list[Candidate] = []
@@ -196,6 +203,8 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
         for k in strikes:
             key = (expiry, k, right)
             q = chain.options[key]
+            if q.ask < 1.0:
+                continue
             g = (leg_exit(key, view.target, h_cal, +1) - q.ask) * lot
             l = (leg_exit(key, view.stop, stop_cal, +1) - q.ask) * lot
             st = (leg_exit(key, mid_spot, h_cal, +1) - q.ask) * lot
@@ -209,7 +218,7 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
                 kl, ks = (expiry, k1, right), (expiry, k2, right)
                 entry = chain.options[kl].ask - chain.options[ks].bid
                 width = abs(k2 - k1)
-                if entry <= 0 or entry >= width:
+                if entry < 0.05 * width or entry >= width:
                     continue
                 def val(spot, el):
                     return leg_exit(kl, spot, el, +1) - leg_exit(ks, spot, el, -1)
@@ -227,7 +236,7 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
                 ks, kl = (expiry, k1, opp), (expiry, k2, opp)
                 credit = chain.options[ks].bid - chain.options[kl].ask
                 width = abs(k1 - k2)
-                if credit <= 0 or credit >= width:
+                if credit < 0.05 * width or credit >= width:
                     continue
                 def val(spot, el):
                     return leg_exit(kl, spot, el, +1) - leg_exit(ks, spot, el, -1)

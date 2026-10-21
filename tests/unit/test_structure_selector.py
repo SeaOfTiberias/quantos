@@ -45,10 +45,22 @@ def test_overnight_gap_keeps_futures_out_of_a_small_budget():
     assert "short future" in names(View(-1, 1200, 1245, 1, risk_budget=12000, overnight=False))
 
 
+def test_penny_spreads_are_dropped():
+    assert all(c.entry >= 1.0 or "/" in c.name for c in candidates(_chain(), View(-1, 1150, 1245, 5, risk_budget=50000)))
+
+
+def test_expiry_inside_horizon_is_excluded():
+    assert all(c.expiry == NOV for c in candidates(_chain(), View(-1, 1200, 1245, 5, risk_budget=50000)))
+    assert any(c.expiry == OCT for c in candidates(_chain(), View(-1, 1200, 1245, 2, risk_budget=50000, overnight=False)))
+
+
 def test_stall_penalises_long_premium():
     view = View(-1, 1200, 1245, 5, risk_budget=50000)
-    single = next(c for c in candidates(_chain(), view) if c.name == "long 1200 PE" and c.expiry == OCT)
-    assert single.stall < 0 and single.loss_stop <= single.stall
+    single = next(c for c in candidates(_chain(), view) if c.name == "long 1200 PE" and c.expiry == NOV)
+    assert single.loss_stop <= min(single.stall, 0)
+    near = next(c for c in candidates(_chain(), View(-1, 1200, 1245, 2, risk_budget=50000, overnight=False))
+                if c.name == "long 1190 PE" and c.expiry == OCT)
+    assert near.stall < 0            # out of the money: half the move does not beat 3 days of decay
 
 
 def test_wider_bid_ask_lowers_scores():
