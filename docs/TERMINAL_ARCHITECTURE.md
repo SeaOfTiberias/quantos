@@ -338,6 +338,7 @@ Reordered 2026-10-23: the trading loop works now, so foundations and the market 
 | Phase 0b | `mcp_server/quantos_mcp.py` (mcp 2.3.0) with 8 read-only tools from `core/mcp_tools/market.py`, live adapter `core/mcp_tools/live.py`. Runs on the VM over SSH via `scripts/quantos-mcp.sh` and `.mcp.json`. | a243f6d, 9d76377, f125da6 |
 | Trading loop | Screener: up to 12 picks per side, edge labels, retest plan per pick, spread sized to the 5-session move, bid-ask gate, watchlist, Nifty label. Position manager for ICICI futures. Daily-close stops in the spread watcher; Breeze retry. | 6143246 … d8a3939 |
 | Research | Year backtest of the screener's signals, exit grid, and the pre-registered entry search (puts' retest entry passes; calls have no edge). | 6a53794, 37c3aab |
+| Trade-event explainer | When a watcher rule fires, or a held stock opens ≥ 1 ATR away, the alert goes out unchanged; then one Claude call (Opus 5.5, effort low, web search) adds 2–3 sentences on *why* the stock is moving. Code decides, the model explains. It sends symbol, structure and levels only; quantity, P&L and account are stripped. Capped at 12 a day. Live test: about $0.11 and 29 s per explanation. | 88073c8 |
 
 ### Deferred, and what each needs
 
