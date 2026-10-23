@@ -95,6 +95,22 @@ Both exits can cut winners that retest the box before running. The top 5% of bas
 
 **Results within the hold.** PERSISTENT probably gapped on results, but the results-date data on hand (`point_in_time_pat.csv`) covers only October 2024 to March 2025. That is too little. The cue is deferred until a full results calendar exists.
 
+## Amendment before the run (2026-10-23, nothing computed yet)
+
+1. **Business view, description only, not part of any verdict.** For U1 and U2 Bucket B under the baseline exit:
+   - trades per year;
+   - win rate and average win / average loss;
+   - mean net and mean excess;
+   - the implied excess per year on ₹5L at 9% per trade (trades per year × mean excess × ₹45k);
+   - the median daily traded value of the names traded, and a ₹45k slot (₹5L) and a ₹4.5L slot (₹50L) as a % of it. That is capacity: how far the strategy scales before our own orders move the price.
+
+   A strategy that is real but trades 10 times a year, or can't take ₹50L, is a different business from one that can.
+2. **Code check before any result counts.** The box detector is ported from pandas to plain Python for speed (`analyse_symbol` takes about 47 ms a call, so a full run would take about 17 hours).
+   - The port must match `analyse_symbol` on sampled real bars.
+   - Re-running the OOS window (U1, data cut at 2023-12-31, the old stop fills) must reproduce `docs/DARVAS_ATR_STOP_OOS_RESULTS.md`: 991 Bucket B trades, mean net +2.16%.
+   - If either check fails, nothing below is reported until it's fixed.
+3. **Known overlap, noted before the run.** The FRESH BREAKOUT rule already requires volume ≥ 1.5 × its 20-day average. T4 (≥ 1.5 × the 50-day average, today excluded) is therefore expected to keep most trades. T4 is left as registered.
+
 ## After the run
 
 - Results are appended to this file. The script is `scripts/backtest_darvas_cues.py`, committed with them.
