@@ -48,7 +48,7 @@ class FakeMarket:
 
 def test_quote_and_index_mapping():
     (q,) = mt.quote(FakeMarket(), ["nifty"])
-    assert q["fyers"] == "NSE:NIFTY50-INDEX" and q["chg_pct"] == 5.0 and q["time"]
+    assert q["fyers"] == "NSE:NIFTY50-INDEX" and q["chg_pct"] == 5.0 and q["session"]
     assert mt.fyers_symbol("TCS") == "NSE:TCS-EQ"
 
 

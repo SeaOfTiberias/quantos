@@ -50,7 +50,7 @@ def market():
 
 @server.tool(annotations=READ)
 def quote(symbols: list[str]) -> list[dict]:
-    """Live quotes: ltp, day open/high/low, previous close, % change, bid/ask, volume, quote time."""
+    """Live quotes: ltp, day open/high/low, previous close, % change, bid/ask, volume, session date."""
     return mt.quote(market(), symbols)
 
 
