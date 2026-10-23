@@ -7,6 +7,7 @@ pydantic>=2.7.0
 
 # Claude AI
 anthropic>=0.28.0
+mcp==2.3.0; python_version >= "3.10"   # mcp_server/quantos_mcp.py (VM); 2.x renamed FastMCP to MCPServer
 
 # Broker SDKs
 fyers-apiv3>=3.0.0
