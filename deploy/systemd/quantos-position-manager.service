@@ -1,0 +1,23 @@
+[Unit]
+Description=QuantOS position manager -- holds ICICI Direct futures positions to a written exit plan (Telegram alerts only, places no orders)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python -u /home/ubuntu/quantos/scripts/run_position_manager.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+
+# Polls Breeze during market hours and exits 0 at 15:31 IST; the daily-close
+# check runs at 15:20. Outside market hours the ExecCondition skips a restart
+# (VM runs in UTC; check is in IST).
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
