@@ -61,7 +61,7 @@ def quote(m: Market, symbols: list[str]) -> list[dict]:
                     "low": v.get("low_price"), "prev_close": prev,
                     "chg_pct": _r((lp / prev - 1) * 100) if lp and prev else None,
                     "bid": v.get("bid"), "ask": v.get("ask"), "volume": v.get("volume"),
-                    "time": datetime.fromtimestamp(v["tt"], IST).isoformat(timespec="seconds") if v.get("tt") else None})
+                    "time": datetime.fromtimestamp(int(float(v["tt"])), IST).isoformat(timespec="seconds") if v.get("tt") else None})
     return out
 
 

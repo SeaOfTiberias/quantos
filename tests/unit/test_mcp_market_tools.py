@@ -23,7 +23,7 @@ class FakeMarket:
                            low=99 + i * 0.1, close=100 + i * 0.1, volume=1000) for i in range(300)]
 
     def quotes(self, names):
-        return {n: {"lp": 105.0, "prev_close_price": 100.0, "bid": 104.9, "ask": 105.1, "tt": 1_760_000_000}
+        return {n: {"lp": 105.0, "prev_close_price": 100.0, "bid": 104.9, "ask": 105.1, "tt": "1760000000"}
                 for n in names}
 
     def daily(self, symbol, days):
