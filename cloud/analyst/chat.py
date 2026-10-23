@@ -24,13 +24,13 @@ from datetime import datetime, timezone
 
 import anthropic
 
-from cloud.api.metrics import record_claude
+from core.llm import log_call, model_for
 from core import prompts
 
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""), timeout=30.0)
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("analyst_chat")   # config/models.yaml
 
 CHAT_DAILY_LIMIT = int(os.getenv("ANALYST_CHAT_DAILY_LIMIT", "60"))
 MAX_MESSAGE_CHARS = 500
@@ -77,13 +77,7 @@ async def ask_analyst(message: str) -> str:
             messages=[{"role": "user", "content": message[:MAX_MESSAGE_CHARS]}],
         )
     finally:
-        usage = getattr(response, "usage", None) if response is not None else None
-        record_claude(
-            (time.perf_counter() - started) * 1000.0,
-            model=MODEL,
-            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
-            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
-        )
+        log_call("analyst_chat", MODEL, response, started)
 
     text_blocks = [b.text for b in response.content if getattr(b, "type", None) == "text"]
     return "\n".join(text_blocks) if text_blocks else "No response generated."

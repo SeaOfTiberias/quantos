@@ -1,0 +1,35 @@
+#!/bin/sh
+# QuantOS pre-commit: block household data (P2) and secrets (P3) from git.
+# docs/TERMINAL_ARCHITECTURE.md §5.5 / §5.7. Bypass only for a verified false
+# positive:  git commit --no-verify  (and say why in the message).
+# Enable once per clone:  git config core.hooksPath .githooks
+
+added=$(git diff --cached --no-color -U0 --diff-filter=ACM | grep '^+' | grep -v '^+++')
+[ -z "$added" ] && exit 0
+
+fail=0
+check() {  # $1 = label, $2 = extended regex
+  hits=$(printf '%s\n' "$added" | grep -E -n -- "$2" | head -3)
+  if [ -n "$hits" ]; then
+    echo "pre-commit: possible $1 in staged changes:" >&2
+    printf '%s\n' "$hits" | cut -c1-160 >&2
+    fail=1
+  fi
+}
+
+check "PAN number"            '(^|[^A-Z0-9])[A-Z]{3}[PCHFATBLJG][A-Z][0-9]{4}[A-Z]([^A-Z0-9]|$)'
+check "Anthropic API key"     'sk-ant-[A-Za-z0-9_-]{20,}'
+check "JWT / broker token"    'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.'
+check "private key"           '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+check "secret assignment"     '(api_secret|secret_key|access_token|totp_secret|client_secret)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][A-Za-z0-9/+_-]{16,}'
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+for f in $staged; do
+  case "$f" in
+    *.env|.env.*|*credentials*.json|*breeze_session*|*fyers_token*|*.pem|*.key)
+      echo "pre-commit: refusing to commit credential-like file: $f" >&2; fail=1 ;;
+  esac
+done
+
+[ $fail -eq 0 ] || { echo "pre-commit: commit blocked (P2/P3 rule). Remove it, or --no-verify for a checked false positive." >&2; exit 1; }
+exit 0

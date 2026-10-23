@@ -15,7 +15,7 @@ import time
 
 import anthropic
 
-from cloud.api.metrics import record_claude
+from core.llm import log_call, model_for
 from core import prompts
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # than a trade signal can afford (P2-3).
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""),
                                    timeout=30.0)
-MODEL   = "claude-sonnet-4-6"
+MODEL = model_for("pre_trade")   # config/models.yaml
 
 # Structured output via forced tool use: Claude must call this tool, so a
 # malformed/free-text response is impossible by construction. If anything
@@ -91,13 +91,7 @@ async def analyse_signal(signal: dict) -> float:
         # failure/timeout (the cockpit should see slow or erroring Claude,
         # not just successes). Token usage only exists on success → spend 0
         # on failure (S5-6).
-        usage = getattr(response, "usage", None) if response is not None else None
-        record_claude(
-            (time.perf_counter() - started) * 1000.0,
-            model=MODEL,
-            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
-            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
-        )
+        log_call("pre_trade", MODEL, response, started)
 
     score = _extract_confidence_score(response)
     logger.info("[%s] Pre-trade confidence: %.1f", signal.get("signal_id"), score)

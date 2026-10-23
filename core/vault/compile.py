@@ -46,10 +46,12 @@ from core.prompts import loader as prompts
 from core.vault.ingest import slugify
 from core.vault.layers import Layer, VaultPaths
 from core.vault.models import StrategyNote
+import time
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("vault_compile")   # config/models.yaml
 MAX_TOKENS = 4000
 
 SYSTEM_PROMPT = "vault_compile_system"
@@ -170,10 +172,14 @@ def _compile_one(note: StrategyNote, existing_pages: list[str],
         existing_pages="\n".join(f"- {p}" for p in existing_pages) or "(the wiki is empty)",
         source_text=note.body[:_SOURCE_CHARS],
     )
-    response = client.messages.create(
-        model=MODEL, max_tokens=MAX_TOKENS, system=system,
-        messages=[{"role": "user", "content": user}],
-    )
+    started, response = time.perf_counter(), None
+    try:
+        response = client.messages.create(
+            model=MODEL, max_tokens=MAX_TOKENS, system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+    finally:
+        log_call("vault_compile", MODEL, response, started)
     text = "\n".join(
         block.text for block in response.content
         if getattr(block, "type", "") == "text"

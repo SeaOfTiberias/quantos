@@ -36,10 +36,12 @@ from typing import Optional
 
 from core.prompts import loader as prompts
 from core.vault.models import AuditReport, StrategyNote
+import time
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("vault_narrator")   # config/models.yaml
 MAX_TOKENS = 400
 
 SYSTEM_PROMPT = "vault_audit_narrator_system"
@@ -97,13 +99,17 @@ def _generate(report: AuditReport, note: Optional[StrategyNote],
         logger.warning("Vault narrator: prompt unavailable (%s) — skipping narration", e)
         return None
 
+    started, response = time.perf_counter(), None
     try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+        finally:
+            log_call("vault_narrator", MODEL, response, started)
         parts = [block.text for block in response.content if getattr(block, "type", "") == "text"]
         return "\n".join(parts).strip() or None
     except Exception as e:

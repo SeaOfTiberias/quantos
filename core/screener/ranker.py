@@ -19,11 +19,13 @@ import anthropic
 
 from core.screener.ingest import ScreenerCandidate
 from core import prompts
+import time
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("screener_ranker")   # config/models.yaml
 
 MAX_CANDIDATES_TO_CLAUDE = 40   # cap to keep prompt size + cost reasonable
 
@@ -61,12 +63,16 @@ async def rank_candidates(
 
     prompt = _build_ranking_prompt(capped, nifty_change_pct, top_n)
 
-    response = await _claude.messages.create(
-        model=MODEL,
-        max_tokens=2000,
-        system=prompts.load("screener_ranker_system"),
-        messages=[{"role": "user", "content": prompt}],
-    )
+    started, response = time.perf_counter(), None
+    try:
+        response = await _claude.messages.create(
+            model=MODEL,
+            max_tokens=2000,
+            system=prompts.load("screener_ranker_system"),
+            messages=[{"role": "user", "content": prompt}],
+        )
+    finally:
+        log_call("screener_ranker", MODEL, response, started)
 
     raw = response.content[0].text.strip()
     ranked = _parse_ranking_response(raw)

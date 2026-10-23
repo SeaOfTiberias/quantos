@@ -31,7 +31,7 @@ from typing import Optional
 
 import anthropic
 
-from cloud.api.metrics import record_claude
+from core.llm import log_call, model_for
 from core import prompts
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""),
 # judgement is the entire deliverable, and the spend difference at this call
 # volume is a rounding error against the VM. Override with SHORTLIST_NOTE_MODEL
 # to bring it in line with the others if that inconsistency ever bites.
-MODEL = os.getenv("SHORTLIST_NOTE_MODEL", "claude-opus-5")
+MODEL = os.getenv("SHORTLIST_NOTE_MODEL") or model_for("shortlist_note")   # config/models.yaml
 
 # Opus 5 runs adaptive thinking BY DEFAULT (unlike Opus 4.8/4.7, where omitting
 # the parameter meant no thinking), and thinking is spent out of max_tokens
@@ -154,13 +154,7 @@ async def generate_note(universe: str, brief: dict) -> str:
     except anthropic.APIConnectionError as e:
         raise NoteUnavailable("Claude API unreachable") from e
     finally:
-        usage = getattr(response, "usage", None) if response is not None else None
-        record_claude(
-            (time.perf_counter() - started) * 1000.0,
-            model=MODEL,
-            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
-            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
-        )
+        log_call("shortlist_note", MODEL, response, started)
 
     # A safety decline is a legitimate outcome, not a crash: fall through to
     # "no note today" rather than rendering an empty box with no explanation.

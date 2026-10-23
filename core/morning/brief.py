@@ -23,11 +23,13 @@ from typing import Optional
 import anthropic
 
 from core import prompts
+import time
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("morning_brief")   # config/models.yaml
 
 
 @dataclass
@@ -122,11 +124,15 @@ async def _generate_narrative(data: MorningBriefData) -> str:
         open_positions_str=", ".join(data.open_positions) or "None",
     )
 
+    started, response = time.perf_counter(), None
     try:
-        response = await _claude.messages.create(
-            model=MODEL, max_tokens=300,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        try:
+            response = await _claude.messages.create(
+                model=MODEL, max_tokens=300,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        finally:
+            log_call("morning_brief", MODEL, response, started)
         return response.content[0].text.strip()
     except Exception as e:
         logger.error("Claude morning narrative failed: %s", e)

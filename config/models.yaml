@@ -1,0 +1,39 @@
+# QuantOS model registry (docs/TERMINAL_ARCHITECTURE.md §5.2, ADR-14).
+# Features name a ROLE; roles name a model. Changing a model is a one-line
+# edit here -- but a model change is a migration (thinking, tool_choice and
+# prefill rules differ between generations), so run the feature's tests and
+# read the Claude API migration notes first. Per-feature env override:
+# QUANTOS_MODEL_<FEATURE> (e.g. QUANTOS_MODEL_SHORTLIST_NOTE=claude-sonnet-4-6).
+#
+# 2026-10-23: values are exactly what each file hard-coded before -- no
+# behaviour change. pre_trade forces tool_choice, which current-generation
+# models (Opus 5.5, Sonnet 5.5) reject with a 400: migrate it deliberately.
+
+roles:
+  reasoning: claude-sonnet-4-6     # analyst chat, pre-trade score, screener ranker, backtest analyst
+  summary:   claude-sonnet-4-6     # morning brief, alpha attribution, vault compile / narrator, version notes
+  judgement: claude-opus-5         # shortlist note: few calls a day, the judgement is the deliverable
+
+features:
+  analyst_chat:      reasoning
+  pre_trade:         reasoning
+  screener_ranker:   reasoning
+  backtest_analyst:  reasoning
+  morning_brief:     summary
+  alpha_attribution: summary
+  vault_compile:     summary
+  vault_narrator:    summary
+  version_notes:     summary
+  shortlist_note:    judgement
+
+# USD per million tokens: [input, output]. List prices; cache reads/writes are
+# priced off input (0.1x / 1.25x) in core/llm/calllog.py.
+prices:
+  claude-fable-5-1:  [10.0, 50.0]
+  claude-opus-5-5:   [4.0, 20.0]
+  claude-opus-5:     [5.0, 25.0]
+  claude-sonnet-5-5: [2.0, 10.0]
+  claude-sonnet-5:   [2.0, 10.0]
+  claude-sonnet-4-6: [3.0, 15.0]
+  claude-haiku-5-5:  [0.10, 0.50]
+  claude-haiku-4-5:  [1.0, 5.0]

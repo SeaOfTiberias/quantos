@@ -16,15 +16,17 @@ from typing import Any, Optional
 
 import anthropic
 import httpx
+import time
 
 from core.versioning.models import (
     BacktestDelta, StrategyVersion, StrategyRegistry,
 )
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("version_notes")   # config/models.yaml
 
 
 class StrategyVersioningService:
@@ -255,12 +257,16 @@ Rules:
 
 Return ONLY the commit message text, nothing else."""
 
+    started, response = time.perf_counter(), None
     try:
-        response = await _claude.messages.create(
-            model=MODEL,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        try:
+            response = await _claude.messages.create(
+                model=MODEL,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        finally:
+            log_call("version_notes", MODEL, response, started)
         return response.content[0].text.strip()
     except Exception as e:
         logger.warning("Claude commit message generation failed: %s", e)

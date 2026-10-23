@@ -24,11 +24,13 @@ from typing import Optional
 import anthropic
 
 from core import prompts
+import time
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("alpha_attribution")   # config/models.yaml
 
 
 # ─── Data models ─────────────────────────────────────────────────────────────
@@ -197,11 +199,15 @@ async def generate_alpha_narrative(metrics: AttributionMetrics, trade_pnls: list
         losers_str=losers_str,
     )
 
+    started, response = time.perf_counter(), None
     try:
-        response = await _claude.messages.create(
-            model=MODEL, max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        try:
+            response = await _claude.messages.create(
+                model=MODEL, max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        finally:
+            log_call("alpha_attribution", MODEL, response, started)
         return response.content[0].text.strip()
     except Exception as e:
         logger.error("Alpha narrative generation failed: %s", e)

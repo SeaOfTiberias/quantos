@@ -16,11 +16,13 @@ import anthropic
 
 from core.backtest.parser import BacktestReport, BacktestMetrics
 from core import prompts
+import time
+from core.llm import log_call, model_for
 
 logger = logging.getLogger(__name__)
 
 _claude = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-MODEL = "claude-sonnet-4-6"
+MODEL = model_for("backtest_analyst")   # config/models.yaml
 
 
 async def analyse_backtest(report: BacktestReport) -> dict:
@@ -39,12 +41,16 @@ async def analyse_backtest(report: BacktestReport) -> dict:
     """
     prompt = _build_analysis_prompt(report)
 
-    response = await _claude.messages.create(
-        model=MODEL,
-        max_tokens=2000,
-        system=prompts.load("backtest_analyst_system"),
-        messages=[{"role": "user", "content": prompt}],
-    )
+    started, response = time.perf_counter(), None
+    try:
+        response = await _claude.messages.create(
+            model=MODEL,
+            max_tokens=2000,
+            system=prompts.load("backtest_analyst_system"),
+            messages=[{"role": "user", "content": prompt}],
+        )
+    finally:
+        log_call("backtest_analyst", MODEL, response, started)
 
     raw = response.content[0].text.strip()
     return _parse_analysis(raw, report)

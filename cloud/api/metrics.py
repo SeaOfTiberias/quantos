@@ -37,12 +37,11 @@ _WINDOW = 200
 # entry here whenever a new model is wired to record_claude — an untracked
 # model falls back to DEFAULT_*_PRICE_PER_MTOK below rather than silently
 # pricing at the wrong model's rate.
-MODEL_PRICES: dict[str, tuple[float, float]] = {
-    "claude-opus-5":      (5.0, 25.0),
-    "claude-sonnet-5":    (2.0, 10.0),
-    "claude-sonnet-4-6":  (3.0, 15.0),
-    "claude-haiku-4-5":   (1.0, 5.0),
-}
+# Since 2026-10-23 the table lives in config/models.yaml (core/llm/registry.py),
+# shared with the persistent call log (core/llm/calllog.py).
+from core.llm.registry import prices as _registry_prices
+
+MODEL_PRICES: dict[str, tuple[float, float]] = _registry_prices()
 
 # Used only for a call that didn't pass `model`, or passed one not in the
 # table above. Override via env when this default itself needs to change —
