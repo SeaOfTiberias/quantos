@@ -1,7 +1,7 @@
 """
 QuantOS -- pick the structure for a directional view (core/ideas/structure.py)
 
-  python scripts/pick_structure.py DLF --bull --target 720 --stop 665 --days 10 [--budget 10000] [--p 0.5]
+  python scripts/pick_structure.py DLF --bull --target 720 --stop 665 --days 10 [--budget 12000] [--p 0.5]
   python scripts/pick_structure.py NESTLEIND --bear --target 1200 --stop 1245 --days 5 --intraday
 
 Fetches the live chain (strikes within +-10 steps of spot, every listed
@@ -86,7 +86,7 @@ def main(argv=None) -> int:
     ap.add_argument("--target", type=float, required=True)
     ap.add_argument("--stop", type=float, required=True)
     ap.add_argument("--days", type=int, required=True, help="horizon in trading days")
-    ap.add_argument("--budget", type=float, default=10000, help="max loss per trade; 0 = research mode (no filter)")
+    ap.add_argument("--budget", type=float, default=0, help="max loss per trade; 0 (default) = no budget filter, 1 lot each")
     ap.add_argument("--p", type=float, default=0.5, help="chance the target comes before the stop")
     ap.add_argument("--intraday", action="store_true", help="closed before today's close (no overnight gap)")
     ap.add_argument("--vol-shift", type=float, default=0.0)

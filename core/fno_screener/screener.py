@@ -60,7 +60,7 @@ class ScreenerConfig:
     min_dte:              int = 10       # never recommend a contract with fewer calendar days left
     min_oi_lots:          int = 50       # contract OI, in lots
     min_volume:           int = 150      # contracts traded on the bhavcopy day (20 let 80-lot books through)
-    max_lot_cost:         float = 25000.0 # premium x lot size, rupees
+    max_lot_cost:         float = 0.0    # premium x lot size, rupees; 0 = no cap (user 2026-10-23: budget is not a filter)
     max_itm_strikes:      int = 2        # how deep in the money to look (1 = nearest ITM strike only)
     max_delta:            float = 0.80   # deeper than this is mostly intrinsic, not "slightly ITM"
     oi_lookback_sessions: int = 5
@@ -242,7 +242,7 @@ def pick_contract(day: FnoDay, symbol: str, side: OptionType,
             if q.close <= 0 or q.oi_lots < cfg.min_oi_lots or q.volume < cfg.min_volume:
                 continue
             lot_cost = q.close * q.lot_size
-            if lot_cost > cfg.max_lot_cost:
+            if cfg.max_lot_cost and lot_cost > cfg.max_lot_cost:
                 why = f"lot over ₹{cfg.max_lot_cost:,.0f}"
                 continue
             dte = (expiry - entry).days
@@ -451,7 +451,8 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
     if result.dropped:
         lines += ["", f"Dropped (short covering, squeezes fade): {_names(result.dropped)}"]
     if result.skipped:
-        lines += ["", f"No liquid ITM option ≤ ₹{cfg.max_lot_cost:,.0f} (futures? run pick_structure): "
+        cap = f" ≤ ₹{cfg.max_lot_cost:,.0f}" if cfg.max_lot_cost else ""
+        lines += ["", f"No liquid ITM option{cap} (futures? run pick_structure): "
                       f"{_names(result.skipped)}"]
     lines += ["", "Hold 1-5 days; exit by day 5 if it hasn't moved. Check each name's results date "
                   "before buying -- an IV crush after results can sink a right call."]

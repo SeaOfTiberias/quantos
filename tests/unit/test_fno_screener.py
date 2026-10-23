@@ -138,9 +138,10 @@ class TestPickContract:
         assert pick_contract(day, "ABC", CE, self.cfg)[0].quote.strike == 100
         assert pick_contract(day, "ABC", PE, self.cfg)[0].quote.strike == 105
 
-    def test_lot_cost_cap(self):
+    def test_lot_cost_cap_is_off_by_default_and_works_when_set(self):
         day = _day([_q(95, NOV, close=30), _q(95, OCT, close=30)])      # 30 x 1000 = 30k
-        k, why = pick_contract(day, "ABC", CE, self.cfg)
+        assert pick_contract(day, "ABC", CE, self.cfg)[0].lot_cost == 30000
+        k, why = pick_contract(day, "ABC", CE, ScreenerConfig(max_lot_cost=25000))
         assert k is None and "25,000" in why
 
     def test_greeks_present_for_a_sane_price(self):
