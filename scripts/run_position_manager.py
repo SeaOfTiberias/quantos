@@ -121,8 +121,10 @@ class Data:
         return out
 
     def ltp(self, p: FutPosition) -> float:
-        r = self.client.get_quotes(stock_code=p.code, exchange_code="NFO", expiry_date=f"{p.expiry.isoformat()}T06:00:00.000Z",
-                                   product_type="futures", right="others", strike_price="0")
+        from scripts.run_spread_watcher import quotes_with_retry
+        r = quotes_with_retry(self.client, stock_code=p.code, exchange_code="NFO",
+                              expiry_date=f"{p.expiry.isoformat()}T06:00:00.000Z",
+                              product_type="futures", right="others", strike_price="0")
         rows = r.get("Success") or []
         if r.get("Status") != 200 or not rows or not rows[0].get("ltp"):
             raise RuntimeError(f"quote {p.code} FUT: {r.get('Error')}")

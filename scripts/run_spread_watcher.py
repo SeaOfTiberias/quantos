@@ -102,12 +102,30 @@ class Notifier:
 
 # ─── Breeze calls ────────────────────────────────────────────────────────────
 
+QUOTE_TRIES, QUOTE_RETRY_S = 3, 1.5
+
+
+def quotes_with_retry(client, **kw) -> dict:
+    """Breeze get_quotes, retried: under load it sometimes returns an empty
+    body (the SDK raises "Expecting value: line 1 column 1"), about 1 call in
+    12 on 2026-10-23. Dropping the session on each one re-logged in every
+    pass and left the spread unpriced for minutes."""
+    for attempt in range(QUOTE_TRIES):
+        try:
+            return client.get_quotes(**kw)
+        except Exception as e:
+            if "Expecting value" not in str(e) or attempt == QUOTE_TRIES - 1:
+                raise
+            time.sleep(QUOTE_RETRY_S)
+    return {}
+
+
 def _iso_expiry(d) -> str:
     return f"{d.isoformat()}T06:00:00.000Z"
 
 
 def option_quote(client, leg: Leg) -> tuple[float, float, float]:
-    r = client.get_quotes(stock_code=leg.stock_code, exchange_code="NFO", expiry_date=_iso_expiry(leg.expiry),
+    r = quotes_with_retry(client, stock_code=leg.stock_code, exchange_code="NFO", expiry_date=_iso_expiry(leg.expiry),
                           product_type="options", right=leg.right, strike_price=f"{leg.strike:g}")
     rows = r.get("Success") or []
     if r.get("Status") != 200 or not rows:
@@ -117,7 +135,7 @@ def option_quote(client, leg: Leg) -> tuple[float, float, float]:
 
 
 def stock_price(client, code: str) -> float:
-    r = client.get_quotes(stock_code=code, exchange_code="NSE", expiry_date="", product_type="cash",
+    r = quotes_with_retry(client, stock_code=code, exchange_code="NSE", expiry_date="", product_type="cash",
                           right="", strike_price="")
     for x in r.get("Success") or []:
         if x.get("exchange_code") == "NSE" and x.get("ltp"):
