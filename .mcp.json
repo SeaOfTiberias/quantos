@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "quantos": {
+      "command": "C:\\WINDOWS\\System32\\OpenSSH\\ssh.exe",
+      "args": [
+        "-i", "C:/Users/Admin/.ssh/oracle.key",
+        "-o", "BatchMode=yes",
+        "-o", "ServerAliveInterval=30",
+        "-T", "ubuntu@161.118.189.29",
+        "/bin/sh /home/ubuntu/quantos/scripts/quantos-mcp.sh"
+      ]
+    }
+  }
+}
