@@ -12,6 +12,14 @@ WIDTH_MULTIPLES, where expected move = spot x IV x sqrt(dte / 365) and IV is
 the long leg's implied vol. So "near / mid / far" mean the same thing in
 volatility terms for a quiet stock and a wild one.
 
+The PRIMARY idea is HORIZON_LABEL ("h5"), sized to the holding period, not
+the contract: long the at-the-money strike, short the strike nearest to
+spot +/- 1 x the move expected over HORIZON_SESSIONS (spot x IV x
+sqrt(HORIZON_CALENDAR_DAYS / 365); IV is per calendar day, as everywhere
+here). An expected move to a 30-day expiry put the "mid" short strike ~8%
+away (TCS 2500/2700 on 22 Oct 2026) -- too far to pay for a 1-5 day hold.
+near / mid / far stay in the log so the comparison keeps running.
+
 Pricing:
   - "quotes": both legs have a two-sided Fyers quote. Buy the long leg at
     the ask, sell the short at the bid, the way a real order fills.
@@ -42,6 +50,9 @@ from core.options.greeks import compute_greeks
 from core.options.models import OptionType
 
 WIDTH_MULTIPLES = (("near", 0.5), ("mid", 1.0), ("far", 1.5))
+HORIZON_LABEL = "h5"
+HORIZON_SESSIONS = 5
+HORIZON_CALENDAR_DAYS = 7     # 5 sessions ~ one calendar week
 COST_FLAG_PCT = 10.0
 FALLBACK_IV = 0.30            # only when the long leg's IV couldn't be solved; marked iv_assumed
 SCENARIO_SESSIONS = 5
@@ -50,7 +61,7 @@ SCENARIO_CALENDAR_DAYS = 7    # 5 sessions ~ one calendar week
 
 @dataclass(frozen=True)
 class SpreadIdea:
-    label:          str                 # near | mid | far
+    label:          str                 # h5 | near | mid | far
     long_strike:    float
     short_strike:   float
     width:          float
@@ -107,62 +118,81 @@ def build_spreads(day: FnoDay, symbol: str, side: OptionType, expiry: date, long
     vol = FALLBACK_IV if iv_assumed else iv
     em = spot * vol * math.sqrt(dte / 365)
     sign = 1 if side == OptionType.CALL else -1
-    beyond = sorted((k for k in chain if (k - long_strike) * sign > 0), key=lambda k: k * sign)
-    lot = long_q.lot_size
-    days5 = max(dte - SCENARIO_CALENDAR_DAYS, 0)
     out = SpreadSet(kind="bull_call" if side == OptionType.CALL else "bear_put", symbol=symbol,
-                    expiry=expiry, spot=spot, lot=lot, dte=dte, iv=round(vol, 4), iv_assumed=iv_assumed,
+                    expiry=expiry, spot=spot, lot=long_q.lot_size, dte=dte, iv=round(vol, 4), iv_assumed=iv_assumed,
                     expected_move=round(em, 2))
+
+    def beyond(k_long: float) -> list[float]:
+        return sorted((k for k in chain if (k - k_long) * sign > 0), key=lambda k: k * sign)
+
+    def nearest(strikes: list[float], target: float) -> Optional[float]:
+        return min(strikes, key=lambda k: abs(k - target)) if strikes else None
+
+    # Primary: ATM long, short at the holding-period expected move.
+    atm = nearest(list(chain), spot)
+    short_h = nearest(beyond(atm), spot + sign * spot * vol * math.sqrt(HORIZON_CALENDAR_DAYS / 365))
+    if short_h is not None:
+        idea = _idea(HORIZON_LABEL, chain[atm], chain[short_h], spot, sign, dte, vol, quotes)
+        if idea:
+            out.ideas.append(idea)
+
     used: set[float] = set()
     for label, k in WIDTH_MULTIPLES:
-        if not beyond:
-            break
-        target = spot + sign * k * em
-        short_strike = min(beyond, key=lambda s: abs(s - target))
-        if short_strike in used:
+        short_strike = nearest(beyond(long_strike), spot + sign * k * em)
+        if short_strike is None or short_strike in used:
             continue
         used.add(short_strike)
-        short_q = chain[short_strike]
-        ql, qs = quotes.get(long_strike), quotes.get(short_strike)
-        quoted = _two_sided(ql) and _two_sided(qs)
-        debit_close = long_q.close - short_q.close
-        if quoted:
-            debit = ql[1] - qs[0]
-            mid = (ql[0] + ql[1]) / 2 - (qs[0] + qs[1]) / 2
-        else:
-            debit, mid = debit_close, None
-        width = abs(short_strike - long_strike)
-        if not 0 < debit < width:
-            continue
-        cost_pct = round(2 * (debit - mid) / debit * 100, 1) if quoted else None
-        breakeven = long_strike + sign * debit
-        spread5 = _bs(short_strike, long_strike, days5, vol, side) - _bs(short_strike, short_strike, days5, vol, side)
-        single_entry = ql[1] if _two_sided(ql) else long_q.close
-        single5 = _bs(short_strike, long_strike, days5, vol, side)
-        out.ideas.append(SpreadIdea(
-            label=label, long_strike=long_strike, short_strike=short_strike, width=width,
-            debit=round(debit, 2), debit_close=round(debit_close, 2),
-            priced_from="quotes" if quoted else "close",
-            max_loss=round(debit * lot), max_profit=round((width - debit) * lot),
-            reward_risk=round((width - debit) / debit, 2),
-            breakeven=round(breakeven, 2),
-            breakeven_move_pct=round((breakeven / spot - 1) * 100, 1),
-            target_move_pct=round((short_strike / spot - 1) * 100, 1),
-            cost_pct=cost_pct, cost_flag=cost_pct is not None and cost_pct > COST_FLAG_PCT,
-            day5_spread_pnl=round((spread5 - debit) * lot),
-            day5_single_pnl=round((single5 - single_entry) * lot),
-        ))
+        idea = _idea(label, long_q, chain[short_strike], spot, sign, dte, vol, quotes)
+        if idea:
+            out.ideas.append(idea)
     return out
 
 
+def _idea(label: str, long_q, short_q, spot: float, sign: int, dte: int, vol: float,
+          quotes: dict[float, tuple[float, float]]) -> Optional[SpreadIdea]:
+    long_strike, short_strike, lot = long_q.strike, short_q.strike, long_q.lot_size
+    side = long_q.option_type
+    ql, qs = quotes.get(long_strike), quotes.get(short_strike)
+    quoted = _two_sided(ql) and _two_sided(qs)
+    debit_close = long_q.close - short_q.close
+    if quoted:
+        debit = ql[1] - qs[0]
+        mid = (ql[0] + ql[1]) / 2 - (qs[0] + qs[1]) / 2
+    else:
+        debit, mid = debit_close, None
+    width = abs(short_strike - long_strike)
+    if not 0 < debit < width:
+        return None
+    cost_pct = round(2 * (debit - mid) / debit * 100, 1) if quoted else None
+    breakeven = long_strike + sign * debit
+    days5 = max(dte - SCENARIO_CALENDAR_DAYS, 0)
+    spread5 = _bs(short_strike, long_strike, days5, vol, side) - _bs(short_strike, short_strike, days5, vol, side)
+    single_entry = ql[1] if _two_sided(ql) else long_q.close
+    single5 = _bs(short_strike, long_strike, days5, vol, side)
+    return SpreadIdea(
+        label=label, long_strike=long_strike, short_strike=short_strike, width=width,
+        debit=round(debit, 2), debit_close=round(debit_close, 2),
+        priced_from="quotes" if quoted else "close",
+        max_loss=round(debit * lot), max_profit=round((width - debit) * lot),
+        reward_risk=round((width - debit) / debit, 2),
+        breakeven=round(breakeven, 2),
+        breakeven_move_pct=round((breakeven / spot - 1) * 100, 1),
+        target_move_pct=round((short_strike / spot - 1) * 100, 1),
+        cost_pct=cost_pct, cost_flag=cost_pct is not None and cost_pct > COST_FLAG_PCT,
+        day5_spread_pnl=round((spread5 - debit) * lot),
+        day5_single_pnl=round((single5 - single_entry) * lot),
+    )
+
+
 def spread_line(s: SpreadSet) -> Optional[str]:
-    """One Telegram line for the 'mid' idea (else the first one)."""
+    """One Telegram line: the h5 idea, else mid, else the first one."""
     if not s.ideas:
         return None
-    i = next((x for x in s.ideas if x.label == "mid"), s.ideas[0])
+    i = next((x for lab in (HORIZON_LABEL, "mid") for x in s.ideas if x.label == lab), s.ideas[0])
     verb = "bull call" if s.kind == "bull_call" else "bear put"
+    sized = f" ({HORIZON_SESSIONS}-day move)" if i.label == HORIZON_LABEL else f" ({i.label})"
     cost = ("bid-ask n/a (close prices)" if i.cost_pct is None
             else f"bid-ask {i.cost_pct:g}% of debit" + (" ⚠" if i.cost_flag else ""))
-    return (f"     {verb}: buy {i.long_strike:g} / sell {i.short_strike:g} · risk ₹{i.max_loss:,.0f} → "
+    return (f"   ➜ {verb} {i.long_strike:g}/{i.short_strike:g}{sized} · risk ₹{i.max_loss:,.0f} → "
             f"max ₹{i.max_profit:,.0f} (R:R {i.reward_risk:g}) · BE {i.breakeven:g} "
             f"({i.breakeven_move_pct:+.1f}%) · {cost}")

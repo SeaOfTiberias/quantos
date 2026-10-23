@@ -10,7 +10,7 @@ import PayoffChart from "./PayoffChart.jsx";
 import Shell, { getJson } from "./Shell.jsx";
 import { T, inr, pct, px, shortDate, tone } from "./theme.js";
 
-const LABELS = ["near", "mid", "far"];
+const LABELS = ["h5", "near", "mid", "far"];   // h5 = ATM long, short at the 5-session move (primary)
 
 function setupText(p) {
   const call = p.side === "CE";
@@ -23,9 +23,9 @@ function setupText(p) {
 
 function SpreadIdeas({ p }) {
   const ideas = p.spreads?.ideas || [];
-  const [sel, setSel] = useState("mid");
+  const [sel, setSel] = useState("h5");
   if (!ideas.length) return <div className="q-sub">No sensible spread on this chain.</div>;
-  const i = ideas.find(x => x.label === sel) || ideas[0];
+  const i = ideas.find(x => x.label === sel) || ideas.find(x => x.label === "mid") || ideas[0];
   const right = p.side === "CE" ? "call" : "put";
   const lot = p.contract?.quote?.lot_size;
   return (
@@ -141,7 +141,7 @@ function Log({ history }) {
   if (!history?.length) return <div className="q-card q-empty">No picks logged yet.</div>;
   return (
     <div className="q-card">
-      <div className="q-sub" style={{ marginTop: 0 }}>Single option / mid spread return after 1, 3 and 5 sessions. "…" = not there yet.</div>
+      <div className="q-sub" style={{ marginTop: 0 }}>Single option / primary spread (h5, or mid before 23 Oct) return after 1, 3 and 5 sessions. "…" = not there yet.</div>
       {history.map((r, idx) => (
         <details key={r.trade_date} className="q-det" open={idx === 0} style={{ marginTop: 14 }}>
           <summary className="q-row" style={{ fontWeight: 600 }}>
@@ -149,11 +149,11 @@ function Log({ history }) {
           </summary>
           <div className="q-scroll">
             <table className="q-table" style={{ marginTop: 6 }}>
-              <thead><tr><th>Pick</th><th>Contract</th><th>Premium</th><th>Mid spread</th><th>1 session</th><th>3 sessions</th><th>5 sessions</th></tr></thead>
+              <thead><tr><th>Pick</th><th>Contract</th><th>Premium</th><th>Spread</th><th>1 session</th><th>3 sessions</th><th>5 sessions</th></tr></thead>
               <tbody>
                 {[...r.calls, ...r.puts].map(p => {
                   const q = p.contract?.quote || {};
-                  const mid = p.spreads?.ideas?.find(x => x.label === "mid");
+                  const mid = p.spreads?.ideas?.find(x => x.label === "h5") || p.spreads?.ideas?.find(x => x.label === "mid");
                   const rr = p.outcome?.returns || {};
                   return (
                     <tr key={`${p.side}${p.symbol}`}>
@@ -164,7 +164,7 @@ function Log({ history }) {
                       {["1", "3", "5"].map(h => {
                         const x = rr[h];
                         return <td key={h}>{x ? <><span style={{ color: tone(x.option_pct) }}>{pct(x.option_pct, 0)}</span>
-                          <span className="q-faint"> / </span><span style={{ color: tone(x.spreads?.mid) }}>{pct(x.spreads?.mid, 0)}</span></> : <span className="q-faint">…</span>}</td>;
+                          <span className="q-faint"> / </span><span style={{ color: tone(x.spreads?.[mid?.label]) }}>{pct(x.spreads?.[mid?.label], 0)}</span></> : <span className="q-faint">…</span>}</td>;
                       })}
                     </tr>
                   );

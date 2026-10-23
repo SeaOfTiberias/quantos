@@ -33,11 +33,15 @@ PUTS = {(k, PE): c for k, c in [(1040, 52.0), (1020, 40.0), (1000, 30.0), (980, 
                                  (940, 10.0), (920, 6.5), (900, 4.0), (880, 2.5)]}
 
 
+def _by(s, label):
+    return next(i for i in s.ideas if i.label == label)
+
+
 def test_bull_call_strikes_scale_with_expected_move():
     s = build_spreads(_day(D0, 1000.0, CALLS), "AAA", CE, NOV, 980.0, 38, 0.30)
     # expected move = 1000 x 0.30 x sqrt(38/365) ~ 96.8 -> targets ~1048 / 1097 / 1145
-    assert [i.short_strike for i in s.ideas] == [1040.0, 1100.0, 1140.0]
-    near = s.ideas[0]
+    assert [(i.label, i.short_strike) for i in s.ideas if i.label != "h5"] ==         [("near", 1040.0), ("mid", 1100.0), ("far", 1140.0)]
+    near = _by(s, "near")
     assert near.priced_from == "close" and near.cost_pct is None and not near.cost_flag
     assert near.debit == pytest.approx(30.0) and near.max_loss == 30 * LOT
     assert near.max_profit == (60 - 30) * LOT and near.reward_risk == pytest.approx(1.0)
@@ -48,7 +52,7 @@ def test_bull_call_strikes_scale_with_expected_move():
 def test_quotes_price_at_bid_ask_and_flag_cost():
     quotes = {980.0: (47.0, 49.0), 1040.0: (17.0, 19.0), 1100.0: (4.9, 5.1), 1140.0: (0.0, 2.2)}
     s = build_spreads(_day(D0, 1000.0, CALLS), "AAA", CE, NOV, 980.0, 38, 0.30, quotes)
-    near, mid, far = s.ideas
+    near, mid, far = (_by(s, k) for k in ("near", "mid", "far"))
     assert near.priced_from == "quotes" and near.debit == pytest.approx(49.0 - 17.0)
     # mid debit 48 - 18 = 30, real 32 -> round trip 2 x 2 / 32
     assert near.cost_pct == pytest.approx(12.5) and near.cost_flag == (12.5 > COST_FLAG_PCT)
@@ -60,7 +64,7 @@ def test_bear_put_mirrors():
     s = build_spreads(_day(D0, 1000.0, PUTS), "AAA", PE, NOV, 1020.0, 38, 0.30)
     assert s.kind == "bear_put"
     assert all(i.short_strike < 1020 for i in s.ideas)
-    i = s.ideas[0]
+    i = _by(s, "near")
     assert i.breakeven == pytest.approx(1020 - i.debit) and i.breakeven_move_pct < 0 and i.target_move_pct < 0
 
 
@@ -68,7 +72,25 @@ def test_missing_long_leg_or_iv():
     assert build_spreads(_day(D0, 1000.0, CALLS), "AAA", CE, NOV, 990.0, 38, 0.3) is None
     s = build_spreads(_day(D0, 1000.0, CALLS), "AAA", CE, NOV, 980.0, 38, None)
     assert s.iv_assumed and s.ideas
-    assert "bull call: buy 980 / sell" in spread_line(s)
+    assert "bull call 1000/1040 (5-day move)" in spread_line(s)
+
+
+def test_horizon_spread_is_atm_long_and_five_session_move():
+    # 5-session move = 1000 x 0.30 x sqrt(7/365) ~ 41.5: long ATM 1000, short nearest 1041.5 -> 1040
+    s = build_spreads(_day(D0, 1000.0, CALLS), "AAA", CE, NOV, 980.0, 38, 0.30)
+    h = _by(s, "h5")
+    assert (h.long_strike, h.short_strike) == (1000.0, 1040.0)
+    assert h.debit == pytest.approx(36.0 - 18.0) and h.max_loss == 18 * LOT
+    p = _by(build_spreads(_day(D0, 1000.0, PUTS), "AAA", PE, NOV, 1020.0, 38, 0.30), "h5")
+    assert (p.long_strike, p.short_strike) == (1000.0, 960.0)
+
+
+def test_track_pick_prices_h5_from_its_own_long_leg():
+    s = build_spreads(_day(D0, 1000.0, CALLS), "AAA", CE, NOV, 980.0, 38, 0.30)
+    nxt = _day(date(2026, 10, 19), 1030.0, {**CALLS, (1000, CE): 50.0, (1040, CE): 24.0})
+    o = track_pick("2026-10-16", _cand(s), [nxt])
+    assert o["sessions"][0]["spreads"]["h5"] == pytest.approx(50.0 - 24.0)
+    assert returns_at(o, 1)["spreads"]["h5"] == pytest.approx((26 / 18 - 1) * 100, abs=0.1)
 
 
 def _cand(spreads):
@@ -113,7 +135,7 @@ def test_route_reads_the_files(tmp_path, monkeypatch):
     from cloud.api.main import app
     body = TestClient(app).get("/fno-picks").json()
     pick = body["latest"]["calls"][0]
-    assert pick["symbol"] == "AAA" and len(pick["spreads"]["ideas"]) == 3
+    assert pick["symbol"] == "AAA" and len(pick["spreads"]["ideas"]) == 4   # h5 + near/mid/far
     assert pick["outcome"]["sessions"] == 1 and pick["outcome"]["returns"]["1"]["stock_pct"] == pytest.approx(3.0)
     assert body["history"][0]["trade_date"] == "2026-10-16"
     assert body["stats"]["CE"]["picks"] == 1 and body["outcomes_tracked"] == 1

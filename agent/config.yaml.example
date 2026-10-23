@@ -389,6 +389,7 @@ fno_screener:
   max_lot_cost: 25000      # premium x lot size, rupees
   min_dte: 10              # never a contract with fewer calendar days left
   min_oi_lots: 50          # contract open interest, in lots
-  min_volume: 20           # contracts traded on the day
+  min_volume: 150          # contracts traded on the day
+  max_single_bid_ask_pct: 5  # single option's (ask - bid) / mid, % -- wider: spread line only
   max_itm_strikes: 2       # how deep in the money to look
   oi_lookback_sessions: 5  # futures OI build-up window

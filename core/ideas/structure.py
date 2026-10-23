@@ -106,7 +106,8 @@ class View:
     horizon_days: int         # trading days
     risk_budget: Optional[float] = 10000.0   # None = research mode: no budget filter, 1 lot each
     overnight: bool = True    # held past today's close (futures gap risk applies)
-    gap_pct: float = 2.0
+    gap_pct: float = 3.5      # overnight gap through the stop. 213 F&O stocks, 52k nights to Oct 2026:
+                              # |gap| p99 3.9%; a long's p99.5 adverse gap -3.5%, a short's p99 +3.1%
     vol_shift: float = 0.0    # e.g. -0.05 to model post-results IV crush
 
 

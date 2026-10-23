@@ -16,8 +16,8 @@ from core.discovery.momentum_shortlist import ShortlistEntry
 from core.fno_screener.bhavcopy import FnoDay, OptionQuote, parse_fno_day
 from core.fno_screener.screener import (
     LONG_BUILDUP, LONG_UNWINDING, OI_FLAT, SHORT_BUILDUP, SHORT_COVERING,
-    ScreenerConfig, bar_date, build_candidates, classify_buildup, format_telegram,
-    invert_bars, oi_buildup, pick_contract, setup_rank,
+    ScreenerConfig, bar_date, bid_ask_pct, build_candidates, classify_buildup, format_telegram,
+    invert_bars, market_regime, oi_buildup, pick_contract, setup_rank,
 )
 from core.options.models import OptionType
 from core.trade_watcher.rules import ExitRules
@@ -159,14 +159,27 @@ def _entry(symbol, state="FRESH", days=1, tier="LEADER", trend=True, pct=95.0):
 class TestSetupRank:
 
     def test_order_and_exclusions(self):
-        assert setup_rank(_entry("A", "FRESH"), 5) == 0
-        assert setup_rank(_entry("A", "OUT", 2), 5) == 1
-        assert setup_rank(_entry("A", "NEAR", None), 5) == 2
-        assert setup_rank(_entry("A", "OUT", 5), 5) == 3
-        assert setup_rank(_entry("A", "OUT", 9), 5) is None
-        assert setup_rank(_entry("A", "IN BOX", None), 5) is None
-        assert setup_rank(_entry("A", trend=False), 5) is None
-        assert setup_rank(_entry("A", tier="LAGGARD"), 5) is None
+        assert setup_rank(_entry("A", "FRESH"), 1) == 0
+        assert setup_rank(_entry("A", "OUT", 1), 1) == 1
+        assert setup_rank(_entry("A", "NEAR", None), 1) == 2           # watchlist
+        assert setup_rank(_entry("A", "OUT", 2), 1) is None             # day 2+ is no longer a setup
+        assert setup_rank(_entry("A", "IN BOX", None), 1) is None
+        assert setup_rank(_entry("A", trend=False), 1) is None
+        assert setup_rank(_entry("A", tier="LAGGARD"), 1) is None
+        assert ScreenerConfig().max_out_sessions == 1
+
+
+class TestGatesAndLabels:
+
+    def test_bid_ask_pct(self):
+        assert bid_ask_pct((9.5, 10.5)) == 10.0
+        assert bid_ask_pct((0.0, 10.5)) is None and bid_ask_pct(None) is None and bid_ask_pct((11, 10)) is None
+
+    def test_market_regime(self):
+        up = market_regime(_bars([100.0 + i for i in range(30)]))
+        assert up.above and up.close == 129.0 and up.ema < up.close
+        assert not market_regime(_bars([130.0 - i for i in range(30)])).above
+        assert market_regime(_bars([100.0] * 5)) is None
 
 
 class TestBuildCandidates:
@@ -184,7 +197,7 @@ class TestBuildCandidates:
     def test_routing_ranking_and_skips(self):
         bars, day = self._universe()
         calls = [_entry("UP1", "NEAR", None), _entry("UP2", "FRESH"), _entry("THIN", "FRESH")]
-        puts = [_entry("DN1", "OUT", 2)]
+        puts = [_entry("DN1", "OUT", 1), _entry("DN2", "OUT", 3)]
         seen = []
 
         def fake_shortlist(bars_map, as_of):
@@ -196,8 +209,9 @@ class TestBuildCandidates:
              patch("core.fno_screener.screener.analyse_symbol", return_value=base):
             r = build_candidates(bars, day, None, ScreenerConfig())
 
-        assert [c.symbol for c in r.calls] == ["UP2", "UP1"]         # fresh breakout before near
-        assert [c.symbol for c in r.puts] == ["DN1"]
+        assert [c.symbol for c in r.calls] == ["UP2"]                # NEAR is not a buy
+        assert [c.symbol for c in r.watch] == ["UP1"] and r.watch[0].contract is None
+        assert [c.symbol for c in r.puts] == ["DN1"]                 # DN2 is 3 sessions out: dropped
         assert r.puts[0].contract.quote.option_type == PE
         assert r.puts[0].box_level == round(100.0 ** 2 / 98.0, 2)   # inverted ceiling -> real floor
         assert [c.symbol for c in r.skipped] == ["THIN"]
@@ -207,7 +221,25 @@ class TestBuildCandidates:
                                             trail_after_pct=12, trail_pct=8), ScreenerConfig())
         assert "UP2" in text and "DN1" in text and "THIN CE" in text
         assert "stop 7.20" in text and "lock at 8.64 → 8.40" in text and "trail from 8.96" in text
-        assert "wait for a close above 98.00" in text              # UP1 is NEAR, not broken out
+        assert "UP1 CE 100.00: close above 98.00" in text           # watchlist line, no contract
+
+    def test_short_covering_calls_dropped_and_wide_single_not_offered(self):
+        bars, day = self._universe()
+        past = FnoDay(trade_date=TODAY - timedelta(days=7), spot={s: 95.0 for s in day.spot},
+                      futures_oi={s: {NOV: 2000} for s in day.spot}, options={})   # price up, OI halved
+        base = DiscoveryResult(symbol="X", status="WATCHING", box_ceiling=98.0)
+        with patch("core.fno_screener.screener.build_shortlist", side_effect=[[_entry("UP2", "FRESH")], []]),              patch("core.fno_screener.screener.analyse_symbol", return_value=base):
+            r = build_candidates(bars, day, past, ScreenerConfig())
+        assert r.calls == [] and [c.symbol for c in r.dropped] == ["UP2"]
+        assert "Dropped (short covering" in format_telegram(r, ExitRules(), ScreenerConfig())
+
+        with patch("core.fno_screener.screener.build_shortlist", side_effect=[[_entry("UP2", "FRESH")], []]),              patch("core.fno_screener.screener.analyse_symbol", return_value=base):
+            r = build_candidates(bars, day, None, ScreenerConfig())
+        import dataclasses
+        c = r.calls[0]
+        r.calls = [dataclasses.replace(c, contract=dataclasses.replace(c.contract, bid_ask_pct=12.0))]
+        text = format_telegram(r, ExitRules(), ScreenerConfig())
+        assert "bid-ask 12% > 5%, don't buy it outright" in text and "watcher:" not in text
 
     def test_stale_symbols_ignored(self):
         bars, day = self._universe()

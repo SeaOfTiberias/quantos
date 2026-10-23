@@ -34,7 +34,7 @@ trades and the current month bridges the gap, with theta shown per day.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from datetime import date, timedelta, timezone
 from typing import Optional
 
@@ -59,13 +59,14 @@ def bar_date(c: OHLCV) -> date:
 class ScreenerConfig:
     min_dte:              int = 10       # never recommend a contract with fewer calendar days left
     min_oi_lots:          int = 50       # contract OI, in lots
-    min_volume:           int = 20       # contracts traded on the bhavcopy day
+    min_volume:           int = 150      # contracts traded on the bhavcopy day (20 let 80-lot books through)
     max_lot_cost:         float = 25000.0 # premium x lot size, rupees
     max_itm_strikes:      int = 2        # how deep in the money to look (1 = nearest ITM strike only)
     max_delta:            float = 0.80   # deeper than this is mostly intrinsic, not "slightly ITM"
     oi_lookback_sessions: int = 5
     oi_flat_pct:          float = 2.0    # |OI change| below this % = no build-up either way
-    max_out_sessions:     int = 5        # a breakout older than this is no longer a setup
+    max_out_sessions:     int = 1        # a breakout older than this is no longer a setup (see setup_rank)
+    max_single_bid_ask_pct: float = 5.0  # (ask - bid) / mid of the single option; wider = don't buy it
     top_n:                int = 5        # per side
 
     @classmethod
@@ -129,21 +130,55 @@ def invert_bars(daily: list[OHLCV]) -> list[OHLCV]:
                   close=k / c.close, volume=c.volume) for c in daily]
 
 
+WATCH_RANK = 2      # NEAR: listed with its trigger level, no contract -- not a buy yet
+
+
 def setup_rank(entry: ShortlistEntry, max_out_sessions: int) -> Optional[int]:
-    """0 fresh breakout, 1 broke out <=3 sessions ago, 2 near the box edge,
-    3 broke out 4..max_out_sessions ago; None = not a setup."""
+    """0 fresh breakout, 1 broke out <= max_out_sessions ago, WATCH_RANK near
+    the box edge; None = not a setup.
+
+    Outcome log 9-22 Oct 2026 (77 picks, small and overlapping): NEAR picks
+    and breakouts 2-5 sessions old lost on the near spread by day 5 (-20%,
+    -17%) while fresh / day-1 breakouts didn't (+4%, n=7). Hence day-1 only
+    and NEAR as a watchlist."""
     if not entry.trend_up or entry.momentum_tier == "LAGGARD":
         return None
     state, days = entry.breakout_state, entry.days_above_ceil
     if state == "FRESH":
         return 0
-    if state == "OUT" and days is not None and days <= 3:
+    if state == "OUT" and days is not None and days <= max_out_sessions:
         return 1
     if state == "NEAR":
-        return 2
-    if state == "OUT" and days is not None and days <= max_out_sessions:
-        return 3
+        return WATCH_RANK
     return None
+
+
+# Calls riding short covering (price up, futures OI down) were the worst
+# group in the same log (near spread -44% by day 5, n=5): squeezes fade.
+_EXCLUDED_OI = {OptionType.CALL: {SHORT_COVERING}, OptionType.PUT: set()}
+
+
+# ─── Market regime (a label, not a filter) ───────────────────────────────────
+
+@dataclass(frozen=True)
+class MarketRegime:
+    close: float
+    ema:   float
+    above: bool
+
+
+def market_regime(daily: list[OHLCV], period: int = 20) -> Optional[MarketRegime]:
+    """Nifty close vs its EMA(period). Shown and logged on every run but NOT
+    used to suppress a side: on the 9-22 Oct picks a calls-above / puts-below
+    gate kept the losers (near spread -9.6% at day 3) and dropped the winners
+    (+9.1%). Revisit once the log is bigger."""
+    if len(daily) < period:
+        return None
+    k, ema = 2 / (period + 1), daily[0].close
+    for c in daily[1:]:
+        ema += k * (c.close - ema)
+    close = daily[-1].close
+    return MarketRegime(round(close, 2), round(ema, 2), close >= ema)
 
 
 # ─── Contract ────────────────────────────────────────────────────────────────
@@ -158,6 +193,21 @@ class Contract:
     theta_pct:    Optional[float]     # % of premium lost per calendar day, everything else equal
     note:         str = ""
     fyers_symbol: str = ""
+    bid_ask_pct:  Optional[float] = None   # (ask - bid) / mid x 100 from the post-close quote; None = no quote
+
+
+def bid_ask_pct(quote: Optional[tuple[float, float]]) -> Optional[float]:
+    """(ask - bid) / mid in %, or None unless the quote is two-sided."""
+    if not quote or quote[0] <= 0 or quote[1] < quote[0]:
+        return None
+    mid = (quote[0] + quote[1]) / 2
+    return round((quote[1] - quote[0]) / mid * 100, 1)
+
+
+def single_ok(k: "Contract", cfg: ScreenerConfig) -> bool:
+    """The single option passes the bid-ask gate. No quote = judged on
+    OI/volume alone (min_volume), so it passes."""
+    return k.bid_ask_pct is None or k.bid_ask_pct <= cfg.max_single_bid_ask_pct
 
 
 def next_weekday(d: date) -> date:
@@ -242,6 +292,9 @@ class ScreenResult:
     puts:       list[Candidate]
     skipped:    list[Candidate]       # a setup, but no contract passed liquidity/cost
     scanned:    int
+    watch:      list[Candidate] = field(default_factory=list)    # NEAR: trigger level only, no contract
+    dropped:    list[Candidate] = field(default_factory=list)    # a setup, excluded by OI (skip_reason says why)
+    market:     Optional[MarketRegime] = None
 
 
 def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
@@ -257,6 +310,8 @@ def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
 
     out: dict[OptionType, list[Candidate]] = {OptionType.CALL: [], OptionType.PUT: []}
     skipped: list[Candidate] = []
+    watch: list[Candidate] = []
+    dropped: list[Candidate] = []
     for side, bars_map in ((OptionType.CALL, daily), (OptionType.PUT, inverted)):
         for entry in build_shortlist(bars_map, as_of):
             rank = setup_rank(entry, cfg.max_out_sessions)
@@ -266,23 +321,34 @@ def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
             box_level = base.box_ceiling if base else None
             if side == OptionType.PUT and box_level:
                 box_level = daily[entry.symbol][-1].close ** 2 / box_level
-            contract, why = pick_contract(today, entry.symbol, side, cfg)
+            oi = oi_buildup(today, past, entry.symbol, cfg.oi_flat_pct)
+            excluded = oi is not None and oi.label in _EXCLUDED_OI[side]
+            if rank == WATCH_RANK or excluded:
+                contract, why = None, (oi.label if excluded else "")
+            else:
+                contract, why = pick_contract(today, entry.symbol, side, cfg)
             cand = Candidate(
                 symbol=entry.symbol, side=side, close=daily[entry.symbol][-1].close,
                 setup_rank=rank, breakout_state=entry.breakout_state, days_out=entry.days_above_ceil,
                 momentum_pct=entry.momentum_pct,
                 box_level=round(box_level, 2) if box_level else None,
                 box_width_pct=entry.box_width_pct,
-                oi=oi_buildup(today, past, entry.symbol, cfg.oi_flat_pct),
-                contract=contract, skip_reason=why,
+                oi=oi, contract=contract, skip_reason=why,
             )
-            (out[side] if contract else skipped).append(cand)
+            if excluded:
+                dropped.append(cand)
+            elif rank == WATCH_RANK:
+                watch.append(cand)
+            else:
+                (out[side] if contract else skipped).append(cand)
 
     for side in out:
         out[side].sort(key=lambda c: c.sort_key)
-    skipped.sort(key=lambda c: c.sort_key)
+    for xs in (skipped, watch, dropped):
+        xs.sort(key=lambda c: c.sort_key)
     return ScreenResult(today.trade_date, out[OptionType.CALL][:cfg.top_n],
-                        out[OptionType.PUT][:cfg.top_n], skipped, len(daily))
+                        out[OptionType.PUT][:cfg.top_n], skipped, len(daily),
+                        watch=watch, dropped=dropped)
 
 
 # ─── Telegram ────────────────────────────────────────────────────────────────
@@ -316,32 +382,49 @@ def _oi_text(c: Candidate, lookback: int) -> str:
     return f"OI {lookback}d: {c.oi.label} (price {c.oi.price_chg_pct:+.1f}%, OI {c.oi.oi_chg_pct:+.0f}%)"
 
 
-def _contract_lines(c: Candidate, rules: ExitRules) -> list[str]:
+def _contract_lines(c: Candidate, rules: ExitRules, cfg: ScreenerConfig) -> list[str]:
+    """The single option: secondary to the spread, and only if its bid-ask passes."""
     k = c.contract
     q = k.quote
     name = k.fyers_symbol.removeprefix("NSE:") or f"{q.symbol} {q.expiry:%d %b} {q.strike:g} {q.option_type.value}"
+    spread = "bid-ask n/a" if k.bid_ask_pct is None else f"bid-ask {k.bid_ask_pct:g}%"
+    if not single_ok(k, cfg):
+        return [f"     single: {name} -- {spread} > {cfg.max_single_bid_ask_pct:g}%, don't buy it outright"]
     greeks = []
     if k.delta is not None:
         greeks.append(f"Δ{abs(k.delta):.2f}")
     if k.theta_pct is not None:
         greeks.append(f"θ {k.theta_pct:g}%/day")
-    greeks.append(f"{k.dte}d left from next session" + (f", {k.note}" if k.note else ""))
+    greeks.append(f"{k.dte}d left" + (f", {k.note}" if k.note else ""))
     p = q.close
     lock = (f" · lock at {_px(p * (1 + rules.breakeven_at_pct / 100))} → "
             f"{_px(p * (1 + rules.breakeven_lock_pct / 100))}") if rules.breakeven_at_pct > 0 else ""
     return [
-        f"   ➜ {name} @ {_px(p)} · lot {q.lot_size} = ₹{k.lot_cost:,.0f} · " + " · ".join(greeks),
+        f"     single: {name} @ {_px(p)} · lot {q.lot_size} = ₹{k.lot_cost:,.0f} · {spread} · " + " · ".join(greeks),
         f"     OI {q.oi_lots:,} lots, {q.volume:,} traded · watcher: stop {_px(p * (1 - rules.initial_stop_pct / 100))}"
         f"{lock} · trail from {_px(p * (1 + rules.trail_after_pct / 100))}",
     ]
 
 
+def _market_text(m: Optional[MarketRegime]) -> str:
+    if m is None:
+        return "Nifty vs EMA20: n/a"
+    return (f"Nifty {m.close:,.0f} {'above' if m.above else 'below'} EMA20 {m.ema:,.0f} "
+            "(label only -- not used to filter)")
+
+
+def _names(cands: list[Candidate], limit: int = 8) -> str:
+    names = ", ".join(f"{c.symbol} {c.side.value}" for c in cands[:limit])
+    return names + (f" +{len(cands) - limit}" if len(cands) > limit else "")
+
+
 def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
                     spread_lines: Optional[dict[tuple[str, str], str]] = None) -> str:
-    """`spread_lines` maps (side, symbol) -> one line from core/fno_screener/spreads.spread_line."""
-    lines = [f"🎯 F&O option-buy candidates · close of {result.trade_date:%a %d %b}",
-             f"Screening aid, not a signal. {result.scanned} F&O stocks scanned. "
-             "Premiums are the bhavcopy close -- check the live bid/ask before buying."]
+    """`spread_lines` maps (side, symbol) -> the primary line from core/fno_screener/spreads.spread_line."""
+    lines = [f"🎯 F&O candidates · close of {result.trade_date:%a %d %b}",
+             f"Screening aid, not a signal. {result.scanned} F&O stocks scanned. Fresh / day-1 breakouts only. "
+             "Prices are the close -- check the live bid/ask before entering.",
+             _market_text(result.market)]
     for title, side, cands in (("📈 CALLS", OptionType.CALL, result.calls), ("📉 PUTS", OptionType.PUT, result.puts)):
         lines.append("")
         lines.append(title)
@@ -352,19 +435,24 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
                 lines.append("")
             lines.append(f"{i}. {c.symbol} {_px(c.close)} -- {_setup_text(c)} · {_strength_text(c)}")
             lines.append(f"   {_oi_text(c, cfg.oi_lookback_sessions)}")
-            lines.extend(_contract_lines(c, rules))
             if spread_lines and (c.side.value, c.symbol) in spread_lines:
                 lines.append(spread_lines[(c.side.value, c.symbol)])
+            lines.extend(_contract_lines(c, rules, cfg))
             if c.box_level:
-                below, above = ("below", "above") if side == OptionType.CALL else ("above", "below")
-                if c.breakout_state == "NEAR":
-                    lines.append(f"     not broken yet: wait for a close {above} {_px(c.box_level)}")
-                else:
-                    lines.append(f"     invalid if {c.symbol} closes back {below} {_px(c.box_level)}")
+                below = "below" if side == OptionType.CALL else "above"
+                lines.append(f"     invalid if {c.symbol} closes back {below} {_px(c.box_level)}")
+    if result.watch:
+        lines += ["", "👀 WATCH -- not broken yet, no trade until a close beyond the level"]
+        for c in result.watch[:2 * cfg.top_n]:
+            beyond = "above" if c.side == OptionType.CALL else "below"
+            gap = f" ({abs(c.box_level / c.close - 1) * 100:.1f}% away)" if c.box_level else ""
+            level = _px(c.box_level) if c.box_level else "?"
+            lines.append(f"   {c.symbol} {c.side.value} {_px(c.close)}: close {beyond} {level}{gap}")
+    if result.dropped:
+        lines += ["", f"Dropped (short covering, squeezes fade): {_names(result.dropped)}"]
     if result.skipped:
-        names = ", ".join(f"{c.symbol} {c.side.value}" for c in result.skipped[:8])
-        more = f" +{len(result.skipped) - 8}" if len(result.skipped) > 8 else ""
-        lines += ["", f"Setups with no liquid ITM contract ≤ ₹{cfg.max_lot_cost:,.0f}: {names}{more}"]
+        lines += ["", f"No liquid ITM option ≤ ₹{cfg.max_lot_cost:,.0f} (futures? run pick_structure): "
+                      f"{_names(result.skipped)}"]
     lines += ["", "Hold 1-5 days; exit by day 5 if it hasn't moved. Check each name's results date "
                   "before buying -- an IV crush after results can sink a right call."]
     return "\n".join(lines)

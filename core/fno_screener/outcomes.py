@@ -57,8 +57,9 @@ def track_pick(trade_date: str, cand: dict, days_after: list[FnoDay]) -> dict:
             break
         row = {"date": d.trade_date.isoformat(), "spot": d.spot.get(cand["symbol"]),
                "option": _close(d, cand["symbol"], expiry, strike, side), "spreads": {}}
-        for idea in spreads:
-            lo = row["option"]
+        for idea in spreads:                     # the h5 idea's long leg is ATM, not the picked contract
+            lk = float(idea["long_strike"])
+            lo = row["option"] if lk == strike else _close(d, cand["symbol"], expiry, lk, side)
             sh = _close(d, cand["symbol"], expiry, float(idea["short_strike"]), side)
             row["spreads"][idea["label"]] = None if lo is None or sh is None else round(lo - sh, 2)
         sessions.append(row)

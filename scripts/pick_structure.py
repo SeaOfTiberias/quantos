@@ -90,6 +90,8 @@ def main(argv=None) -> int:
     ap.add_argument("--p", type=float, default=0.5, help="chance the target comes before the stop")
     ap.add_argument("--intraday", action="store_true", help="closed before today's close (no overnight gap)")
     ap.add_argument("--vol-shift", type=float, default=0.0)
+    ap.add_argument("--gap-pct", type=float, default=View.gap_pct,
+                    help="overnight gap through a futures stop, %% of spot (worst case)")
     args = ap.parse_args(argv)
 
     from agent.main import load_config
@@ -100,7 +102,8 @@ def main(argv=None) -> int:
         return 1
     chain = fetch_chain(b._client, args.symbol.upper())
     view = View(direction=1 if args.bull else -1, target=args.target, stop=args.stop, horizon_days=args.days,
-                risk_budget=args.budget or None, overnight=not args.intraday, vol_shift=args.vol_shift)
+                risk_budget=args.budget or None, overnight=not args.intraday, vol_shift=args.vol_shift,
+                gap_pct=args.gap_pct)
     print(report(chain, view, args.p))
     return 0
 
