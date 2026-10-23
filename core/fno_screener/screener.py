@@ -67,7 +67,7 @@ class ScreenerConfig:
     oi_flat_pct:          float = 2.0    # |OI change| below this % = no build-up either way
     max_out_sessions:     int = 5        # a breakout older than this is no longer a setup (see setup_rank)
     max_single_bid_ask_pct: float = 5.0  # (ask - bid) / mid of the single option; wider = don't buy it
-    top_n:                int = 8        # per side (5 crowded SIEMENS out once the lot cap went)
+    top_n:                int = 12       # per side; 23 Oct: 10 put setups, SIEMENS 9th -- 5 and 8 hid it
 
     @classmethod
     def from_config(cls, cfg: Optional[dict]) -> "ScreenerConfig":
