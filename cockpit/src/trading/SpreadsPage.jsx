@@ -69,7 +69,9 @@ function LevelEditor({ code, level, onSaved }) {
       <span className="q-muted">Your exit level</span>
       {level ? (
         <>
-          <span className="q-pill amber q-num">{px(level)}</span>
+          <span className="q-pill amber q-num">{typeof level === "object"
+            ? [level.close && `close ${px(level.close)}`, level.touch && `touch ${px(level.touch)}`, level.target && `target ${px(level.target)}`].filter(Boolean).join(" · ")
+            : px(level)}</span>
           <button className="q-btn ghost" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => save(null)}>Clear</button>
         </>
       ) : (

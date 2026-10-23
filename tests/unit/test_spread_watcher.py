@@ -68,6 +68,9 @@ def test_payoff_debit_and_credit():
 
 # ─── rules ───────────────────────────────────────────────────────────────────
 
+NOV23 = date(2026, 11, 23)
+
+
 def ev(st, spot, value, day=date(2026, 10, 19), at=time(10, 0)):
     return [e.kind for e in evaluate(st, spot, value, day, at, R)]
 
@@ -113,6 +116,21 @@ def test_exit_day_from_0930_the_session_before_expiry():
     assert "exit_day" not in ev(st, 1790.0, 30.0, day=date(2026, 10, 23), at=time(10, 0))   # Fri: 2 sessions left
     assert "exit_day" not in ev(st, 1790.0, 30.0, day=date(2026, 10, 26), at=time(9, 20))
     assert "exit_day" in ev(st, 1790.0, 30.0, day=date(2026, 10, 26), at=time(9, 31))
+
+
+def test_daily_close_level_target_and_no_trail():
+    """HDFC bear put 670/600 (2026-10-23): stop on a DAILY close above 705,
+    emergency touch 721, target 665 -- intraday pops above 705 are not a stop."""
+    bear = SpreadState.open(Spread(Leg("HDFBAN", NOV23, "put", 670.0, 650, 8.85),
+                                   Leg("HDFBAN", NOV23, "put", 600.0, -650, 1.15)))
+    bear.close_level, bear.level, bear.target = 705.0, 721.0, 665.0
+    assert ev(bear, 690.0, 9.0, at=time(11, 0)) == [] and bear.stock_stop == 721.0   # no 0.8% trail
+    assert ev(bear, 708.0, 6.0, at=time(13, 0)) == []                                 # above 705 intraday: noise
+    assert ev(bear, 700.0, 7.0, at=time(15, 21)) == ["hold"]                          # closes below 705
+    assert ev(bear, 700.0, 7.0, at=time(15, 25)) == []                                # once a day
+    assert ev(bear, 707.0, 6.0, day=date(2026, 10, 20), at=time(15, 21)) == ["close_stop"]
+    assert ev(bear, 664.0, 14.0, day=date(2026, 10, 21)) == ["target"]
+    assert "trail_stock" in ev(bear, 722.0, 4.0, day=date(2026, 10, 22))              # emergency touch
 
 
 def test_user_level_and_bearish_trail():

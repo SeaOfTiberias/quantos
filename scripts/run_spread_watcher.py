@@ -19,7 +19,9 @@ one live API session per app: a login anywhere else kills this one, so the
 watcher re-reads the session file whenever a call fails and says so once.
 
 A per-trade stock-price exit level replaces the trail for that stock:
-~/.quantos/spread_watcher_levels.json, e.g. {"TECMAH": 1775}.
+~/.quantos/spread_watcher_levels.json, e.g. {"TECMAH": 1775} (on touch), or
+{"HDFBAN": {"close": 705, "touch": 721, "target": 665}}: stop on the DAILY
+close (checked 15:20), emergency on touch, target on touch.
 State (peak P&L, best stock price, alerts sent) persists in
 ~/.quantos/spread_watcher_state.json, so a restart mid-trade loses nothing.
 
@@ -147,7 +149,11 @@ def name(sp: Spread) -> str:
 
 def watching_text(sp: Spread, st: SpreadState, rules: SpreadRules) -> str:
     paid = f"paid {st.entry:.2f}" if st.entry > 0 else f"received {-st.entry:.2f}"
-    a = f"your level {st.level:g}" if st.level else f"stock {rules.stock_trail_pct:g}% behind its best once in profit"
+    if st.close_level:
+        a = (f"stock daily close beyond {st.close_level:g} (checked {rules.close_check_at})"
+             + (f", emergency touch {st.level:g}" if st.level else "") + (f", target {st.target:g}" if st.target else ""))
+    else:
+        a = f"your level {st.level:g}" if st.level else f"stock {rules.stock_trail_pct:g}% behind its best once in profit"
     return (f"👀 Watching {name(sp)} · {paid} · max loss ₹{st.max_loss:,.0f} · max profit ₹{st.max_profit:,.0f} · "
             f"breakeven {st.breakeven:,.2f}\nExit alerts: {a}; give-back keeps {rules.giveback_keep:.0%} once P&L ≥ "
             f"{rules.giveback_arm_pct:g}% of max; close by the session before {sp.long.expiry:%d-%b}. Alerts only.")
@@ -159,6 +165,14 @@ def close_orders(sp: Spread, q_long: tuple, q_short: tuple) -> str:
 
 
 # ─── Main loop ───────────────────────────────────────────────────────────────
+
+def apply_levels(st: SpreadState, v) -> None:
+    """A number = touch level (the original form); a dict may set touch / close / target."""
+    if isinstance(v, dict):
+        st.level, st.close_level, st.target = v.get("touch"), v.get("close"), v.get("target")
+    else:
+        st.level, st.close_level, st.target = v, None, None
+
 
 def load_json(path: Path) -> dict:
     try:
@@ -231,10 +245,10 @@ class SpreadWatcher:
             st = self.states.get(key)
             if st is None:
                 st = self.states[key] = SpreadState.open(sp)
-                st.level = levels.get(sp.long.stock_code)
+                apply_levels(st, levels.get(sp.long.stock_code))
                 self.notify.send(watching_text(sp, st, self.rules))
             else:
-                st.level = levels.get(sp.long.stock_code)        # cleared in the cockpit -> back to the trail
+                apply_levels(st, levels.get(sp.long.stock_code))   # cleared in the cockpit -> back to the trail
         for key in (set(self.spreads) | set(self.states)) - set(current):   # states too: closed while we were down
             st = self.states.pop(key, None)
             last = f" Last P&L seen ≈ ₹{st.last_pnl:,.0f}." if st and st.last_pnl is not None else ""

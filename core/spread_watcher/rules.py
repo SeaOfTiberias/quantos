@@ -13,6 +13,12 @@ re-tuned on the user's own spreads once there are 20-30):
      best price since (high for a bullish spread, low for a bearish one);
      the stop sits `stock_trail_pct` behind it. A per-trade level set by the
      user replaces the trail. Crossing it -> CLOSE.
+     A per-trade DAILY-CLOSE level also replaces the trail: checked once a
+     day at `close_check_at`, beyond it -> CLOSE, else a HOLD note. Added
+     2026-10-23: a 0.8% touch trail on a stock with a ~2.3% daily range is
+     noise (the TCS 22 Oct lesson); a year of breakout exits favoured a
+     daily-close stop with a wider touch-level emergency.
+  - Target: a per-trade stock-price target, on touch -> CLOSE (take it).
   B. Profit give-back. Once the P&L has reached `giveback_arm_pct` % of
      max profit, falling to `giveback_keep` x the best P&L seen -> CLOSE.
      (TechM 1740/1800 on 2026-10-19: best ~+Rs3,300 = 16% of max, so at
@@ -45,6 +51,7 @@ class SpreadRules:
     near_max_pct:     float = 90.0
     exit_sessions_before_expiry: int = 1
     exit_day_from:    str = "09:30"
+    close_check_at:   str = "15:20"
 
     @classmethod
     def from_config(cls, cfg: Optional[dict]) -> "SpreadRules":
@@ -94,7 +101,9 @@ class SpreadState:
     breakeven:  float
     bullish:    bool
     expiry:     str                       # ISO date
-    level:      Optional[float] = None    # user's own stock-price exit level (replaces trail A)
+    level:      Optional[float] = None    # user's own stock-price exit level, on touch (replaces trail A)
+    close_level: Optional[float] = None   # user's own stock-price stop on the DAILY close (replaces trail A)
+    target:     Optional[float] = None    # user's own stock-price target, on touch
     peak_pnl:   float = 0.0
     best_spot:  Optional[float] = None    # since first in profit
     stock_stop: Optional[float] = None
@@ -153,6 +162,8 @@ def evaluate(st: SpreadState, spot: float, value: float, today: date, now: time,
     # A. stock-price trail (or the user's own level)
     if st.level:
         st.stock_stop = st.level
+    elif st.close_level:
+        pass                                  # the daily-close check below is the stop
     elif pnl > 0 or st.best_spot is not None:
         if st.best_spot is None:
             fire("trail_armed", False, f"in profit: stock trail armed {rules.stock_trail_pct:g}% behind the best price")
@@ -162,6 +173,20 @@ def evaluate(st: SpreadState, spot: float, value: float, today: date, now: time,
     if st.stock_stop and (spot - st.stock_stop) * sign <= 0:
         what = "your level" if st.level else f"{rules.stock_trail_pct:g}% behind best {st.best_spot:,.2f}"
         fire("trail_stock", True, f"stock {spot:,.2f} crossed stop {st.stock_stop:,.2f} ({what})")
+
+    if st.close_level and now >= time.fromisoformat(rules.close_check_at):
+        key = f"close_check_{today.isoformat()}"
+        if key not in st.sent:
+            st.sent.append(key)
+            if (spot - st.close_level) * sign <= 0:
+                out.append(Event("close_stop", True, f"stock {spot:,.2f} closing beyond your daily-close stop "
+                                                     f"{st.close_level:,.2f}"))
+            else:
+                tgt = f", target {st.target:,.2f}" if st.target else ""
+                out.append(Event("hold", False, f"daily check: stock {spot:,.2f}, stop {st.close_level:,.2f} on the "
+                                                f"close not hit{tgt} -- HOLD"))
+    if st.target and (spot - st.target) * sign >= 0:
+        fire("target", True, f"stock {spot:,.2f} reached your target {st.target:,.2f} -- take the profit")
 
     # B. profit give-back
     st.peak_pnl = max(st.peak_pnl, pnl)
