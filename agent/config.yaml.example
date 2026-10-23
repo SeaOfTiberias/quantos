@@ -385,7 +385,7 @@ fno_screener:
   # discretionary trades -- it places no orders; the trade watcher manages
   # the exit once you buy. 18:15 IST weekdays (quantos-fno-screener.timer).
   enabled: false
-  top_n: 5                 # candidates per side
+  top_n: 8                 # candidates per side
   max_lot_cost: 0          # premium x lot size, rupees; 0 = no cap
   min_dte: 10              # never a contract with fewer calendar days left
   min_oi_lots: 50          # contract open interest, in lots
