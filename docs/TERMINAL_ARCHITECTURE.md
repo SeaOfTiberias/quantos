@@ -1,6 +1,6 @@
 # QuantOS Terminal: Target Architecture
 
-**Status:** APPROVED 2026-10-23 with the user's answers in §9 and the reordered roadmap in §8. Proposed 2026-10-16. The ADRs in §6 move into `docs/ADR.md` as v2.0.
+**Status:** APPROVED 2026-10-23 with the user's answers in §9 and the reordered roadmap in §8. Progress, and what's deferred, is tracked in §8. Proposed 2026-10-16. The ADRs in §6 move into `docs/ADR.md` as v2.0.
 **Supersedes, if approved:** the SaaS direction of ADR-01 (deployment), ADR-03 (multi-tenancy) and ADR-06 (pricing).
 **Organised by:** the seven domains of the Claude Certified Architect – Professional (CCAR-P) blueprint. Appendix A maps each domain to the sections here.
 
@@ -319,16 +319,36 @@ Regulation is a working assumption, not legal advice; confirm with a SEBI compli
 
 Reordered 2026-10-23: the trading loop works now, so foundations and the market tools that serve it come before accounts. Nothing touches the VM's live jobs during market hours; every change ships through the tested deploy.
 
-| Phase | Delivers | Exit check |
+| Phase | Delivers | Exit check | Status (2026-10-23) |
+|---|---|---|---|
+| **0 Foundations** | `CLAUDE.md` with the standing rules; model registry; LLM call log; P2/P3 commit hook; synthetic household fixture; Tailscale on the VM, the laptop and the user's phone, with nginx bound to the tailnet | Cockpit unreachable from the public internet; every LLM call goes through the registry and is logged | **Partly done.** Registry, call log, `CLAUDE.md` and hook shipped. The synthetic fixture moves to phase 1. **Tailscale deferred** by the user, so the cockpit stays on HTTPS + basic auth. |
+| **0b Market tools (MCP T0)** | `quote`, `option_chain`, `price_spread`, `pick_structure`, levels and ATR, screener state, idea log, as one MCP server used by Claude Code and the cockpit | A "what about <stock>?" question is answered from tools with no ad-hoc script (six were written by hand on 2026-10-23) | **Done** for Claude Code. The cockpit doesn't use the tools yet. |
+| **1 Accounts (read-only)** | Portfolio store (ADR-17); synthetic household fixture; sync for Fyers, Breeze (spouse) and Kite Connect (user's Zerodha); T1 MCP tools; account dashboards | The connected accounts reconcile with each broker's own holdings and funds screens | **Next.** Fyers and the spouse's Breeze are already connected. **Kite Connect deferred** by the user. The son's account is deferred (OTP unavailable). |
+| **2 Trades view** | Strategies across accounts as one view: spreads grouped, futures with their managed plans; per-strategy P&L, max loss and breakeven | A spread and a managed future show as one line each with correct numbers | Not started. The spread watcher and position manager already do the per-position maths. |
+| **3 Mutual funds** | CAS import, AMFI NAV job, XIRR and category mix | Values match the CAS to the rupee on statement date | Not started |
+| **4 Net worth** | All holdings: demat, MFs, FDs, EPF/PPF, gold (no property, no loans); person and household views, history and allocation | Monthly letter generated | Not started |
+| **5 Local model** | Eval suites first, so a later hardware choice is sized from evals (ADR-20) | — | **Deferred** by the user: stay on the laptop and the VM |
+| **6 Order actions** | T3 square-off through the VM gateway with typed confirmation. Needs the Breeze static-IP fix first. | Only after the user's explicit stage-2 go-ahead (C3) | Not started; blocked on the static IP and the go-ahead |
+
+### What shipped on 2026-10-23
+
+| Area | Shipped | Commits |
 |---|---|---|
-| **0 Foundations** | `CLAUDE.md` with the standing rules; model registry (22 files hard-code model IDs today); LLM call log; P2/P3 commit hook; synthetic household fixture; Tailscale on the VM, the laptop and the user's phone, with nginx bound to the tailnet | Cockpit unreachable from the public internet; every LLM call goes through the registry and is logged |
-| **0b Market tools (MCP T0)** | `quote`, `option_chain`, `price_spread`, `pick_structure`, levels and ATR, screener state, idea log, as one MCP server used by Claude Code and the cockpit | A "what about <stock>?" question is answered from tools with no ad-hoc script (six were written by hand on 2026-10-23) |
-| **1 Accounts (read-only)** | Portfolio store (ADR-17); sync for Fyers, Breeze (spouse) and **Kite Connect (user's Zerodha)**; T1 MCP tools; account dashboards. The son's account is deferred. | The three accounts reconcile with each broker's own holdings and funds screens |
-| **2 Trades view** | Strategies across accounts as one view: spreads grouped, futures with their managed plans; per-strategy P&L, max loss and breakeven | A spread and a managed future show as one line each with correct numbers |
-| **3 Mutual funds** | CAS import, AMFI NAV job, XIRR and category mix | Values match the CAS to the rupee on statement date |
-| **4 Net worth** | All holdings: demat, MFs, FDs, EPF/PPF, gold (no property, no loans); person and household views, history and allocation | Monthly letter generated |
-| **5 Local model** | Deferred (user, 2026-10-23): stay on the laptop and the VM. Eval suites still get built, so a later hardware choice is sized from evals (ADR-20). | — |
-| **6 Order actions** | T3 square-off through the VM gateway with typed confirmation. Needs the Breeze static-IP fix first. | Only after the user's explicit stage-2 go-ahead (C3) |
+| Phase 0 | `config/models.yaml` + `core/llm` (`model_for`, `log_call` → `~/.quantos/llm_calls.jsonl`, metadata only). All 10 Claude call sites migrated with **no model change**. `CLAUDE.md`. `.githooks/pre-commit` (enable per clone: `git config core.hooksPath .githooks`). | 9b1bba9 |
+| Phase 0b | `mcp_server/quantos_mcp.py` (mcp 2.3.0) with 8 read-only tools from `core/mcp_tools/market.py`, live adapter `core/mcp_tools/live.py`. Runs on the VM over SSH via `scripts/quantos-mcp.sh` and `.mcp.json`. | a243f6d, 9d76377, f125da6 |
+| Trading loop | Screener: up to 12 picks per side, edge labels, retest plan per pick, spread sized to the 5-session move, bid-ask gate, watchlist, Nifty label. Position manager for ICICI futures. Daily-close stops in the spread watcher; Breeze retry. | 6143246 … d8a3939 |
+| Research | Year backtest of the screener's signals, exit grid, and the pre-registered entry search (puts' retest entry passes; calls have no edge). | 6a53794, 37c3aab |
+
+### Deferred, and what each needs
+
+| Item | Needs | Unblocks |
+|---|---|---|
+| Tailscale | The user installs it on the laptop and phone; an auth key or `tailscale up` on the VM | Taking the cockpit off the public internet (phase 0 exit check) |
+| Kite Connect | The user's Kite Connect app (paid), key and secret in `~/.quantos/`, redirect `https://161-118-189-29.sslip.io/auth/kite/callback` | The user's Zerodha account in phase 1 |
+| Son's ICICI Direct | His OTP, when he's back. Read-only, never algo-traded. | His account in the household view |
+| Local model and hardware | A user decision; evals first | Phase 5 |
+| Model upgrades (Sonnet 4.6 → current) | A deliberate migration per feature. `pre_trade` forces `tool_choice`, which Opus/Sonnet 5.5 reject. | Lower cost and newer models |
+| API orders | Fixing Breeze's static-IP mismatch; the stage-2 go-ahead | Phase 6, resting target and stop orders from the position manager |
 
 ## 9. The user's answers (2026-10-23)
 
