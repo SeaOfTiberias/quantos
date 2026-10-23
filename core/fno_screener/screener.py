@@ -361,9 +361,11 @@ def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
 # Sep 2025 - Oct 2026, as futures, 0.1% round trip). Calls are still sent, marked; the
 # user tunes them out later rather than the screener hiding them.
 SIDE_EDGE = {
-    OptionType.CALL: "no measured edge -- lost after costs under every exit rule (1y backtest)",
-    OptionType.PUT:  "small measured edge with the futures plan (+0.23%/trade, 67% won, 1y backtest)",
+    OptionType.CALL: "no measured edge -- lost after costs under every exit and entry rule tested (1y backtest)",
+    OptionType.PUT:  "measured edge with the retest plan: +0.31%/trade, 69% won, both halves (1y backtest, futures)",
 }
+PLAN_ENTRY_ATR = 0.25      # limit this far from the broken box level, toward the trade (H1 retest)
+PLAN_ENTRY_SESSIONS = 3
 PLAN_STOP_ATR = 0.75       # stop this many ATRs from entry, judged on the DAILY close
 PLAN_TARGET_R = 1.0        # resting take-profit at 1R
 PLAN_MAX_SESSIONS = 10
@@ -377,17 +379,20 @@ def daily_atr(bars: list[OHLCV], n: int = 14) -> Optional[float]:
 
 
 def _plan_text(c: Candidate) -> Optional[str]:
-    """The backtest's best both-halves exit rule, anchored at today's close
-    (re-anchor to the actual fill)."""
-    if not c.atr:
+    """The pre-registered H1 retest entry and the fixed exit
+    (docs/FNO_ENTRY_SEARCH_PREREG_2026-10-23.md, scripts/backtest_fno_entries.py):
+    a limit just inside the broken level, valid PLAN_ENTRY_SESSIONS sessions;
+    stop on a daily close 0.75 ATR beyond the fill; resting 1R target."""
+    if not c.atr or not c.box_level:
         return None
     sign = 1 if c.side == OptionType.CALL else -1
-    stop = c.close - sign * PLAN_STOP_ATR * c.atr
-    target = c.close + sign * PLAN_TARGET_R * PLAN_STOP_ATR * c.atr
-    beyond = "below" if sign > 0 else "above"
-    return (f"   plan (futures): stop on a daily close {beyond} {_px(stop)} ({PLAN_STOP_ATR:g} ATR) · "
-            f"target {_px(target)} ({PLAN_TARGET_R:g}R, resting order) · out by session {PLAN_MAX_SESSIONS} "
-            f"· re-anchor to your fill")
+    entry = c.box_level + sign * PLAN_ENTRY_ATR * c.atr
+    stop = entry - sign * PLAN_STOP_ATR * c.atr
+    target = entry + sign * PLAN_TARGET_R * PLAN_STOP_ATR * c.atr
+    verb, beyond = ("buy", "below") if sign > 0 else ("sell", "above")
+    return (f"   plan (futures): {verb} limit {_px(entry)} (retest, valid {PLAN_ENTRY_SESSIONS} sessions) · "
+            f"stop daily close {beyond} {_px(stop)} · target {_px(target)} (1R, resting) · "
+            f"out by session {PLAN_MAX_SESSIONS}")
 
 
 def _px(x: float) -> str:
