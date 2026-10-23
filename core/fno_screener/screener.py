@@ -282,6 +282,7 @@ class Candidate:
     oi:            Optional[OiBuildup]
     contract:      Optional[Contract]
     skip_reason:   str = ""
+    atr:           Optional[float] = None   # ATR(14) on real daily bars, rupees
 
     @property
     def sort_key(self) -> tuple:
@@ -336,7 +337,7 @@ def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
                 momentum_pct=entry.momentum_pct,
                 box_level=round(box_level, 2) if box_level else None,
                 box_width_pct=entry.box_width_pct,
-                oi=oi, contract=contract, skip_reason=why,
+                oi=oi, contract=contract, skip_reason=why, atr=daily_atr(daily[entry.symbol]),
             )
             if excluded:
                 dropped.append(cand)
@@ -355,6 +356,39 @@ def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
 
 
 # ─── Telegram ────────────────────────────────────────────────────────────────
+
+# What a year of the screener's own signals says per side (scripts/backtest_fno_exits.py,
+# Sep 2025 - Oct 2026, as futures, 0.1% round trip). Calls are still sent, marked; the
+# user tunes them out later rather than the screener hiding them.
+SIDE_EDGE = {
+    OptionType.CALL: "no measured edge -- lost after costs under every exit rule (1y backtest)",
+    OptionType.PUT:  "small measured edge with the futures plan (+0.23%/trade, 67% won, 1y backtest)",
+}
+PLAN_STOP_ATR = 0.75       # stop this many ATRs from entry, judged on the DAILY close
+PLAN_TARGET_R = 1.0        # resting take-profit at 1R
+PLAN_MAX_SESSIONS = 10
+
+
+def daily_atr(bars: list[OHLCV], n: int = 14) -> Optional[float]:
+    if len(bars) < n + 1:
+        return None
+    trs = [max(b.high - b.low, abs(b.high - a.close), abs(b.low - a.close)) for a, b in zip(bars[-n - 1:], bars[-n:])]
+    return round(sum(trs) / n, 2)
+
+
+def _plan_text(c: Candidate) -> Optional[str]:
+    """The backtest's best both-halves exit rule, anchored at today's close
+    (re-anchor to the actual fill)."""
+    if not c.atr:
+        return None
+    sign = 1 if c.side == OptionType.CALL else -1
+    stop = c.close - sign * PLAN_STOP_ATR * c.atr
+    target = c.close + sign * PLAN_TARGET_R * PLAN_STOP_ATR * c.atr
+    beyond = "below" if sign > 0 else "above"
+    return (f"   plan (futures): stop on a daily close {beyond} {_px(stop)} ({PLAN_STOP_ATR:g} ATR) · "
+            f"target {_px(target)} ({PLAN_TARGET_R:g}R, resting order) · out by session {PLAN_MAX_SESSIONS} "
+            f"· re-anchor to your fill")
+
 
 def _px(x: float) -> str:
     return f"{x:,.2f}" if x < 1000 else f"{x:,.1f}"
@@ -430,7 +464,7 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
              _market_text(result.market)]
     for title, side, cands in (("📈 CALLS", OptionType.CALL, result.calls), ("📉 PUTS", OptionType.PUT, result.puts)):
         lines.append("")
-        lines.append(title)
+        lines.append(f"{title} -- {SIDE_EDGE[side]}")
         if not cands:
             lines.append("   none today")
         for i, c in enumerate(cands, 1):
@@ -438,6 +472,8 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
                 lines.append("")
             lines.append(f"{i}. {c.symbol} {_px(c.close)} -- {_setup_text(c)} · {_strength_text(c)}")
             lines.append(f"   {_oi_text(c, cfg.oi_lookback_sessions)}")
+            if plan := _plan_text(c):
+                lines.append(plan)
             if spread_lines and (c.side.value, c.symbol) in spread_lines:
                 lines.append(spread_lines[(c.side.value, c.symbol)])
             lines.extend(_contract_lines(c, rules, cfg))

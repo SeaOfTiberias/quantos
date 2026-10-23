@@ -223,6 +223,8 @@ class TestBuildCandidates:
         assert "UP2" in text and "DN1" in text and "THIN CE" in text
         assert "stop 7.20" in text and "lock at 8.64 → 8.40" in text and "trail from 8.96" in text
         assert "UP1 CE 100.00: close above 98.00" in text           # watchlist line, no contract
+        assert "no measured edge" in text and "small measured edge" in text
+        assert "plan (futures): stop on a daily close below" in text       # ATR from the fixture bars
 
     def test_excluded_oi_hook_and_wide_single_not_offered(self, monkeypatch):
         from core.fno_screener import screener as scr
