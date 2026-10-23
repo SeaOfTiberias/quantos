@@ -65,7 +65,7 @@ class ScreenerConfig:
     max_delta:            float = 0.80   # deeper than this is mostly intrinsic, not "slightly ITM"
     oi_lookback_sessions: int = 5
     oi_flat_pct:          float = 2.0    # |OI change| below this % = no build-up either way
-    max_out_sessions:     int = 1        # a breakout older than this is no longer a setup (see setup_rank)
+    max_out_sessions:     int = 5        # a breakout older than this is no longer a setup (see setup_rank)
     max_single_bid_ask_pct: float = 5.0  # (ask - bid) / mid of the single option; wider = don't buy it
     top_n:                int = 5        # per side
 
@@ -137,10 +137,12 @@ def setup_rank(entry: ShortlistEntry, max_out_sessions: int) -> Optional[int]:
     """0 fresh breakout, 1 broke out <= max_out_sessions ago, WATCH_RANK near
     the box edge; None = not a setup.
 
-    Outcome log 9-22 Oct 2026 (77 picks, small and overlapping): NEAR picks
-    and breakouts 2-5 sessions old lost on the near spread by day 5 (-20%,
-    -17%) while fresh / day-1 breakouts didn't (+4%, n=7). Hence day-1 only
-    and NEAR as a watchlist."""
+    A year of the screener's own signals (scripts/backtest_fno_screener.py,
+    Sep 2025 - Oct 2026, ~2,000 breakouts per side) overturned the 77-pick
+    reading that only day-1 breakouts work: 2-5 session old breakouts did
+    slightly better (excess +0.24% over 5 sessions, t~2.2, both sides) and
+    the day-1-only set lost under every exit rule tested. NEAR stays a
+    watchlist: no edge as a buy (calls -0.09%)."""
     if not entry.trend_up or entry.momentum_tier == "LAGGARD":
         return None
     state, days = entry.breakout_state, entry.days_above_ceil
@@ -153,9 +155,10 @@ def setup_rank(entry: ShortlistEntry, max_out_sessions: int) -> Optional[int]:
     return None
 
 
-# Calls riding short covering (price up, futures OI down) were the worst
-# group in the same log (near spread -44% by day 5, n=5): squeezes fade.
-_EXCLUDED_OI = {OptionType.CALL: {SHORT_COVERING}, OptionType.PUT: set()}
+# Hook for excluding OI build-up labels per side. Empty: the 77-pick log had
+# calls on short covering worst (n=5), but over the year the sign flipped
+# between halves (+0.43% / -0.67%) -- noise, not a filter.
+_EXCLUDED_OI: dict = {OptionType.CALL: set(), OptionType.PUT: set()}
 
 
 # ─── Market regime (a label, not a filter) ───────────────────────────────────
@@ -422,7 +425,7 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
                     spread_lines: Optional[dict[tuple[str, str], str]] = None) -> str:
     """`spread_lines` maps (side, symbol) -> the primary line from core/fno_screener/spreads.spread_line."""
     lines = [f"🎯 F&O candidates · close of {result.trade_date:%a %d %b}",
-             f"Screening aid, not a signal. {result.scanned} F&O stocks scanned. Fresh / day-1 breakouts only. "
+             f"Screening aid, not a signal. {result.scanned} F&O stocks scanned. Breakouts up to 5 sessions old. "
              "Prices are the close -- check the live bid/ask before entering.",
              _market_text(result.market)]
     for title, side, cands in (("📈 CALLS", OptionType.CALL, result.calls), ("📉 PUTS", OptionType.PUT, result.puts)):
@@ -449,7 +452,7 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
             level = _px(c.box_level) if c.box_level else "?"
             lines.append(f"   {c.symbol} {c.side.value} {_px(c.close)}: close {beyond} {level}{gap}")
     if result.dropped:
-        lines += ["", f"Dropped (short covering, squeezes fade): {_names(result.dropped)}"]
+        lines += ["", f"Dropped on OI build-up: {_names(result.dropped)}"]
     if result.skipped:
         cap = f" ≤ ₹{cfg.max_lot_cost:,.0f}" if cfg.max_lot_cost else ""
         lines += ["", f"No liquid ITM option{cap} (futures? run pick_structure): "

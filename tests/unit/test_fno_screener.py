@@ -160,14 +160,14 @@ def _entry(symbol, state="FRESH", days=1, tier="LEADER", trend=True, pct=95.0):
 class TestSetupRank:
 
     def test_order_and_exclusions(self):
-        assert setup_rank(_entry("A", "FRESH"), 1) == 0
-        assert setup_rank(_entry("A", "OUT", 1), 1) == 1
-        assert setup_rank(_entry("A", "NEAR", None), 1) == 2           # watchlist
-        assert setup_rank(_entry("A", "OUT", 2), 1) is None             # day 2+ is no longer a setup
+        assert setup_rank(_entry("A", "FRESH"), 5) == 0
+        assert setup_rank(_entry("A", "OUT", 5), 5) == 1
+        assert setup_rank(_entry("A", "NEAR", None), 5) == 2           # watchlist
+        assert setup_rank(_entry("A", "OUT", 6), 5) is None             # stale breakout
         assert setup_rank(_entry("A", "IN BOX", None), 1) is None
         assert setup_rank(_entry("A", trend=False), 1) is None
         assert setup_rank(_entry("A", tier="LAGGARD"), 1) is None
-        assert ScreenerConfig().max_out_sessions == 1
+        assert ScreenerConfig().max_out_sessions == 5
 
 
 class TestGatesAndLabels:
@@ -198,7 +198,7 @@ class TestBuildCandidates:
     def test_routing_ranking_and_skips(self):
         bars, day = self._universe()
         calls = [_entry("UP1", "NEAR", None), _entry("UP2", "FRESH"), _entry("THIN", "FRESH")]
-        puts = [_entry("DN1", "OUT", 1), _entry("DN2", "OUT", 3)]
+        puts = [_entry("DN1", "OUT", 1), _entry("DN2", "OUT", 7)]
         seen = []
 
         def fake_shortlist(bars_map, as_of):
@@ -212,7 +212,7 @@ class TestBuildCandidates:
 
         assert [c.symbol for c in r.calls] == ["UP2"]                # NEAR is not a buy
         assert [c.symbol for c in r.watch] == ["UP1"] and r.watch[0].contract is None
-        assert [c.symbol for c in r.puts] == ["DN1"]                 # DN2 is 3 sessions out: dropped
+        assert [c.symbol for c in r.puts] == ["DN1"]                 # DN2 is 7 sessions out: dropped
         assert r.puts[0].contract.quote.option_type == PE
         assert r.puts[0].box_level == round(100.0 ** 2 / 98.0, 2)   # inverted ceiling -> real floor
         assert [c.symbol for c in r.skipped] == ["THIN"]
@@ -224,7 +224,9 @@ class TestBuildCandidates:
         assert "stop 7.20" in text and "lock at 8.64 → 8.40" in text and "trail from 8.96" in text
         assert "UP1 CE 100.00: close above 98.00" in text           # watchlist line, no contract
 
-    def test_short_covering_calls_dropped_and_wide_single_not_offered(self):
+    def test_excluded_oi_hook_and_wide_single_not_offered(self, monkeypatch):
+        from core.fno_screener import screener as scr
+        monkeypatch.setitem(scr._EXCLUDED_OI, CE, {SHORT_COVERING})
         bars, day = self._universe()
         past = FnoDay(trade_date=TODAY - timedelta(days=7), spot={s: 95.0 for s in day.spot},
                       futures_oi={s: {NOV: 2000} for s in day.spot}, options={})   # price up, OI halved
@@ -232,7 +234,7 @@ class TestBuildCandidates:
         with patch("core.fno_screener.screener.build_shortlist", side_effect=[[_entry("UP2", "FRESH")], []]),              patch("core.fno_screener.screener.analyse_symbol", return_value=base):
             r = build_candidates(bars, day, past, ScreenerConfig())
         assert r.calls == [] and [c.symbol for c in r.dropped] == ["UP2"]
-        assert "Dropped (short covering" in format_telegram(r, ExitRules(), ScreenerConfig())
+        assert "Dropped on OI build-up" in format_telegram(r, ExitRules(), ScreenerConfig())
 
         with patch("core.fno_screener.screener.build_shortlist", side_effect=[[_entry("UP2", "FRESH")], []]),              patch("core.fno_screener.screener.analyse_symbol", return_value=base):
             r = build_candidates(bars, day, None, ScreenerConfig())
