@@ -90,6 +90,14 @@ class Notifier:
                 print(f"Telegram send failed ({e})", flush=True)
 
 
+def load_explainer_cfg() -> dict:
+    try:
+        import yaml
+        return (yaml.safe_load(CONFIG_PATH.read_text()) or {}).get("trade_explainer") or {}
+    except Exception:
+        return {}
+
+
 def load_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text())
@@ -190,6 +198,12 @@ def plan_text(p: Plan) -> str:
     return "\n".join(lines)
 
 
+def event_for(p: Plan, kind: str, price: float) -> dict:
+    """What the explainer may see: the rule, direction and levels -- no quantity, entry or P&L."""
+    return {"alert": kind, "instrument": f"{p.symbol} futures {'long' if p.side > 0 else 'short'}",
+            "price_now": price, "levels": {"stop_daily_close": p.stop, "emergency": p.emergency, "target": p.target}}
+
+
 # ─── Loop ────────────────────────────────────────────────────────────────────
 
 class Manager:
@@ -198,6 +212,8 @@ class Manager:
         self.data = Data()
         self.plans: dict[str, Plan] = {k: Plan.from_dict(v) for k, v in load_json(STATE_PATH).items()}
         self.morning_sent: set[str] = set()
+        from core.llm.explainer import Explainer
+        self.explainer = Explainer({} if dry else load_explainer_cfg(), notify.send)
         self.current: dict[str, FutPosition] = {}
         self.session_alerted = False
 
@@ -253,14 +269,18 @@ class Manager:
                     self.notify.send(f"☀️ {name(plan)} · now {price:g} · stop {plan.stop:g} (daily close) · "
                                      f"target {plan.target if plan.target is not None else '-'} · "
                                      "re-place today's stop order (Breeze stops are day-only) and keep the target limit resting.")
+            self.explainer.check_gap(key, plan.symbol, name(plan), plan.side)
             for ev in check_intraday(plan, price):
                 head = "🚨" if ev.kind == "EMERGENCY" else "🎯"
                 self.notify.send(f"{head} {ev.kind} {name(plan)}: {ev.detail}.")
+                self.explainer.explain(plan.symbol, event_for(plan, ev.kind, price))
             if (t.hour, t.minute) >= CLOSE_CHECK_AT and plan.last_check != today.isoformat():
                 n = session_no(self.data.daily(plan.symbol, days=30), plan.entry_date, today)
                 ev = check_close(plan, price, today, n)
                 head = {"CLOSE": "🔴 CLOSE", "TIME": "⏰ TIME", "HOLD": "🟢 HOLD"}[ev.kind]
                 self.notify.send(f"{head} {name(plan)}: {ev.detail}.")
+                if ev.kind != "HOLD":
+                    self.explainer.explain(plan.symbol, event_for(plan, ev.kind, price))
         self.save()
 
     def run(self, once: bool) -> int:

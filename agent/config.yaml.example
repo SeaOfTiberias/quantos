@@ -393,3 +393,14 @@ fno_screener:
   max_single_bid_ask_pct: 5  # single option's (ask - bid) / mid, % -- wider: spread line only
   max_itm_strikes: 2       # how deep in the money to look
   oi_lookback_sessions: 5  # futures OI build-up window
+
+trade_explainer:
+  # Follow-up context for position-manager / spread-watcher alerts
+  # (core/llm/explainer.py): when a rule fires or a held stock gaps >= gap_atr
+  # ATRs at the open, one Claude call (web search for today's news) explains
+  # WHY the stock is moving. The alert itself is unchanged and never waits.
+  # Sends symbol, structure and levels only -- never quantity, P&L or account.
+  enabled: false
+  max_per_day: 12          # cost cap (~$0.05-0.10 each)
+  gap_atr: 1.0             # opening gap, in ATRs, that triggers a gap alert
+

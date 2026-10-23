@@ -199,6 +199,14 @@ def load_json(path: Path) -> dict:
         return {}
 
 
+def load_explainer_cfg() -> dict:
+    try:
+        import yaml
+        return (yaml.safe_load(CONFIG_PATH.read_text()) or {}).get("trade_explainer") or {}
+    except Exception:
+        return {}
+
+
 def load_rules() -> SpreadRules:
     try:
         import yaml
@@ -218,6 +226,18 @@ class SpreadWatcher:
         self.naked_last: dict[str, float] = {}
         self.naked: list = []
         self.views: dict[str, dict] = {}          # display-only extras for the cockpit, per spread
+        from core.llm.explainer import Explainer
+        self.explainer = Explainer({} if dry else load_explainer_cfg(), notify.send)
+        self.nse: dict[str, str] = {}             # ICICI code -> NSE symbol (HDFBAN -> HDFCBANK)
+
+    def nse_symbol(self, code: str) -> str:
+        if code not in self.nse:
+            try:
+                n = self.client.get_names(exchange_code="NSE", stock_code=code) or {}
+                self.nse[code] = str(n.get("exchange_stock_code") or code).upper()
+            except Exception:
+                return code
+        return self.nse[code]
 
     def save(self) -> None:
         if self.dry:                      # --once must not mark alerts as sent for the real watcher
@@ -303,6 +323,8 @@ class SpreadWatcher:
             value = (ql[0] - qs[1]) if quoted else (ql[2] - qs[2])
             self.views.setdefault(key, {}).update(long_quote=list(ql), short_quote=list(qs), quoted=quoted,
                                                   updated_at=now_ist().isoformat(timespec="seconds"))
+            sym = self.nse_symbol(sp.long.stock_code)
+            self.explainer.check_gap(key, sym, name(sp), 1 if st.bullish else -1)
             for ev in evaluate(st, spot, value, today, now, self.rules):
                 head = "🔴 CLOSE" if ev.close else "ℹ️"
                 orders = f"\nClose both legs: {close_orders(sp, ql, qs)}" if ev.close else ""
@@ -310,6 +332,13 @@ class SpreadWatcher:
                 self.notify.send(f"{head} {name(sp)} · {ev.detail}.\nP&L now ₹{st.last_pnl:,.0f} "
                                  f"(best ₹{st.peak_pnl:,.0f}, max ₹{st.max_profit:,.0f}){basis}.{orders}"
                                  + ("\nAlerts only: place the orders yourself." if ev.close else ""))
+                if ev.close:
+                    self.explainer.explain(sym, {
+                        "alert": ev.kind, "stock_now": spot,
+                        "instrument": f"{sym} {sp.kind} {sp.long.strike:g}/{sp.short.strike:g} "
+                                      f"{'CE' if sp.long.right == 'call' else 'PE'} expiring {sp.long.expiry:%d-%b}",
+                        "levels": {"close_stop": st.close_level, "emergency_touch": st.level, "target": st.target,
+                                   "breakeven": st.breakeven}})
         self.save()
 
     def run(self, once: bool = False) -> int:

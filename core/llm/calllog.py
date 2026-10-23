@@ -21,6 +21,9 @@ from typing import Any, Optional
 from core.llm.registry import prices
 
 
+WEB_SEARCH_USD = 0.01          # $10 per 1,000 searches
+
+
 def _log_path() -> Path:
     base = os.getenv("QUANTOS_HOME_DIR")
     return (Path(base) if base else Path.home() / ".quantos") / "llm_calls.jsonl"
@@ -48,6 +51,7 @@ def log_call(feature: str, model: str, response: Any = None, started: Optional[f
         usage = getattr(response, "usage", None)
         tok = {k: int(getattr(usage, k, 0) or 0) for k in
                ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}
+        searches = int(getattr(getattr(usage, "server_tool_use", None), "web_search_requests", 0) or 0)
         row = {
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "feature": feature, "model": model,
@@ -55,8 +59,10 @@ def log_call(feature: str, model: str, response: Any = None, started: Optional[f
             "stop_reason": getattr(response, "stop_reason", None),
             "latency_ms": round(ms, 1) if ms is not None else None,
             **tok,
-            "usd": estimate_usd(model, tok["input_tokens"], tok["output_tokens"],
-                                tok["cache_read_input_tokens"], tok["cache_creation_input_tokens"]),
+            "web_searches": searches,
+            "usd": (lambda u: None if u is None else round(u + searches * WEB_SEARCH_USD, 6))(
+                estimate_usd(model, tok["input_tokens"], tok["output_tokens"],
+                             tok["cache_read_input_tokens"], tok["cache_creation_input_tokens"])),
             "request_id": getattr(response, "_request_id", None),
             "error": type(error).__name__ if error is not None else None,
         }
