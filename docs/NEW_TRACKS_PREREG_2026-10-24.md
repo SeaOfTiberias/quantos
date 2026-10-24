@@ -94,3 +94,55 @@ The user brought a multi-track spec ("Master task specification: multi-asset bac
 - Results are appended to this file. The script is `scripts/backtest_new_tracks.py`; strategy code is in `core/surge/put_credit.py`, `core/fx_coint/` and `core/backtest/evaluator.py`.
 - A failed test is reported as failed and not re-tuned in this round.
 - The vault gets the result (ingest, compile, report).
+
+---
+
+## Results
+
+Run 2026-10-25: `python scripts/backtest_new_tracks.py`. Stressed costs gate; Base is shown for reference. Gates as pre-registered; bootstrap bound = 2.5th percentile (two tracks).
+
+### Stage 1 (per-trade screen)
+
+| Track, costs | Trades | PF | Sharpe | Won | Mean return on risk | PF halves (n) | Bootstrap 2.5% | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| A surge bull put credit, Stressed | 128 | 1.01 | 0.01 | 77% | +0.10% | 0.58 / 1.28 (33 / 95) | -7.84% | FAIL |
+| A surge bull put credit, Base (reference) | 128 | 1.08 | 0.11 | 77% | +1.03% | 0.63 / 1.37 (33 / 95) | -6.71% | FAIL |
+| B EUR/USD–GBP/USD, Stressed 4 pips | 100 | 0.71 | -0.20 | 58% | -2.02% | 0.51 / 0.98 (48 / 52) | -5.69% | FAIL |
+| B EUR/USD–GBP/USD, Base 1 pip (reference) | 100 | 0.89 | -0.07 | 60% | -0.69% | 0.63 / 1.25 (48 / 52) | -4.37% | FAIL |
+
+- A stressed: failed PF > 1.2, Sharpe > 0.8, PF > 1 in each half, bootstrap 2.5% > 0.
+- B stressed: failed PF > 1.2, Sharpe > 0.8, PF > 1 in each half, bootstrap 2.5% > 0.
+
+### Stage 2 (real-NAV quarter-Kelly, Stressed)
+
+Reported for both tracks; it only counts for a Stage 1 pass.
+
+| Track | Start | End | Max DD | Taken | Lot-lockouts | Capital busy | No edge (f ≤ 0) | Kill days | Warm-up | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | ₹100,000 | ₹100,000 | 0.0% | 0 | 33 | 0 | 64 | 0 | 31 | FAIL |
+| A | ₹250,000 | ₹250,000 | 0.0% | 0 | 33 | 0 | 64 | 0 | 31 | FAIL |
+| A | ₹500,000 | ₹500,000 | 0.0% | 0 | 33 | 0 | 64 | 0 | 31 | FAIL |
+| B | ₹100,000 | ₹100,000 | 0.0% | 0 | 0 | 0 | 70 | 0 | 30 | FAIL |
+| B | ₹250,000 | ₹250,000 | 0.0% | 0 | 0 | 0 | 70 | 0 | 30 | FAIL |
+| B | ₹500,000 | ₹500,000 | 0.0% | 0 | 0 | 0 | 70 | 0 | 30 | FAIL |
+
+### Go-live decision matrix
+
+| Strategy | Asset class | Net PF | Sharpe | Max DD (worst tier) | Capital floor | Go-live |
+|---|---|---|---|---|---|---|
+| Surge bull put credit spread | Stock options (NSE) | 1.01 | 0.01 | 0.0% | none | FAIL |
+| EUR/USD–GBP/USD cointegration | Currency futures (NSE cross) | 0.71 | -0.20 | 0.0% | none | FAIL |
+
+### Track A detail
+
+- 2571 candidate-23 events; 283,010 symbol-days with an IV rank.
+- Skipped: IV rank < 0.70 2333, no strikes in the delta bands 104, no IV rank (< 200 IV days) 6.
+- 128 trades. Exits: take profit 96, stop 24, time 8.
+- Price fallbacks over all marks: settlement 142, intrinsic 2.
+- Median credit / width: 23%
+
+### Track B detail
+
+- stressed: 6,717 days, 439 flat days with all three tests passing, 100 entries, 100 trades.
+- base: 6,717 days, 439 flat days with all three tests passing, 100 entries, 100 trades.
+
