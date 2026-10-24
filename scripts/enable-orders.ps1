@@ -32,8 +32,17 @@ param(
     [ValidateSet("live", "paper", "off")] [string]$Mode,
     [ValidateSet("on", "off")] [string]$Kill,
     [ValidateSet("auto", "alerts")] [string]$Spreads,
-    [ValidateSet("exit_day", "close_stop", "target", "trail_stock", "giveback")] [string[]]$SpreadKinds
+    [string]$SpreadKinds        # comma-separated: exit_day,close_stop,target (also trail_stock, giveback)
 )
+
+# `powershell -File` passes "a,b,c" as one string, so the list is split and checked here.
+$KindsList = @()
+if ($SpreadKinds) {
+    $allowed = "exit_day", "close_stop", "target", "trail_stock", "giveback"
+    $KindsList = $SpreadKinds -split "[,\s]+" | Where-Object { $_ }
+    $bad = $KindsList | Where-Object { $allowed -notcontains $_ }
+    if ($bad) { Write-Host "Unknown -SpreadKinds: $($bad -join ', '). Allowed: $($allowed -join ', ')"; exit 1 }
+}
 
 $Vm = "ubuntu@161.118.189.29"
 $Key = Join-Path $HOME ".ssh\oracle.key"
@@ -49,7 +58,7 @@ if ($Kill) {
 
 if ($Spreads -or $SpreadKinds) {
     $ordersLine = if ($Spreads) { "  orders: $Spreads   # auto = close spreads on a CLOSE event, short leg first; alerts = Telegram only" } else { "" }
-    $kindsLine = if ($SpreadKinds) { "  auto_close: [" + ($SpreadKinds -join ", ") + "]   # CLOSE kinds that act by themselves; the rest stay alerts" } else { "" }
+    $kindsLine = if ($SpreadKinds) { "  auto_close: [" + ($KindsList -join ", ") + "]   # CLOSE kinds that act by themselves; the rest stay alerts" } else { "" }
     $sp = @"
 import re, shutil, time, yaml
 p = 'agent/config.yaml'
