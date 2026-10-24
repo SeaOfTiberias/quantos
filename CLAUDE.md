@@ -4,7 +4,13 @@ A household trading and portfolio terminal. Architecture: `docs/TERMINAL_ARCHITE
 
 ## Money and orders
 - **No change to capital, position size or `dry_run` without the user's explicit go-ahead in that session.**
-- Everything that touches a broker is **alerts only**: the trade watcher, the spread watcher and the position manager. Order code (tier T3) is never callable by a model. Don't write or change order-placing code without an explicit stage-2 go-ahead.
+- **Stage 2 is approved** (user, 2026-10-22 for API orders; 2026-10-24 for automated exits): orders go to ICICI Direct from the VM's static IP. The order rule is **a model drafts, code checks, the user releases; rule-driven exits are placed by code, never by a model.**
+  - Every order goes through `core/orders/gateway.py`, which runs the deterministic checks in `core/orders/checks.py` and journals the attempt. Nothing else calls Breeze's place/modify/cancel/GTT methods.
+  - A model may turn the user's words into an order ticket. Only the user's confirmation sends it (`scripts/qorder.py --yes` on the VM).
+  - The position manager places and manages exits (resting GTT OCO target + emergency stop, the 15:20 daily-close exit) by itself, only when `position_manager.orders: auto` in the VM config. A model never decides an exit.
+  - Switch with `scripts/enable-orders.ps1 -Mode live|paper|off` from this PC. Kill switch: `-Kill on` (the file `~/.quantos/ORDERS_OFF` on the VM) stops every new order.
+- The trade watcher (Fyers) and the spread watcher stay alerts only until their own exit code is written and switched on.
+
 - No algo may ever trade the son's account. He is not a dependent (SEBI family rule).
 - Anything that computes money (P&L, max loss, levels, net worth) is deterministic code with unit tests, never model output.
 
