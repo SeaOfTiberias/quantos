@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (45 — not executable)
+## wiki/ (48 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -37,6 +37,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[event-proximity-vol]] — Known-Event (RBI/Budget) Proximity vs Forward Volatility
 - [[expiry-day-effect-gutcheck-candidate-13]] — F&O Monthly Expiry-Day Effect (Candidate 13, Gut-Check)
 - [[fno-screener]] — F&O Screener (Evening Call/Put Candidates)
+- [[fx-eurusd-gbpusd-cointegration]] — EUR/USD vs GBP/USD Cointegration
 - [[goodnight-scalper-candidate-20]] — Good Night Stock-Options Scalper (Candidate 20)
 - [[index]] — Vault index
 - [[index-reconstitution-effect]] — Index Reconstitution Effect
@@ -60,7 +61,9 @@ _agent-compiled entity pages — context and retrieval only_
 - [[strategy-register-2026-10-15]] — Strategy register — 2026-10-15
 - [[strategy-register-2026-10-21]] — Strategy register — 2026-10-21
 - [[strategy-register-2026-10-24]] — Strategy register — 2026-10-24
+- [[strategy-register-2026-10-25]] — Strategy register — 2026-10-25
 - [[strategy-search]] — Strategy Search
+- [[surge-bull-put-credit]] — Surge Bull Put Credit Spread (IV Rank Gate)
 - [[surge-spread-candidate-23]] — Surge Option Spreads (Candidate 23)
 - [[surge-spread-forward-23b]] — Wide Surge Bull Call Spreads, Forward Paper Test (Candidate 23b)
 - [[trade-watcher]] — Trade Watcher (Discretionary Exit Alerts)
@@ -68,7 +71,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (103 — not executable)
+## raw/ (104 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -175,6 +178,7 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-15-quantos-strategy-specification-single-day-stock-surge-bear-c]] — QuantOS Strategy Specification: Single-Day Stock Surge Bear Call Spread (`S19_SURGE_BEAR_CALL`)
 - [[2026-10-21-earnings-gap-drift-gut-check-price-volume-proxy-for-pead]] — Earnings-gap drift gut-check (price/volume proxy for PEAD)
 - [[2026-10-24-darvas-bucket-b-universe-entry-cues-and-exits-pre-registrati]] — Darvas Bucket B: universe, entry cues and exits. Pre-registration (2026-10-23)
+- [[2026-10-24-new-tracks-surge-bull-put-credit-spreads-and-eur-usdgbp-usd]] — New tracks: surge bull put credit spreads and EUR/USD–GBP/USD cointegration. Pre-registration (2026-10-24)
 
 ## loose/ (1 — not executable)
 
