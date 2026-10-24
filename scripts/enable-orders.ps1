@@ -14,7 +14,7 @@
       -Spreads auto     the spread watcher closes spreads itself on a CLOSE (short leg first)
       -Spreads alerts   the spread watcher back to alerts only
       -SpreadKinds exit_day,close_stop,target   which CLOSE kinds may act by themselves
-                    (also trail_stock, giveback); the others stay alerts
+                    (also touch_stop = your own touch level, trail_stock, giveback); the others stay alerts
     -Spreads / -SpreadKinds change only `orders:` / `auto_close:` inside `spread_watcher:`,
     so its rule settings stay.
 
@@ -32,13 +32,13 @@ param(
     [ValidateSet("live", "paper", "off")] [string]$Mode,
     [ValidateSet("on", "off")] [string]$Kill,
     [ValidateSet("auto", "alerts")] [string]$Spreads,
-    [string]$SpreadKinds        # comma-separated: exit_day,close_stop,target (also trail_stock, giveback)
+    [string]$SpreadKinds        # comma-separated: exit_day,close_stop,touch_stop,target (also trail_stock, giveback)
 )
 
 # `powershell -File` passes "a,b,c" as one string, so the list is split and checked here.
 $KindsList = @()
 if ($SpreadKinds) {
-    $allowed = "exit_day", "close_stop", "target", "trail_stock", "giveback"
+    $allowed = "exit_day", "close_stop", "touch_stop", "target", "trail_stock", "giveback"
     $KindsList = $SpreadKinds -split "[,\s]+" | Where-Object { $_ }
     $bad = $KindsList | Where-Object { $allowed -notcontains $_ }
     if ($bad) { Write-Host "Unknown -SpreadKinds: $($bad -join ', '). Allowed: $($allowed -join ', ')"; exit 1 }

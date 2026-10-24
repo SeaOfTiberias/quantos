@@ -130,14 +130,14 @@ def test_daily_close_level_target_and_no_trail():
     assert ev(bear, 700.0, 7.0, at=time(15, 25)) == []                                # once a day
     assert ev(bear, 707.0, 6.0, day=date(2026, 10, 20), at=time(15, 21)) == ["close_stop"]
     assert ev(bear, 664.0, 14.0, day=date(2026, 10, 21)) == ["target"]
-    assert "trail_stock" in ev(bear, 722.0, 4.0, day=date(2026, 10, 22))              # emergency touch
+    assert "touch_stop" in ev(bear, 722.0, 4.0, day=date(2026, 10, 22))               # emergency touch (own kind)
 
 
 def test_user_level_and_bearish_trail():
     st = SpreadState.open(techm())
     st.level = 1775.0
     assert ev(st, 1780.0, 24.0) == [] and st.stock_stop == 1775.0       # no profit needed for a set level
-    assert ev(st, 1774.0, 23.0) == ["trail_stock"]
+    assert ev(st, 1774.0, 23.0) == ["touch_stop"]
     bear = SpreadState.open(Spread(Leg("HDFBAN", OCT27, "put", 710.0, 650, 17.4),
                                    Leg("HDFBAN", OCT27, "put", 670.0, -650, 5.9)))
     ev(bear, 700.0, 13.0)                                                # in profit: best = 700

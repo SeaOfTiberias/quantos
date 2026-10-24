@@ -11,7 +11,7 @@ import { T, ago, clock, inr, pct, px, sessionBefore, sessionsTo, shortDate, sign
 
 const KIND_TONE = { "bull call": "green", "bull put": "green", "bear put": "red", "bear call": "red" };
 const ALERT_NAMES = {
-  trail_armed: "Trail armed", trail_stock: "Stock stop hit", giveback: "Give-back hit",
+  trail_armed: "Trail armed", trail_stock: "Stock trail hit", touch_stop: "Your stop level hit", giveback: "Give-back hit",
   breakeven: "Back at breakeven", near_max: "Near max", exit_day: "Exit day",
 };
 
@@ -139,7 +139,7 @@ function SpreadCard({ s, rules, onChanged }) {
         <span className={`q-pill ${bArmed ? "green" : ""}`}><span className="dot" />
           Give-back {bArmed ? `armed · fires ≤ ${inr(s.peak_pnl * (rules?.giveback_keep ?? 0.5))}` : `arms at ${inr(armAt)}`}</span>
         <span className={`q-pill ${left != null && left <= 1 ? "amber" : ""}`}><span className="dot" />Exit by {shortDate(sessionBefore(s.expiry))}</span>
-        {fired.map(k => <span key={k} className={`q-pill ${["trail_stock", "giveback", "exit_day"].includes(k) ? "red" : "amber"}`}>{ALERT_NAMES[k] || k}</span>)}
+        {fired.map(k => <span key={k} className={`q-pill ${["trail_stock", "touch_stop", "close_stop", "target", "giveback", "exit_day"].includes(k) ? "red" : "amber"}`}>{ALERT_NAMES[k] || k}</span>)}
       </div>
 
       {lq && sq && (

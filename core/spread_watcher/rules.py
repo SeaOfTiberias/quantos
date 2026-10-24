@@ -131,7 +131,7 @@ class SpreadState:
 
 @dataclass(frozen=True)
 class Event:
-    kind:   str      # trail_stock | giveback | exit_day | breakeven | near_max | trail_armed
+    kind:   str      # touch_stop | trail_stock | close_stop | target | giveback | exit_day | breakeven | near_max | trail_armed | hold
     close:  bool     # an instruction to close, vs a heads-up
     detail: str
 
@@ -173,8 +173,11 @@ def evaluate(st: SpreadState, spot: float, value: float, today: date, now: time,
                                                           else min(st.best_spot, spot))
         st.stock_stop = round(st.best_spot * (1 - sign * rules.stock_trail_pct / 100), 2)
     if st.stock_stop and (spot - st.stock_stop) * sign <= 0:
-        what = "your level" if st.level else f"{rules.stock_trail_pct:g}% behind best {st.best_spot:,.2f}"
-        fire("trail_stock", True, f"stock {spot:,.2f} crossed stop {st.stock_stop:,.2f} ({what})")
+        if st.level:                          # the user's own touch level: its own kind, so it can act alone
+            fire("touch_stop", True, f"stock {spot:,.2f} crossed your stop level {st.stock_stop:,.2f}")
+        else:
+            fire("trail_stock", True, f"stock {spot:,.2f} crossed stop {st.stock_stop:,.2f} "
+                                      f"({rules.stock_trail_pct:g}% behind best {st.best_spot:,.2f})")
 
     if st.close_level and now >= time.fromisoformat(rules.close_check_at):
         key = f"close_check_{today.isoformat()}"
