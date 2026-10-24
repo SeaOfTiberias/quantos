@@ -32,7 +32,7 @@ It should do this while keeping household financial data on household hardware, 
 | LLM use | About 10 single-shot calls (morning brief, screener ranker, vault compile and narrator, analyst chat, pre-trade score, alpha attribution, versioning). `claude-sonnet-4-6` is **hard-coded in each file**. Prompts are versioned files in `prompts/`. `pre_trade.py` uses a forced tool call for structured output. |
 | Claude Code | One project skill (`vault-compile`). |
 | Trading loop (as of 2026-10-23) | F&O screener (evening Telegram + cockpit `#/picks`; spread sized to the 5-session move; calls labelled "no measured edge", puts carry the backtested retest plan); structure picker (`pick_structure.py`); trade-idea log scored daily; spread watcher on ICICI spreads with daily-close stops; **position manager** reading ICICI futures by itself (daily-close stop, 1R target, 10 sessions). All alerts only. |
-| Accounts connected | Fyers (spouse, API trading account) and the spouse's ICICI Direct via Breeze (read-only, daily login from the cockpit). API orders from the VM are still blocked: Breeze rejected one with a static-IP mismatch on 2026-10-22. |
+| Accounts connected | Fyers (spouse, API trading account) and the spouse's ICICI Direct via Breeze (daily login from the cockpit; the session connects automatically). The static IP (161.118.189.29) is registered with the Breeze app, which fixed the 2026-10-22 mismatch. API orders go through the order gateway (§8, phase 6). |
 
 ### 2.2 Stakeholders and accounts
 
@@ -144,7 +144,7 @@ The rule: **LLMs explain, retrieve and draft; code computes and decides.** An ag
 | **T0 read: research** | `search_vault`, `strategy_record`, `surge_23b_status` (counts only before 60 closed) | Any model | None |
 | **T1 read: household** | `accounts`, `holdings(person?)`, `positions(account?)`, `strategies()` (grouped legs), `mf_holdings`, `net_worth(person?, date?)` | Local model, or Claude through the redaction layer | None |
 | **T2 alert** | `set_alert(position, rule)`, `send_telegram` | Any model, but the **user confirms** each rule in the cockpit | Messages only |
-| **T3 order** | `square_off_strategy(id)`, `place_order(...)` | **No model.** Cockpit button with a confirmation dialog only, and only after a stage-2 go-ahead (C3). Runs on the VM gateway (C1). | Real money |
+| **T3 order** | `square_off_strategy(id)`, `place_order(...)` | **A model may draft; code checks; the user releases.** Only `core/orders/gateway.py` calls Breeze's order methods, after `core/orders/checks.py`. User-released orders: `scripts/qorder.py --yes`. Rule-driven exits: the position manager, by code. A model never sends an order or decides an exit. Runs on the VM (C1). | Real money |
 
 Other integration decisions:
 - **Broker connectors:** read-only sync jobs per account, writing snapshots to the portfolio store. Breeze is needed for both ICICI Direct accounts. If an API is unavailable or too much daily-login friction, a holdings CSV or PDF import is the fallback. The son's quiet account may be fine on weekly statements.
@@ -278,7 +278,7 @@ The user trades spreads in the spouse's ICICI Direct account, so it is the first
   - Fixed alerts for breakeven and exit day (one session before expiry).
   - The Telegram alert spells out both closing orders.
   - The parameters are starting guesses, to be re-tuned on 20–30 of the user's own spreads.
-- **Automatic exits** via Breeze are tier T3: only after an explicit stage-2 go-ahead.
+- **Automatic exits** via Breeze are tier T3. Stage 2 approved by the user (2026-10-22 API orders, 2026-10-24 automated exits); built for futures in the position manager (§8, phase 6).
 
 ## 7d. Edge and product strategy (added 2026-10-21)
 
@@ -328,7 +328,7 @@ Reordered 2026-10-23: the trading loop works now, so foundations and the market 
 | **3 Mutual funds** | CAS import, AMFI NAV job, XIRR and category mix | Values match the CAS to the rupee on statement date | Not started |
 | **4 Net worth** | All holdings: demat, MFs, FDs, EPF/PPF, gold (no property, no loans); person and household views, history and allocation | Monthly letter generated | Not started |
 | **5 Local model** | Eval suites first, so a later hardware choice is sized from evals (ADR-20) | — | **Deferred** by the user: stay on the laptop and the VM |
-| **6 Order actions** | T3 square-off through the VM gateway with typed confirmation. Needs the Breeze static-IP fix first. | Only after the user's explicit stage-2 go-ahead (C3) | Not started; blocked on the static IP and the go-ahead |
+| **6 Order actions** | Order gateway + checks + journal (`core/orders/`), `qorder` for user-released orders and spreads (long leg first, short bought back first), position manager exits: resting GTT OCO target + emergency stop, 15:20 daily-close exit. | Approved 2026-10-22 / 2026-10-24. Switched on by `orders.live` and `position_manager.orders: auto` in the VM config; kill switch `~/.quantos/ORDERS_OFF` | Built 2026-10-24. The first live GTT OCO's payload is checked against the broker's GTT book. Spread-watcher exits and strike management (rolling to keep moneyness) are next, the rolling rule after a pre-registered test |
 
 ### What shipped on 2026-10-23
 
@@ -349,7 +349,7 @@ Reordered 2026-10-23: the trading loop works now, so foundations and the market 
 | Son's ICICI Direct | His OTP, when he's back. Read-only, never algo-traded. | His account in the household view |
 | Local model and hardware | A user decision; evals first | Phase 5 |
 | Model upgrades (Sonnet 4.6 → current) | A deliberate migration per feature. `pre_trade` forces `tool_choice`, which Opus/Sonnet 5.5 reject. | Lower cost and newer models |
-| API orders | Fixing Breeze's static-IP mismatch; the stage-2 go-ahead | Phase 6, resting target and stop orders from the position manager |
+| Spread exits by code; rolling strikes | Spread-watcher executor on the gateway; a pre-registered rolling rule | Phase 6b |
 
 ## 9. The user's answers (2026-10-23)
 

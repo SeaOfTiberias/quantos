@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-QuantOS — Position Manager for futures in the ICICI Direct account (alerts only)
-─────────────────────────────────────────────────────────────────────────────────
+QuantOS — Position Manager for futures in the ICICI Direct account
+───────────────────────────────────────────────────────────────────
 Reads open FUTURES positions from ICICI Direct (Breeze) by itself and holds
 each one to a written exit plan (core/position_manager/rules.py): the stop is
 judged on the DAILY close, an emergency stop and the 1R target on touch, out
 by session 10. It answers "should I sell?" with the plan, not the P&L on
-screen. Places NO orders.
+screen.
+
+Orders: with `position_manager: {orders: auto}` in agent/config.yaml it also
+places the plan's exits through the order gateway (core/position_manager/executor.py):
+a resting GTT OCO for target + emergency stop, and the 15:20 daily-close / time
+exit. `orders: {live: false}` journals them as paper; ~/.quantos/ORDERS_OFF stops
+them. With `orders: alerts` (the default) it places NO orders.
 
   every 60 s   Breeze positions -> futures; new one -> plan + "managing" message
                (stop, emergency, target, last session); gone -> "closed" message
@@ -47,6 +53,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.auth import breeze_auth  # noqa: E402
+from core.position_manager.executor import Executor  # noqa: E402
 from core.position_manager.rules import (  # noqa: E402
     MAX_SESSIONS, FutPosition, Plan, check_close, check_intraday, make_plan, parse_future,
 )
@@ -90,12 +97,16 @@ class Notifier:
                 print(f"Telegram send failed ({e})", flush=True)
 
 
-def load_explainer_cfg() -> dict:
+def load_cfg(section: str) -> dict:
     try:
         import yaml
-        return (yaml.safe_load(CONFIG_PATH.read_text()) or {}).get("trade_explainer") or {}
+        return (yaml.safe_load(CONFIG_PATH.read_text()) or {}).get(section) or {}
     except Exception:
         return {}
+
+
+def load_explainer_cfg() -> dict:
+    return load_cfg("trade_explainer")
 
 
 def load_json(path: Path) -> dict:
@@ -183,7 +194,7 @@ def name(p: Plan) -> str:
     return f"{p.symbol} FUT {p.expiry:%d-%b} {'LONG' if p.side > 0 else 'SHORT'} ×{abs(p.qty)} @ {p.entry:g}"
 
 
-def plan_text(p: Plan) -> str:
+def plan_text(p: Plan, auto: bool = False) -> str:
     beyond = "below" if p.side > 0 else "above"
     exit_verb = "SELL" if p.side > 0 else "BUY"
     lines = [f"🧭 Managing {name(p)}" + (" (your levels)" if p.source == "override" else " (tested plan)"),
@@ -194,7 +205,9 @@ def plan_text(p: Plan) -> str:
         lines.append(f"• Target: {p.target:g} -- place a resting {exit_verb} LIMIT there now")
     if p.atr:
         lines.append(f"• ATR {p.atr:g}, 1R = {p.r:g} pts = ₹{p.r * abs(p.qty):,.0f}")
-    lines.append(f"• Out by the close of session {MAX_SESSIONS} at the latest. Alerts only -- I place no orders.")
+    lines.append(f"• Out by the close of session {MAX_SESSIONS} at the latest. "
+                 + ("I place the exits: resting OCO now, the daily-close exit at 15:20." if auto
+                    else "Alerts only -- I place no orders."))
     return "\n".join(lines)
 
 
@@ -216,6 +229,9 @@ class Manager:
         self.explainer = Explainer({} if dry else load_explainer_cfg(), notify.send)
         self.current: dict[str, FutPosition] = {}
         self.session_alerted = False
+        self.auto = not dry and load_cfg("position_manager").get("orders") == "auto"
+        self.orders_cfg = load_cfg("orders")
+        self.executor: Optional[Executor] = None
 
     def save(self) -> None:
         if not self.dry:
@@ -227,6 +243,10 @@ class Manager:
         try:
             self.data.client = breeze_auth.connect()
             self.session_alerted = False
+            if self.auto:
+                from core.orders.gateway import Gateway, limits_from
+                self.executor = Executor(Gateway(self.data.client, live=bool(self.orders_cfg.get("live")),
+                                                 limits=limits_from(self.orders_cfg)), self.notify.send)
             return True
         except breeze_auth.BreezeAuthError as e:
             if not self.session_alerted:
@@ -247,10 +267,16 @@ class Manager:
                 fresh = make_plan(pos, sym, atr, today, override)
                 if plan is not None:                      # added to / partly closed: keep the original entry date
                     fresh.entry_date = plan.entry_date
+                if plan is not None:
+                    fresh.gtt_id = plan.gtt_id                # rest() cancels it before re-placing
                 self.plans[key] = fresh
-                self.notify.send(plan_text(fresh))
+                self.notify.send(plan_text(fresh, self.executor is not None))
+                if self.executor:
+                    self.executor.rest(key, fresh)
         for key in set(self.plans) - set(current):
             p = self.plans.pop(key)
+            if self.executor:
+                self.executor.gone(p)
             last = f" Last price seen {p.last_price:g} (P&L ≈ ₹{(p.last_price - p.entry) * p.qty:,.0f})." if p.last_price else ""
             self.notify.send(f"✅ {name(p)} is no longer open.{last}")
         self.save()
@@ -265,7 +291,9 @@ class Manager:
             price = self.data.ltp(pos)
             if key not in self.morning_sent:
                 self.morning_sent.add(key)
-                if plan.entry_date < today:
+                if self.executor:
+                    self.executor.daily_check(key, plan)
+                elif plan.entry_date < today:
                     self.notify.send(f"☀️ {name(plan)} · now {price:g} · stop {plan.stop:g} (daily close) · "
                                      f"target {plan.target if plan.target is not None else '-'} · "
                                      "re-place today's stop order (Breeze stops are day-only) and keep the target limit resting.")
@@ -280,6 +308,8 @@ class Manager:
                 head = {"CLOSE": "🔴 CLOSE", "TIME": "⏰ TIME", "HOLD": "🟢 HOLD"}[ev.kind]
                 self.notify.send(f"{head} {name(plan)}: {ev.detail}.")
                 if ev.kind != "HOLD":
+                    if self.executor:
+                        self.executor.exit_now(plan, ev.detail.split(" -- ")[0])
                     self.explainer.explain(plan.symbol, event_for(plan, ev.kind, price))
         self.save()
 

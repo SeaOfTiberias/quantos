@@ -94,6 +94,7 @@ class Plan:
     sent:        list = field(default_factory=list)     # alert keys already sent
     last_price:  Optional[float] = None
     last_check:  Optional[str] = None                   # date of the last daily-close check
+    gtt_id:      Optional[str] = None                   # the resting OCO at the broker (orders: auto)
 
     @property
     def r(self) -> float:
