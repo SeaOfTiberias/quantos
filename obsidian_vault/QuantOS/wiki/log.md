@@ -112,3 +112,4 @@ Append-only. `compile` reads this to skip sources it has already seen.
 - 2026-10-15T15:00:00+00:00 — compiled [[2026-10-15-candidate-23b-wide-bull-call-spreads-on-surges-forward-paper]] -> [[surge-spread-forward-23b]]
 - 2026-10-15T15:00:00+00:00 — compiled [[2026-10-15-candidate-23b-part-c-surge-follow-through-persistence-result]] -> [[surge-spread-forward-23b]]
 - 2026-10-21T05:17:17+00:00 — compiled [[2026-10-21-earnings-gap-drift-gut-check-price-volume-proxy-for-pead]] -> [[earnings-gap-drift]], [[pead-earnings-drift]]
+- 2026-10-24T07:02:43+00:00 — compiled [[2026-10-24-darvas-bucket-b-universe-entry-cues-and-exits-pre-registrati]] -> [[darvas-bucket-b-cues]], [[darvas-atr-stop-bucket-b]]

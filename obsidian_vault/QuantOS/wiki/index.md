@@ -8,7 +8,7 @@ quantos:
 
 # Vault index
 
-Regenerated 2026-10-21 by `python scripts/vault.py index`. Do not hand-edit.
+Regenerated 2026-10-24 by `python scripts/vault.py index`. Do not hand-edit.
 
 ## brain/ (3 — executable)
 
@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (43 — not executable)
+## wiki/ (45 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -28,6 +28,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[capital-readiness-validation]] — Capital-Readiness Validation
 - [[darvas-atr-stop-bucket-b]] — Darvas ATR-Scaled Stop, Bucket B
 - [[darvas-box-width]] — Darvas Box-Width Buckets (Static Exit)
+- [[darvas-bucket-b-cues]] — Darvas Bucket B Cue Tests (Universe, Entry Filters, Exits)
 - [[darvas-sepa-s7-3]] — Darvas Box / SEPA Breakout (S7-3)
 - [[darvas-trailing-stop]] — Darvas Trailing Stop/Target
 - [[dow-theory-trend-candidate-14]] — Dow Theory / Market Structure Trend Following (Candidate 14)
@@ -58,6 +59,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[strategy-register-2026-10-13]] — Strategy register — 2026-10-13
 - [[strategy-register-2026-10-15]] — Strategy register — 2026-10-15
 - [[strategy-register-2026-10-21]] — Strategy register — 2026-10-21
+- [[strategy-register-2026-10-24]] — Strategy register — 2026-10-24
 - [[strategy-search]] — Strategy Search
 - [[surge-spread-candidate-23]] — Surge Option Spreads (Candidate 23)
 - [[surge-spread-forward-23b]] — Wide Surge Bull Call Spreads, Forward Paper Test (Candidate 23b)
@@ -66,7 +68,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (102 — not executable)
+## raw/ (103 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -172,6 +174,7 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-15-candidate-23b-wide-bull-call-spreads-on-surges-forward-paper]] — Candidate 23b — Wide Bull Call Spreads on Surges, Forward Paper Test with Real Quotes: Methodology, Pre-Committed 2026-10-15 Before Any Forward Data Exists
 - [[2026-10-15-quantos-strategy-specification-single-day-stock-surge-bear-c]] — QuantOS Strategy Specification: Single-Day Stock Surge Bear Call Spread (`S19_SURGE_BEAR_CALL`)
 - [[2026-10-21-earnings-gap-drift-gut-check-price-volume-proxy-for-pead]] — Earnings-gap drift gut-check (price/volume proxy for PEAD)
+- [[2026-10-24-darvas-bucket-b-universe-entry-cues-and-exits-pre-registrati]] — Darvas Bucket B: universe, entry cues and exits. Pre-registration (2026-10-23)
 
 ## loose/ (1 — not executable)
 
