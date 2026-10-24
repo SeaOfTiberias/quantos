@@ -13,7 +13,10 @@
       -Mode off     position manager back to alerts only, orders not live
       -Spreads auto     the spread watcher closes spreads itself on a CLOSE (short leg first)
       -Spreads alerts   the spread watcher back to alerts only
-    -Spreads changes only `orders:` inside `spread_watcher:`, so its rule settings stay.
+      -SpreadKinds exit_day,close_stop,target   which CLOSE kinds may act by themselves
+                    (also trail_stock, giveback); the others stay alerts
+    -Spreads / -SpreadKinds change only `orders:` / `auto_close:` inside `spread_watcher:`,
+    so its rule settings stay.
 
     The position manager reads this when it starts (09:15 IST), so a change
     during market hours applies from the next session. For an immediate stop
@@ -22,40 +25,46 @@
 .EXAMPLE
     .\quantos\scripts\enable-orders.ps1 -Mode paper
     .\quantos\scripts\enable-orders.ps1 -Mode live
-    .\quantos\scripts\enable-orders.ps1 -Spreads auto
+    .\quantos\scripts\enable-orders.ps1 -Spreads auto -SpreadKinds exit_day,close_stop,target
     .\quantos\scripts\enable-orders.ps1 -Kill on
 #>
 param(
     [ValidateSet("live", "paper", "off")] [string]$Mode,
     [ValidateSet("on", "off")] [string]$Kill,
-    [ValidateSet("auto", "alerts")] [string]$Spreads
+    [ValidateSet("auto", "alerts")] [string]$Spreads,
+    [ValidateSet("exit_day", "close_stop", "target", "trail_stock", "giveback")] [string[]]$SpreadKinds
 )
 
 $Vm = "ubuntu@161.118.189.29"
 $Key = Join-Path $HOME ".ssh\oracle.key"
 
-if (-not $Mode -and -not $Kill -and -not $Spreads) { Write-Host "Give -Mode live|paper|off, -Spreads auto|alerts or -Kill on|off"; exit 1 }
+if (-not $Mode -and -not $Kill -and -not $Spreads -and -not $SpreadKinds) { Write-Host "Give -Mode live|paper|off, -Spreads auto|alerts, -SpreadKinds k1,k2 or -Kill on|off"; exit 1 }
 
 if ($Kill) {
     $cmd = if ($Kill -eq "on") { "touch ~/.quantos/ORDERS_OFF && echo 'kill switch ON: no orders will be sent'" }
            else { "rm -f ~/.quantos/ORDERS_OFF && echo 'kill switch OFF: orders allowed'" }
     ssh -i $Key $Vm $cmd
-    if (-not $Mode -and -not $Spreads) { exit $LASTEXITCODE }
+    if (-not $Mode -and -not $Spreads -and -not $SpreadKinds) { exit $LASTEXITCODE }
 }
 
-if ($Spreads) {
+if ($Spreads -or $SpreadKinds) {
+    $ordersLine = if ($Spreads) { "  orders: $Spreads   # auto = close spreads on a CLOSE event, short leg first; alerts = Telegram only" } else { "" }
+    $kindsLine = if ($SpreadKinds) { "  auto_close: [" + ($SpreadKinds -join ", ") + "]   # CLOSE kinds that act by themselves; the rest stay alerts" } else { "" }
     $sp = @"
 import re, shutil, time, yaml
 p = 'agent/config.yaml'
 shutil.copy(p, p + '.bak-' + time.strftime('%Y%m%d-%H%M%S'))
 text = open(p).read()
+new = {'orders': "$ordersLine", 'auto_close': "$kindsLine"}
+new = {k: v + '\n' for k, v in new.items() if v}
 m = re.search(r'(?ms)^spread_watcher:\n((?:[ \t#].*\n|\n)*)', text)
-line = '  orders: $Spreads   # auto = close spreads on a CLOSE event, short leg first; alerts = Telegram only\n'
 if m is None:
-    text = text.rstrip('\n') + '\n\nspread_watcher:\n' + line
+    text = text.rstrip('\n') + '\n\nspread_watcher:\n' + ''.join(new.values())
 else:
-    body = re.sub(r'(?m)^  orders:.*\n', '', m.group(1))
-    text = text[:m.start(1)] + line + body + text[m.end(1):]
+    body = m.group(1)
+    for k in new:
+        body = re.sub(r'(?m)^  ' + k + r':.*\n', '', body)
+    text = text[:m.start(1)] + ''.join(new.values()) + body + text[m.end(1):]
 open(p, 'w').write(text)
 print('spread_watcher:', yaml.safe_load(open(p))['spread_watcher'])
 "@
