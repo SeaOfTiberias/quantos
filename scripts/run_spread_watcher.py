@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-QuantOS — Spread Watcher (ICICI Direct, stage 1: Telegram alerts only)
-───────────────────────────────────────────────────────────────────────
+QuantOS — Spread Watcher (ICICI Direct)
+───────────────────────────────────────
 Manages the EXIT of option spreads you open yourself in the spouse's ICICI
 Direct account, the way scripts/run_trade_watcher.py does for single options
-at Fyers. Places NO orders: every alert spells out both closing orders and
-you place them.
+at Fyers. Every CLOSE alert spells out both closing orders.
+
+Orders: with `spread_watcher: {orders: auto}` in agent/config.yaml it also
+closes the spread itself on a CLOSE event (core/spread_watcher/executor.py):
+short leg bought back first, then the long sold, through the order gateway.
+`auto_close: [kinds]` limits which CLOSE kinds act (default: all). With
+`orders: alerts` (the default) it places NO orders.
 
   every 60 s   Breeze positions -> legs -> spreads (core/spread_watcher/legs.py)
                new spread  -> "watching" message with its max loss/profit/breakeven
@@ -49,6 +54,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.auth import breeze_auth  # noqa: E402
+from core.spread_watcher.executor import SpreadExecutor  # noqa: E402
 from core.spread_watcher.legs import Leg, Spread, group_legs, parse_leg  # noqa: E402
 from core.spread_watcher.rules import SpreadRules, SpreadState, evaluate  # noqa: E402
 
@@ -165,7 +171,7 @@ def name(sp: Spread) -> str:
             f"{sp.long.expiry:%d-%b} ×{sp.qty}")
 
 
-def watching_text(sp: Spread, st: SpreadState, rules: SpreadRules) -> str:
+def watching_text(sp: Spread, st: SpreadState, rules: SpreadRules, auto: bool = False) -> str:
     paid = f"paid {st.entry:.2f}" if st.entry > 0 else f"received {-st.entry:.2f}"
     if st.close_level:
         a = (f"stock daily close beyond {st.close_level:g} (checked {rules.close_check_at})"
@@ -174,7 +180,8 @@ def watching_text(sp: Spread, st: SpreadState, rules: SpreadRules) -> str:
         a = f"your level {st.level:g}" if st.level else f"stock {rules.stock_trail_pct:g}% behind its best once in profit"
     return (f"👀 Watching {name(sp)} · {paid} · max loss ₹{st.max_loss:,.0f} · max profit ₹{st.max_profit:,.0f} · "
             f"breakeven {st.breakeven:,.2f}\nExit alerts: {a}; give-back keeps {rules.giveback_keep:.0%} once P&L ≥ "
-            f"{rules.giveback_arm_pct:g}% of max; close by the session before {sp.long.expiry:%d-%b}. Alerts only.")
+            f"{rules.giveback_arm_pct:g}% of max; close by the session before {sp.long.expiry:%d-%b}. "
+            + ("On a CLOSE I close it myself (short leg first)." if auto else "Alerts only."))
 
 
 def close_orders(sp: Spread, q_long: tuple, q_short: tuple) -> str:
@@ -207,6 +214,22 @@ def load_explainer_cfg() -> dict:
         return {}
 
 
+def load_section() -> dict:
+    try:
+        import yaml
+        return (yaml.safe_load(CONFIG_PATH.read_text()) or {}).get("spread_watcher") or {}
+    except Exception:
+        return {}
+
+
+def load_orders_cfg() -> dict:
+    try:
+        import yaml
+        return (yaml.safe_load(CONFIG_PATH.read_text()) or {}).get("orders") or {}
+    except Exception:
+        return {}
+
+
 def load_rules() -> SpreadRules:
     try:
         import yaml
@@ -229,6 +252,10 @@ class SpreadWatcher:
         from core.llm.explainer import Explainer
         self.explainer = Explainer({} if dry else load_explainer_cfg(), notify.send)
         self.nse: dict[str, str] = {}             # ICICI code -> NSE symbol (HDFBAN -> HDFCBANK)
+        section = {} if dry else load_section()
+        self.auto = section.get("orders") == "auto"
+        self.auto_kinds = tuple(section.get("auto_close") or ())
+        self.executor: Optional[SpreadExecutor] = None
 
     def nse_symbol(self, code: str) -> str:
         if code not in self.nse:
@@ -262,6 +289,12 @@ class SpreadWatcher:
         try:
             self.client = breeze_auth.connect()
             self.session_alerted = False
+            if self.auto:
+                from core.orders.gateway import Gateway, limits_from
+                cfg = load_orders_cfg()
+                self.executor = SpreadExecutor(Gateway(self.client, live=bool(cfg.get("live")),
+                                                       limits=limits_from(cfg)),
+                                               self.notify.send, kinds=self.auto_kinds)
             print(f"[{now_ist():%H:%M:%S}] ICICI Direct session OK.", flush=True)
             return True
         except breeze_auth.BreezeAuthError as e:
@@ -284,7 +317,7 @@ class SpreadWatcher:
             if st is None:
                 st = self.states[key] = SpreadState.open(sp)
                 apply_levels(st, levels.get(sp.long.stock_code))
-                self.notify.send(watching_text(sp, st, self.rules))
+                self.notify.send(watching_text(sp, st, self.rules, self.executor is not None))
             else:
                 apply_levels(st, levels.get(sp.long.stock_code))   # cleared in the cockpit -> back to the trail
         for key in (set(self.spreads) | set(self.states)) - set(current):   # states too: closed while we were down
@@ -326,12 +359,16 @@ class SpreadWatcher:
             sym = self.nse_symbol(sp.long.stock_code)
             self.explainer.check_gap(key, sym, name(sp), 1 if st.bullish else -1)
             for ev in evaluate(st, spot, value, today, now, self.rules):
+                acting = bool(ev.close and self.executor and self.executor.wants(ev.kind))
+                if acting:
+                    self.executor.request(st, ev.kind)
                 head = "🔴 CLOSE" if ev.close else "ℹ️"
                 orders = f"\nClose both legs: {close_orders(sp, ql, qs)}" if ev.close else ""
                 basis = "" if quoted else " (no two-sided quote: valued at last traded prices)"
                 self.notify.send(f"{head} {name(sp)} · {ev.detail}.\nP&L now ₹{st.last_pnl:,.0f} "
                                  f"(best ₹{st.peak_pnl:,.0f}, max ₹{st.max_profit:,.0f}){basis}.{orders}"
-                                 + ("\nAlerts only: place the orders yourself." if ev.close else ""))
+                                 + (("\nClosing it now by rule: short leg first." if acting
+                                     else "\nAlerts only: place the orders yourself.") if ev.close else ""))
                 if ev.close:
                     self.explainer.explain(sym, {
                         "alert": ev.kind, "stock_now": spot,
@@ -339,6 +376,8 @@ class SpreadWatcher:
                                       f"{'CE' if sp.long.right == 'call' else 'PE'} expiring {sp.long.expiry:%d-%b}",
                         "levels": {"close_stop": st.close_level, "emergency_touch": st.level, "target": st.target,
                                    "breakeven": st.breakeven}})
+            if self.executor and st.close_reason:
+                self.executor.close(sp, st, name(sp))
         self.save()
 
     def run(self, once: bool = False) -> int:

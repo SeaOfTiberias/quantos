@@ -112,6 +112,8 @@ class SpreadState:
     last_pnl:   Optional[float] = None
     last_spot:  Optional[float] = None
     last_value: Optional[float] = None
+    close_reason: Optional[str] = None    # a CLOSE the executor is acting on (orders: auto)
+    close_attempts: int = 0
 
     @classmethod
     def open(cls, sp: Spread) -> "SpreadState":
