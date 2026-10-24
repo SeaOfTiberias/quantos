@@ -117,3 +117,62 @@ Both exits can cut winners that retest the box before running. The top 5% of bas
 - A test that fails is reported as failed and **not re-tuned in this round**: no other thresholds and no other lookbacks.
 - Anything that passes goes to the **paper** executor first, and only on the user's go-ahead. Capital, sizing and `dry_run` are unchanged by this test.
 - Not combined. Passing filters and exits are tested together only in a later, separately pre-registered round.
+
+---
+
+## Results
+
+Run 2026-10-24: `python scripts/backtest_darvas_cues.py`. 1950 Bucket B trades (U1 1259, U2 691). Gap-aware fills, Stressed costs (+0.25%/side for U2). Excess is over each trade's own universe. Bound = the 0.62% bootstrap quantile (one-sided α = 0.05/8).
+
+### T1, the universe (baseline exit)
+
+| Universe | Period | Trades | Won | Mean net | Mean excess | Bound (excess) |
+|---|---|---|---|---|---|---|
+| U1 | P1 | 991 | 39% | +0.38% | -1.09% |  |
+| U1 | P2 | 268 | 36% | +0.07% | -0.81% |  |
+| U1 | both | 1259 | 39% | +0.31% | -1.03% | -1.98% |
+| U2 | P1 | 343 | 41% | +1.34% | -0.40% |  |
+| U2 | P2 | 348 | 33% | -1.51% | -2.27% |  |
+| U2 | both | 691 | 37% | -0.10% | -1.34% | -2.59% |
+
+**T1 FAIL** (U2: excess > 0 in P1 and P2, bound > 0, ≥ 300 trades).
+
+### Entry filters T2–T5 (U1, baseline exit)
+
+| Test | Kept | Dropped | Kept excess | Dropped excess | Diff P1 | Diff P2 | Bound (diff) | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| T2 clear air | 522 | 737 | -1.02% | -1.04% | +0.55% | -1.97% | -1.86% | fail |
+| T3 MACD confirms | 277 | 982 | -2.28% | -0.68% | -1.92% | -0.30% | -3.88% | fail |
+| T4 volume ≥ 1.5× 50d | 1167 | 92 | -1.03% | -1.01% | +1.41% | -4.86% | -3.65% | fail |
+| T5 not extended (control) | 983 | 276 | -1.15% | -0.61% | -0.20% | -1.90% | -2.64% | fail |
+
+### Exits T6–T8 (U1, paired against the baseline exit)
+
+| Test | Trades | Mean net | Mean excess | Paired diff P1 | Paired diff P2 | Bound | Top-5% winners: base → variant | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| T6 early failure | 1259 | -0.18% | -0.99% | -0.41% | -0.80% | -1.22% | +29.4% → +13.6% | fail |
+| T7 breakeven | 1259 | -0.68% | -1.38% | -0.99% | -1.01% | -1.73% | +29.4% → +14.4% | fail |
+| T8 weak day 1 (control) | 1259 | +0.15% | -0.78% | -0.11% | -0.36% | -0.79% | +29.4% → +19.7% | fail |
+
+U1 baseline mean net +0.31%, excess -1.03%.
+
+### Business view (description only)
+
+| Universe | Trades/yr | Won | Avg win / avg loss | Mean net | Mean excess | Excess ₹/yr on ₹5L (9% slots) | Median traded value | ₹45k slot | ₹4.5L slot |
+|---|---|---|---|---|---|---|---|---|---|
+| U1 | 129 | 39% | +15.4% / -9.2% | +0.31% | -1.03% | ₹-59,837 | ₹19.7 cr | 0.023% | 0.23% |
+| U2 | 71 | 37% | +16.2% / -9.6% | -0.10% | -1.34% | ₹-42,748 | ₹6.4 cr | 0.071% | 0.71% |
+
+Trades/yr is every signal; the live book takes fewer (cash limit at 9% per slot).
+
+
+### Why the baseline fell from +2.16% to +0.38% (diagnostic, description only)
+
+Run 2026-10-24 after the registered tests; not part of any verdict. It re-ran the 991 U1 P1 trades with the old stop fills and matched them one for one with the gap-aware run (991 of 991 matched, same entries).
+
+- Mean net: **+2.16% (old stop fills) → +0.38% (gap-aware)**. Win rate 47% → 39%.
+- 332 trades changed, all of them stop exits in both runs. The fill change explains the whole drop; the costs, data and universe do not.
+- **281 of the 332 were not overnight gaps.** The exit bar opened at or above 99% of the prior close. What happened: a new, higher box confirmed at the close, the trailed stop (ceiling − 2 × ATR) landed *above* the current price, and the frozen backtest sold at that stop, a price that did not trade. Examples: NATIONALUM 2021-11-16, old fill 118.2 against an open of 100.0 after a week of 97–103; NCC 2018-02-06, old fill 129.4 against an open of 104.5; HDFCAMC 2020-01-07, old fill 1830.9 against a bar range of 1538–1548 (adjusted prices).
+- The other 51 were real gap-downs (OMKARCHEM 2017-06-27, PINCON 2017-11, locked limit-down bars).
+- A live executor holding a stop above the market sells at the next open, which is what the gap-aware fill does. **The +2.16% / +0.70% excess in `docs/DARVAS_ATR_STOP_OOS_RESULTS.md` was inflated by impossible fills.** Under realistic fills, U1 Bucket B in P1 makes +0.38% net and −1.09% excess a trade.
+- The script `scripts/backtest_darvas_cues.py` reproduces this: `--validate-oos` gives the old stop-fill number, and the main run gives the gap-aware one.
