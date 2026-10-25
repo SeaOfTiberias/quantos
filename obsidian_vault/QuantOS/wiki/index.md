@@ -8,7 +8,7 @@ quantos:
 
 # Vault index
 
-Regenerated 2026-10-24 by `python scripts/vault.py index`. Do not hand-edit.
+Regenerated 2026-10-25 by `python scripts/vault.py index`. Do not hand-edit.
 
 ## brain/ (3 — executable)
 
@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (48 — not executable)
+## wiki/ (49 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -53,6 +53,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[pairs-trading-candidate-12]] — Sector-Cointegrated Stock-Futures Pairs Trading (Candidate 12)
 - [[pairs-trading-v2-candidate-17]] — Sector-Cointegrated Pairs Trading v2, Bug-Fixed (Candidate 17)
 - [[pead-earnings-drift]] — PEAD (Post-Earnings Announcement Drift)
+- [[put-setups-mid-range-downtrend]] — Put Setups (Mirrored Darvas vs Mid-Range Downtrends)
 - [[regime-classifier-s8-1]] — VIX-Level Regime Classifier (S8-1)
 - [[regime-filtered-dual-momentum-s1]] — Regime-Filtered Dual-Momentum (Strategy 1)
 - [[rs-momentum-rotation-s8-3]] — 52-Week-High RS Momentum Rotation (S8-3)
@@ -71,7 +72,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (104 — not executable)
+## raw/ (105 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -179,6 +180,7 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-21-earnings-gap-drift-gut-check-price-volume-proxy-for-pead]] — Earnings-gap drift gut-check (price/volume proxy for PEAD)
 - [[2026-10-24-darvas-bucket-b-universe-entry-cues-and-exits-pre-registrati]] — Darvas Bucket B: universe, entry cues and exits. Pre-registration (2026-10-23)
 - [[2026-10-24-new-tracks-surge-bull-put-credit-spreads-and-eur-usdgbp-usd]] — New tracks: surge bull put credit spreads and EUR/USD–GBP/USD cointegration. Pre-registration (2026-10-24)
+- [[2026-10-25-put-setups-mirrored-darvas-vs-mid-range-downtrends-pre-regis]] — Put setups: mirrored Darvas vs mid-range downtrends. Pre-registration (2026-10-25)
 
 ## loose/ (1 — not executable)
 

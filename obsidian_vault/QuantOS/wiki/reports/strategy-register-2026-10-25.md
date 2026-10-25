@@ -15,7 +15,7 @@ quantos:
 
 ## Summary
 
-- **39** strategy records: 29 FAIL, 3 MIXED, 3 INCONCLUSIVE, 2 OPEN, 2 N/A.
+- **40** strategy records: 30 FAIL, 3 MIXED, 3 INCONCLUSIVE, 2 OPEN, 2 N/A.
 - **Running now:** 5 ([[darvas-atr-stop-bucket-b]], [[momentum-turnover-candidate-11]], [[surge-spread-forward-23b]], [[fno-screener]], [[trade-watcher]]).
 - **Real capital deployed:** none.
 
@@ -35,7 +35,7 @@ quantos:
 |---|---|---|---|---|---|---|---|
 | live-paper | 3 |  |  | 1 |  | 2 |  |
 | live-tool | 2 |  |  |  |  |  | 2 |
-| closed | 29 |  | 26 | 1 | 2 |  |  |
+| closed | 30 |  | 27 | 1 | 2 |  |  |
 | retired | 3 |  | 3 |  |  |  |  |
 | shelved | 2 |  |  | 1 | 1 |  |  |
 
@@ -43,7 +43,7 @@ quantos:
 
 | Family | Total | PASS | FAIL | MIXED | INCONCLUSIVE | OPEN | N/A |
 |---|---|---|---|---|---|---|---|
-| breakout | 5 |  | 4 | 1 |  |  |  |
+| breakout | 6 |  | 5 | 1 |  |  |  |
 | momentum | 6 |  | 3 | 1 |  | 2 |  |
 | trend | 1 |  | 1 |  |  |  |  |
 | mean-reversion | 1 |  |  |  | 1 |  |  |
@@ -61,7 +61,7 @@ quantos:
 | Instrument | Total | PASS | FAIL | MIXED | INCONCLUSIVE | OPEN | N/A |
 |---|---|---|---|---|---|---|---|
 | equity-cash | 13 |  | 8 | 2 | 2 | 1 |  |
-| stock-futures | 3 |  | 3 |  |  |  |  |
+| stock-futures | 4 |  | 4 |  |  |  |  |
 | index-futures | 3 |  | 3 |  |  |  |  |
 | index-options | 13 |  | 10 | 1 | 1 |  | 1 |
 | stock-options | 5 |  | 3 |  |  | 1 | 1 |
@@ -72,6 +72,7 @@ quantos:
 | Strategy | Cand. | Family | Instrument | Status | Verdict | Verdict date | PF | Sharpe | Trades | Headline |
 |---|---|---|---|---|---|---|---|---|---|---|
 | [[fx-eurusd-gbpusd-cointegration\|EUR/USD vs GBP/USD Cointegration]] | New tracks B (spec 1.1) | stat-arb | mixed | closed | **FAIL** | 2026-10-25 | 0.71 | -0.20 | 100 | A rolling Johansen/ADF/half-life pair trade on EUR/USD and GBP/USD lost money over 2000–2026, even at 1-pip costs. |
+| [[put-setups-mid-range-downtrend\|Put Setups (Mirrored Darvas vs Mid-Range Downtrends)]] | Put setups A / B-A / C (2026-10-25) | breakout | stock-futures | closed | **FAIL** | 2026-10-25 |  |  | 667 | Counted once per episode, none of three put setups predicts a 5-session fall: the live mirrored-Darvas put rule (+0.06% excess, second half -0.32%), adding laggard names, and a failed-rally-in-a-downtrend setup all fail. |
 | [[surge-bull-put-credit\|Surge Bull Put Credit Spread (IV Rank Gate)]] | New tracks A (spec 2.2b) | momentum | stock-options | closed | **FAIL** | 2026-10-25 | 1.01 | 0.01 | 128 | Selling ~35-delta put spreads on non-52-week-high surges with IV rank >= 0.70 broke even after costs: 77% of trades won, but stops cost more than the wins made, and the first half lost. |
 | [[darvas-atr-stop-bucket-b\|Darvas ATR-Scaled Stop, Bucket B]] | Darvas line 3 (ATR stop) | breakout | equity-cash | live-paper | **MIXED** | 2026-10-24 |  |  | 991 | The 2016–2023 out-of-sample pass (+2.16%/trade) relied on filling stops that had trailed above the market; with realistic next-open fills it makes +0.38% net and trails its universe by 1.09% a trade. Still on paper; status is the user's call. |
 | [[darvas-bucket-b-cues\|Darvas Bucket B Cue Tests (Universe, Entry Filters, Exits)]] | Darvas line 3 add-ons, T1–T8 | breakout | equity-cash | closed | **FAIL** | 2026-10-24 |  |  | 1950 | All 8 pre-registered tests failed: no small-cap universe edge, and none of four entry filters or three exits beat the baseline Bucket B rule. |

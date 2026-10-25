@@ -42,6 +42,10 @@ Live. Review the hit rate once 20–30 candidates exist `[[2026-10-13-strategy-s
 
 The snapshot source does not record how candidates or contracts are selected. Ingest the screener's design notes if this page should carry them.
 
+## Put side: no measured edge as a plain short (2026-10-25)
+
+A pre-registered test of the put list, counted once per episode, found no 5-session edge: +0.06% excess move, second half −0.32%, −0.01% after costs. Adding laggard names or a failed-rally setup didn't help either; see [[put-setups-mid-range-downtrend]] `[[2026-10-25-put-setups-mirrored-darvas-vs-mid-range-downtrends-pre-regis]]`. The put retest plan (limit at the box floor) is a different entry and was not part of that test. Any change to the put list waits for the user's go-ahead.
+
 ## Relation to other concepts
 
-Exits on trades the user takes from this list are managed by [[trade-watcher]].
+Exits on trades the user takes from this list are managed by [[trade-watcher]]. Its put side was tested in [[put-setups-mid-range-downtrend]].
