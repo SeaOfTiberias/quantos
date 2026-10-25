@@ -103,6 +103,7 @@ class Review:
     accepted_flags: list = field(default_factory=list)
     reasoning: str = ""
     error: str = ""
+    searches: list = field(default_factory=list)   # per web search: "ok:<n results>" or "error:<code>"
 
     @property
     def final(self) -> Optional[dict]:
@@ -135,8 +136,20 @@ def validate(answer: Optional[dict], candidates: list[dict], text: str = "") -> 
     return r
 
 
-def call_claude(client, context: dict, system: str) -> Optional[str]:
-    """One review: web search allowed, pause_turn resumed, refusal -> None."""
+def search_outcomes(content) -> list[str]:
+    """Each web_search_tool_result block: "ok:<n>" for a result list, "error:<code>" for an error object."""
+    out = []
+    for b in content or []:
+        if getattr(b, "type", "") != "web_search_tool_result":
+            continue
+        c = getattr(b, "content", None)
+        out.append(f"ok:{len(c)}" if isinstance(c, list) else f"error:{getattr(c, 'error_code', None) or c}")
+    return out
+
+
+def call_claude(client, context: dict, system: str, searches: Optional[list] = None) -> Optional[str]:
+    """One review: web search allowed, pause_turn resumed, refusal -> None. Appends each search's
+    outcome to `searches` when given."""
     model = model_for(FEATURE)
     messages: list[dict] = [{"role": "user", "content": json.dumps(context, separators=(",", ":"), default=str)}]
     response = None
@@ -150,6 +163,8 @@ def call_claude(client, context: dict, system: str) -> Optional[str]:
             )
         finally:
             log_call(FEATURE, model, response, started)
+        if searches is not None:
+            searches += search_outcomes(response.content)
         if response.stop_reason != "pause_turn":
             break
         messages = [messages[0], {"role": "assistant", "content": response.content}]
@@ -190,14 +205,17 @@ def review(market, client, ps: dict, system: str, as_of: Optional[datetime] = No
     """Run one review for a pick_structure result `ps`. Returns (Review, the context sent)."""
     stock, mkt = stock_context(market, ps["symbol"])
     ctx = build_context(ps, stock, mkt, (as_of or datetime.now()).isoformat(timespec="minutes"))
+    searches: list[str] = []
     try:
-        text = call_claude(client, ctx, system)
+        text = call_claude(client, ctx, system, searches)
     except Exception as e:
         r = validate(None, ctx["candidates"])
         r.verdict, r.error = "error", f"{type(e).__name__}: {e}"[:300]
         return r, ctx
     if text is None:
         r = validate(None, ctx["candidates"])
-        r.verdict, r.error = "error", "no answer (refusal or empty)"
+        r.verdict, r.error, r.searches = "error", "no answer (refusal or empty)", searches
         return r, ctx
-    return validate(parse_answer(text), ctx["candidates"], text), ctx
+    r = validate(parse_answer(text), ctx["candidates"], text)
+    r.searches = searches
+    return r, ctx

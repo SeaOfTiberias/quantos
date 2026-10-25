@@ -127,3 +127,10 @@ def test_scoreboard_by_source():
     assert set(sb) == {"review-llm", "review-tool", "review-agree"}
     assert sb["review-llm"] == {"ideas": 2, "scored": 2, "wins": 1, "pnl": 300.0, "mean_pnl_pct": 3.0}
     assert sb["review-agree"]["scored"] == 0 and sb["review-agree"]["mean_pnl_pct"] is None
+
+
+def test_search_outcomes_recorded():
+    ok = SimpleNamespace(type="web_search_tool_result", content=[1, 2, 3])
+    bad = SimpleNamespace(type="web_search_tool_result", content=SimpleNamespace(error_code="max_uses_exceeded"))
+    assert reviewer.search_outcomes([ok, bad, SimpleNamespace(type="text", text="x")]) == \
+        ["ok:3", "error:max_uses_exceeded"]

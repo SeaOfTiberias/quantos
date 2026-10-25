@@ -50,7 +50,8 @@ def ideas_for_review(review, ps: dict, model: str, pair: str) -> list[dict]:
             "target": v.get("target"), "days": v.get("days"),
             "tool_top": (review.tool_top or {}).get("id"), "llm_pick": (review.pick or {}).get("id"),
             "why": review.why, "risks": review.risks, "event": review.event,
-            "accepted_flags": review.accepted_flags, "error": review.error}
+            "accepted_flags": review.accepted_flags, "error": review.error,
+            "searches": getattr(review, "searches", [])}
 
     def idea(row: dict, source: str) -> dict:
         d = {**_base(ps, view, float(v.get("stop"))), "action": "enter_now", "source": source,

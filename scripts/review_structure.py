@@ -50,6 +50,20 @@ def qorder_line(ps: dict, row: dict) -> str:
     return f"(credit spread: open the long {s['long_strike']:g} first, then sell the {s['short_strike']:g})"
 
 
+def load_env_file(path: Path) -> None:
+    """KEY=VALUE lines from the services' env file (e.g. ANTHROPIC_API_KEY), without overriding
+    anything already set. Values are never printed."""
+    import os
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except OSError:
+        pass
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("symbol")
@@ -65,6 +79,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true", help="print the full result as JSON")
     a = ap.parse_args(argv)
 
+    load_env_file(Path(__file__).resolve().parent.parent / ".env.cloud-api")
     import anthropic
     from core import prompts
     from core.llm.registry import model_for
@@ -95,6 +110,8 @@ def main(argv=None) -> int:
             print(f"{label}: {text}")
     if rev.accepted_flags:
         print(f"Accepted flags: {rev.accepted_flags}")
+    if rev.searches:
+        print(f"Web searches: {', '.join(rev.searches)}")
     final = rev.final
     if final:
         line = qorder_line(ps, final)
