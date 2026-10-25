@@ -228,8 +228,8 @@ async def _start_notify_sweep():
     # signals stranded by a Telegram outage or a mid-flight redeploy.
     asyncio.create_task(_notify_sweep_loop())
 
-# Event risk filter (US-06) — singleton, loaded with macro calendar at startup
-_event_filter = EventFilterService()
+# Event risk filter (US-06) — macro calendar + NSE results feed (core/ideas/events.py)
+_event_filter = EventFilterService.from_env()
 
 # NOTE: the correlation gate (S5-5) runs on the local agent, not here — only
 # the agent holds a broker to fetch price history (ADR-01). It pushes decisions

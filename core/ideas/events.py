@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 URL = "https://www.nseindia.com/api/corporate-board-meetings"
+DEFAULT_PATH = Path.home() / ".quantos" / "events.json"
 DAYS_AHEAD = 45
 MAX_AGE_HOURS = 12
 

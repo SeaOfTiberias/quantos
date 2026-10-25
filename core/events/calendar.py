@@ -8,8 +8,10 @@ Data sources (production):
   - RBI monetary policy calendar (published annually)
   - NSE index rebalancing schedule (quarterly, published in advance)
 
-For now this ships with a manually-curated calendar that's easy to
-extend. Sprint 3+ can wire a live NSE corporate announcements feed.
+Earnings: since 2026-10-25 upcoming results for every NSE equity come
+from NSE's corporate-board-meetings feed (core/ideas/events.py, cached in
+~/.quantos/events.json) via EventFilterService(results_path=...). Manual
+add_earnings() still works. Macro events are still the hand-kept list below.
 """
 
 import logging
@@ -21,6 +23,19 @@ from core.events.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+NSE_RESULTS_SOURCE = "NSE board meetings"
+
+
+def normalize_symbol(symbol: str) -> str:
+    """'NSE:RELIANCE-EQ' / 'reliance' -> 'RELIANCE' (webhook alerts arrive in either form)."""
+    s = symbol.strip().upper()
+    if ":" in s:
+        s = s.split(":", 1)[1]
+    for suffix in ("-EQ", "-BE", "-INDEX"):
+        if s.endswith(suffix):
+            s = s[: -len(suffix)]
+    return s
 
 
 class EventCalendar:
@@ -41,6 +56,17 @@ class EventCalendar:
 
     def clear(self) -> None:
         self._events = []
+
+    def replace_results(self, results: dict[str, list[date]]) -> int:
+        """Swap in a fresh NSE results calendar ({symbol: [dates]}), leaving manual and macro
+        events alone. Returns the number of results events loaded."""
+        self._events = [e for e in self._events if e.source != NSE_RESULTS_SOURCE]
+        n = 0
+        for symbol, days in results.items():
+            for d in days:
+                self.add_earnings(symbol, d, source=NSE_RESULTS_SOURCE)
+                n += 1
+        return n
 
     def load_macro_calendar_2026(self) -> None:
         """
@@ -142,7 +168,7 @@ class EventCalendar:
         Checks both symbol-specific events AND market-wide events.
         """
         ref = reference_date or datetime.now(timezone.utc).date()
-        symbol_upper = symbol.upper()
+        symbol_upper = normalize_symbol(symbol)
 
         triggered = []
         for event in self._events:
@@ -176,12 +202,15 @@ class EventCalendar:
             notes=notes,
         )
 
-    def upcoming_events(self, days_ahead: int = 7) -> list[MarketEvent]:
-        """Get all events in the next N days, sorted by date."""
+    def upcoming_events(self, days_ahead: int = 7, symbols: Optional[set] = None) -> list[MarketEvent]:
+        """Events in the next N days, sorted by date. NSE-feed results (hundreds a week) are
+        included only for `symbols`; market-wide and manually added events always are."""
         ref = datetime.now(timezone.utc).date()
+        wanted = {normalize_symbol(s) for s in symbols} if symbols else set()
         upcoming = [
             e for e in self._events
             if 0 <= e.days_until(ref) <= days_ahead
+            and (e.source != NSE_RESULTS_SOURCE or e.symbol in wanted)
         ]
         upcoming.sort(key=lambda e: e.event_date)
         return upcoming

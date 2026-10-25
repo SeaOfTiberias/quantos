@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
 
 # Shared instance — same one used by the webhook pipeline in main.py
-_event_filter = EventFilterService()
+_event_filter = EventFilterService.from_env()
 
 
 class EarningsEntry(BaseModel):
@@ -26,9 +26,10 @@ class EarningsEntry(BaseModel):
 
 
 @router.get("/upcoming")
-async def upcoming_events(days_ahead: int = 7):
-    """List all events in the next N days."""
-    events = _event_filter.calendar.upcoming_events(days_ahead=days_ahead)
+async def upcoming_events(days_ahead: int = 7, symbols: str = ""):
+    """Events in the next N days. NSE results are listed only for `symbols` (comma-separated)."""
+    wanted = {s for s in symbols.split(",") if s.strip()} or None
+    events = _event_filter.calendar.upcoming_events(days_ahead=days_ahead, symbols=wanted)
     return {
         "days_ahead": days_ahead,
         "count": len(events),
@@ -66,4 +67,5 @@ async def check_symbol_risk(symbol: str):
         "is_blocked": result.is_blocked,
         "override_allowed": result.override_allowed,
         "reason": result.reason,
+        "calendar": _event_filter.results_status,
     }

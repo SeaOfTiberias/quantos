@@ -27,7 +27,7 @@ from core.ideas.structure import Chain, View, best_by_family, candidates, implie
 IST = timezone(timedelta(hours=5, minutes=30))
 QUANTOS_DIR = Path.home() / ".quantos"
 IV_HISTORY = QUANTOS_DIR / "atm_iv_history.csv"
-EVENTS = QUANTOS_DIR / "events.json"
+EVENTS = QUANTOS_DIR / "events.json"           # = core.ideas.events.DEFAULT_PATH
 INDEX = {"NIFTY": "NSE:NIFTY50-INDEX", "BANKNIFTY": "NSE:NIFTYBANK-INDEX", "NIFTYBANK": "NSE:NIFTYBANK-INDEX",
          "FINNIFTY": "NSE:FINNIFTY-INDEX", "INDIAVIX": "NSE:INDIAVIX-INDEX"}
 

@@ -86,3 +86,37 @@ def test_pick_structure_attaches_event_and_warns(tmp_path):
     none = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None,
                              events_path=None)
     assert none["event"]["results_date"] is None and all(r.get("if_event") is None for r in none["top"])
+
+
+# ─── the webhook event filter (core/events) reads the same calendar ──────────
+
+def test_event_filter_service_blocks_on_nse_results(tmp_path):
+    from core.events.calendar import normalize_symbol
+    from core.events.service import EventFilterService
+    soon = date.today() + timedelta(days=2)
+    svc = EventFilterService(results_path=tmp_path / "ev.json",
+                             fetcher=lambda d: {"ADANIENT": [soon.isoformat()], "LICI": ["2099-01-01"]})
+    r = svc.check("NSE:ADANIENT-EQ")
+    assert r.is_blocked and not r.override_allowed and "EARNINGS" in r.reason
+    assert not svc.check("LICI").is_blocked and not svc.check("HDFCBANK").is_blocked
+    assert normalize_symbol("nse:tcs-eq") == "TCS" and "2 results dates" in svc.results_status
+    svc.refresh_results()                                              # reload doesn't duplicate
+    assert sum(e.symbol == "ADANIENT" for e in svc.calendar._events) == 1
+    assert all(e.symbol is None for e in svc.calendar.upcoming_events(7))        # feed hidden by default
+    assert [e.symbol for e in svc.calendar.upcoming_events(7, {"adanient"})] == ["ADANIENT"]
+
+
+def test_event_filter_service_survives_a_dead_feed(tmp_path):
+    from core.events.service import EventFilterService
+
+    def broken(d):
+        raise RuntimeError("403")
+    svc = EventFilterService(results_path=tmp_path / "none.json", fetcher=broken)
+    assert not svc.check("ADANIENT").is_blocked and "refresh failed" in svc.results_status
+    assert EventFilterService().results_status == "off"               # no path: manual earnings only
+
+
+def test_api_instance_respects_the_feed_switch(monkeypatch):
+    from core.events.service import EventFilterService
+    monkeypatch.setenv("QUANTOS_EVENTS_FEED", "off")
+    assert EventFilterService.from_env().results_path is None
