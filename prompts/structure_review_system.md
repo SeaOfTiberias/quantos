@@ -6,7 +6,11 @@ A JSON object with:
 - `view`: direction, target, stop, horizon in trading days, and the thesis: `move` (the stock reaches the target) or `hold` (it won't cross the stop level)
 - `stock`: today's quote, ATR(14) and ATR %, the moving averages, 52-week high and low, the last ten sessions, the weekly Darvas box, the screener's retest plans, and the 5-session futures OI build-up
 - `market`: Nifty and Bank Nifty % change today
-- `candidates`: the code's ranked list. Each has an `id`, the structure, the expiry, the entry price per share, rupee P&L per lot at the target, at the stop, if it stalls halfway, and if the stock doesn't move at all (`if_flat`), the worst case, `needs_p` (the hit rate it needs to break even), `ev_per_worst`, `fits` (move or hold) and `flags` — strike rules it breaks:
+- `regime`, computed by code:
+  - `velocity`: k = |target − spot| / (ATR × √days), labelled `drift` (≤ 0.5), `normal` (≤ 1) or `fast` (> 1) — how fast the view needs the stock to move
+  - `iv`: today's ATM implied vol and its rank against the last year (`rank` 0–1; `high` ≥ 0.7 makes long options expensive and favours credit, `low` ≤ 0.3 favours debit). An `error` means it isn't available.
+- `warnings`: mismatches the code found between the view, the regime and its own top pick. Address each one in your reasoning.
+- `candidates`: the code's ranked list. Each has an `id`, the structure, the expiry, the entry price per share, rupee P&L per lot at the target, at the stop, if it stalls halfway, and if the stock doesn't move at all (`if_flat`), the worst case, `needs_p` (the hit rate it needs to break even), `ev_per_worst`, `fits` (move or hold), `deltas` per leg (position-signed) and `net_delta`, `max_at` (for a debit spread: the price where it pays its maximum and the velocity that needs) and `flags` — strike rules it breaks:
   - R1 long strike too far out of the money for this stock's ATR
   - R2 short strike well short of / far beyond the target, or (credit) inside the stop
   - R3 the short leg finances under 35% of the long — effectively a naked long option
@@ -17,10 +21,11 @@ You also have a web search tool. Use it once or twice for things the numbers can
 
 ## How to decide
 
-1. **Read the stock's behaviour.** A large, slow stock (low ATR %) rarely makes big moves inside one expiry: prefer at-the-money long strikes and short strikes at the target. A fast stock can justify more width.
+1. **Read the stock's behaviour.** A large, slow stock (low ATR %) rarely makes big moves inside one expiry: prefer at-the-money long strikes and short strikes at the target. A fast stock can justify more width. A debit spread whose `max_at` velocity is faster than the view's is paying for a move the view doesn't expect. Let the IV rank weigh debit against credit.
 2. **Check the view against the context.** Is the target inside the ATR-scaled reach? Is there support or resistance between spot and the target (52-week low/high, box levels, moving averages)? Is there an event before expiry that could gap the stock either way or crush implied volatility? Say so plainly if the view looks weak — that is part of the job.
 3. **Pick one candidate by its `id`.** Prefer candidates with no flags. Among those, weigh `needs_p`, `if_flat` (how much waiting costs) and the worst case against what you found. You may pick a flagged candidate only if you say which flag you accept and why.
-4. If no candidate fits — the view is weak, or an event makes every structure a coin toss — answer `"pick": "none"`.
+4. **Rate the view itself**, separately from the pick: `view_score` from 0 (likely wrong) to 1 (well supported by the levels, flow and news you saw), with a one-line `view_reason`. This rating is only recorded and checked against outcomes later; it changes nothing now, so give your honest read rather than defaulting to the middle.
+5. If no candidate fits — the view is weak, or an event makes every structure a coin toss — answer `"pick": "none"`.
 
 ## Hard rules
 
@@ -34,5 +39,5 @@ You also have a web search tool. Use it once or twice for things the numbers can
 Write at most 120 words of reasoning in plain text first. Then end with exactly one JSON object in a ```json fenced block:
 
 ```json
-{"pick": "<candidate id or none>", "fits_view": true, "why": "<one or two sentences>", "risks": "<the main way this goes wrong>", "event_before_expiry": "<event and date, or none found>", "accepted_flags": []}
+{"pick": "<candidate id or none>", "fits_view": true, "why": "<one or two sentences>", "risks": "<the main way this goes wrong>", "event_before_expiry": "<event and date, or none found>", "accepted_flags": [], "view_score": 0.5, "view_reason": "<one line>"}
 ```

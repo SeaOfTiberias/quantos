@@ -17,7 +17,7 @@ def _call_log_in_tmp(tmp_path, monkeypatch):
 
 
 def ps():
-    return mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3)
+    return mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None)
 
 
 class FakeClaude:
@@ -127,6 +127,23 @@ def test_scoreboard_by_source():
     assert set(sb) == {"review-llm", "review-tool", "review-agree"}
     assert sb["review-llm"] == {"ideas": 2, "scored": 2, "wins": 1, "pnl": 300.0, "mean_pnl_pct": 3.0}
     assert sb["review-agree"]["scored"] == 0 and sb["review-agree"]["mean_pnl_pct"] is None
+
+
+def test_view_score_is_parsed_and_logged_but_changes_nothing():
+    p = ps()
+    top = reviewer.shortlist(p)[0]["id"]
+    text = answer(top).replace('"accepted_flags": []}', '"accepted_flags": [], "view_score": 0.3, '
+                                                        '"view_reason": "the 52w low is right under spot"}')
+    r, ctx = reviewer.review(FakeMarket(), FakeClaude(text), p, "SYSTEM")
+    assert r.view_score == 0.3 and "52w low" in r.view_reason
+    assert r.verdict == "agree" and r.final["id"] == top                 # a low score doesn't move the pick
+    assert "regime" in ctx and "warnings" in ctx
+    (idea,) = [make_idea(x) for x in dual.ideas_for_review(r, p, "m", "pair")]
+    assert idea["review"]["view_score"] == 0.3 and idea["action"] == "enter_now"
+    bad, _ = reviewer.review(FakeMarket(), FakeClaude(answer(top).replace('"accepted_flags": []}',
+                                                                        '"accepted_flags": [], "view_score": 7}')),
+                             p, "SYSTEM")
+    assert bad.view_score is None
 
 
 def test_search_outcomes_recorded():

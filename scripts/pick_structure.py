@@ -24,6 +24,21 @@ from core.ideas.chain import fetch_chain  # noqa: E402,F401  (kept importable fr
 from core.ideas.structure import Chain, View, best_by_family, candidates  # noqa: E402
 
 
+def regime_lines(chain: Chain, view: View, top) -> list[str]:
+    """Velocity, IV rank and the advisory warnings (core/ideas/regime.py)."""
+    from core.ideas import regime
+    from core.mcp_tools.market import IV_HISTORY, QUANTOS_DIR
+    k = regime.velocity_k(chain.spot, view.target, view.atr, view.horizon_days)
+    vel = {"k": round(k, 2), "label": regime.velocity_label(k)} if k is not None else None
+    iv = regime.iv_context(chain, IV_HISTORY, QUANTOS_DIR / "nse_fo_bhavcopy")
+    ivs = (f"ATM IV {iv['iv']:.1%} · IV rank {iv['rank']} ({iv['label']}, 1y {iv['low_1y']:.1%}-{iv['high_1y']:.1%})"
+           if "rank" in iv else f"IV rank n/a ({iv.get('error')})")
+    vw = {"thesis": view.thesis}
+    top_row = {"structure": top.name} if top else None
+    out = [f"velocity {vel['k']} ({vel['label']})" if vel else "velocity n/a (no ATR)", ivs]
+    return [" · ".join(out)] + [f"! {w}" for w in regime.warnings(vw, vel, iv, top_row)]
+
+
 def report(chain: Chain, view: View, p: float) -> str:
     ranked = candidates(chain, view, p=p)
     lines = [f"{chain.symbol} spot {chain.spot:g} · lot {chain.lot} · ATR {view.atr or 0:.2f} · "
@@ -31,11 +46,14 @@ def report(chain: Chain, view: View, p: float) -> str:
              f"target {view.target:g} stop {view.stop:g} in {view.horizon_days}d · "
              f"{'budget ₹{:,.0f}'.format(view.risk_budget) if view.risk_budget else 'research mode (no budget)'} · p={p}",
              f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'if flat':>9}{'worst':>9}"
-             f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  rules"]
+             f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  {'deltas':<14}rules"]
+    lines[1:1] = regime_lines(chain, view, ranked[0] if ranked else None)
+
     def row(c):
         rules = "ok" if not c.flags else " | ".join(c.flags)
+        deltas = "/".join(f"{x:+.2f}" for x in c.deltas)
         return (f"{c.name:<30}{c.expiry.isoformat() if c.expiry else '':<12}{c.entry:>8.2f}{c.gain_target:>11,.0f}"
-                f"{c.loss_stop:>10,.0f}{c.flat:>9,.0f}{c.worst_case:>9,.0f}{c.be_p:>9.0%}{c.score:>10.2f}{c.lots:>6}  {rules}")
+                f"{c.loss_stop:>10,.0f}{c.flat:>9,.0f}{c.worst_case:>9,.0f}{c.be_p:>9.0%}{c.score:>10.2f}{c.lots:>6}  {deltas:<14}{rules}")
     lines.append("— best of each family —")
     lines += [row(c) for c in best_by_family(ranked)]
     lines.append("— top 8 overall —")

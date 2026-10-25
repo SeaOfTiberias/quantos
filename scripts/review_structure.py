@@ -34,8 +34,19 @@ from core.ideas.log import IST, make_idea  # noqa: E402
 
 def fmt_row(r: dict) -> str:
     flags = "ok" if not r.get("flags") else " | ".join(r["flags"])
+    deltas = "/".join(f"{x:+.2f}" for x in r.get("deltas") or [])
+    m = r.get("max_at")
+    max_at = f"  max@{m['price']:g} {m['label']}" if m else ""
     return (f"{r['id']:<40} entry {r.get('entry')!s:>7}  target {r.get('if_target')!s:>8}  stop {r.get('if_stop_or_stall')!s:>8}"
-            f"  flat {r.get('if_flat')!s:>7}  needs {r.get('needs_p')}  [{flags}]")
+            f"  flat {r.get('if_flat')!s:>7}  needs {r.get('needs_p')}  delta {deltas}{max_at}  [{flags}]")
+
+
+def regime_line(ps: dict) -> str:
+    v, iv = (ps.get("regime") or {}).get("velocity"), (ps.get("regime") or {}).get("iv") or {}
+    vs = f"velocity {v['k']} ({v['label']})" if v else "velocity n/a"
+    ivs = (f"ATM IV {iv['iv']:.1%}, rank {iv['rank']} ({iv['label']})" if "rank" in iv
+           else f"IV rank n/a ({iv.get('error')})")
+    return f"{vs} · {ivs}"
 
 
 def qorder_line(ps: dict, row: dict) -> str:
@@ -97,6 +108,9 @@ def main(argv=None) -> int:
 
     print(f"{ps['symbol']} spot {ps['spot']} · ATR {ps.get('atr14')} · {ps['view']['direction']} "
           f"target {a.target:g} stop {a.stop:g} in {a.days}d · thesis {a.thesis}")
+    print(regime_line(ps))
+    for w in ps.get("warnings") or []:
+        print(f"! {w}")
     print("\nCandidates (code-scored, rule-passing first):")
     for r in ctx["candidates"]:
         print("  " + fmt_row(r))
@@ -110,6 +124,8 @@ def main(argv=None) -> int:
             print(f"{label}: {text}")
     if rev.accepted_flags:
         print(f"Accepted flags: {rev.accepted_flags}")
+    if rev.view_score is not None:
+        print(f"View score (logged only): {rev.view_score}  {rev.view_reason}")
     if rev.searches:
         print(f"Web searches: {', '.join(rev.searches)}")
     final = rev.final

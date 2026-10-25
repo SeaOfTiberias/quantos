@@ -26,6 +26,7 @@ from core.ideas.structure import Chain, View, best_by_family, candidates, implie
 
 IST = timezone(timedelta(hours=5, minutes=30))
 QUANTOS_DIR = Path.home() / ".quantos"
+IV_HISTORY = QUANTOS_DIR / "atm_iv_history.csv"
 INDEX = {"NIFTY": "NSE:NIFTY50-INDEX", "BANKNIFTY": "NSE:NIFTYBANK-INDEX", "NIFTYBANK": "NSE:NIFTYBANK-INDEX",
          "FINNIFTY": "NSE:FINNIFTY-INDEX", "INDIAVIX": "NSE:INDIAVIX-INDEX"}
 
@@ -210,17 +211,27 @@ def completed_atr(m: Market, symbol: str) -> Optional[float]:
     return _atr([b for b in bars if b.timestamp.astimezone(IST).date() < today])
 
 
-def structure_row(c) -> dict:
+def structure_row(c, spot: Optional[float] = None, atr: Optional[float] = None, days: int = 0) -> dict:
+    """One candidate for a report. With spot/atr/days, a debit spread also gets `max_at`: the
+    velocity (regime.velocity_k) of the price where it pays its maximum, i.e. its short strike."""
+    from core.ideas import regime
+    max_at = None
+    if spot and "credit" not in c.name and len(c.legs) == 2 and c.legs[0][0] != "FUT":
+        k = regime.velocity_k(spot, c.legs[1][2], atr, days)
+        max_at = {"price": c.legs[1][2], "k": _r(k), "label": regime.velocity_label(k)} if k is not None else None
     return {"structure": c.name, "expiry": c.expiry.isoformat() if c.expiry else None, "entry": _r(c.entry),
             "if_target": _r(c.gain_target, 0), "if_stop_or_stall": _r(c.loss_stop, 0),
             "if_stall": _r(c.stall, 0), "if_flat": _r(c.flat, 0), "worst": _r(c.worst_case, 0),
             "needs_p": _r(c.be_p, 3), "ev_per_worst": _r(c.score, 3), "lots": c.lots, "fits": c.fits,
-            "rules_ok": not c.flags, "flags": c.flags, "note": c.note or None}
+            "rules_ok": not c.flags, "flags": c.flags, "note": c.note or None,
+            "deltas": c.deltas, "net_delta": _r(sum(c.deltas)) if c.deltas else None, "max_at": max_at}
 
 
 def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: float, days: int,
                    budget: float = 0, p: float = 0.5, intraday: bool = False, gap_pct: Optional[float] = None,
-                   thesis: str = "move", atr: Optional[float] = None) -> dict:
+                   thesis: str = "move", atr: Optional[float] = None, iv_history: Optional[Path] = IV_HISTORY,
+                   bhav_dir: Optional[Path] = QUANTOS_DIR / "nse_fo_bhavcopy") -> dict:
+    from core.ideas import regime
     sym = symbol.strip().upper()
     ch = m.chain(sym, 10)
     atr = atr or completed_atr(m, sym)
@@ -229,15 +240,25 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                 thesis="hold" if thesis.lower().startswith("h") else "move",
                 **({"gap_pct": gap_pct} if gap_pct is not None else {}))
     ranked = candidates(ch, view, p=p)
-    return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr),
-            "view": {"direction": direction, "target": target, "stop": stop, "days": days, "budget": budget or None,
-                     "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis},
-            "best_by_family": [structure_row(c) for c in best_by_family(ranked)],
-            "top": [structure_row(c) for c in ranked[:8]],
+    k = regime.velocity_k(ch.spot, target, atr, days)
+    velocity = {"k": _r(k), "label": regime.velocity_label(k)} if k is not None else None
+    iv = regime.iv_context(ch, iv_history, bhav_dir) if iv_history else {"error": "no IV history"}
+    row = lambda c: structure_row(c, ch.spot, atr, days)   # noqa: E731
+    vw = {"direction": direction, "target": target, "stop": stop, "days": days, "budget": budget or None,
+          "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis}
+    top = [row(c) for c in ranked[:8]]
+    return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw,
+            "regime": {"velocity": velocity, "iv": iv},
+            "warnings": regime.warnings(vw, velocity, iv, top[0] if top else None),
+            "best_by_family": [row(c) for c in best_by_family(ranked)],
+            "top": top,
             "read": "Rule-passing structures (rules_ok) rank first, then by EV per worst-case rupee. Pick the lowest "
                     "needs_p that fits; flags name the strike rule a structure breaks (R1 long strike too far OTM, "
                     "R2 short strike off the target / inside the stop, R3 short leg finances < 35%, R5 family vs "
-                    "thesis, R6 strike out of reach). if_flat = no move by the horizon."}
+                    "thesis, R6 strike out of reach). if_flat = no move by the horizon. regime: velocity k = |target - spot| / "
+                    "(ATR x sqrt(days)) (drift <= 0.5 < normal <= 1 < fast) and ATM IV rank over a year (high >= 0.7 "
+                    "favours credit, low <= 0.3 favours debit); max_at = the velocity a debit spread's maximum needs; "
+                    "deltas per leg, position-signed. warnings are advisory."}
 
 
 # ─── OI build-up ─────────────────────────────────────────────────────────────

@@ -16,6 +16,11 @@ So the split is:
   code   validates the pick: an id that isn't a candidate is discarded and the
          tool's top pick stands
 
+It also rates the view itself (view_score 0-1, view_reason). That rating
+changes nothing -- not the pick, not the size; it is logged next to each idea
+so that, once enough are scored, we can test whether the model's doubts
+predicted the losers before giving it any say over direction.
+
 Only public market data goes into the prompt: the symbol, the view, quotes,
 levels, OI build-up and the candidate rows. Never quantity held, P&L or the
 account. Logged with core.llm.log_call; model from config/models.yaml
@@ -40,7 +45,7 @@ WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": 2
               "user_location": {"type": "approximate", "country": "IN", "timezone": "Asia/Kolkata"}}
 MAX_CONTINUATIONS = 2
 CANDIDATE_KEYS = ("structure", "expiry", "entry", "if_target", "if_stop_or_stall", "if_stall", "if_flat", "worst",
-                  "needs_p", "ev_per_worst", "fits", "flags")
+                  "needs_p", "ev_per_worst", "fits", "flags", "deltas", "net_delta", "max_at")
 
 
 def candidate_id(row: dict) -> str:
@@ -69,6 +74,7 @@ def build_context(ps: dict, stock: dict, market: dict, as_of: str) -> dict:
         "symbol": ps.get("symbol"),
         "view": {k: v.get(k) for k in ("direction", "target", "stop", "days", "thesis")},
         "spot": ps.get("spot"), "lot_size": ps.get("lot"), "atr14": ps.get("atr14"),
+        "regime": ps.get("regime"), "warnings": ps.get("warnings") or [],
         "stock": stock, "market": market,
         "candidates": shortlist(ps),
     }
@@ -104,6 +110,8 @@ class Review:
     reasoning: str = ""
     error: str = ""
     searches: list = field(default_factory=list)   # per web search: "ok:<n results>" or "error:<code>"
+    view_score: Optional[float] = None        # the model's 0-1 rating of the view itself: logged, never acted on
+    view_reason: str = ""
 
     @property
     def final(self) -> Optional[dict]:
@@ -123,6 +131,12 @@ def validate(answer: Optional[dict], candidates: list[dict], text: str = "") -> 
     r.event = str(answer.get("event_before_expiry", ""))[:300]
     r.fits_view = answer.get("fits_view") if isinstance(answer.get("fits_view"), bool) else None
     r.accepted_flags = [str(x) for x in (answer.get("accepted_flags") or [])][:6]
+    try:
+        vs = float(answer.get("view_score"))
+        r.view_score = round(vs, 2) if 0.0 <= vs <= 1.0 else None
+    except (TypeError, ValueError):
+        r.view_score = None
+    r.view_reason = str(answer.get("view_reason", ""))[:300]
     pick = str(answer.get("pick", "")).strip()
     if pick.lower() == "none":
         r.verdict = "none"

@@ -46,6 +46,10 @@ the reason in `flags`, but ranks after every candidate that breaks none:
       "move", a credit spread expresses "hold" (won't cross the stop level)
   R6  no strike further than 3 ATR x sqrt(horizon / 10) from spot
 R4 (score the no-move case) is the "flat" scenario above.
+
+Each candidate also carries its legs' Black-Scholes deltas at today's spot and
+each leg's own IV (`deltas`, per share, + = long the right; a future is +/-1),
+for reading -- strikes are chosen by the ATR rules above, not by delta.
 """
 
 from __future__ import annotations
@@ -72,6 +76,14 @@ def bs_price(spot: float, strike: float, t_years: float, vol: float, right: str,
     if right == "CE":
         return spot * _ncdf(d1) - strike * math.exp(-r * t_years) * _ncdf(d2)
     return strike * math.exp(-r * t_years) * _ncdf(-d2) - spot * _ncdf(-d1)
+
+
+def bs_delta(spot: float, strike: float, t_years: float, vol: float, right: str, r: float = RISK_FREE) -> float:
+    if t_years <= 0 or vol <= 0:
+        itm = spot > strike if right == "CE" else spot < strike
+        return (1.0 if right == "CE" else -1.0) if itm else 0.0
+    d1 = (math.log(spot / strike) + (r + 0.5 * vol * vol) * t_years) / (vol * math.sqrt(t_years))
+    return _ncdf(d1) if right == "CE" else _ncdf(d1) - 1.0
 
 
 def implied_vol(price: float, spot: float, strike: float, t_years: float, right: str) -> Optional[float]:
@@ -144,6 +156,7 @@ class Candidate:
     flat: float = 0.0         # per lot, no move at all by the horizon
     flags: list = field(default_factory=list)   # strike rules broken (empty = passes)
     fits: str = ""            # "move" | "hold": the thesis this family expresses
+    deltas: list = field(default_factory=list)  # per leg, position-signed (short leg's delta negated)
     be_p: float = 0.0
     lots: int = 0
     score: float = 0.0
@@ -286,6 +299,9 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
     for c in ranked:
         c.fits = "hold" if "credit" in c.name else "move"
         c.flags = rule_flags(c, chain, view)
+        c.deltas = [float(d) if leg[0] == "FUT" else
+                    round(leg[0] * bs_delta(chain.spot, leg[2], _t((leg[1] - chain.today).days), iv[leg[1:]], leg[3]), 2)
+                    for leg in c.legs]
     return sorted(ranked, key=lambda c: (bool(c.flags), -c.score))
 
 

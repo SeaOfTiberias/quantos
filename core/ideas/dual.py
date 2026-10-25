@@ -51,7 +51,9 @@ def ideas_for_review(review, ps: dict, model: str, pair: str) -> list[dict]:
             "tool_top": (review.tool_top or {}).get("id"), "llm_pick": (review.pick or {}).get("id"),
             "why": review.why, "risks": review.risks, "event": review.event,
             "accepted_flags": review.accepted_flags, "error": review.error,
-            "searches": getattr(review, "searches", [])}
+            "searches": getattr(review, "searches", []),
+            "view_score": getattr(review, "view_score", None), "view_reason": getattr(review, "view_reason", ""),
+            "regime": ps.get("regime"), "warnings": ps.get("warnings") or []}
 
     def idea(row: dict, source: str) -> dict:
         d = {**_base(ps, view, float(v.get("stop"))), "action": "enter_now", "source": source,
