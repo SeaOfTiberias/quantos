@@ -66,3 +66,21 @@ Fixed 5-session hold, no stop: the same convention as the screener backtest that
 - **Anything that fails is reported as a fail.** Thresholds and definitions are not re-tuned in this round.
 
 Code: `scripts/backtest_put_setups.py`. Results are appended to this file.
+
+## Results (2026-10-25)
+
+Run by `scripts/backtest_put_setups.py`; raw numbers in `~/.quantos/bt_fno/put_setups.json`. Halves split at 2026-03-24. `ex` = % move in the put's favour minus the same-day universe average.
+
+| Variant | n | days | ex1 | ex3 | ex5 | ex5 boot 1.67% | ex5 H1 | ex5 H2 | oc5 − 0.10% | win5 | Result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A baseline | 667 | 209 | -0.029 | 0.126 | 0.056 | -0.258 | 0.359 | -0.32 | -0.005 | 51.4% | **FAIL** |
+| B-A LAGGARD increment | 94 | 57 | -0.249 | -0.194 | 0.01 | -0.982 | -0.115 | 0.212 | 0.266 | 51.1% | **FAIL** |
+| C failed rally | 1442 | 247 | -0.02 | 0.068 | 0.012 | -0.188 | -0.005 | 0.03 | -0.186 | 52.1% | **FAIL** |
+
+C out-of-window (2024-10-23..2025-09-01): n 1150 on 178 days, ex5 0.115, halves 0.252 / -0.193, oc5 − 0.10% 0.217. C entries with an A entry for the same stock in the 5 sessions before: 15.6%.
+
+Checks failed per variant:
+
+- **A baseline**: 1 ex5>0 and boot lo>0, 2 both halves >0, 3 oc5 - 0.10% > 0. Nifty above EMA20: ex5 0.442 (n 206); below: -0.112 (n 461).
+- **B-A LAGGARD increment**: 1 ex5>0 and boot lo>0, 2 both halves >0, 4 n>=100 on >=40 days. Nifty above EMA20: ex5 1.223 (n 19); below: -0.297 (n 75).
+- **C failed rally**: 1 ex5>0 and boot lo>0, 2 both halves >0, 3 oc5 - 0.10% > 0. Nifty above EMA20: ex5 0.196 (n 639); below: -0.132 (n 803).
