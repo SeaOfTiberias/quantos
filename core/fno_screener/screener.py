@@ -362,7 +362,8 @@ def build_candidates(daily_by_symbol: dict[str, list[OHLCV]], today: FnoDay,
 # user tunes them out later rather than the screener hiding them.
 SIDE_EDGE = {
     OptionType.CALL: "no measured edge -- lost after costs under every exit and entry rule tested (1y backtest)",
-    OptionType.PUT:  "measured edge with the retest plan: +0.31%/trade, 69% won, both halves (1y backtest, futures)",
+    OptionType.PUT:  "only the wait-for-the-bounce entry has a measured edge (+0.31%/trade, 69% won, 1y backtest, "
+                     "futures); selling straight away tested at zero (2026-10-25), so no buy-now line is shown",
 }
 PLAN_ENTRY_ATR = 0.25      # limit this far from the broken box level, toward the trade (H1 retest)
 PLAN_ENTRY_SESSIONS = 3
@@ -393,6 +394,21 @@ def _plan_text(c: Candidate) -> Optional[str]:
     return (f"   plan (futures): {verb} limit {_px(entry)} (retest, valid {PLAN_ENTRY_SESSIONS} sessions) · "
             f"stop daily close {beyond} {_px(stop)} · target {_px(target)} (1R, resting) · "
             f"out by session {PLAN_MAX_SESSIONS}")
+
+
+def _put_plan_text(c: Candidate) -> list[str]:
+    """Puts show ONLY the measured entry (user's choice, 2026-10-25, after
+    docs/PUT_SETUPS_PREREG_2026-10-25.md found no edge in selling straight away),
+    in plain words: wait for the bounce back to the broken floor, else no trade."""
+    if not c.atr or not c.box_level:
+        return ["   no entry: the floor level or ATR is missing, so there's no tested price to wait for"]
+    entry = c.box_level - PLAN_ENTRY_ATR * c.atr
+    stop = entry + PLAN_STOP_ATR * c.atr
+    target = entry - PLAN_TARGET_R * PLAN_STOP_ATR * c.atr
+    return [f"   ⏳ wait for the bounce: SELL futures only if it gets back up to {_px(entry)} "
+            f"(limit order, valid {PLAN_ENTRY_SESSIONS} sessions; no bounce = no trade)",
+            f"   then: stop if a day closes above {_px(stop)} · take profit at {_px(target)} · "
+            f"out by session {PLAN_MAX_SESSIONS}"]
 
 
 def _px(x: float) -> str:
@@ -460,9 +476,22 @@ def _names(cands: list[Candidate], limit: int = 8) -> str:
     return names + (f" +{len(cands) - limit}" if len(cands) > limit else "")
 
 
+def _results_text(c: Candidate, results: Optional[dict], trade_date: date) -> Optional[str]:
+    """A warning when the stock's results (core/ideas/events.py calendar) fall within the plan's 10 sessions."""
+    d = (results or {}).get(c.symbol)
+    if not d or d < trade_date:
+        return None
+    n = sum(1 for k in range(1, (d - trade_date).days + 1) if (trade_date + timedelta(days=k)).weekday() < 5)
+    if n > PLAN_MAX_SESSIONS:
+        return None
+    return f"   ⚠️ results on {d:%a %d %b} ({n} sessions): be out before then, or skip"
+
+
 def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
-                    spread_lines: Optional[dict[tuple[str, str], str]] = None) -> str:
-    """`spread_lines` maps (side, symbol) -> the primary line from core/fno_screener/spreads.spread_line."""
+                    spread_lines: Optional[dict[tuple[str, str], str]] = None,
+                    results: Optional[dict] = None) -> str:
+    """`spread_lines` maps (side, symbol) -> the primary line from core/fno_screener/spreads.spread_line.
+    `results` maps symbol -> next results date (core/ideas/events.py)."""
     lines = [f"🎯 F&O candidates · close of {result.trade_date:%a %d %b}",
              f"Screening aid, not a signal. {result.scanned} F&O stocks scanned. Breakouts up to 5 sessions old. "
              "Prices are the close -- check the live bid/ask before entering.",
@@ -477,6 +506,11 @@ def format_telegram(result: ScreenResult, rules: ExitRules, cfg: ScreenerConfig,
                 lines.append("")
             lines.append(f"{i}. {c.symbol} {_px(c.close)} -- {_setup_text(c)} · {_strength_text(c)}")
             lines.append(f"   {_oi_text(c, cfg.oi_lookback_sessions)}")
+            if warn := _results_text(c, results, result.trade_date):
+                lines.append(warn)
+            if side == OptionType.PUT:
+                lines.extend(_put_plan_text(c))
+                continue
             if plan := _plan_text(c):
                 lines.append(plan)
             if spread_lines and (c.side.value, c.symbol) in spread_lines:

@@ -223,8 +223,15 @@ class TestBuildCandidates:
         assert "UP2" in text and "DN1" in text and "THIN CE" in text
         assert "stop 7.20" in text and "lock at 8.64 → 8.40" in text and "trail from 8.96" in text
         assert "UP1 CE 100.00: close above 98.00" in text           # watchlist line, no contract
-        assert "no measured edge" in text and "measured edge with the retest plan" in text
+        assert "no measured edge" in text and "only the wait-for-the-bounce entry" in text
         assert "plan (futures): buy limit" in text and "stop daily close below" in text   # ATR from the fixture bars
+        puts = text.split("📉 PUTS")[1].split("👀")[0]
+        assert "wait for the bounce: SELL futures only if it gets back up to" in puts
+        assert "single:" not in puts and "invalid if" not in puts       # no buy-now lines for puts
+        warned = format_telegram(r, ExitRules(), ScreenerConfig(),
+                                 results={"DN1": r.trade_date + timedelta(days=3), "UP2": r.trade_date + timedelta(days=60)})
+        assert warned.count("⚠️ results on") == 1                       # DN1 in 3 days; UP2's is too far off
+        assert "⚠️ results on" in warned.split("📉 PUTS")[1]
 
     def test_excluded_oi_hook_and_wide_single_not_offered(self, monkeypatch):
         from core.fno_screener import screener as scr

@@ -146,6 +146,22 @@ async def _fetch_bars(broker, symbols: list[str], through: date) -> dict:
     return out
 
 
+def _results_dates(cands: list, trade_date) -> dict:
+    """{symbol: next results date} from the NSE results calendar; {} if it can't be read."""
+    try:
+        from core.ideas import events
+        cal = events.refresh(events.DEFAULT_PATH)
+        out = {}
+        for c in cands:
+            d = events.next_results(cal, c.symbol, trade_date)
+            if d:
+                out[c.symbol] = d
+        return out
+    except Exception as e:                                   # never let the calendar block tonight's message
+        print(f"WARNING: results calendar unavailable: {e}")
+        return {}
+
+
 # ─── Output ──────────────────────────────────────────────────────────────────
 
 def _with_fyers_symbols(cands: list[Candidate]) -> list[Candidate]:
@@ -398,7 +414,7 @@ def main(argv: Optional[list] = None) -> int:
             print(f"WARNING: outcome log update failed: {e}")
 
     lines = {k: line for k, s in spreads.items() if (line := spread_line(s))}
-    message = format_telegram(result, rules, cfg, lines)
+    message = format_telegram(result, rules, cfg, lines, _results_dates(result.calls + result.puts, trade_date))
     print(message)
     if not (args.no_telegram or args.dry_run) and not _send(message):
         print("ERROR: Telegram send failed (credentials missing or API error) -- see warnings above.")
