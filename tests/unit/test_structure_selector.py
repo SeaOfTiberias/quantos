@@ -35,7 +35,8 @@ def test_everything_fits_budget_and_is_ranked():
     view = View(-1, 1200, 1245, 5, risk_budget=12000)
     ranked = candidates(_chain(), view)
     assert ranked and all(c.worst_case * c.lots <= 12000 for c in ranked)
-    assert [c.score for c in ranked] == sorted((c.score for c in ranked), reverse=True)
+    keys = [(bool(c.flags), -c.score) for c in ranked]            # rule-passing first, then by score
+    assert keys == sorted(keys)
     assert all(c.loss_stop <= 0 for c in ranked)
 
 
@@ -83,3 +84,78 @@ def test_research_mode_filters_nothing():
     ranked = candidates(_chain(), v)
     assert "short future" in {c.name for c in ranked} and all(c.lots == 1 for c in ranked)
     assert len(ranked) > len(candidates(_chain(), View(-1, 1200, 1245, 5, risk_budget=12000)))
+
+
+# ── strike rules R1-R6 and the flat scenario (2026-10-25, the HDFC Bank 670/600 review) ──
+
+def _hdfc(spot=692.8, vol=0.26):
+    """A synthetic HDFC Bank-like chain: 10-point strikes, 1.5% bid-ask, 29 days to expiry."""
+    ch = Chain("HDFCBANK", spot, 650, date(2026, 10, 25))
+    t = (NOV - ch.today).days / 365
+    for k in range(560, 791, 10):
+        for r in ("CE", "PE"):
+            m = bs_price(spot, k, t, vol, r)
+            hs = max(0.05, m * 0.0075)
+            if m > 0.3:
+                ch.options[(NOV, float(k), r)] = Quote(round(m - hs, 2), round(m + hs, 2))
+    ch.futures[NOV] = Quote(spot + 3.0, spot + 3.2)
+    return ch
+
+
+HVIEW = dict(direction=-1, target=665, stop=705, horizon_days=10, risk_budget=None, atr=15.9)
+
+
+def _get(ranked, name):
+    return next(c for c in ranked if c.name == name)
+
+
+def test_the_670_600_breaks_r1_r2_r3_and_690_660_passes():
+    ranked = candidates(_hdfc(), View(**HVIEW))
+    old = _get(ranked, "bear put 670/600")
+    tags = {f[:2] for f in old.flags}
+    assert {"R1", "R2", "R3"} <= tags                       # 1.4 ATR OTM, 65 beyond target, ~13% financed
+    good = _get(ranked, "bear put 690/660")                 # ~43% financed, short just past the target
+    assert good.flags == []
+    assert any(f.startswith("R3") for f in _get(ranked, "bear put 690/650").flags)   # ~34%: just under
+    assert ranked.index(good) < ranked.index(old)
+    assert ranked[0].flags == []                            # the top pick passes every rule
+
+
+def test_r2_short_strike_too_close_caps_the_trade():
+    c = _get(candidates(_hdfc(), View(**HVIEW)), "bear put 690/680")
+    assert any(f.startswith("R2") and "caps" in f for f in c.flags)
+
+
+def test_r6_reach_and_no_atr_skips_atr_rules():
+    ranked = candidates(_hdfc(), View(**HVIEW))
+    far = _get(ranked, "bear put 670/600")                  # 600 is 5.8 ATR out; reach is 3.0
+    assert any(f.startswith("R6") and "600" in f for f in far.flags)
+    no_atr = _get(candidates(_hdfc(), View(**{**HVIEW, "atr": None})), "bear put 670/600")
+    assert not any(f[:2] in ("R1", "R6") for f in no_atr.flags)
+    assert any(f.startswith("R3") for f in no_atr.flags)    # financing needs no ATR
+
+
+def test_single_option_unfinanced_and_credit_short_inside_stop():
+    ranked = candidates(_hdfc(), View(**HVIEW))
+    assert any(f.startswith("R3") for f in _get(ranked, "long 690 PE").flags)
+    inside = _get(ranked, "bear call 700/720 (credit)")
+    assert any(f.startswith("R2") and "inside the stop" in f for f in inside.flags)
+    beyond = _get(ranked, "bear call 710/730 (credit)")
+    assert not any(f.startswith("R2") for f in beyond.flags)
+
+
+def test_r5_thesis_matches_family():
+    move = candidates(_hdfc(), View(**HVIEW))
+    assert all(any(f.startswith("R5") for f in c.flags) for c in move if c.fits == "hold")
+    hold = candidates(_hdfc(), View(**{**HVIEW, "thesis": "hold"}))
+    assert all(any(f.startswith("R5") for f in c.flags) for c in hold if c.fits == "move" and "future" not in c.name)
+    assert hold[0].fits == "hold" and hold[0].flags == []
+
+
+def test_flat_scenario_counts_time_decay():
+    ranked = candidates(_hdfc(), View(**HVIEW))
+    otm = _get(ranked, "bear put 670/600")
+    assert otm.flat < 0 and otm.loss_stop <= otm.flat           # no move: the OTM put just decays
+    credit = _get(ranked, "bear call 710/730 (credit)")
+    assert credit.flat > 0                                      # time decay is the credit spread's friend
+

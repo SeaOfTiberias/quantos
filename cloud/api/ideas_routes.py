@@ -58,6 +58,7 @@ class StructureRequest(BaseModel):
     days: int = Field(ge=1, le=60)
     p: float = Field(0.5, gt=0, lt=1)
     intraday: bool = False
+    thesis: Literal["move", "hold"] = "move"
     budget: Optional[float] = None
 
 
@@ -86,10 +87,12 @@ def _run(req: StructureRequest) -> dict:
     if d * (req.target - chain.spot) <= 0 or d * (chain.spot - req.stop) <= 0:
         raise HTTPException(status_code=400, detail=f"for a {req.direction} view the target must be on the "
                             f"{'upper' if d > 0 else 'lower'} side of spot {chain.spot:g} and the stop on the other")
+    from scripts.pick_structure import fyers_atr
+    atr = fyers_atr(broker, req.symbol)
     view = View(direction=d, target=req.target, stop=req.stop, horizon_days=req.days,
-                risk_budget=req.budget or None, overnight=not req.intraday)
+                risk_budget=req.budget or None, overnight=not req.intraday, atr=atr, thesis=req.thesis)
     ranked = candidates(chain, view, p=req.p)
-    return {"symbol": chain.symbol, "spot": chain.spot, "lot": chain.lot, "p": req.p,
+    return {"symbol": chain.symbol, "spot": chain.spot, "lot": chain.lot, "p": req.p, "atr14": atr,
             "research_mode": not req.budget, "count": len(ranked),
             "best": [_row(c) for c in best_by_family(ranked)], "top": [_row(c) for c in ranked[:10]]}
 

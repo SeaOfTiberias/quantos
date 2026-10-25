@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -25,13 +26,16 @@ from core.ideas.structure import Chain, View, best_by_family, candidates  # noqa
 
 def report(chain: Chain, view: View, p: float) -> str:
     ranked = candidates(chain, view, p=p)
-    lines = [f"{chain.symbol} spot {chain.spot:g} · lot {chain.lot} · view {'BULL' if view.direction > 0 else 'BEAR'} "
+    lines = [f"{chain.symbol} spot {chain.spot:g} · lot {chain.lot} · ATR {view.atr or 0:.2f} · "
+             f"view {'BULL' if view.direction > 0 else 'BEAR'} ({view.thesis}) "
              f"target {view.target:g} stop {view.stop:g} in {view.horizon_days}d · "
              f"{'budget ₹{:,.0f}'.format(view.risk_budget) if view.risk_budget else 'research mode (no budget)'} · p={p}",
-             f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'worst':>9}{'needs p':>9}{'EV/worst':>10}{'lots':>6}"]
+             f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'if flat':>9}{'worst':>9}"
+             f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  rules"]
     def row(c):
+        rules = "ok" if not c.flags else " | ".join(c.flags)
         return (f"{c.name:<30}{c.expiry.isoformat() if c.expiry else '':<12}{c.entry:>8.2f}{c.gain_target:>11,.0f}"
-                f"{c.loss_stop:>10,.0f}{c.worst_case:>9,.0f}{c.be_p:>9.0%}{c.score:>10.2f}{c.lots:>6}")
+                f"{c.loss_stop:>10,.0f}{c.flat:>9,.0f}{c.worst_case:>9,.0f}{c.be_p:>9.0%}{c.score:>10.2f}{c.lots:>6}  {rules}")
     lines.append("— best of each family —")
     lines += [row(c) for c in best_by_family(ranked)]
     lines.append("— top 8 overall —")
@@ -41,6 +45,18 @@ def report(chain: Chain, view: View, p: float) -> str:
         lines.append("— futures (worst = stop + gap allowance; needs the stop order actually placed) —")
         lines += [row(c) for c in futs[:2]]
     return "\n".join(lines)
+
+
+def fyers_atr(broker, symbol: str) -> Optional[float]:
+    """ATR(14) of the underlying from completed Fyers daily bars (today's bar excluded)."""
+    from core.mcp_tools.market import _atr
+    try:
+        now = datetime.now(IST)
+        bars = broker.get_historical_data(symbol.upper(), "1d", now - timedelta(days=45), now) or []
+        bars = sorted((b for b in bars if b.timestamp.astimezone(IST).date() < now.date()), key=lambda b: b.timestamp)
+        return _atr(bars)
+    except Exception:
+        return None
 
 
 def main(argv=None) -> int:
@@ -56,6 +72,9 @@ def main(argv=None) -> int:
     ap.add_argument("--p", type=float, default=0.5, help="chance the target comes before the stop")
     ap.add_argument("--intraday", action="store_true", help="closed before today's close (no overnight gap)")
     ap.add_argument("--vol-shift", type=float, default=0.0)
+    ap.add_argument("--thesis", choices=["move", "hold"], default="move",
+                    help="move = reaches the target; hold = won't cross the stop level")
+    ap.add_argument("--atr", type=float, help="ATR(14) override (default: from Fyers daily bars)")
     ap.add_argument("--gap-pct", type=float, default=View.gap_pct,
                     help="overnight gap through a futures stop, %% of spot (worst case)")
     args = ap.parse_args(argv)
@@ -69,7 +88,7 @@ def main(argv=None) -> int:
     chain = fetch_chain(b._client, args.symbol.upper())
     view = View(direction=1 if args.bull else -1, target=args.target, stop=args.stop, horizon_days=args.days,
                 risk_budget=args.budget or None, overnight=not args.intraday, vol_shift=args.vol_shift,
-                gap_pct=args.gap_pct)
+                gap_pct=args.gap_pct, atr=args.atr or fyers_atr(b, args.symbol), thesis=args.thesis)
     print(report(chain, view, args.p))
     return 0
 

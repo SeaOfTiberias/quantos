@@ -78,6 +78,10 @@ def test_pick_structure_returns_families():
     ps = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3)
     fams = {r["structure"].split()[0] for r in ps["best_by_family"]}
     assert ps["best_by_family"] and ("long" in fams or "bull" in fams) and ps["view"]["gap_pct"] == 3.5
+    row = ps["top"][0]
+    assert {"if_flat", "if_stall", "flags", "rules_ok", "fits"} <= set(row) and ps["view"]["thesis"] == "move"
+    keys = [(not r["rules_ok"], -r["ev_per_worst"]) for r in ps["top"]]
+    assert keys == sorted(keys)                       # rule-passing rows first
 
 
 def test_oi_buildup_from_bhavcopies():

@@ -81,11 +81,14 @@ def price_spread(symbol: str, expiry: str, right: str, long_strike: float, short
 
 @server.tool(annotations=READ)
 def pick_structure(symbol: str, direction: str, target: float, stop: float, days: int, budget: float = 0,
-                   p: float = 0.5, intraday: bool = False, gap_pct: Optional[float] = None) -> dict:
+                   p: float = 0.5, intraday: bool = False, gap_pct: Optional[float] = None,
+                   thesis: str = "move") -> dict:
     """Rank futures, single options, debit and credit verticals for a view (direction bull/bear,
     target and stop as stock prices, horizon in trading days) by the hit rate each needs to break
-    even (needs_p) and EV per worst-case rupee. budget 0 = no budget filter."""
-    return mt.pick_structure(market(), symbol, direction, target, stop, days, budget, p, intraday, gap_pct)
+    even (needs_p) and EV per worst-case rupee. budget 0 = no budget filter. thesis "move" (reaches
+    the target) or "hold" (won't cross the stop level). Each row carries the strike-rule flags
+    (R1-R6) and the no-move (if_flat) outcome; rule-passing rows rank first."""
+    return mt.pick_structure(market(), symbol, direction, target, stop, days, budget, p, intraday, gap_pct, thesis)
 
 
 @server.tool(annotations=READ)
