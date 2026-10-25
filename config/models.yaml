@@ -14,6 +14,7 @@ roles:
   summary:   claude-sonnet-4-6     # morning brief, alpha attribution, vault compile / narrator, version notes
   judgement: claude-opus-5         # shortlist note: few calls a day, the judgement is the deliverable
   explainer: claude-opus-5-5       # trade-event explainer (new 2026-10-23): effort low, web search, fallbacks "default"
+  structure: claude-opus-5-5       # structure reviewer (new 2026-10-25): effort high, web search, picks among code-scored candidates
 
 features:
   analyst_chat:      reasoning
@@ -27,6 +28,7 @@ features:
   version_notes:     summary
   shortlist_note:    judgement
   trade_explainer:   explainer
+  structure_review:  structure
 
 # USD per million tokens: [input, output]. List prices; cache reads/writes are
 # priced off input (0.1x / 1.25x) in core/llm/calllog.py.
