@@ -66,6 +66,8 @@ def test_event_scenario_prices_a_gap_against_the_view_and_flags_r7():
     assert bp.event is not None and bp.event < 0 and bp.loss_stop <= bp.event
     r7 = [c for c in ev if any(f.startswith("R7") for f in c.flags)]
     assert r7 and all(abs(c.event - c.loss_stop) < 1e-6 for c in r7)
+    structural = [any(not f.startswith("R7") for f in c.flags) for c in ev]
+    assert structural == sorted(structural)                         # R1-R6 breakers always rank after
     late = candidates(_hdfc(), View(**HVIEW, event_date=date(2026, 11, 20)))   # after the horizon
     assert all(c.event is None for c in late)
 

@@ -325,7 +325,11 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
         c.deltas = [float(d) if leg[0] == "FUT" else
                     round(leg[0] * bs_delta(chain.spot, leg[2], _t((leg[1] - chain.today).days), iv[leg[1:]], leg[3]), 2)
                     for leg in c.legs]
-    return sorted(ranked, key=lambda c: (bool(c.flags), -c.score))
+    # R7 is about the view's timing, not the structure, and can flag every candidate at once: rank on
+    # the structural rules first so it never lifts a structure that breaks R1-R6 above one that doesn't.
+    def broken(c):
+        return (any(not f.startswith("R7") for f in c.flags), any(f.startswith("R7") for f in c.flags))
+    return sorted(ranked, key=lambda c: (*broken(c), -c.score))
 
 
 R1_OTM_ATR = 0.5
