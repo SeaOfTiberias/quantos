@@ -340,6 +340,14 @@ Reordered 2026-10-23: the trading loop works now, so foundations and the market 
 | Research | Year backtest of the screener's signals, exit grid, and the pre-registered entry search (puts' retest entry passes; calls have no edge). | 6a53794, 37c3aab |
 | Trade-event explainer | When a watcher rule fires, or a held stock opens ≥ 1 ATR away, the alert goes out unchanged; then one Claude call (Opus 5.5, effort low, web search) adds 2–3 sentences on *why* the stock is moving. Code decides, the model explains. It sends symbol, structure and levels only; quantity, P&L and account are stripped. Capped at 12 a day. Live test: about $0.11 and 29 s per explanation. | 88073c8 |
 
+### What shipped on 2026-10-24/25
+
+- **Stage 2 orders** (approved): `core/orders/` gateway and checks, `scripts/qorder.py`, the position manager's resting GTT OCO and 15:20 exit, the spread watcher's short-leg-first close on `auto_close` kinds. Switches: `scripts/enable-orders.ps1`.
+- **Structure choice** (after the HDFC Bank 670/600 review, picked by feel and against the tool):
+  - `pick_structure` enforces strike rules R1–R6 (long strike within 0.5 ATR, short strike at the target, short leg finances at least 35%, family matches the thesis, strikes within reach) and prices the no-move case. Rule-passing structures rank first.
+  - `scripts/review_structure.py`: Claude Opus 5.5 (`structure_review`) picks one of the code-scored rows with market context and web search. Code rejects anything that isn't a candidate. Pattern D1 "augmented LLM": the model judges, code computes.
+  - `--log` writes the reviewer's pick and the tool's top pick to the idea log (`review-llm` / `review-tool` / `review-agree`). `core/ideas/dual.scoreboard_by_source` will show whether the model's judgement beats the arithmetic.
+
 ### Deferred, and what each needs
 
 | Item | Needs | Unblocks |
