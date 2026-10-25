@@ -26,8 +26,13 @@ Scenario model (deliberately simple, stated so it can be argued with):
     option structure caps by construction and a stop order cannot)
   - "flat"  : the stock hasn't moved at all by the horizon -- pure time decay
               (added 2026-10-25: a slow large cap often just sits)
+  - "event" : only when a results date falls inside the horizon (view.event_date,
+              from core/ideas/events.py): the session after results the stock
+              has gapped `event_gap_atr` ATRs AGAINST the view and every leg's
+              IV has moved by `event_iv_shift` (the post-results crush). A
+              daily-close stop can't help -- the gap is already through it.
 Ranking metric: EV(p) / worst_case, where EV(p) = p*gain_target +
-(1-p)*loss and `loss` is the WORST of the stop, stall and flat outcomes
+(1-p)*loss and `loss` is the WORST of the stop, stall, flat (and event) outcomes
 (risk-averse) and worst_case is the most a lot can lose (premium or spread
 max loss for options; stop distance + gap for futures). `be_p` is the hit
 rate a structure needs just to break even: the lower, the more forgiving.
@@ -46,6 +51,8 @@ the reason in `flags`, but ranks after every candidate that breaks none:
       "move", a credit spread expresses "hold" (won't cross the stop level)
   R6  no strike further than 3 ATR x sqrt(horizon / 10) from spot
 R4 (score the no-move case) is the "flat" scenario above.
+  R7  results inside the horizon and the event scenario is this candidate's
+      worst outcome: the plan's stop doesn't set its loss, the results gap does
 
 Each candidate also carries its legs' Black-Scholes deltas at today's spot and
 each leg's own IV (`deltas`, per share, + = long the right; a future is +/-1),
@@ -141,6 +148,9 @@ class View:
     vol_shift: float = 0.0    # e.g. -0.05 to model post-results IV crush
     atr: Optional[float] = None   # ATR(14) of the underlying; enables the strike rules
     thesis: str = "move"      # "move" (reaches the target) | "hold" (won't cross the stop level)
+    event_date: Optional[date] = None   # results date inside the horizon (core/ideas/events.py)
+    event_gap_atr: float = 1.5          # the gap against the view after results, in ATRs
+    event_iv_shift: float = -0.05       # IV change after results (absolute; -0.05 = 5 vol points)
 
 
 @dataclass
@@ -154,6 +164,7 @@ class Candidate:
     worst_case: float         # per lot, positive rupees
     stall: float = 0.0        # per lot, the stall outcome on its own
     flat: float = 0.0         # per lot, no move at all by the horizon
+    event: Optional[float] = None   # per lot, the results-gap scenario (None = no event in the horizon)
     flags: list = field(default_factory=list)   # strike rules broken (empty = passes)
     fits: str = ""            # "move" | "hold": the thesis this family expresses
     deltas: list = field(default_factory=list)  # per leg, position-signed (short leg's delta negated)
@@ -200,6 +211,14 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
     min_days_left = max(min_days_left, math.ceil(h_cal) + 1)
     stop_cal = h_cal / 2
     mid_spot = (chain.spot + view.target) / 2
+    ev_on = bool(view.event_date and view.atr and view.event_date >= chain.today
+                 and (view.event_date - chain.today).days + 1 <= h_cal)
+    ev_cal = (view.event_date - chain.today).days + 1 if ev_on else 0.0
+    ev_spot = chain.spot - d * view.event_gap_atr * view.atr if ev_on else chain.spot
+
+    def worst_of(*xs):
+        return min(x for x in xs if x is not None)
+
     out: list[Candidate] = []
 
     # Implied vol per listed option, from its mid.
@@ -212,11 +231,11 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
         if v:
             iv[key] = v
 
-    def leg_exit(key, spot, elapsed, sign):
+    def leg_exit(key, spot, elapsed, sign, extra_vol=0.0):
         """Exit value of one leg per share, giving up half the spread."""
         expiry = key[0]
         el = min(elapsed, (expiry - chain.today).days)
-        val = _option_value(chain, iv, key, spot, el, view.vol_shift)
+        val = _option_value(chain, iv, key, spot, el, view.vol_shift + extra_vol)
         hs = chain.options[key].half_spread
         return val - hs if sign > 0 else val + hs
 
@@ -234,8 +253,9 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
         worst = (stop_dist + gap) * lot + q.half_spread * lot   # the tail: a gap through the stop
         stall = d * ((mid_spot + basis) - entry) * lot - q.half_spread * lot
         flat = d * ((chain.spot + basis) - entry) * lot - q.half_spread * lot
+        ev = d * ((ev_spot + basis) - entry) * lot - q.half_spread * lot if ev_on else None
         out.append(Candidate(f"{'long' if d > 0 else 'short'} future", expiry, [("FUT", expiry)], entry,
-                             gain, min(loss, stall, flat), worst, stall=stall, flat=flat, note=f"stop {view.stop:g}, +{view.gap_pct if view.overnight else 0.1}% gap allowance"))
+                             gain, worst_of(loss, stall, flat, ev), worst, stall=stall, flat=flat, event=ev, note=f"stop {view.stop:g}, +{view.gap_pct if view.overnight else 0.1}% gap allowance"))
 
     expiries = sorted({k[0] for k in iv if (k[0] - chain.today).days >= min_days_left})
     right = "CE" if d > 0 else "PE"
@@ -253,8 +273,9 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
             l = (leg_exit(key, view.stop, stop_cal, +1) - q.ask) * lot
             st = (leg_exit(key, mid_spot, h_cal, +1) - q.ask) * lot
             fl = (leg_exit(key, chain.spot, h_cal, +1) - q.ask) * lot
-            out.append(Candidate(f"long {k:g} {right}", expiry, [(+1, expiry, k, right)], q.ask, g, min(l, st, fl, 0.0),
-                                 q.ask * lot, stall=st, flat=fl))
+            ev = (leg_exit(key, ev_spot, ev_cal, +1, view.event_iv_shift) - q.ask) * lot if ev_on else None
+            out.append(Candidate(f"long {k:g} {right}", expiry, [(+1, expiry, k, right)], q.ask, g,
+                                 worst_of(l, st, fl, ev, 0.0), q.ask * lot, stall=st, flat=fl, event=ev))
         # Debit vertical: long k1, short k2 further in the view's direction.
         for k1 in strikes:
             for k2 in strikes:
@@ -265,15 +286,16 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
                 width = abs(k2 - k1)
                 if entry < 0.05 * width or entry >= width:
                     continue
-                def val(spot, el):
-                    return leg_exit(kl, spot, el, +1) - leg_exit(ks, spot, el, -1)
+                def val(spot, el, xv=0.0):
+                    return leg_exit(kl, spot, el, +1, xv) - leg_exit(ks, spot, el, -1, xv)
                 g = (val(view.target, h_cal) - entry) * lot
                 l = (val(view.stop, stop_cal) - entry) * lot
                 st = (val(mid_spot, h_cal) - entry) * lot
                 fl = (val(chain.spot, h_cal) - entry) * lot
+                ev = (val(ev_spot, ev_cal, view.event_iv_shift) - entry) * lot if ev_on else None
                 out.append(Candidate(f"{'bull call' if d > 0 else 'bear put'} {k1:g}/{k2:g}", expiry,
-                                     [(+1, expiry, k1, right), (-1, expiry, k2, right)], entry, g, min(l, st, fl, 0.0),
-                                     entry * lot, stall=st, flat=fl))
+                                     [(+1, expiry, k1, right), (-1, expiry, k2, right)], entry, g,
+                                     worst_of(l, st, fl, ev, 0.0), entry * lot, stall=st, flat=fl, event=ev))
         # Credit vertical on the other side: short k1, long k2 further away from the view.
         for k1 in ostrikes:
             for k2 in ostrikes:
@@ -284,15 +306,16 @@ def candidates(chain: Chain, view: View, p: float = 0.5, min_days_left: int = 2)
                 width = abs(k1 - k2)
                 if credit < 0.05 * width or credit >= width:
                     continue
-                def val(spot, el):
-                    return leg_exit(kl, spot, el, +1) - leg_exit(ks, spot, el, -1)
+                def val(spot, el, xv=0.0):
+                    return leg_exit(kl, spot, el, +1, xv) - leg_exit(ks, spot, el, -1, xv)
                 g = (val(view.target, h_cal) + credit) * lot
                 l = (val(view.stop, stop_cal) + credit) * lot
                 st = (val(mid_spot, h_cal) + credit) * lot
                 fl = (val(chain.spot, h_cal) + credit) * lot
+                ev = (val(ev_spot, ev_cal, view.event_iv_shift) + credit) * lot if ev_on else None
                 out.append(Candidate(f"{'bull put' if d > 0 else 'bear call'} {k1:g}/{k2:g} (credit)", expiry,
-                                     [(-1, expiry, k1, opp), (+1, expiry, k2, opp)], -credit, g, min(l, st, fl, 0.0),
-                                     (width - credit) * lot, stall=st, flat=fl))
+                                     [(-1, expiry, k1, opp), (+1, expiry, k2, opp)], -credit, g,
+                                     worst_of(l, st, fl, ev, 0.0), (width - credit) * lot, stall=st, flat=fl, event=ev))
 
     ranked = [_score(c, p, view.risk_budget) for c in out if c.worst_case > 0]
     ranked = [c for c in ranked if c.lots >= 1]           # must fit the risk budget at one lot
@@ -323,6 +346,9 @@ def rule_flags(c: Candidate, chain: Chain, view: View) -> list[str]:
     """The strike rules a candidate breaks (module docstring). Futures can only break R5; R1, R2's
     ATR tolerances and R6 need view.atr."""
     out: list[str] = []
+    if c.event is not None and c.event < 0 and abs(c.event - c.loss_stop) < 1e-6:
+        out.append(f"R7 results on {view.event_date:%d-%b} inside the horizon: the results gap "
+                   f"({c.event:,.0f}), not the stop, sets this trade's loss")
     if c.fits != view.thesis:
         out.append(f"R5 a {c.fits!r} structure for a {view.thesis!r} thesis")
     opts = [leg for leg in c.legs if leg[0] != "FUT"]

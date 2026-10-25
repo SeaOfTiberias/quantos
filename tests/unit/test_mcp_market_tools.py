@@ -75,7 +75,7 @@ def test_price_spread_fills_at_ask_and_bid():
 
 
 def test_pick_structure_returns_families():
-    ps = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None)
+    ps = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None, events_path=None)
     fams = {r["structure"].split()[0] for r in ps["best_by_family"]}
     assert ps["best_by_family"] and ("long" in fams or "bull" in fams) and ps["view"]["gap_pct"] == 3.5
     row = ps["top"][0]

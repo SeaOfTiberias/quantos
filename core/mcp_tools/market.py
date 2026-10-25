@@ -27,6 +27,7 @@ from core.ideas.structure import Chain, View, best_by_family, candidates, implie
 IST = timezone(timedelta(hours=5, minutes=30))
 QUANTOS_DIR = Path.home() / ".quantos"
 IV_HISTORY = QUANTOS_DIR / "atm_iv_history.csv"
+EVENTS = QUANTOS_DIR / "events.json"
 INDEX = {"NIFTY": "NSE:NIFTY50-INDEX", "BANKNIFTY": "NSE:NIFTYBANK-INDEX", "NIFTYBANK": "NSE:NIFTYBANK-INDEX",
          "FINNIFTY": "NSE:FINNIFTY-INDEX", "INDIAVIX": "NSE:INDIAVIX-INDEX"}
 
@@ -223,6 +224,7 @@ def structure_row(c, spot: Optional[float] = None, atr: Optional[float] = None, 
             "if_target": _r(c.gain_target, 0), "if_stop_or_stall": _r(c.loss_stop, 0),
             "if_stall": _r(c.stall, 0), "if_flat": _r(c.flat, 0), "worst": _r(c.worst_case, 0),
             "needs_p": _r(c.be_p, 3), "ev_per_worst": _r(c.score, 3), "lots": c.lots, "fits": c.fits,
+            "if_event": _r(c.event, 0) if c.event is not None else None,
             "rules_ok": not c.flags, "flags": c.flags, "note": c.note or None,
             "deltas": c.deltas, "net_delta": _r(sum(c.deltas)) if c.deltas else None, "max_at": max_at}
 
@@ -230,26 +232,36 @@ def structure_row(c, spot: Optional[float] = None, atr: Optional[float] = None, 
 def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: float, days: int,
                    budget: float = 0, p: float = 0.5, intraday: bool = False, gap_pct: Optional[float] = None,
                    thesis: str = "move", atr: Optional[float] = None, iv_history: Optional[Path] = IV_HISTORY,
-                   bhav_dir: Optional[Path] = QUANTOS_DIR / "nse_fo_bhavcopy") -> dict:
-    from core.ideas import regime
+                   bhav_dir: Optional[Path] = QUANTOS_DIR / "nse_fo_bhavcopy",
+                   events_path: Optional[Path] = EVENTS) -> dict:
+    from core.ideas import events, regime
     sym = symbol.strip().upper()
     ch = m.chain(sym, 10)
     atr = atr or completed_atr(m, sym)
+    iv = regime.iv_context(ch, iv_history, bhav_dir) if iv_history else {"error": "no IV history"}
+    try:
+        ev = events.event_context(events.refresh(events_path), sym, ch.today, days) if events_path else \
+            {"results_date": None, "error": "no results calendar"}
+    except Exception as e:                                   # never let the calendar break a pick
+        ev = {"results_date": None, "error": f"{type(e).__name__}"}
+    ev_date = date.fromisoformat(ev["results_date"]) if ev.get("inside_horizon") else None
+    if ev_date:
+        ev["iv_shift_assumed"] = regime.event_iv_shift(iv)
     view = View(direction=1 if direction.lower().startswith("bu") else -1, target=target, stop=stop, horizon_days=days,
                 risk_budget=budget or None, overnight=not intraday, atr=atr,
                 thesis="hold" if thesis.lower().startswith("h") else "move",
+                event_date=ev_date, event_iv_shift=ev.get("iv_shift_assumed", -0.05),
                 **({"gap_pct": gap_pct} if gap_pct is not None else {}))
     ranked = candidates(ch, view, p=p)
     k = regime.velocity_k(ch.spot, target, atr, days)
     velocity = {"k": _r(k), "label": regime.velocity_label(k)} if k is not None else None
-    iv = regime.iv_context(ch, iv_history, bhav_dir) if iv_history else {"error": "no IV history"}
     row = lambda c: structure_row(c, ch.spot, atr, days)   # noqa: E731
     vw = {"direction": direction, "target": target, "stop": stop, "days": days, "budget": budget or None,
           "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis}
     top = [row(c) for c in ranked[:8]]
     return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw,
-            "regime": {"velocity": velocity, "iv": iv},
-            "warnings": regime.warnings(vw, velocity, iv, top[0] if top else None),
+            "regime": {"velocity": velocity, "iv": iv}, "event": ev,
+            "warnings": regime.warnings(vw, velocity, iv, top[0] if top else None, ev),
             "best_by_family": [row(c) for c in best_by_family(ranked)],
             "top": top,
             "read": "Rule-passing structures (rules_ok) rank first, then by EV per worst-case rupee. Pick the lowest "
@@ -258,7 +270,9 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                     "thesis, R6 strike out of reach). if_flat = no move by the horizon. regime: velocity k = |target - spot| / "
                     "(ATR x sqrt(days)) (drift <= 0.5 < normal <= 1 < fast) and ATM IV rank over a year (high >= 0.7 "
                     "favours credit, low <= 0.3 favours debit); max_at = the velocity a debit spread's maximum needs; "
-                    "deltas per leg, position-signed. warnings are advisory."}
+                    "deltas per leg, position-signed. warnings are advisory. event: the next results date from NSE board "
+                    "meetings; when inside the horizon, if_event = the session after results with a 1.5 ATR gap against "
+                    "the view and IV down to its 1y median, and R7 flags a structure whose worst case that is."}
 
 
 # ─── OI build-up ─────────────────────────────────────────────────────────────

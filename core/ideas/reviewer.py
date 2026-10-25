@@ -45,7 +45,7 @@ WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": 2
               "user_location": {"type": "approximate", "country": "IN", "timezone": "Asia/Kolkata"}}
 MAX_CONTINUATIONS = 2
 CANDIDATE_KEYS = ("structure", "expiry", "entry", "if_target", "if_stop_or_stall", "if_stall", "if_flat", "worst",
-                  "needs_p", "ev_per_worst", "fits", "flags", "deltas", "net_delta", "max_at")
+                  "needs_p", "ev_per_worst", "fits", "flags", "deltas", "net_delta", "max_at", "if_event")
 
 
 def candidate_id(row: dict) -> str:
@@ -74,7 +74,7 @@ def build_context(ps: dict, stock: dict, market: dict, as_of: str) -> dict:
         "symbol": ps.get("symbol"),
         "view": {k: v.get(k) for k in ("direction", "target", "stop", "days", "thesis")},
         "spot": ps.get("spot"), "lot_size": ps.get("lot"), "atr14": ps.get("atr14"),
-        "regime": ps.get("regime"), "warnings": ps.get("warnings") or [],
+        "regime": ps.get("regime"), "event": ps.get("event"), "warnings": ps.get("warnings") or [],
         "stock": stock, "market": market,
         "candidates": shortlist(ps),
     }

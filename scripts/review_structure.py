@@ -38,7 +38,8 @@ def fmt_row(r: dict) -> str:
     m = r.get("max_at")
     max_at = f"  max@{m['price']:g} {m['label']}" if m else ""
     return (f"{r['id']:<40} entry {r.get('entry')!s:>7}  target {r.get('if_target')!s:>8}  stop {r.get('if_stop_or_stall')!s:>8}"
-            f"  flat {r.get('if_flat')!s:>7}  needs {r.get('needs_p')}  delta {deltas}{max_at}  [{flags}]")
+            f"  flat {r.get('if_flat')!s:>7}" + (f"  event {r['if_event']!s:>8}" if r.get("if_event") is not None else "")
+            + f"  needs {r.get('needs_p')}  delta {deltas}{max_at}  [{flags}]")
 
 
 def regime_line(ps: dict) -> str:
@@ -109,6 +110,10 @@ def main(argv=None) -> int:
     print(f"{ps['symbol']} spot {ps['spot']} · ATR {ps.get('atr14')} · {ps['view']['direction']} "
           f"target {a.target:g} stop {a.stop:g} in {a.days}d · thesis {a.thesis}")
     print(regime_line(ps))
+    e = ps.get("event") or {}
+    print(f"results: {e.get('results_date') or 'none in the calendar'}"
+          + (f" ({e['sessions_away']} sessions away, {'INSIDE' if e.get('inside_horizon') else 'after'} the horizon)"
+             if e.get("results_date") else "") + (f"  [{e['error']}]" if e.get("error") else ""))
     for w in ps.get("warnings") or []:
         print(f"! {w}")
     print("\nCandidates (code-scored, rule-passing first):")

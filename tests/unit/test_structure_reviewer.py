@@ -17,7 +17,7 @@ def _call_log_in_tmp(tmp_path, monkeypatch):
 
 
 def ps():
-    return mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None)
+    return mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None, events_path=None)
 
 
 class FakeClaude:

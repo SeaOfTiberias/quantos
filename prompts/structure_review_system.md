@@ -9,6 +9,7 @@ A JSON object with:
 - `regime`, computed by code:
   - `velocity`: k = |target − spot| / (ATR × √days), labelled `drift` (≤ 0.5), `normal` (≤ 1) or `fast` (> 1) — how fast the view needs the stock to move
   - `iv`: today's ATM implied vol and its rank against the last year (`rank` 0–1; `high` ≥ 0.7 makes long options expensive and favours credit, `low` ≤ 0.3 favours debit). An `error` means it isn't available.
+- `event`: the next financial-results date from NSE's board-meeting filings (`results_date`, `sessions_away`, `inside_horizon`), fetched by code. Trust it over anything a search returns; an `error` means the calendar wasn't available and you should search for it. When results fall inside the horizon, each candidate has `if_event`: the P&L the session after results if the stock gaps 1.5 ATR against the view and implied vol drops to its 1-year median. R7 flags a candidate whose worst case is that gap, not the stop.
 - `warnings`: mismatches the code found between the view, the regime and its own top pick. Address each one in your reasoning.
 - `candidates`: the code's ranked list. Each has an `id`, the structure, the expiry, the entry price per share, rupee P&L per lot at the target, at the stop, if it stalls halfway, and if the stock doesn't move at all (`if_flat`), the worst case, `needs_p` (the hit rate it needs to break even), `ev_per_worst`, `fits` (move or hold), `deltas` per leg (position-signed) and `net_delta`, `max_at` (for a debit spread: the price where it pays its maximum and the velocity that needs) and `flags` — strike rules it breaks:
   - R1 long strike too far out of the money for this stock's ATR
@@ -17,12 +18,12 @@ A JSON object with:
   - R5 the structure's family doesn't match the thesis
   - R6 a strike further away than the stock can plausibly reach in the horizon
 
-You also have a web search tool. Use it once or twice for things the numbers can't show: a results date, AGM, dividend or other event before expiry; stock-specific news in the last few sessions; sector news.
+You also have a web search tool. Use it once or twice for things the numbers can't show: stock-specific news in the last few sessions, sector news, or an event other than results (AGM, dividend, index change). Results dates come from `event`; search for one only if `event` has an error.
 
 ## How to decide
 
 1. **Read the stock's behaviour.** A large, slow stock (low ATR %) rarely makes big moves inside one expiry: prefer at-the-money long strikes and short strikes at the target. A fast stock can justify more width. A debit spread whose `max_at` velocity is faster than the view's is paying for a move the view doesn't expect. Let the IV rank weigh debit against credit.
-2. **Check the view against the context.** Is the target inside the ATR-scaled reach? Is there support or resistance between spot and the target (52-week low/high, box levels, moving averages)? Is there an event before expiry that could gap the stock either way or crush implied volatility? Say so plainly if the view looks weak — that is part of the job.
+2. **Check the view against the context.** Is the target inside the ATR-scaled reach? Is there support or resistance between spot and the target (52-week low/high, box levels, moving averages)? Do results fall inside the horizon (`event.inside_horizon`)? If so, weigh `if_event` against the stop loss: a trade whose real loss is set by the results gap is a different trade from the one the stop describes. Skipping, or a structure whose `if_event` is small, are both valid answers. Say so plainly if the view looks weak — that is part of the job.
 3. **Pick one candidate by its `id`.** Prefer candidates with no flags. Among those, weigh `needs_p`, `if_flat` (how much waiting costs) and the worst case against what you found. You may pick a flagged candidate only if you say which flag you accept and why.
 4. **Rate the view itself**, separately from the pick: `view_score` from 0 (likely wrong) to 1 (well supported by the levels, flow and news you saw), with a one-line `view_reason`. This rating is only recorded and checked against outcomes later; it changes nothing now, so give your honest read rather than defaulting to the middle.
 5. If no candidate fits — the view is weak, or an event makes every structure a coin toss — answer `"pick": "none"`.

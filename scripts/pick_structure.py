@@ -36,7 +36,12 @@ def regime_lines(chain: Chain, view: View, top) -> list[str]:
     vw = {"thesis": view.thesis}
     top_row = {"structure": top.name} if top else None
     out = [f"velocity {vel['k']} ({vel['label']})" if vel else "velocity n/a (no ATR)", ivs]
-    return [" · ".join(out)] + [f"! {w}" for w in regime.warnings(vw, vel, iv, top_row)]
+    ev = getattr(view, "_event_ctx", None)
+    if ev:
+        out.append(f"results {ev.get('results_date') or 'none in the calendar'}"
+                   + (f" ({ev['sessions_away']} sessions, {'INSIDE' if ev.get('inside_horizon') else 'after'} the horizon)"
+                      if ev.get("results_date") else ""))
+    return [" · ".join(out)] + [f"! {w}" for w in regime.warnings(vw, vel, iv, top_row, ev)]
 
 
 def report(chain: Chain, view: View, p: float) -> str:
@@ -46,7 +51,7 @@ def report(chain: Chain, view: View, p: float) -> str:
              f"target {view.target:g} stop {view.stop:g} in {view.horizon_days}d · "
              f"{'budget ₹{:,.0f}'.format(view.risk_budget) if view.risk_budget else 'research mode (no budget)'} · p={p}",
              f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'if flat':>9}{'worst':>9}"
-             f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  {'deltas':<14}rules"]
+             f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  {'deltas':<14}rules (if_event: R7)"]
     lines[1:1] = regime_lines(chain, view, ranked[0] if ranked else None)
 
     def row(c):
@@ -107,6 +112,16 @@ def main(argv=None) -> int:
     view = View(direction=1 if args.bull else -1, target=args.target, stop=args.stop, horizon_days=args.days,
                 risk_budget=args.budget or None, overnight=not args.intraday, vol_shift=args.vol_shift,
                 gap_pct=args.gap_pct, atr=args.atr or fyers_atr(b, args.symbol), thesis=args.thesis)
+    from datetime import date as _date
+    from core.ideas import events
+    from core.mcp_tools.market import EVENTS
+    try:
+        ev = events.event_context(events.refresh(EVENTS), chain.symbol, chain.today, args.days)
+    except Exception as e:
+        ev = {"results_date": None, "error": type(e).__name__}
+    if ev.get("inside_horizon"):
+        view.event_date = _date.fromisoformat(ev["results_date"])
+    view._event_ctx = ev
     print(report(chain, view, args.p))
     return 0
 

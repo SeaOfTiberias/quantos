@@ -181,7 +181,9 @@ def iv_rank(iv_now: float, series: list[tuple[date, float]], today: date) -> Opt
     rank = (iv_now - lo) / (hi - lo) if hi > lo else 0.5
     rank = min(max(rank, 0.0), 1.0)
     label = "high" if rank >= IV_HIGH else "low" if rank <= IV_LOW else "mid"
+    med = sorted(past)[len(past) // 2]
     return {"rank": round(rank, 2), "label": label, "low_1y": round(lo, 4), "high_1y": round(hi, 4),
+            "median_1y": round(med, 4),
             "history_to": max(d for d, _ in series if d < today).isoformat(), "n": len(past)}
 
 
@@ -213,9 +215,21 @@ def velocity_label(k: Optional[float]) -> Optional[str]:
     return "drift" if k <= DRIFT_K else "normal" if k <= FAST_K else "fast"
 
 
-def warnings(view: dict, velocity: Optional[dict], iv: dict, top: Optional[dict]) -> list[str]:
+def event_iv_shift(iv: dict, default: float = -0.05) -> float:
+    """IV change assumed after results: down to the stock's 1-year median ATM IV (never up), or
+    `default` without history."""
+    if "median_1y" in iv and "iv" in iv:
+        return round(min(0.0, iv["median_1y"] - iv["iv"]), 4)
+    return default
+
+
+def warnings(view: dict, velocity: Optional[dict], iv: dict, top: Optional[dict],
+             event: Optional[dict] = None) -> list[str]:
     """Plain-language mismatches between the view, the regime and the tool's top row. Advisory."""
     out = []
+    if event and event.get("inside_horizon"):
+        out.append(f"results on {event['results_date']} ({event['sessions_away']} sessions away) fall inside the "
+                   f"horizon: see if_event; exiting before results, or skipping, are the alternatives")
     thesis = view.get("thesis")
     lab = (velocity or {}).get("label")
     if thesis == "move" and lab == "fast":

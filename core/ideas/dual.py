@@ -53,7 +53,7 @@ def ideas_for_review(review, ps: dict, model: str, pair: str) -> list[dict]:
             "accepted_flags": review.accepted_flags, "error": review.error,
             "searches": getattr(review, "searches", []),
             "view_score": getattr(review, "view_score", None), "view_reason": getattr(review, "view_reason", ""),
-            "regime": ps.get("regime"), "warnings": ps.get("warnings") or []}
+            "regime": ps.get("regime"), "event": ps.get("event"), "warnings": ps.get("warnings") or []}
 
     def idea(row: dict, source: str) -> dict:
         d = {**_base(ps, view, float(v.get("stop"))), "action": "enter_now", "source": source,

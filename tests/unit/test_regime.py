@@ -91,10 +91,10 @@ def test_candidate_deltas_are_position_signed():
 def test_pick_structure_carries_regime_and_max_at(tmp_path):
     p = tmp_path / "iv.csv"
     regime.save(p, {"ABC": _series(260, end=TODAY - timedelta(days=1))})
-    ps = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=p, bhav_dir=None)
+    ps = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=p, bhav_dir=None, events_path=None)
     assert ps["regime"]["velocity"]["label"] in ("drift", "normal", "fast")
     assert "rank" in ps["regime"]["iv"] and isinstance(ps["warnings"], list)
     debit = next(r for r in ps["top"] + ps["best_by_family"] if r["structure"].startswith("bull call"))
     assert debit["max_at"]["price"] == float(debit["structure"].split("/")[1]) and debit["deltas"]
-    none = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None)
+    none = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None, events_path=None)
     assert none["regime"]["iv"] == {"error": "no IV history"}
