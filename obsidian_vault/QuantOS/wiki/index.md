@@ -8,7 +8,7 @@ quantos:
 
 # Vault index
 
-Regenerated 2026-10-25 by `python scripts/vault.py index`. Do not hand-edit.
+Regenerated 2026-10-26 by `python scripts/vault.py index`. Do not hand-edit.
 
 ## brain/ (3 — executable)
 
@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (49 — not executable)
+## wiki/ (51 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -34,6 +34,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[dow-theory-trend-candidate-14]] — Dow Theory / Market Structure Trend Following (Candidate 14)
 - [[earnings-gap-drift]] — Earnings-Gap Drift (price/volume PEAD proxy)
 - [[ema8-second-trade]] — EMA-8 Slope, Second Trade of the Day
+- [[emt-vwap-nifty-5m]] — EMT Exhaustion Mean Reversion to VWAP, NIFTY 5-minute
 - [[event-proximity-vol]] — Known-Event (RBI/Budget) Proximity vs Forward Volatility
 - [[expiry-day-effect-gutcheck-candidate-13]] — F&O Monthly Expiry-Day Effect (Candidate 13, Gut-Check)
 - [[fno-screener]] — F&O Screener (Evening Call/Put Candidates)
@@ -63,6 +64,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[strategy-register-2026-10-21]] — Strategy register — 2026-10-21
 - [[strategy-register-2026-10-24]] — Strategy register — 2026-10-24
 - [[strategy-register-2026-10-25]] — Strategy register — 2026-10-25
+- [[strategy-register-2026-10-26]] — Strategy register — 2026-10-26
 - [[strategy-search]] — Strategy Search
 - [[surge-bull-put-credit]] — Surge Bull Put Credit Spread (IV Rank Gate)
 - [[surge-spread-candidate-23]] — Surge Option Spreads (Candidate 23)
@@ -72,7 +74,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (105 — not executable)
+## raw/ (107 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -181,6 +183,8 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-24-darvas-bucket-b-universe-entry-cues-and-exits-pre-registrati]] — Darvas Bucket B: universe, entry cues and exits. Pre-registration (2026-10-23)
 - [[2026-10-24-new-tracks-surge-bull-put-credit-spreads-and-eur-usdgbp-usd]] — New tracks: surge bull put credit spreads and EUR/USD–GBP/USD cointegration. Pre-registration (2026-10-24)
 - [[2026-10-25-put-setups-mirrored-darvas-vs-mid-range-downtrends-pre-regis]] — Put setups: mirrored Darvas vs mid-range downtrends. Pre-registration (2026-10-25)
+- [[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology]] — EMT (exhaustion mean theory) on NIFTY 5-minute — methodology
+- [[2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points]] — EMT on NIFTY 5-minute — phase 1 results (index points)
 
 ## loose/ (1 — not executable)
 
