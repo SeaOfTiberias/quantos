@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (52 — not executable)
+## wiki/ (53 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -26,6 +26,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[breakout-1010-banknifty-candidate-15]] — 10:10 Breakout on BankNifty Options (Candidate 15)
 - [[candle-confirm-momentum-gutcheck-candidate-19]] — Candle-Confirm Momentum (Candidate 19, Gut-Check)
 - [[capital-readiness-validation]] — Capital-Readiness Validation
+- [[cci-sma-cross-signals]] — CCI(34)/EMA52 and SMA 5/40 Crosses as Standalone Signals
 - [[darvas-atr-stop-bucket-b]] — Darvas ATR-Scaled Stop, Bucket B
 - [[darvas-box-width]] — Darvas Box-Width Buckets (Static Exit)
 - [[darvas-bucket-b-cues]] — Darvas Bucket B Cue Tests (Universe, Entry Filters, Exits)
@@ -75,7 +76,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (113 — not executable)
+## raw/ (115 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -184,6 +185,8 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-24-darvas-bucket-b-universe-entry-cues-and-exits-pre-registrati]] — Darvas Bucket B: universe, entry cues and exits. Pre-registration (2026-10-23)
 - [[2026-10-24-new-tracks-surge-bull-put-credit-spreads-and-eur-usdgbp-usd]] — New tracks: surge bull put credit spreads and EUR/USD–GBP/USD cointegration. Pre-registration (2026-10-24)
 - [[2026-10-25-put-setups-mirrored-darvas-vs-mid-range-downtrends-pre-regis]] — Put setups: mirrored Darvas vs mid-range downtrends. Pre-registration (2026-10-25)
+- [[2026-10-26-cci-34-ema52-and-sma-5-40-crosses-as-standalone-signals-pre]] — CCI(34)/EMA52 and SMA 5/40 crosses as standalone signals (pre-registration)
+- [[2026-10-26-cci-34-ema52-and-sma-5-40-crosses-as-standalone-signals-resu]] — CCI(34)/EMA52 and SMA 5/40 crosses as standalone signals: results
 - [[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology]] — EMT (exhaustion mean theory) on NIFTY 5-minute — methodology
 - [[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2]] — EMT (exhaustion mean theory) on NIFTY 5-minute — methodology
 - [[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-3]] — EMT (exhaustion mean theory) on NIFTY 5-minute — methodology
