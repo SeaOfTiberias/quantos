@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (51 — not executable)
+## wiki/ (52 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -38,6 +38,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[event-proximity-vol]] — Known-Event (RBI/Budget) Proximity vs Forward Volatility
 - [[expiry-day-effect-gutcheck-candidate-13]] — F&O Monthly Expiry-Day Effect (Candidate 13, Gut-Check)
 - [[fno-screener]] — F&O Screener (Evening Call/Put Candidates)
+- [[fno-screener-cci-sma-filters]] — CCI(34)/EMA52 and SMA 5/40 as F&O Screener Filters
 - [[fx-eurusd-gbpusd-cointegration]] — EUR/USD vs GBP/USD Cointegration
 - [[goodnight-scalper-candidate-20]] — Good Night Stock-Options Scalper (Candidate 20)
 - [[index]] — Vault index
@@ -74,7 +75,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (111 — not executable)
+## raw/ (113 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -189,6 +190,8 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points]] — EMT on NIFTY 5-minute — phase 1 results (index points)
 - [[2026-10-26-emt-on-nifty-50-5-minute-shorts-only-index-points]] — EMT on NIFTY 50 5-minute — shorts only (index points)
 - [[2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points]] — EMT on NIFTY BANK 5-minute — phase 1 results (index points)
+- [[2026-10-26-f-o-screener-cci-34-ema52-and-sma-5-40-as-filters-pre-regist]] — F&O screener — CCI(34)/EMA52 and SMA 5/40 as filters (pre-registration)
+- [[2026-10-26-f-o-screener-cci-34-ema52-and-sma-5-40-filters-results]] — F&O screener — CCI(34)/EMA52 and SMA 5/40 filters: results
 
 ## loose/ (1 — not executable)
 
