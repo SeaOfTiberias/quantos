@@ -15,7 +15,7 @@ quantos:
 
 ## Summary
 
-- **43** strategy records: 32 FAIL, 4 MIXED, 3 INCONCLUSIVE, 2 OPEN, 2 N/A.
+- **44** strategy records: 32 FAIL, 5 MIXED, 3 INCONCLUSIVE, 2 OPEN, 2 N/A.
 - **Running now:** 5 ([[darvas-atr-stop-bucket-b]], [[momentum-turnover-candidate-11]], [[surge-spread-forward-23b]], [[fno-screener]], [[trade-watcher]]).
 - **Real capital deployed:** none.
 
@@ -35,6 +35,7 @@ quantos:
 |---|---|---|---|---|---|---|---|
 | live-paper | 3 |  |  | 1 |  | 2 |  |
 | live-tool | 2 |  |  |  |  |  | 2 |
+| open | 1 |  |  | 1 |  |  |  |
 | closed | 33 |  | 29 | 2 | 2 |  |  |
 | retired | 3 |  | 3 |  |  |  |  |
 | shelved | 2 |  |  | 1 | 1 |  |  |
@@ -52,7 +53,7 @@ quantos:
 | vol-conditioning | 5 |  | 5 |  |  |  |  |
 | intraday-options | 8 |  | 7 | 1 |  |  |  |
 | calendar-effect | 1 |  |  |  | 1 |  |  |
-| event-drift | 3 |  | 2 |  | 1 |  |  |
+| event-drift | 4 |  | 2 | 1 | 1 |  |  |
 | ml-factor | 1 |  | 1 |  |  |  |  |
 | discretionary-aid | 2 |  |  |  |  |  | 2 |
 
@@ -61,7 +62,7 @@ quantos:
 | Instrument | Total | PASS | FAIL | MIXED | INCONCLUSIVE | OPEN | N/A |
 |---|---|---|---|---|---|---|---|
 | equity-cash | 13 |  | 8 | 2 | 2 | 1 |  |
-| stock-futures | 6 |  | 5 | 1 |  |  |  |
+| stock-futures | 7 |  | 5 | 2 |  |  |  |
 | index-futures | 3 |  | 3 |  |  |  |  |
 | index-options | 14 |  | 11 | 1 | 1 |  | 1 |
 | stock-options | 5 |  | 3 |  |  | 1 | 1 |
@@ -74,6 +75,7 @@ quantos:
 | [[cci-sma-cross-signals\|CCI(34)/EMA52 and SMA 5/40 Crosses as Standalone Signals]] | cross signals 2026-10-26 | trend | stock-futures | closed | **FAIL** | 2026-10-26 |  |  | 1973 | Trading daily CCI-over-its-EMA52 or 5/40 SMA crosses on 213 F&O stocks loses money before or after adjusting for NIFTY; 0 of 12 tests pass, and the shorts lose clearly. |
 | [[emt-vwap-nifty-5m\|EMT Exhaustion Mean Reversion to VWAP, NIFTY 5-minute]] | EMT phase 1 | mean-reversion | index-options | closed | **FAIL** | 2026-10-26 | 0.77 |  | 921 | Fading a 5-minute NIFTY or BankNifty stretch from VWAP on the first bar back fails on both indices, and NIFTY shorts alone fail on two fresh years, so it was never taken to options. |
 | [[fno-screener-cci-sma-filters\|CCI(34)/EMA52 and SMA 5/40 as F&O Screener Filters]] | screener filter 2026-10-26 | trend | stock-futures | closed | **MIXED** | 2026-10-26 |  |  | 2612 | Both daily indicators agree with 93-99% of screener picks already, so as filters they remove almost nothing; 1 of 9 tests clears the bar on a 0.02%-per-trade change, so neither is worth adding. |
+| [[put-retest-context-review\|Put Retest Context Review (Blind LLM Skip Rules)]] | context review 2026-10-26 | event-drift | stock-futures | open | **MIXED** | 2026-10-26 | 1.39 |  | 552 | A blind Claude review proposed two skip rules for the put retest; 'skip if more than 45 trading days since the last results' held up on unseen trades (kept +0.38% vs +0.25%, PF 1.39 vs 1.24, t 2.1); 'skip low VIX' did not. |
 | [[fx-eurusd-gbpusd-cointegration\|EUR/USD vs GBP/USD Cointegration]] | New tracks B (spec 1.1) | stat-arb | mixed | closed | **FAIL** | 2026-10-25 | 0.71 | -0.20 | 100 | A rolling Johansen/ADF/half-life pair trade on EUR/USD and GBP/USD lost money over 2000–2026, even at 1-pip costs. |
 | [[put-setups-mid-range-downtrend\|Put Setups (Mirrored Darvas vs Mid-Range Downtrends)]] | Put setups A / B-A / C (2026-10-25) | breakout | stock-futures | closed | **FAIL** | 2026-10-25 |  |  | 667 | Counted once per episode, none of three put setups predicts a 5-session fall: the live mirrored-Darvas put rule (+0.06% excess, second half -0.32%), adding laggard names, and a failed-rally-in-a-downtrend setup all fail. |
 | [[surge-bull-put-credit\|Surge Bull Put Credit Spread (IV Rank Gate)]] | New tracks A (spec 2.2b) | momentum | stock-options | closed | **FAIL** | 2026-10-25 | 1.01 | 0.01 | 128 | Selling ~35-delta put spreads on non-52-week-high surges with IV rank >= 0.70 broke even after costs: 77% of trades won, but stops cost more than the wins made, and the first half lost. |

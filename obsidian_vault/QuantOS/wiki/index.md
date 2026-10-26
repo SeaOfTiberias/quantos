@@ -18,7 +18,7 @@ _human-authored canon — the only layer whose rules execute_
 - [[Stan_Weinstein_Stage_Analysis]] — Stan Weinstein's Stage Analysis — 5 rules
 - [[Welcome]] — Welcome
 
-## wiki/ (53 — not executable)
+## wiki/ (54 — not executable)
 
 _agent-compiled entity pages — context and retrieval only_
 
@@ -56,6 +56,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[pairs-trading-candidate-12]] — Sector-Cointegrated Stock-Futures Pairs Trading (Candidate 12)
 - [[pairs-trading-v2-candidate-17]] — Sector-Cointegrated Pairs Trading v2, Bug-Fixed (Candidate 17)
 - [[pead-earnings-drift]] — PEAD (Post-Earnings Announcement Drift)
+- [[put-retest-context-review]] — Put Retest Context Review (Blind LLM Skip Rules)
 - [[put-setups-mid-range-downtrend]] — Put Setups (Mirrored Darvas vs Mid-Range Downtrends)
 - [[regime-classifier-s8-1]] — VIX-Level Regime Classifier (S8-1)
 - [[regime-filtered-dual-momentum-s1]] — Regime-Filtered Dual-Momentum (Strategy 1)
@@ -76,7 +77,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (115 — not executable)
+## raw/ (118 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -195,6 +196,9 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points]] — EMT on NIFTY BANK 5-minute — phase 1 results (index points)
 - [[2026-10-26-f-o-screener-cci-34-ema52-and-sma-5-40-as-filters-pre-regist]] — F&O screener — CCI(34)/EMA52 and SMA 5/40 as filters (pre-registration)
 - [[2026-10-26-f-o-screener-cci-34-ema52-and-sma-5-40-filters-results]] — F&O screener — CCI(34)/EMA52 and SMA 5/40 filters: results
+- [[2026-10-26-put-retest-context-review-claude-opus-5-5-2026-10-26]] — Put retest context review — claude-opus-5-5, 2026-10-26
+- [[2026-10-26-put-retest-context-review-results-2026-10-26]] — Put retest context review — results (2026-10-26)
+- [[2026-10-26-put-retest-h1-can-context-remove-the-losing-trades-pre-regis]] — Put retest (H1): can context remove the losing trades? (pre-registration)
 
 ## loose/ (1 — not executable)
 

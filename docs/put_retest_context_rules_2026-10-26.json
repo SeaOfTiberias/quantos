@@ -1,0 +1,28 @@
+{
+ "model": "claude-opus-5-5",
+ "mid": "2026-03-27",
+ "rules": [
+  {
+   "name": "skip_low_vix",
+   "reason": "In complacent, very low-volatility markets breakdowns tend to get bought back, so the retest short stops out instead of reaching 0.75 ATR; VIX at or below about 11 was the worst bucket (54% win, -0.40% mean).",
+   "conditions": [
+    {
+     "feature": "vix",
+     "op": "<",
+     "value": 11
+    }
+   ]
+  },
+  {
+   "name": "skip_stale_results",
+   "reason": "More than ~9 weeks since the last results means the next results window is near and the breakdown lacks fresh fundamental drive; this bucket won only 60% with a negative mean.",
+   "conditions": [
+    {
+     "feature": "days_since_results",
+     "op": ">",
+     "value": 45
+    }
+   ]
+  }
+ ]
+}

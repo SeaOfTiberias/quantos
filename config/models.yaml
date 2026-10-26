@@ -29,6 +29,7 @@ features:
   shortlist_note:    judgement
   trade_explainer:   explainer
   structure_review:  structure
+  context_review:    structure      # put-retest context review (new 2026-10-26): effort high, one blind call
 
 # USD per million tokens: [input, output]. List prices; cache reads/writes are
 # priced off input (0.1x / 1.25x) in core/llm/calllog.py.
