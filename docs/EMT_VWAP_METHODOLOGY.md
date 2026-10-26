@@ -50,6 +50,16 @@ the full grid is shown for transparency.
 **Pass bar (primary variant, OOS, at 2-point cost):** at least 40 trades, net mean > 0,
 profit factor ≥ 1.2. Anything else is FAIL, and the idea is not taken to options.
 
+## Addendum 2026-10-26 — BankNifty (fixed before its run)
+
+The user asked for the same test on BankNifty after NIFTY failed. Rules, grid, split,
+selection and pass bar are unchanged. Data: NIFTY BANK index with the continuous
+BANKNIFTY future (`NSE:BANKNIFTY26NOVFUT`) for volume. Costs scale with the index level
+(BankNifty is about 2.3× NIFTY): primary 5 points per round trip, sensitivity 2.5 and 10.
+Results are reported on their own, never pooled with NIFTY. Because this is a second
+try of the same idea, a BankNifty PASS would need a forward paper run before any
+options work, not straight to Phase 2.
+
 ## Phase 2 — ATM options (only if Phase 1 passes)
 
 Not run yet. The option-chain recorder holds only 3 sessions (last 2026-10-07), too few

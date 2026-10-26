@@ -17,17 +17,17 @@ profit_factor: 0.77
 sharpe:
 trades: 921
 bar: "OOS (primary vwap_ema, 2-pt cost): n >= 40, net mean > 0, PF >= 1.2"
-headline: "Fading a 5-minute NIFTY stretch from VWAP on the first bar back loses before costs at every stretch size, in both halves of the year, so it was never taken to options."
+headline: "Fading a 5-minute NIFTY or BankNifty stretch from VWAP on the first bar back fails on both indices (NIFTY loses even before costs; BankNifty's small out-of-sample gross gain is below costs), so it was never taken to options."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology, 2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points
+  compiled_from: 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology, 2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points, 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2, 2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points
 ---
 
 # EMT Exhaustion Mean Reversion to VWAP, NIFTY 5-minute
 
 > [!abstract] Compiled page
-> Written from `[[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology]]` and `[[2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points]]` on 2026-10-26. Context and retrieval only — rules in this layer never execute.
+> Written from `[[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology]]`, `[[2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points]]`, the methodology's BankNifty addendum `[[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2]]` and `[[2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points]]` on 2026-10-26. Context and retrieval only — rules in this layer never execute.
 
 ## Definition
 
@@ -57,6 +57,19 @@ The user's "exhaustion mean theory" idea for trading NIFTY ATM options intraday:
 Every cell of the grid is negative before costs, in-sample and out-of-sample, for all three ways of defining the mean. The edge is not hidden by costs: there is none to cost. About 60% of trades hit the stop (average risk about 19 points) before reaching the mean. The OOS shorts alone were +1.9 points gross (−0.06 net, t ≈ 0). That's a post-hoc slice, not a finding.
 
 Phase 2 (ATM options) was not run, as the methodology required.
+
+### BankNifty (same day, same rules)
+
+The user asked for the same test on BankNifty after NIFTY failed. The rules were unchanged and the costs were scaled to the index level (5 points per round trip, sensitivity 2.5 and 10), fixed in an addendum before the run `[[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2]]`. **FAIL** `[[2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points]]`. OOS, primary variant, IS-chosen k = 0.5: 921 trades, 41% winners, +1.20 points gross, −3.80 net, PF 0.88, t = −1.5.
+
+| BankNifty OOS, 5-pt cost | n | win | gross pts | net pts | PF |
+|---|---|---|---|---|---|
+| vwap_ema k=0.5 (chosen) | 921 | 41% | +1.20 | −3.80 | 0.88 |
+| vwap_ema k=1 | 748 | 40% | +2.94 | −2.06 | 0.94 |
+| vwap_ema k=1.5 | 547 | 35% | +3.39 | −1.61 | 0.96 |
+| vwap_ema k=2 | 399 | 29% | −1.77 | −6.77 | 0.85 |
+
+In-sample, every k lost 4.7 to 10.4 points per trade before costs. The out-of-sample half is slightly positive before costs but never clears them, even at the 2.5-point cost (PF 0.96). On both indices the shorts did better than the longs out-of-sample (BankNifty shorts +6.9 points gross, PF 1.06, t ≈ 0.5). That's consistent across both indices but still a post-hoc slice from one six-month window, so it isn't a tested result.
 
 ## Relation to other concepts
 

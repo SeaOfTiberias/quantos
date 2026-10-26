@@ -74,7 +74,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[vrp-iv-gated-short-premium]] — IV-Gated Short Premium (VRP Follow-up)
 - [[vrp-short-strangle]] — Options VRP Short Strangle
 
-## raw/ (107 — not executable)
+## raw/ (109 — not executable)
 
 _immutable ingested sources — never edited after landing_
 
@@ -184,7 +184,9 @@ _immutable ingested sources — never edited after landing_
 - [[2026-10-24-new-tracks-surge-bull-put-credit-spreads-and-eur-usdgbp-usd]] — New tracks: surge bull put credit spreads and EUR/USD–GBP/USD cointegration. Pre-registration (2026-10-24)
 - [[2026-10-25-put-setups-mirrored-darvas-vs-mid-range-downtrends-pre-regis]] — Put setups: mirrored Darvas vs mid-range downtrends. Pre-registration (2026-10-25)
 - [[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology]] — EMT (exhaustion mean theory) on NIFTY 5-minute — methodology
+- [[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2]] — EMT (exhaustion mean theory) on NIFTY 5-minute — methodology
 - [[2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points]] — EMT on NIFTY 5-minute — phase 1 results (index points)
+- [[2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points]] — EMT on NIFTY BANK 5-minute — phase 1 results (index points)
 
 ## loose/ (1 — not executable)
 
