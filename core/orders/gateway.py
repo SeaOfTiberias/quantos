@@ -42,6 +42,7 @@ QUANTOS_DIR = Path.home() / ".quantos"
 JOURNAL = QUANTOS_DIR / "orders.jsonl"
 KILL_SWITCH = QUANTOS_DIR / "ORDERS_OFF"
 FO_BHAVCOPY_DIR = QUANTOS_DIR / "nse_fo_bhavcopy"
+QUOTE_TRIES, QUOTE_RETRY_S = 3, 1.5
 
 
 def limits_from(cfg: dict) -> Limits:
@@ -115,15 +116,28 @@ class Gateway:
         return out
 
     def quote(self, i: Intent) -> dict:
-        r = self.client.get_quotes(stock_code=i.code, exchange_code="NFO", expiry_date=iso(i.expiry),
-                                   product_type=i.product, right=i.right,
-                                   strike_price=str(int(i.strike)) if i.strike else "0") or {}
+        r = self._get_quotes(stock_code=i.code, exchange_code="NFO", expiry_date=iso(i.expiry),
+                             product_type=i.product, right=i.right,
+                             strike_price=str(int(i.strike)) if i.strike else "0") or {}
         rows = r.get("Success") or []
         if i.right != "others":
-            rows = [x for x in rows if str(x.get("right", "")).lower() == i.right]
+            # quotes label the right "P"/"C" (2026-10-26), positions "Put"/"Call": match the first letter
+            rows = [x for x in rows if str(x.get("right") or "").lower()[:1] == i.right[:1]]
         x = rows[0] if rows else {}
         f = (lambda k: float(x.get(k) or 0) or None)
         return {"bid": f("best_bid_price"), "ask": f("best_offer_price"), "ltp": f("ltp"), "at": time.monotonic()}
+
+    def _get_quotes(self, **kw) -> dict:
+        """Breeze get_quotes, retried: under load it returns an empty body or a 503 and the SDK raises
+        "Expecting value" (same handling as scripts/run_spread_watcher.py)."""
+        for attempt in range(QUOTE_TRIES):
+            try:
+                return self.client.get_quotes(**kw)
+            except Exception as e:
+                if "Expecting value" not in str(e) or attempt == QUOTE_TRIES - 1:
+                    raise
+                time.sleep(QUOTE_RETRY_S)
+        return {}
 
     def lot(self, code: str) -> int:
         """Lot size from the latest NSE F&O bhavcopy, via Breeze's code -> NSE symbol map."""

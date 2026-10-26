@@ -128,3 +128,32 @@ def test_work_exit_cannot_oversell(tmp_path):
     ex = Intent("icici-spouse", "futures", "INDHOT", EXP, "sell", 2000, 781.5, "exit")
     r = gw(b, tmp_path).work_exit(ex, tries=2, wait_s=1, sleep=lambda s: None)
     assert not r.ok and b.calls == []
+
+
+class BreezeQuotesLikeLive(FakeBreeze):
+    """Live quote rows label the right "P"/"C" (2026-10-26); the first n calls fail like Breeze's empty body."""
+    def __init__(self, fail_first=0, **kw):
+        super().__init__(**kw)
+        self.fail_first = fail_first
+
+    def get_quotes(self, **kw):
+        if self.fail_first:
+            self.fail_first -= 1
+            raise Exception("Error in get_quotes(): Expecting value: line 1 column 1 (char 0)")
+        return {"Status": 200, "Success": [{"best_bid_price": 22.5, "best_offer_price": 22.65, "ltp": 22.8,
+                                            "right": "P", "strike_price": 700.0}]}
+
+
+def put_leg():
+    return Intent("icici-spouse", "options", "HDFBAN", EXP, "buy", 650, 22.65, "entry", right="put", strike=700.0)
+
+
+def test_option_quote_matches_breeze_single_letter_right(tmp_path):
+    q = gw(BreezeQuotesLikeLive(), tmp_path).quote(put_leg())
+    assert (q["bid"], q["ask"]) == (22.5, 22.65)
+
+
+def test_option_quote_retries_an_empty_body(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.orders.gateway.time.sleep", lambda s: None)
+    q = gw(BreezeQuotesLikeLive(fail_first=2), tmp_path).quote(put_leg())
+    assert q["ask"] == 22.65
