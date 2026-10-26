@@ -65,6 +65,12 @@ def test_flat_at_1515():
     assert (tr.reason, tr.exit) == ("eod", 111)
 
 
+def test_side_filter():
+    day = stretch_then_turn(after=(116, 118, 99, 101))
+    assert len(run_day(day, k=1.0, side=-1)) == 1
+    assert run_day(day, k=1.0, side=1) == []
+
+
 def test_metrics_net_of_cost():
     trades = run_day(stretch_then_turn(after=(116, 118, 99, 101)), k=1.0)
     m = metrics(trades, cost=2.0)

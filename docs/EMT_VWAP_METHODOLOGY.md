@@ -60,6 +60,23 @@ Results are reported on their own, never pooled with NIFTY. Because this is a se
 try of the same idea, a BankNifty PASS would need a forward paper run before any
 options work, not straight to Phase 2.
 
+## Addendum 2026-10-26 — NIFTY shorts only (fixed before its run)
+
+Why: in both phase 1 runs the OOS shorts did better than the longs (NIFTY +1.94 pts
+gross, BankNifty +6.87). That was seen after the fact on 2026-04-28..2026-10-26, so that
+window can't confirm it.
+
+- **Rule change:** only short signals are taken. A long signal leaves the system flat
+  (it no longer blocks a later short). Everything else is phase 1 `vwap_ema`.
+- **Discovery** (already-seen year, 2025-10-27..2026-10-26): pick k from the same grid,
+  highest net mean per trade at 2 points with at least 30 trades.
+- **Confirmation** (never looked at: 2023-10-27..2025-10-26, two years of Fyers 5-minute
+  NIFTY with continuous-future volume): run that one k. Indicators are computed over the
+  whole span so the first confirmation day has warmed-up EMA/ATR.
+- **Pass bar (confirmation only, 2-point cost):** at least 40 trades, net mean > 0,
+  PF ≥ 1.2. Results by year are shown to check it isn't one regime. A PASS goes to a
+  forward paper run, not straight to options; a FAIL closes the shorts idea.
+
 ## Phase 2 — ATM options (only if Phase 1 passes)
 
 Not run yet. The option-chain recorder holds only 3 sessions (last 2026-10-07), too few

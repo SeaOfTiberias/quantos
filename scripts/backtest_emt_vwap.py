@@ -11,13 +11,14 @@ Usage:
     python scripts/backtest_emt_vwap.py
     python scripts/backtest_emt_vwap.py --days 365 --out docs/EMT_VWAP_RESULTS.md
     python scripts/backtest_emt_vwap.py --underlying banknifty
+    python scripts/backtest_emt_vwap.py --shorts
 """
 
 import argparse
 import asyncio
 import csv
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -125,16 +126,63 @@ def report(idx: list[OHLCV], fut: list[OHLCV], underlying: str = "nifty") -> str
     return "\n".join(out)
 
 
+# shorts-only addendum: k picked on the already-seen year, confirmed on the two years before it
+DISCOVERY_FROM, CONFIRM_FROM = date(2025, 10, 27), date(2023, 10, 27)
+
+
+def shorts_report(idx: list[OHLCV], fut: list[OHLCV], underlying: str = "nifty") -> str:
+    index, _, cost, cost_sens = UNDERLYINGS[underlying]
+    bars = build_bars(idx, fut)
+    days = sorted(by_day(bars))
+    disc = {d for d in days if d >= DISCOVERY_FROM}
+    conf = sorted(d for d in days if CONFIRM_FROM <= d < DISCOVERY_FROM)
+    out = [
+        f"# EMT on {index} 5-minute — shorts only (index points)",
+        "",
+        f"Rules: docs/EMT_VWAP_METHODOLOGY.md, shorts-only addendum. Variant `vwap_ema`. Discovery "
+        f"{min(disc)}..{max(disc)} ({len(disc)} sessions, already seen); confirmation {conf[0]}..{conf[-1]} "
+        f"({len(conf)} sessions, never looked at). Costs: {cost:g} pts per round trip unless stated.",
+        "",
+        "## Discovery (k chosen here)", "", HEAD,
+    ]
+    best_k, best = None, None
+    for k in KS:
+        m = metrics(run(bars, k, "vwap_ema", disc, side=-1), cost)
+        out.append(_row(f"shorts k={k:g}", m))
+        if m.get("n", 0) >= MIN_IS_TRADES and (best is None or m["mean_net"] > best):
+            best_k, best = k, m["mean_net"]
+    if best_k is None:
+        return "\n".join(out + ["", f"No k reached {MIN_IS_TRADES} trades; nothing to confirm."])
+    trades = run(bars, best_k, "vwap_ema", set(conf), side=-1)
+    m = metrics(trades, cost)
+    out += ["", f"## Confirmation (k={best_k:g} only)", "", HEAD, _row(f"shorts k={best_k:g}", m)]
+    for c in cost_sens:
+        out.append(_row(f"shorts k={best_k:g} cost {c:g}", metrics(trades, c)))
+    split = CONFIRM_FROM.replace(year=CONFIRM_FROM.year + 1)
+    for label, part in ((f"{conf[0]}..{split}", [t for t in trades if t.day < split]),
+                        (f"{split}..{conf[-1]}", [t for t in trades if t.day >= split])):
+        out.append(_row(f"year {label}", metrics(part, cost)))
+    ok = m.get("n", 0) >= PASS_N and m["mean_net"] > 0 and m["pf"] >= PASS_PF
+    verdict = (f"{'PASS' if ok else 'FAIL'}: confirmation k={best_k:g}, n={m.get('n', 0)}, "
+               f"net {m.get('mean_net', 0):+.2f} pts/trade, PF {m.get('pf', 0):.2f} "
+               f"(bar: n>={PASS_N}, net>0, PF>={PASS_PF})")
+    out[4:4] = [f"**Verdict (shorts only): {verdict}**", ""]
+    return "\n".join(out)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--underlying", choices=sorted(UNDERLYINGS), default="nifty")
     ap.add_argument("--days", type=int, default=365)
+    ap.add_argument("--shorts", action="store_true", help="shorts-only addendum (fetches back to 2023-10-27)")
     ap.add_argument("--out")
     args = ap.parse_args()
-    args.out = args.out or ("docs/EMT_VWAP_RESULTS.md" if args.underlying == "nifty"
-                            else f"docs/EMT_VWAP_RESULTS_{args.underlying.upper()}.md")
+    suffix = ("" if args.underlying == "nifty" else f"_{args.underlying.upper()}") + ("_SHORTS" if args.shorts else "")
+    args.out = args.out or f"docs/EMT_VWAP_RESULTS{suffix}.md"
+    if args.shorts:
+        args.days = max(args.days, (datetime.now(timezone.utc).date() - CONFIRM_FROM).days + 30)
     idx, fut = asyncio.run(fetch(args.days, args.underlying))
-    text = report(idx, fut, args.underlying)
+    text = (shorts_report if args.shorts else report)(idx, fut, args.underlying)
     Path(args.out).write_text(text + "\n", encoding="utf-8")
     print(text)
     return 0

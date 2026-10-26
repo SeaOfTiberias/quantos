@@ -17,11 +17,11 @@ profit_factor: 0.77
 sharpe:
 trades: 921
 bar: "OOS (primary vwap_ema, 2-pt cost): n >= 40, net mean > 0, PF >= 1.2"
-headline: "Fading a 5-minute NIFTY or BankNifty stretch from VWAP on the first bar back fails on both indices (NIFTY loses even before costs; BankNifty's small out-of-sample gross gain is below costs), so it was never taken to options."
+headline: "Fading a 5-minute NIFTY or BankNifty stretch from VWAP on the first bar back fails on both indices, and NIFTY shorts alone fail on two fresh years, so it was never taken to options."
 quantos:
   layer: wiki
   generated: true
-  compiled_from: 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology, 2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points, 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2, 2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points
+  compiled_from: 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology, 2026-10-26-emt-on-nifty-5-minute-phase-1-results-index-points, 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-2, 2026-10-26-emt-on-nifty-bank-5-minute-phase-1-results-index-points, 2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-3, 2026-10-26-emt-on-nifty-50-5-minute-shorts-only-index-points
 ---
 
 # EMT Exhaustion Mean Reversion to VWAP, NIFTY 5-minute
@@ -70,6 +70,19 @@ The user asked for the same test on BankNifty after NIFTY failed. The rules were
 | vwap_ema k=2 | 399 | 29% | −1.77 | −6.77 | 0.85 |
 
 In-sample, every k lost 4.7 to 10.4 points per trade before costs. The out-of-sample half is slightly positive before costs but never clears them, even at the 2.5-point cost (PF 0.96). On both indices the shorts did better than the longs out-of-sample (BankNifty shorts +6.9 points gross, PF 1.06, t ≈ 0.5). That's consistent across both indices but still a post-hoc slice from one six-month window, so it isn't a tested result.
+
+### NIFTY shorts only (same day, tested on fresh data)
+
+The user asked to test shorts alone on NIFTY. Because the shorts pattern was found on the already-seen year, the addendum `[[2026-10-26-emt-exhaustion-mean-theory-on-nifty-5-minute-methodology-3]]` picked k on that year and judged it only on the two years before it (2023-10-27..2025-10-24), which had never been looked at. **FAIL** `[[2026-10-26-emt-on-nifty-50-5-minute-shorts-only-index-points]]`.
+
+| NIFTY shorts, 2-pt cost | n | win | gross pts | net pts | PF |
+|---|---|---|---|---|---|
+| Discovery year, best k=1.5 | 621 | 31% | +0.40 | −1.60 | 0.87 |
+| Confirmation, k=1.5 | 1248 | 28% | −1.84 | −3.84 | 0.71 |
+| ↳ 2023-10..2024-10 | 644 | 27% | −2.62 | −4.62 | 0.64 |
+| ↳ 2024-10..2025-10 | 604 | 29% | −1.01 | −3.01 | 0.79 |
+
+Over the full discovery year the shorts were already negative after costs. The +1.94 points came from its second half only. On fresh data they lose before costs in both years, with 71% of trades stopped out. This closes the shorts variant.
 
 ## Relation to other concepts
 

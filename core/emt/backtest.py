@@ -95,7 +95,8 @@ def _stretched(b: Bar, k: float, mode: str) -> int:
     return 0
 
 
-def run_day(bars: list[Bar], k: float, mode: str = "vwap_ema") -> list[Trade]:
+def run_day(bars: list[Bar], k: float, mode: str = "vwap_ema", side: int = 0) -> list[Trade]:
+    """side 0 takes both; +1 longs only, -1 shorts only (the other side's signals leave it flat)."""
     trades: list[Trade] = []
     armed, extreme = 0, 0.0
     pos: Optional[dict] = None
@@ -146,7 +147,7 @@ def run_day(bars: list[Bar], k: float, mode: str = "vwap_ema") -> list[Trade]:
             turned = b.c < prev.c if armed > 0 else b.c > prev.c
             if turned:
                 still_out = m is not None and (b.c > m if armed > 0 else b.c < m)
-                if still_out:
+                if still_out and side in (0, -armed):
                     pending = {"side": -armed, "stop": extreme}
                 armed = 0
             continue
@@ -163,11 +164,12 @@ def by_day(bars: list[Bar]) -> dict[date, list[Bar]]:
     return out
 
 
-def run(bars: list[Bar], k: float, mode: str = "vwap_ema", days: Optional[set] = None) -> list[Trade]:
+def run(bars: list[Bar], k: float, mode: str = "vwap_ema", days: Optional[set] = None,
+        side: int = 0) -> list[Trade]:
     trades: list[Trade] = []
     for d, day_bars in sorted(by_day(bars).items()):
         if days is None or d in days:
-            trades.extend(run_day(day_bars, k, mode))
+            trades.extend(run_day(day_bars, k, mode, side))
     return trades
 
 
