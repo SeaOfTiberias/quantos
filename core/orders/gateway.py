@@ -171,11 +171,15 @@ class Gateway:
         return {"bid": f("best_bid_price"), "ask": f("best_offer_price"), "ltp": f("ltp"), "at": time.monotonic()}
 
     def _get_quotes(self, **kw) -> dict:
-        """Breeze get_quotes, retried: under load it returns an empty body or a 503 and the SDK raises
-        "Expecting value" (same handling as scripts/run_spread_watcher.py)."""
+        return self._read("get_quotes", **kw)
+
+    def _read(self, call: str, **kw) -> dict:
+        """A Breeze read, retried: under load it returns an empty body or a 503 and the SDK raises
+        "Expecting value" (same handling as scripts/run_spread_watcher.py). gtt_order_book does it
+        too (27-Oct: the same window failed, then answered, seconds apart)."""
         for attempt in range(QUOTE_TRIES):
             try:
-                return self.client.get_quotes(**kw)
+                return getattr(self.client, call)(**kw)
             except Exception as e:
                 if "Expecting value" not in str(e) or attempt == QUOTE_TRIES - 1:
                     raise
@@ -347,8 +351,8 @@ class Gateway:
         to, out = self.clock().date(), []
         for _ in range(GTT_BOOK_WINDOWS):
             frm = to - timedelta(days=GTT_BOOK_DAYS - 1)
-            r = self.client.gtt_order_book(exchange_code="NFO", from_date=iso(frm), to_date=iso(to)) or {}
-            if r.get("Status") != 200:
+            r = self._read("gtt_order_book", exchange_code="NFO", from_date=iso(frm), to_date=iso(to)) or {}
+            if r.get("Status") != 200 and "no data" not in str(r.get("Error") or "").lower():
                 raise RuntimeError(f"gtt book: {r.get('Error')}")
             out += r.get("Success") or []
             to = frm - timedelta(days=1)

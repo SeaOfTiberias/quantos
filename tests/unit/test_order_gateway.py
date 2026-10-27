@@ -277,3 +277,20 @@ def test_find_gtt_matches_contract_side_and_qty(tmp_path):
     assert g.find_gtt("INDHOT", EXP, "buy", 2000) is None
     assert g.find_gtt("INDHOT", date(2026, 12, 28), "buy", 1000) is None
     assert gw(BookBreeze(book=[book_row(status="Executed")]), tmp_path).find_gtt("INDHOT", EXP, "buy", 1000) is None
+
+
+def test_gtt_book_retries_an_empty_body_and_reads_no_data_as_empty(tmp_path, monkeypatch):
+    # 27-Oct on the VM: one window raised "Expecting value", then answered seconds later
+    monkeypatch.setattr("core.orders.gateway.time.sleep", lambda s: None)
+
+    class Flaky(BookBreeze):
+        fails = 1
+
+        def gtt_order_book(self, **kw):
+            if self.fails:
+                self.fails -= 1
+                raise Exception("Error in gtt_order_book(): Expecting value: line 1 column 1 (char 0)")
+            if kw["to_date"][:10] != MON.date().isoformat():
+                return {"Success": None, "Status": 500, "Error": "No Data Found"}
+            return super().gtt_order_book(**kw)
+    assert gw(Flaky(book=[book_row()]), tmp_path).verify_gtt("GTT9") is not None
