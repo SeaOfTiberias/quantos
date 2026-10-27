@@ -20,6 +20,11 @@ Breeze specifics (breeze_connect, 2026-10):
     when one fills the broker cancels the other
   - the OCO payload shape follows ICICI's published example; the first live
     one is checked against gtt_order_book before it is trusted (verify_gtt)
+  - gtt_order_book refuses a from/to range over 10 days, and the GTT id sits on
+    each leg in order_details, not at the top level (2026-10-27)
+  - each contract has its own price step (SUPIND FUT 0.10, HDFBAN FUT 0.05; others
+    0.01 .. 5). It comes from Fyers' F&O symbol master; when that misses, ICICI's
+    "Price should be in multiples of: X" refusal teaches it and the order goes once more.
 """
 
 from __future__ import annotations
@@ -28,9 +33,10 @@ import csv
 import io
 import json
 import os
+import re
 import time
 import zipfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -43,6 +49,11 @@ JOURNAL = QUANTOS_DIR / "orders.jsonl"
 KILL_SWITCH = QUANTOS_DIR / "ORDERS_OFF"
 FO_BHAVCOPY_DIR = QUANTOS_DIR / "nse_fo_bhavcopy"
 QUOTE_TRIES, QUOTE_RETRY_S = 3, 1.5
+FO_MASTER = QUANTOS_DIR / "fyers_symbol_master_NSE_FO.csv"     # core/options/fyers_symbol_master.py keeps it fresh
+TICK_REFUSAL = re.compile(r"multiples of:?\s*([0-9]*\.?[0-9]+)", re.I)
+GTT_BOOK_DAYS = 10            # Breeze: "Number of days between from_date & to_date should not be more than 10"
+GTT_BOOK_WINDOWS = 3          # 30 days back: a plan lasts 10 sessions
+GTT_DONE = {"cancelled", "canceled", "expired", "rejected", "executed", "triggered", "completed", "complete"}
 
 
 def limits_from(cfg: dict) -> Limits:
@@ -87,13 +98,45 @@ def _instrument_of(row: dict) -> Optional[tuple]:
     return (str(row.get("stock_code", "")).upper(), exp, right, strike)
 
 
+def tick_from_master(path: Path, symbol: str, expiry: date, right: str = "others",
+                     strike: float = 0.0) -> Optional[float]:
+    """One contract's tick from Fyers' NSE_FO master (no header; col 4 tick, 8 expiry epoch,
+    13 underlying, 15 strike, 16 CE/PE/XX), or None if it isn't listed."""
+    opt = {"call": "CE", "put": "PE"}.get(right, "XX")
+    with open(path, encoding="utf-8") as f:
+        for row in csv.reader(f):
+            if len(row) < 17 or row[13].upper() != symbol.upper() or row[16] != opt:
+                continue
+            if datetime.fromtimestamp(int(float(row[8])), tz=timezone.utc).date() != expiry:
+                continue
+            if opt != "XX" and abs(float(row[15]) - float(strike)) > 1e-6:
+                continue
+            t = float(row[4])
+            return t if t > 0 else None
+    return None
+
+
+def _gtt_ids(g: dict) -> set:
+    ids = {str(g.get("gtt_order_id"))} if g.get("gtt_order_id") else set()
+    return ids | {str(d.get("gtt_order_id")) for d in g.get("order_details") or [] if d.get("gtt_order_id")}
+
+
+def _gtt_live(g: dict) -> bool:
+    """Resting unless every leg says it's done. An unknown status counts as resting, so a GTT
+    the code can't read is never mistaken for a missing one and doubled up."""
+    legs = g.get("order_details") or []
+    return not legs or any(str(d.get("status", "")).lower() not in GTT_DONE for d in legs)
+
+
 class Gateway:
     def __init__(self, client, account: str = "icici-spouse", limits: Limits = Limits(), live: bool = False,
                  journal: Path = JOURNAL, kill_switch: Path = KILL_SWITCH,
-                 clock: Callable[[], datetime] = lambda: datetime.now(IST)):
+                 clock: Callable[[], datetime] = lambda: datetime.now(IST), fo_master: Path = FO_MASTER):
         self.client, self.account, self.limits, self.live = client, account, limits, live
-        self.journal, self.kill_switch, self.clock = journal, kill_switch, clock
+        self.journal, self.kill_switch, self.clock, self.fo_master = journal, kill_switch, clock, fo_master
         self._lots: dict[str, int] = {}
+        self._syms: dict[str, str] = {}
+        self._ticks: dict[tuple, float] = {}
 
     # ── data ────────────────────────────────────────────────────────────────
 
@@ -139,14 +182,46 @@ class Gateway:
                 time.sleep(QUOTE_RETRY_S)
         return {}
 
+    def symbol(self, code: str) -> str:
+        """ICICI code -> NSE symbol (SUPIND -> SUPREMEIND)."""
+        if code not in self._syms:
+            names = self.client.get_names(exchange_code="NSE", stock_code=code) or {}
+            self._syms[code] = str(names.get("exchange_stock_code") or code).upper()
+        return self._syms[code]
+
+    def tick(self, i: Intent) -> float:
+        """The contract's price step: Fyers' master, else what ICICI last told us, else TICK."""
+        key = i.instrument
+        if key not in self._ticks:
+            t = None
+            try:
+                t = tick_from_master(self.fo_master, self.symbol(i.code), i.expiry, i.right, i.strike)
+            except Exception:
+                t = None
+            self._ticks[key] = t or TICK
+        return self._ticks[key]
+
+    def snap(self, i: Intent) -> Intent:
+        """Prices onto the contract's tick, up for a buy and down for a sell: a fraction of a tick at most."""
+        t, up = self.tick(i), i.side > 0
+        return replace(i, price=round_tick(i.price, up, t),
+                       trigger=None if i.trigger is None else round_tick(i.trigger, up, t))
+
+    def _learn_tick(self, i: Intent, raw: Optional[dict]) -> bool:
+        """ICICI's "Price should be in multiples of: 0.10" -> remember it; True if it's news."""
+        m = TICK_REFUSAL.search(str((raw or {}).get("Error") or ""))
+        if not m or float(m.group(1)) <= 0 or float(m.group(1)) == self._ticks.get(i.instrument):
+            return False
+        self._ticks[i.instrument] = float(m.group(1))
+        return True
+
     def lot(self, code: str) -> int:
         """Lot size from the latest NSE F&O bhavcopy, via Breeze's code -> NSE symbol map."""
         if code in self._lots:
             return self._lots[code]
         lot = 0
         try:
-            names = self.client.get_names(exchange_code="NSE", stock_code=code) or {}
-            sym = str(names.get("exchange_stock_code") or code).upper()
+            sym = self.symbol(code)
             latest = sorted(FO_BHAVCOPY_DIR.glob("*.zip"))[-1]
             with zipfile.ZipFile(latest) as z:
                 for row in csv.DictReader(io.TextIOWrapper(z.open(z.namelist()[0]), "utf-8")):
@@ -174,7 +249,7 @@ class Gateway:
             lot = abs(held.get(i.instrument, 0)) or i.qty      # an exit of the whole position needs no lot table
         return Context(now=self.clock(), lot=lot, positions=held, bid=q.get("bid"), ask=q.get("ask"),
                        quote_age_s=(time.monotonic() - q["at"]) if q.get("at") else None,
-                       kill_switch=self.kill_switch.exists(), orders_today=self.orders_today())
+                       kill_switch=self.kill_switch.exists(), orders_today=self.orders_today(), tick=self.tick(i))
 
     # ── journal ─────────────────────────────────────────────────────────────
 
@@ -199,8 +274,10 @@ class Gateway:
 
     # ── orders ──────────────────────────────────────────────────────────────
 
-    def place(self, i: Intent, quote: Optional[dict] = None, positions: Optional[dict] = None) -> Result:
+    def place(self, i: Intent, quote: Optional[dict] = None, positions: Optional[dict] = None,
+              retry: bool = True) -> Result:
         """One limit order (or a stop-loss limit when i.trigger is set), day validity."""
+        i = self.snap(i)
         reasons = check(i, self.context(i, quote, positions), self.limits)
         payload = {"intent": asdict(i)}
         if reasons:
@@ -214,10 +291,15 @@ class Gateway:
             expiry_date=iso(i.expiry), right=i.right, strike_price=str(int(i.strike)) if i.strike else "0",
             user_remark="quantos")
         oid = self._order_id(raw)
-        return self._log("place", payload, Result(oid is not None, True, oid, [] if oid else [str(raw)], raw))
+        res = self._log("place", payload, Result(oid is not None, True, oid, [] if oid else [str(raw)], raw))
+        if oid is None and retry and self._learn_tick(i, raw):
+            return self.place(i, quote, positions, retry=False)
+        return res
 
-    def place_oco(self, target: Intent, stop: Intent, positions: Optional[dict] = None) -> Result:
+    def place_oco(self, target: Intent, stop: Intent, positions: Optional[dict] = None,
+                  retry: bool = True) -> Result:
         """A resting target + stop on an open position (GTT OCO). Both legs pass check() first."""
+        target, stop = self.snap(target), self.snap(stop)
         held = positions if positions is not None else self.positions()
         reasons = []
         for leg in (target, stop):
@@ -240,7 +322,10 @@ class Gateway:
             strike_price=str(int(target.strike)) if target.strike else "0", gtt_type="oco",
             index_or_stock="stock", trade_date=iso(self.clock().date()), order_details=legs)
         oid = self._order_id(raw)
-        return self._log("oco", payload, Result(oid is not None, True, oid, [] if oid else [str(raw)], raw))
+        res = self._log("oco", payload, Result(oid is not None, True, oid, [] if oid else [str(raw)], raw))
+        if oid is None and retry and self._learn_tick(target, raw):
+            return self.place_oco(target, stop, held, retry=False)
+        return res
 
     def cancel(self, order_id: str) -> Result:
         if not self.live or str(order_id).startswith("paper"):
@@ -257,15 +342,40 @@ class Gateway:
         return self._log("cancel_gtt", {"gtt_id": gtt_id}, Result(ok, True, gtt_id, [] if ok else [str(raw)], raw))
 
     def gtt_book(self) -> list:
-        d = self.clock().date()
-        r = self.client.gtt_order_book(exchange_code="NFO", from_date=iso(d - timedelta(days=30)), to_date=iso(d)) or {}
-        return r.get("Success") or []
+        """GTTs placed in the last 30 days, in 10-day windows. Raises if the broker won't say:
+        an unreadable book must never pass for an empty one (that re-places, i.e. doubles, an OCO)."""
+        to, out = self.clock().date(), []
+        for _ in range(GTT_BOOK_WINDOWS):
+            frm = to - timedelta(days=GTT_BOOK_DAYS - 1)
+            r = self.client.gtt_order_book(exchange_code="NFO", from_date=iso(frm), to_date=iso(to)) or {}
+            if r.get("Status") != 200:
+                raise RuntimeError(f"gtt book: {r.get('Error')}")
+            out += r.get("Success") or []
+            to = frm - timedelta(days=1)
+        return out
 
     def verify_gtt(self, gtt_id: str) -> Optional[dict]:
-        """The GTT as the broker holds it, or None if it isn't in the book."""
+        """The GTT as the broker holds it, or None if it isn't in the book or has fired / been cancelled."""
         for g in self.gtt_book():
-            if str(g.get("gtt_order_id")) == str(gtt_id):
+            if str(gtt_id) in _gtt_ids(g) and _gtt_live(g):
                 return g
+        return None
+
+    def find_gtt(self, code: str, expiry: date, action: str, qty: int, right: str = "others",
+                 strike: float = 0.0) -> Optional[str]:
+        """The id of a resting GTT on this contract that closes `qty` with `action` (one the user
+        placed, or one a lost state forgot), so it's adopted instead of doubled up."""
+        from core.position_manager.rules import _expiry
+        for g in self.gtt_book():
+            r = {"call": "call", "put": "put"}.get(str(g.get("right", "")).lower(), "others")
+            legs = g.get("order_details") or []
+            if (str(g.get("stock_code", "")).upper() == code.upper() and _expiry(str(g.get("expiry_date", ""))) == expiry
+                    and r == right and (r == "others" or abs(float(g.get("strike_price") or 0) - strike) < 1e-6)
+                    and int(float(g.get("quantity") or 0)) == qty and _gtt_live(g)
+                    and all(str(d.get("action", "")).lower() == action for d in legs)):
+                ids = _gtt_ids(g)
+                if ids:
+                    return sorted(ids)[0]
         return None
 
     def status(self, order_id: str) -> dict:
@@ -285,7 +395,7 @@ class Gateway:
                 last = Result(False, False, reasons=["no bid/ask to price the exit"])
                 sleep(wait_s)
                 continue
-            leg = Intent(**{**asdict(i), "price": round_tick(touch, up=i.side > 0)})
+            leg = Intent(**{**asdict(i), "price": round_tick(touch, i.side > 0, self.tick(i))})
             if last and last.sent and last.order_id:
                 self.cancel(last.order_id)
                 if str(self.status(last.order_id).get("status", "")).lower() == "executed":

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from typing import Optional
 
-TICK = 0.05
+TICK = 0.05                    # the default; a contract's own tick (0.01 .. 5) comes from the gateway
 QUOTE_MAX_AGE_S = 30
 SESSION = (time(9, 15), time(15, 30))
 PURPOSES = ("entry", "exit", "target", "stop")
@@ -80,16 +80,17 @@ class Context:
     quote_age_s:    Optional[float] = None
     kill_switch:    bool = False
     orders_today:   int = 0
+    tick:           float = TICK                  # the contract's price step (SUPIND FUT is 0.10)
 
 
-def _on_tick(x: float) -> bool:
-    return abs(round(x / TICK) * TICK - x) < 1e-6
+def _on_tick(x: float, tick: float = TICK) -> bool:
+    return abs(round(x / tick) * tick - x) < 1e-6
 
 
-def round_tick(x: float, up: bool) -> float:
-    """Round to the 0.05 tick, up for a buy limit and down for a sell."""
-    n = round(x / TICK, 6)                     # 782.05 / 0.05 is 15640.999...; snap the float noise first
-    return round((math.ceil(n) if up else math.floor(n)) * TICK, 2)
+def round_tick(x: float, up: bool, tick: float = TICK) -> float:
+    """Round to the tick, up for a buy limit and down for a sell."""
+    n = round(x / tick, 6)                     # 782.05 / 0.05 is 15640.999...; snap the float noise first
+    return round((math.ceil(n) if up else math.floor(n)) * tick, 2)
 
 
 def check(i: Intent, c: Context, lim: Limits = Limits()) -> list[str]:
@@ -111,10 +112,10 @@ def check(i: Intent, c: Context, lim: Limits = Limits()) -> list[str]:
         out.append(f"qty {i.qty} is not a positive multiple of the lot {c.lot}")
     elif i.qty // c.lot > lim.max_lots:
         out.append(f"{i.qty // c.lot} lots is over the cap of {lim.max_lots}")
-    if i.price <= 0 or not _on_tick(i.price):
-        out.append(f"price {i.price} must be positive and on the {TICK} tick")
-    if i.trigger is not None and (i.trigger <= 0 or not _on_tick(i.trigger)):
-        out.append(f"trigger {i.trigger} must be positive and on the {TICK} tick")
+    if i.price <= 0 or not _on_tick(i.price, c.tick):
+        out.append(f"price {i.price} must be positive and on the {c.tick:g} tick")
+    if i.trigger is not None and (i.trigger <= 0 or not _on_tick(i.trigger, c.tick)):
+        out.append(f"trigger {i.trigger} must be positive and on the {c.tick:g} tick")
     if c.orders_today >= lim.max_orders_per_day:
         out.append(f"{c.orders_today} orders sent today, the cap is {lim.max_orders_per_day}")
     if out:
@@ -129,12 +130,12 @@ def check(i: Intent, c: Context, lim: Limits = Limits()) -> list[str]:
             out.append(f"quote is {c.quote_age_s}s old (max {QUOTE_MAX_AGE_S}s)")
         elif i.trigger is None:
             if i.side > 0:
-                if i.price > c.ask * (1 + lim.band_pct) + TICK:
+                if i.price > c.ask * (1 + lim.band_pct) + c.tick:
                     out.append(f"buy limit {i.price} is more than {lim.band_pct:.0%} over the ask {c.ask}")
                 if i.price < c.bid * (1 - lim.far_pct):
                     out.append(f"buy limit {i.price} is over {lim.far_pct:.0%} below the bid {c.bid} -- typo?")
             else:
-                if i.price < c.bid * (1 - lim.band_pct) - TICK:
+                if i.price < c.bid * (1 - lim.band_pct) - c.tick:
                     out.append(f"sell limit {i.price} is more than {lim.band_pct:.0%} under the bid {c.bid}")
                 if i.price > c.ask * (1 + lim.far_pct):
                     out.append(f"sell limit {i.price} is over {lim.far_pct:.0%} above the ask {c.ask} -- typo?")

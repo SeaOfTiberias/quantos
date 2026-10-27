@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.auth import breeze_auth  # noqa: E402
-from core.orders.checks import Intent, round_tick  # noqa: E402
+from core.orders.checks import Intent  # noqa: E402
 from core.orders.gateway import JOURNAL, Gateway, limits_from  # noqa: E402
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent" / "config.yaml"
@@ -129,7 +129,7 @@ def main(argv=None) -> int:
         print(g.quote(leg(a, "buy", 1)))
         return 0
     if a.cmd in ("buy", "sell"):
-        i = leg(a, a.cmd, a.qty, a.limit, "exit" if a.exit else "entry")
+        i = g.snap(leg(a, a.cmd, a.qty, a.limit, "exit" if a.exit else "entry"))
         if not a.yes:
             return dry(g, i)
         r = g.place(i)
@@ -138,7 +138,7 @@ def main(argv=None) -> int:
     if a.cmd == "work":
         i = leg(a, a.action, a.qty, purpose="exit" if a.exit else "entry")
         q = g.quote(i)
-        i = replace(i, price=round_tick((q["ask"] if a.action == "buy" else q["bid"]) or 0.05, up=a.action == "buy"))
+        i = g.snap(replace(i, price=(q["ask"] if a.action == "buy" else q["bid"]) or 0.05))
         if not a.yes:
             return dry(g, i)
         r = g.work(i)
@@ -155,10 +155,10 @@ def main(argv=None) -> int:
             if not ql["ask"] or not qs["bid"] or debit > a.max_debit:
                 print("REFUSED: no quotes, or the debit is over --max-debit")
                 return 1
-            first, second = replace(lng, price=round_tick(ql["ask"], True)), replace(sht, price=round_tick(qs["bid"], False))
+            first, second = g.snap(replace(lng, price=ql["ask"])), g.snap(replace(sht, price=qs["bid"]))
         else:
-            first = replace(sht, action="buy", purpose="exit", price=round_tick(qs["ask"] or 0.05, True))
-            second = replace(lng, action="sell", purpose="exit", price=round_tick(ql["bid"] or 0.05, False))
+            first = g.snap(replace(sht, action="buy", purpose="exit", price=qs["ask"] or 0.05))
+            second = g.snap(replace(lng, action="sell", purpose="exit", price=ql["bid"] or 0.05))
             print(f"close: buy back {a.short_k:g} at ~{qs['ask']}, then sell {a.long_k:g} at ~{ql['bid']}")
         if not a.yes:
             dry(g, first)
@@ -183,11 +183,11 @@ def main(argv=None) -> int:
         if not qty:
             print(f"No open futures position in {key}.")
             return 1
-        act, up = ("sell", False) if qty > 0 else ("buy", True)
+        act = "sell" if qty > 0 else "buy"
         slip = 0.01 if qty > 0 else -0.01
         base = leg(argparse.Namespace(code=a.code, expiry=a.expiry), act, abs(qty), gtt=True)
-        tgt = replace(base, price=round_tick(a.target, up), trigger=round_tick(a.target, up), purpose="target")
-        stp = replace(base, price=round_tick(a.stop * (1 - slip), up), trigger=round_tick(a.stop, up), purpose="stop")
+        tgt = g.snap(replace(base, price=a.target, trigger=a.target, purpose="target"))     # onto the contract's tick
+        stp = g.snap(replace(base, price=a.stop * (1 - slip), trigger=a.stop, purpose="stop"))
         print("TARGET", ticket(tgt)); print("STOP  ", ticket(stp))
         if not a.yes:
             print("Not sent. Add --yes to release it.")

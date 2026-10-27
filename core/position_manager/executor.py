@@ -15,6 +15,11 @@ What it does with a Plan (core/position_manager/rules.py):
                                      the target fills at the open (the TCS lesson).
   first pass each day                confirm the GTT is still in the broker's book;
                                      re-place it if it's gone and the position isn't
+  no GTT on record                   adopt one already resting at the broker for the same
+                                     contract, side and qty (placed by hand with qorder,
+                                     the 27-Oct SUPIND case) instead of placing a second:
+                                     two OCOs would buy twice at the target and flip the position.
+                                     If the book can't be read, nothing is placed or cancelled.
   15:20 CLOSE / TIME / expiry        cancel the GTT, then exit at the touch with a
                                      re-priced marketable limit (gateway.work_exit)
   position gone                      cancel the GTT (harmless if it already fired)
@@ -54,10 +59,23 @@ class Executor:
         self.verified: set[str] = set()               # plan keys whose GTT was checked today
 
     def rest(self, key: str, p: Plan, positions: Optional[dict] = None) -> None:
-        """Place (or replace) the plan's resting OCO."""
+        """Place (or replace) the plan's resting OCO; adopt one already at the broker."""
         if getattr(p, "gtt_id", None):
             self.gw.cancel_gtt(p.gtt_id)
             p.gtt_id = None
+        else:
+            try:
+                found = self.gw.find_gtt(p.code, p.expiry, "sell" if p.side > 0 else "buy", abs(p.qty))
+            except Exception as e:
+                self.notify(f"❗ {p.symbol}: couldn't read the broker's GTT book ({e}), so I placed no OCO "
+                            "(it could double one already there). Check the GTT book and place target/stop by hand.")
+                return
+            if found:
+                p.gtt_id = found
+                self.verified.add(key)
+                self.notify(f"📌 {p.symbol}: adopted the resting OCO {found} already at the broker -- not placing "
+                            "another. Its levels are whatever it was placed with; I cancel it when I exit.")
+                return
         legs = oco_legs(p, self.account)
         if legs is None:
             self.notify(f"⚠️ {p.symbol}: no target/emergency level, so no resting order -- alerts only for this one.")
@@ -79,7 +97,15 @@ class Executor:
         self.verified.add(key)
         if not getattr(p, "gtt_id", None):
             self.rest(key, p)
-        elif not str(p.gtt_id).startswith("paper") and self.gw.verify_gtt(p.gtt_id) is None:
+            return
+        if str(p.gtt_id).startswith("paper"):
+            return
+        try:
+            held = self.gw.verify_gtt(p.gtt_id)
+        except Exception as e:
+            self.notify(f"❗ {p.symbol}: couldn't read the broker's GTT book ({e}); leaving OCO {p.gtt_id} as it is.")
+            return
+        if held is None:
             self.notify(f"🔁 {p.symbol}: the resting OCO {p.gtt_id} isn't in the broker's GTT book -- re-placing it.")
             p.gtt_id = None
             self.rest(key, p)

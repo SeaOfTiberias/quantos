@@ -88,3 +88,14 @@ def test_round_tick():
     assert round_tick(782.03, up=True) == 782.05
     assert round_tick(782.03, up=False) == 782.0
     assert round_tick(782.05, up=True) == 782.05
+
+
+def test_contract_tick_other_than_005():
+    # 27-Oct: a 0.10-tick future refused "Price should be in multiples of: 0.10" (a 3442.25 trigger)
+    assert round_tick(3150.47, up=True, tick=0.1) == 3150.5
+    assert round_tick(3442.23, up=True, tick=0.1) == 3442.3
+    assert round_tick(3442.23, up=False, tick=0.1) == 3442.2
+    assert round_tick(41234.0, up=True, tick=5.0) == 41235.0
+    c = ctx(tick=0.1, bid=3150.0, ask=3150.5, lot=100)
+    assert any("0.1 tick" in r for r in check(fut(qty=100, price=3150.45), c))
+    assert check(fut(qty=100, price=3150.5), c) == []

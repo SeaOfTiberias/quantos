@@ -1,10 +1,10 @@
 """core/orders/gateway.py -- against a fake Breeze client; nothing reaches a broker."""
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from core.orders.checks import Intent
-from core.orders.gateway import IST, Gateway
+from core.orders.gateway import IST, Gateway, tick_from_master
 
 EXP = date(2026, 11, 23)
 MON = datetime(2026, 10, 26, 10, 0, tzinfo=IST)
@@ -52,7 +52,7 @@ def fut_row(qty=1000, action="Buy"):
 
 def gw(client, tmp_path, live=True):
     g = Gateway(client, live=live, journal=tmp_path / "orders.jsonl", kill_switch=tmp_path / "ORDERS_OFF",
-                clock=lambda: MON)
+                clock=lambda: MON, fo_master=tmp_path / "no_master.csv")
     g._lots["INDHOT"] = 1000
     return g
 
@@ -157,3 +157,123 @@ def test_option_quote_retries_an_empty_body(tmp_path, monkeypatch):
     monkeypatch.setattr("core.orders.gateway.time.sleep", lambda s: None)
     q = gw(BreezeQuotesLikeLive(fail_first=2), tmp_path).quote(put_leg())
     assert q["ask"] == 22.65
+
+
+# ── contract tick (27-Oct: SUPIND FUT is 0.10; the code assumed 0.05) ───────────
+
+NOV_EPOCH = "1795428600"          # 23-Nov-2026 10:00 UTC, as Fyers' master writes it
+
+
+def master_row(sym, tick, opt="XX", strike="-1.0"):
+    # synthetic NSE_FO master row: col 4 tick, 8 expiry epoch, 13 underlying, 15 strike, 16 CE/PE/XX
+    return ",".join(["1", f"{sym} 23 Nov 26", "13", "100", tick, "", "", "2026-10-23", NOV_EPOCH,
+                     f"NSE:{sym}X", "10", "11", "1", sym, "1", strike, opt, "1", "None", "0", "0.0"])
+
+
+def test_tick_from_master(tmp_path):
+    f = tmp_path / "m.csv"
+    f.write_text("\n".join([master_row("INDHOTEL", "0.1"), master_row("INDHOTEL", "0.05", "PE", "780.0"),
+                            master_row("OTHER", "1.0")]) + "\n")
+    assert tick_from_master(f, "INDHOTEL", EXP) == 0.1
+    assert tick_from_master(f, "INDHOTEL", EXP, "put", 780.0) == 0.05
+    assert tick_from_master(f, "INDHOTEL", date(2026, 12, 28)) is None
+
+
+class TickyBreeze(FakeBreeze):
+    """Refuses any price off a 0.10 step, the way ICICI did on 27-Oct."""
+
+    def gtt_three_leg_place_order(self, **kw):
+        self.calls.append(("oco", kw))
+        for d in kw["order_details"]:
+            for k in ("limit_price", "trigger_price"):
+                if round(float(d[k]) * 10, 6) % 1:
+                    return {"Success": None, "Status": 500, "Error": "Price should be in multiples of: 0.10"}
+        return {"Status": 200, "Success": {"gtt_order_id": "GTT2"}}
+
+
+def short_oco():
+    tgt = Intent("icici-spouse", "futures", "INDHOT", EXP, "buy", 1000, 3150.47, "target", trigger=3150.47, gtt=True)
+    stp = Intent("icici-spouse", "futures", "INDHOT", EXP, "buy", 1000, 3476.65, "stop", trigger=3442.23, gtt=True)
+    return tgt, stp
+
+
+def test_oco_snaps_to_the_master_tick(tmp_path):
+    b = TickyBreeze(positions=[fut_row(action="Sell")])
+    g = gw(b, tmp_path)
+    (tmp_path / "no_master.csv").write_text(master_row("INDHOTEL", "0.1") + "\n")
+    r = g.place_oco(*short_oco())
+    assert r.ok and r.order_id == "GTT2" and len(b.calls) == 1
+    legs = b.calls[0][1]["order_details"]
+    assert [(d["limit_price"], d["trigger_price"]) for d in legs] == [("3150.50", "3150.50"), ("3476.70", "3442.30")]
+
+
+def test_oco_learns_the_tick_from_the_refusal_and_goes_once_more(tmp_path):
+    b = TickyBreeze(positions=[fut_row(action="Sell")])                # no master: starts at 0.05
+    r = gw(b, tmp_path).place_oco(*short_oco())
+    assert r.ok and [c[0] for c in b.calls] == ["oco", "oco"]
+    assert b.calls[1][1]["order_details"][1]["trigger_price"] == "3442.30"
+
+
+def test_a_refusal_that_isnt_about_the_tick_is_not_retried(tmp_path):
+    class Denied(FakeBreeze):
+        def gtt_three_leg_place_order(self, **kw):
+            self.calls.append(("oco", kw))
+            return {"Status": 5, "Error": "Request Denied: The IP address used does not match"}
+    b = Denied(positions=[fut_row(action="Sell")])
+    r = gw(b, tmp_path).place_oco(*short_oco())
+    assert not r.ok and len(b.calls) == 1
+
+
+# ── GTT book (27-Oct: 30-day range refused; the id sits on the legs) ─────────────
+
+class BookBreeze(FakeBreeze):
+    def __init__(self, book=(), status=200, **kw):
+        super().__init__(**kw)
+        self.book, self.status, self.ranges = list(book), status, []
+
+    def gtt_order_book(self, exchange_code, from_date, to_date):
+        f, t = date.fromisoformat(from_date[:10]), date.fromisoformat(to_date[:10])
+        self.ranges.append((f, t))
+        if (t - f).days > 10:
+            return {"Success": None, "Status": 500,
+                    "Error": "Number of days between from_date & to_date should not be more than 10"}
+        if self.status != 200:
+            return {"Success": None, "Status": self.status, "Error": "down"}
+        return {"Status": 200, "Success": self.book if t == MON.date() else []}
+
+
+def book_row(gid="GTT9", action="Buy", qty=1000, status="Active"):
+    return {"order_details": [{"gtt_leg_type": "Target", "action": action, "trigger_price": 3150.4,
+                               "limit_price": 3150.4, "status": status, "gtt_order_id": gid},
+                              {"gtt_leg_type": "Stoploss", "action": action, "trigger_price": 3440.0,
+                               "limit_price": 3474.4, "status": status, "gtt_order_id": gid}],
+            "exchange_code": "NFO", "product_type": "Futures", "stock_code": "INDHOT", "expiry_date": "23-Nov-2026",
+            "strike_price": 0.0, "right": "Others", "quantity": qty, "gtt_type": "OCO"}
+
+
+def test_gtt_book_reads_30_days_in_10_day_windows(tmp_path):
+    b = BookBreeze(book=[book_row()])
+    assert len(gw(b, tmp_path).gtt_book()) == 1
+    assert len(b.ranges) == 3 and all((t - f).days <= 9 for f, t in b.ranges)
+    assert b.ranges[0][1] == MON.date() and b.ranges[1][1] == b.ranges[0][0] - timedelta(days=1)
+
+
+def test_an_unreadable_gtt_book_raises_rather_than_reading_empty(tmp_path):
+    import pytest
+    with pytest.raises(RuntimeError):
+        gw(BookBreeze(status=500), tmp_path).verify_gtt("GTT9")
+
+
+def test_verify_gtt_finds_the_id_on_the_legs_and_skips_finished_ones(tmp_path):
+    assert gw(BookBreeze(book=[book_row()]), tmp_path).verify_gtt("GTT9") is not None
+    assert gw(BookBreeze(book=[book_row(status="Cancelled")]), tmp_path).verify_gtt("GTT9") is None
+    assert gw(BookBreeze(book=[book_row()]), tmp_path).verify_gtt("GTT1") is None
+
+
+def test_find_gtt_matches_contract_side_and_qty(tmp_path):
+    g = gw(BookBreeze(book=[book_row()]), tmp_path)
+    assert g.find_gtt("INDHOT", EXP, "buy", 1000) == "GTT9"
+    assert g.find_gtt("INDHOT", EXP, "sell", 1000) is None             # closes a long: not this one
+    assert g.find_gtt("INDHOT", EXP, "buy", 2000) is None
+    assert g.find_gtt("INDHOT", date(2026, 12, 28), "buy", 1000) is None
+    assert gw(BookBreeze(book=[book_row(status="Executed")]), tmp_path).find_gtt("INDHOT", EXP, "buy", 1000) is None
