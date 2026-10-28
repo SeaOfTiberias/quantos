@@ -66,6 +66,9 @@ IST = timezone(timedelta(hours=5, minutes=30))
 QUANTOS_DIR = Path.home() / ".quantos"
 STATE_PATH = QUANTOS_DIR / "position_manager_state.json"
 LEVELS_PATH = QUANTOS_DIR / "position_manager_levels.json"
+MAPS_DIR = QUANTOS_DIR / "price_maps"            # scripts/price_map.py
+MAP_MAX_AGE_DAYS = 7
+NL = "\n"
 CONFIG_PATH = Path("agent/config.yaml")
 POSITIONS_EVERY_S = 60
 PRICES_EVERY_S = 30
@@ -196,6 +199,22 @@ def name(p: Plan) -> str:
     return f"{p.symbol} FUT {p.expiry:%d-%b} {'LONG' if p.side > 0 else 'SHORT'} ×{abs(p.qty)} @ {p.entry:g}"
 
 
+def load_map(symbol: str) -> dict:
+    """The stock's price map, if built in the last MAP_MAX_AGE_DAYS; {} otherwise."""
+    path = MAPS_DIR / f"{symbol}.json"
+    try:
+        if time.time() - path.stat().st_mtime > MAP_MAX_AGE_DAYS * 86400:
+            return {}
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def map_lines(p: Plan, price: Optional[float] = None) -> list[str]:
+    from core.price_map.build import markers
+    return markers(load_map(p.symbol), price if price is not None else p.entry, p.entry, p.side, p.r, p.target)
+
+
 def plan_text(p: Plan, auto: bool = False) -> str:
     beyond = "below" if p.side > 0 else "above"
     exit_verb = "SELL" if p.side > 0 else "BUY"
@@ -211,6 +230,7 @@ def plan_text(p: Plan, auto: bool = False) -> str:
                      "it only tightens" + (" and moves the OCO's stop leg with it" if auto else ""))
     if p.atr:
         lines.append(f"• ATR {p.atr:g}, 1R = {p.r:g} pts = ₹{p.r * abs(p.qty):,.0f}")
+    lines += map_lines(p)
     lines.append(f"• Out by the close of session {MAX_SESSIONS} at the latest. "
                  + ("I place the exits: resting OCO now, the daily-close exit at 15:20." if auto
                     else "Alerts only -- I place no orders."))
@@ -298,13 +318,17 @@ class Manager:
             price = self.data.ltp(pos)
             if key not in self.morning_sent:
                 self.morning_sent.add(key)
+                if plan.entry_date < today:
+                    stop = f" · profit stop {plan.trail:g}" if plan.trail is not None else ""
+                    todo = ("" if self.executor else " · re-place today's stop order (Breeze stops are day-only) "
+                            "and keep the target limit resting")
+                    self.notify.send(NL.join([f"☀️ {name(plan)} · now {price:g} · stop {plan.stop:g} (daily close){stop} · "
+                                                f"target {plan.target if plan.target is not None else '-'}{todo}"]
+                                               + map_lines(plan, price)))
                 if self.executor:
                     self.executor.daily_check(key, plan)
-                elif plan.entry_date < today:
-                    self.notify.send(f"☀️ {name(plan)} · now {price:g} · stop {plan.stop:g} (daily close) · "
-                                     f"target {plan.target if plan.target is not None else '-'} · "
-                                     "re-place today's stop order (Breeze stops are day-only) and keep the target limit resting.")
             self.explainer.check_gap(key, plan.symbol, name(plan), plan.side)
+            self.zone_alert(key, plan, price, today)
             moved = update_trail(plan, price)
             if moved is not None:
                 self.notify.send(f"🔒 {name(plan)}: price {price:g} -- profit stop moved to {moved:g} "
@@ -327,6 +351,18 @@ class Manager:
                         self.executor.exit_now(plan, ev.detail.split(" -- ")[0])
                     self.explainer.explain(plan.symbol, event_for(plan, ev.kind, price))
         self.save()
+
+    def zone_alert(self, key: str, plan: Plan, price: float, today: date) -> None:
+        """Once a day per zone: price walked into a strong zone of the stock's map. Information only."""
+        from core.price_map.build import rng, why, zone_at
+        z = zone_at(load_map(plan.symbol), price)
+        tag = f"zone-{z['low']:g}-{today}" if z else None
+        if z is None or tag in plan.sent:
+            return
+        plan.sent.append(tag)
+        way = "toward the target" if (z["mid"] - plan.entry) * plan.side > 0 else "against you"
+        self.notify.send(f"📍 {name(plan)}: price {price:g} is in the strong zone {rng(z)} ({why(z)}), {way}. "
+                         "Price has turned here before -- expect a reaction. Information only; the plan's exits stand.")
 
     def run(self, once: bool) -> int:
         last_pos = -1e9

@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuilds the price maps after the close, 16:00 IST
+
+[Timer]
+# 10:30 UTC = 16:00 IST. The VM runs in Etc/UTC.
+OnCalendar=Mon..Fri *-*-* 10:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
