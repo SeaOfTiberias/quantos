@@ -12,6 +12,10 @@ docs/FNO_ENTRY_SEARCH_PREREG_2026-10-23.md):
   emergency  a TOUCH 1 ATR beyond the stop                   -- checked all day
   target     entry +/- 1R (R = the stop distance), touch     -- meant as a resting limit order
   time       out at the close of session 10
+  profit     a ratchet on the best price seen (TRAIL): +0.5R moves a touch stop to
+             entry +0.1R, +0.75R to entry +0.25R. It only tightens. Not part of the
+             tested exit: added 28 Oct 2026 after a short gave back a large open
+             gain with nothing to hold it.
 
 A per-position override (levels file) replaces stop / target for a
 discretionary plan, e.g. {"TCS": {"stop": 2495, "target": 2614}}.
@@ -32,6 +36,7 @@ STOP_ATR = 0.75
 EMERGENCY_ATR = 1.0
 TARGET_R = 1.0
 MAX_SESSIONS = 10
+TRAIL = ((0.5, 0.1), (0.75, 0.25))      # (best move reached, in R; stop locked at entry + this R)
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,8 @@ class Plan:
     last_price:  Optional[float] = None
     last_check:  Optional[str] = None                   # date of the last daily-close check
     gtt_id:      Optional[str] = None                   # the resting OCO at the broker (orders: auto)
+    best:        Optional[float] = None                 # best price seen since the plan was made
+    trail:       Optional[float] = None                 # profit stop (touch), set by update_trail
 
     @property
     def r(self) -> float:
@@ -142,10 +149,31 @@ class Event:
     detail: str
 
 
+def update_trail(p: Plan, price: float) -> Optional[float]:
+    """Track the best price and ratchet the profit stop (TRAIL). Returns the new
+    level when it moved, else None. It never loosens."""
+    if p.r <= 0:
+        return None
+    if p.best is None or (price - p.best) * p.side > 0:
+        p.best = price
+    gain = (p.best - p.entry) * p.side / p.r
+    locks = [lock for reach, lock in TRAIL if gain >= reach - 1e-9]
+    if not locks:
+        return None
+    level = round(p.entry + p.side * max(locks) * p.r, 2)
+    if p.trail is not None and (level - p.trail) * p.side <= 0:
+        return None
+    p.trail = level
+    return level
+
+
 def check_intraday(p: Plan, price: float) -> list[Event]:
     """Touch levels, each alerted once per position."""
     p.last_price = price
     out = []
+    if p.trail is not None and (price - p.trail) * p.side <= 0 and "trail" not in p.sent:
+        p.sent.append("trail")
+        out.append(Event("trail", "TRAIL", f"price {price:g} came back to the profit stop {p.trail:g} -- out, keeping the gain"))
     if p.emergency is not None and (price - p.emergency) * p.side <= 0 and "emergency" not in p.sent:
         p.sent.append("emergency")
         out.append(Event("emergency", "EMERGENCY",

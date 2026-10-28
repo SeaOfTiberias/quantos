@@ -11,8 +11,9 @@ EXP = date(2026, 11, 23)
 
 
 class FakeGW:
-    def __init__(self, ok=True, book=True, resting=None, readable=True):
+    def __init__(self, ok=True, book=True, resting=None, readable=True, cancel_ok=True):
         self.ok, self.book, self.resting, self.readable = ok, book, resting, readable
+        self.cancel_ok = cancel_ok
         self.calls = []
 
     def find_gtt(self, code, expiry, action, qty):
@@ -27,7 +28,7 @@ class FakeGW:
 
     def cancel_gtt(self, gid):
         self.calls.append(("cancel_gtt", gid))
-        return Result(True, True, gid)
+        return Result(True, True, gid) if self.cancel_ok else Result(False, True, gid, ["broker said no"])
 
     def verify_gtt(self, gid):
         self.calls.append(("verify", gid))
@@ -136,3 +137,26 @@ def test_an_unreadable_gtt_book_places_and_cancels_nothing():
     p.gtt_id = "GTT1"
     ex.daily_check("k2", p)
     assert gw.calls[-1][0] == "verify" and p.gtt_id == "GTT1" and "leaving OCO GTT1" in msgs[-1]
+
+
+def test_profit_stop_moves_the_oco_stop_leg():
+    from core.position_manager.rules import update_trail
+    s = make_plan(FutPosition("POWFIN", EXP, -1300, 334.0), "PFC", 8.8, D)
+    assert oco_legs(s, "icici-spouse")[1].trigger == 349.4                 # the emergency until a gain is locked
+    update_trail(s, 330.7)
+    tgt, stp = oco_legs(s, "icici-spouse")
+    assert (tgt.price, stp.trigger, stp.action) == (327.4, 333.35, "buy")  # 333.34 rounded up for a buy
+    gw, msgs = FakeGW(), []
+    s.gtt_id = "GTT1"
+    Executor(gw, msgs.append).rest("k", s)
+    assert [c[0] for c in gw.calls] == ["cancel_gtt", "oco"] and s.gtt_id == "GTT7"
+    assert "profit stop 333.35" in msgs[-1]
+
+
+def test_failed_cancel_places_no_second_oco():
+    gw, msgs = FakeGW(cancel_ok=False), []
+    s = make_plan(FutPosition("POWFIN", EXP, -1300, 334.0), "PFC", 8.8, D)
+    s.gtt_id = "GTT1"
+    Executor(gw, msgs.append).rest("k", s)
+    assert [c[0] for c in gw.calls] == ["cancel_gtt"] and s.gtt_id == "GTT1"
+    assert "couldn't cancel" in msgs[-1]

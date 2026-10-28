@@ -16,7 +16,9 @@ them. With `orders: alerts` (the default) it places NO orders.
 
   every 60 s   Breeze positions -> futures; new one -> plan + "managing" message
                (stop, emergency, target, last session); gone -> "closed" message
-  every 30 s   futures LTP -> emergency / target touch alerts (once each)
+  every 30 s   futures LTP -> emergency / target touch alerts (once each); the profit
+               stop ratchets on the best price (rules.TRAIL) and, with orders auto,
+               the OCO is re-rested with its stop leg there
   15:20 IST    the daily check, once per position per day: CLOSE (beyond the
                stop), TIME (session 10 / expiry) or HOLD with the levels
   first pass of each day  a morning note: today's levels, and a reminder to
@@ -55,7 +57,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.auth import breeze_auth  # noqa: E402
 from core.position_manager.executor import Executor  # noqa: E402
 from core.position_manager.rules import (  # noqa: E402
-    MAX_SESSIONS, FutPosition, Plan, check_close, check_intraday, make_plan, parse_future,
+    MAX_SESSIONS, TRAIL, FutPosition, Plan, check_close, check_intraday, make_plan, parse_future, update_trail,
 )
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -203,6 +205,10 @@ def plan_text(p: Plan, auto: bool = False) -> str:
         lines.append(f"• Emergency: price touches {p.emergency:g} -- exit at once")
     if p.target is not None:
         lines.append(f"• Target: {p.target:g} -- place a resting {exit_verb} LIMIT there now")
+    if p.r > 0:
+        a, b = (p.entry + p.side * x * p.r for x in (TRAIL[0][0], TRAIL[0][1]))
+        lines.append(f"• Profit stop: once price reaches {a:g} (+{TRAIL[0][0]:g}R), a touch stop at {b:g} locks a gain; "
+                     "it only tightens" + (" and moves the OCO's stop leg with it" if auto else ""))
     if p.atr:
         lines.append(f"• ATR {p.atr:g}, 1R = {p.r:g} pts = ₹{p.r * abs(p.qty):,.0f}")
     lines.append(f"• Out by the close of session {MAX_SESSIONS} at the latest. "
@@ -214,7 +220,8 @@ def plan_text(p: Plan, auto: bool = False) -> str:
 def event_for(p: Plan, kind: str, price: float) -> dict:
     """What the explainer may see: the rule, direction and levels -- no quantity, entry or P&L."""
     return {"alert": kind, "instrument": f"{p.symbol} futures {'long' if p.side > 0 else 'short'}",
-            "price_now": price, "levels": {"stop_daily_close": p.stop, "emergency": p.emergency, "target": p.target}}
+            "price_now": price, "levels": {"stop_daily_close": p.stop, "emergency": p.emergency, "target": p.target,
+                                           "profit_stop": p.trail}}
 
 
 # ─── Loop ────────────────────────────────────────────────────────────────────
@@ -298,9 +305,17 @@ class Manager:
                                      f"target {plan.target if plan.target is not None else '-'} · "
                                      "re-place today's stop order (Breeze stops are day-only) and keep the target limit resting.")
             self.explainer.check_gap(key, plan.symbol, name(plan), plan.side)
+            moved = update_trail(plan, price)
+            if moved is not None:
+                self.notify.send(f"🔒 {name(plan)}: price {price:g} -- profit stop moved to {moved:g} "
+                                 f"(locks ≈ ₹{(moved - plan.entry) * plan.qty:,.0f}).")
+                if self.executor:
+                    self.executor.rest(key, plan)
             for ev in check_intraday(plan, price):
-                head = "🚨" if ev.kind == "EMERGENCY" else "🎯"
+                head = {"EMERGENCY": "🚨", "TRAIL": "🔒"}.get(ev.kind, "🎯")
                 self.notify.send(f"{head} {ev.kind} {name(plan)}: {ev.detail}.")
+                if ev.kind == "TRAIL" and self.executor and not plan.gtt_id:   # no resting stop at ICICI: exit here
+                    self.executor.exit_now(plan, ev.detail.split(" -- ")[0])
                 self.explainer.explain(plan.symbol, event_for(plan, ev.kind, price))
             if (t.hour, t.minute) >= CLOSE_CHECK_AT and plan.last_check != today.isoformat():
                 n = session_no(self.data.daily(plan.symbol, days=30), plan.entry_date, today)

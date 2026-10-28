@@ -20,7 +20,11 @@ What it does with a Plan (core/position_manager/rules.py):
                                      the 27-Oct SUPIND case) instead of placing a second:
                                      two OCOs would buy twice at the target and flip the position.
                                      If the book can't be read, nothing is placed or cancelled.
-  15:20 CLOSE / TIME / expiry        cancel the GTT, then exit at the touch with a
+  profit stop ratchets (TRAIL)       cancel the OCO and rest it again with its stop leg at the
+                                     profit stop, so ICICI holds the locked gain even if the VM
+                                     is down. A cancel that fails leaves the old OCO and places
+                                     nothing (never two). No OCO at all -> the code exits on touch.
+  15:20 CLOSE / TIME / expiry       cancel the GTT, then exit at the touch with a
                                      re-priced marketable limit (gateway.work_exit)
   position gone                      cancel the GTT (harmless if it already fired)
 
@@ -39,16 +43,22 @@ from core.position_manager.rules import Plan
 STOP_SLIP = 0.01          # the emergency stop's limit sits this far beyond its trigger
 
 
+def stop_level(p: Plan) -> Optional[float]:
+    """The resting stop: the profit stop once it's set (always the tighter), else the emergency."""
+    return p.trail if getattr(p, "trail", None) is not None else p.emergency
+
+
 def oco_legs(p: Plan, account: str) -> Optional[tuple[Intent, Intent]]:
-    if p.target is None or p.emergency is None:
+    stop = stop_level(p)
+    if p.target is None or stop is None:
         return None
     act = "sell" if p.side > 0 else "buy"
     up = p.side < 0                                   # a buy-to-close rounds its prices up
     base = dict(account=account, product="futures", code=p.code, expiry=p.expiry, action=act,
                 qty=abs(p.qty), gtt=True)
     tgt = round_tick(p.target, up=up)
-    trig = round_tick(p.emergency, up=up)
-    lim = round_tick(p.emergency * (1 - p.side * STOP_SLIP), up=up)
+    trig = round_tick(stop, up=up)
+    lim = round_tick(stop * (1 - p.side * STOP_SLIP), up=up)
     return (Intent(price=tgt, purpose="target", trigger=tgt, **base),
             Intent(price=lim, purpose="stop", trigger=trig, **base))
 
@@ -61,7 +71,11 @@ class Executor:
     def rest(self, key: str, p: Plan, positions: Optional[dict] = None) -> None:
         """Place (or replace) the plan's resting OCO; adopt one already at the broker."""
         if getattr(p, "gtt_id", None):
-            self.gw.cancel_gtt(p.gtt_id)
+            c = self.gw.cancel_gtt(p.gtt_id)
+            if not c.ok:                              # placing anyway could leave two OCOs at the broker
+                self.notify(f"❗ {p.symbol}: couldn't cancel the resting OCO {p.gtt_id} ({'; '.join(c.reasons)}), "
+                            "so it stays as it is and I placed no new one. Its stop is NOT the new level.")
+                return
             p.gtt_id = None
         else:
             try:
@@ -84,8 +98,9 @@ class Executor:
         if r.ok:
             p.gtt_id = r.order_id
             self.verified.add(key)
+            kind = "profit stop" if getattr(p, "trail", None) is not None else "emergency stop"
             self.notify(f"📌 {p.symbol}: resting OCO {'placed' if r.sent else '(paper)'} -- target {legs[0].price:g}, "
-                        f"emergency stop {legs[1].trigger:g} (limit {legs[1].price:g}). GTT {r.order_id}.")
+                        f"{kind} {legs[1].trigger:g} (limit {legs[1].price:g}). GTT {r.order_id}.")
         else:
             self.notify(f"❗ {p.symbol}: resting OCO NOT placed -- {'; '.join(r.reasons)}. Place target/stop by hand.")
 

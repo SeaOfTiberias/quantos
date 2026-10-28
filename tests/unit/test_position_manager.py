@@ -3,7 +3,7 @@
 from datetime import date
 
 from core.position_manager.rules import (
-    MAX_SESSIONS, FutPosition, Plan, check_close, check_intraday, make_plan, parse_future,
+    MAX_SESSIONS, FutPosition, Plan, check_close, check_intraday, make_plan, parse_future, update_trail,
 )
 
 D = date(2026, 10, 22)
@@ -58,3 +58,30 @@ def test_state_round_trip():
     p = make_plan(FutPosition("TCS", date(2026, 11, 23), 225, 2520.0), "TCS", 80.0, D)
     p.sent.append("target")
     assert Plan.from_dict(p.to_dict()) == p
+
+
+def test_profit_stop_ratchets_and_never_loosens():
+    s = make_plan(FutPosition("POWFIN", date(2026, 11, 23), -1300, 334.0), "PFC", 8.8, D)   # short, 1R = 6.6
+    assert update_trail(s, 331.0) is None and s.trail is None and s.best == 331.0          # +0.45R: nothing yet
+    assert update_trail(s, 330.7) == 333.34                                                # +0.5R: entry +0.1R
+    assert update_trail(s, 331.5) is None and s.best == 330.7                              # a bounce doesn't loosen it
+    assert update_trail(s, 329.05) == 332.35                                               # +0.75R: entry +0.25R
+    assert update_trail(s, 328.0) is None                                                  # no rung past 0.75R
+    lng = make_plan(FutPosition("TCS", date(2026, 11, 23), 225, 2520.0), "TCS", 80.0, D)   # long, 1R = 60
+    assert update_trail(lng, 2550.0) == 2526.0
+    assert update_trail(make_plan(FutPosition("X", date(2026, 11, 23), 100, 10.0), "X", None, D), 12.0) is None
+
+
+def test_profit_stop_touch_alerts_once():
+    s = make_plan(FutPosition("POWFIN", date(2026, 11, 23), -1300, 334.0), "PFC", 8.8, D)
+    update_trail(s, 330.0)
+    assert check_intraday(s, 333.0) == []
+    assert [e.kind for e in check_intraday(s, 333.4)] == ["TRAIL"]
+    assert check_intraday(s, 333.6) == []
+
+
+def test_old_state_without_trail_fields_loads():
+    d = make_plan(FutPosition("TCS", date(2026, 11, 23), 225, 2520.0), "TCS", 80.0, D).to_dict()
+    del d["best"], d["trail"]
+    p = Plan.from_dict(d)
+    assert p.best is None and p.trail is None
