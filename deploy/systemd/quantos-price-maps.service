@@ -1,5 +1,5 @@
 [Unit]
-Description=QuantOS price maps -- rebuilds the swing / volume-profile / pivot map of every open futures position and watched stock (no orders)
+Description=QuantOS price maps -- rebuilds the swing / volume-profile / pivot map of every F&O stock, open position and watched stock (no orders)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
-ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/price_map.py --positions --watch
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/price_map.py --positions --watch --fno --pause 1
 Environment=HOME=/home/ubuntu
-TimeoutStartSec=15min
+TimeoutStartSec=40min
 ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ]'
