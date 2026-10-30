@@ -34,7 +34,7 @@ OUT = Path.home() / ".quantos" / "price_maps"
 WATCH = Path.home() / ".quantos" / "price_map_watch.txt"
 INTRADAY_DAYS = 99           # Fyers allows 100 days of 5-minute bars per call
 FO_MASTER = Path.home() / ".quantos" / "fyers_symbol_master_NSE_FO.csv"
-INDICES = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "SENSEX", "BANKEX"}
+INDICES = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "NIFTYFPI", "SENSEX", "BANKEX"}
 
 
 def fno_symbols() -> list[str]:

@@ -127,3 +127,17 @@ def test_markers_name_the_first_obstacle_and_warn_when_the_target_is_beyond():
     assert "beyond" not in markers(m, 1000, 1000, -1, 50, 980)[1]
     assert zone_at(m, 965)["low"] == 960 and zone_at(m, 996) is None                  # weak zones don't alert
     assert markers({}, 1, 1, 1, 1, None) == ["• Map: none built -- run scripts/price_map.py"]
+
+
+def test_shift_moves_a_cash_map_onto_futures_prices():
+    # Maps are built from cash bars; a futures plan reads them shifted by the basis (futures - cash).
+    from core.price_map.build import markers, shift, zone_at
+    m = {"built_for": "2026-10-29", "zones": [{"low": 960, "high": 975, "mid": 967.5, "strong": True, "score": 5,
+                                               "families": ["swing", "volume"],
+                                               "levels": [{"price": 960, "family": "swing", "label": "swing low"}]}]}
+    f = shift(m, 4)
+    assert (f["zones"][0]["low"], f["zones"][0]["high"], f["zones"][0]["mid"]) == (964, 979, 971.5)
+    assert f["zones"][0]["levels"][0]["price"] == 964 and m["zones"][0]["low"] == 960      # the original is untouched
+    assert zone_at(f, 977) is not None and zone_at(m, 977) is None
+    assert "futures = cash +4" in markers(f, 1000, 1000, -1, 50, None)[0]
+    assert shift(m, 0) is m and shift({}, 4) == {}

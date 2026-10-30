@@ -1,5 +1,6 @@
 """core/position_manager/rules.py -- Breeze futures rows, the plan, and its checks."""
 
+import json
 from datetime import date
 
 from core.position_manager.rules import (
@@ -85,3 +86,22 @@ def test_old_state_without_trail_fields_loads():
     del d["best"], d["trail"]
     p = Plan.from_dict(d)
     assert p.best is None and p.trail is None
+
+
+def test_zone_alert_and_map_lines_read_the_map_on_futures_prices(tmp_path, monkeypatch):
+    import scripts.run_position_manager as rpm
+    zone = {"low": 960, "high": 975, "mid": 967.5, "strong": True, "score": 5, "families": ["swing", "volume"],
+            "levels": [{"price": 960, "family": "swing", "label": "swing low"}]}
+    (tmp_path / "XYZ.json").write_text(json.dumps({"built_for": "2026-10-29", "zones": [zone]}))
+    monkeypatch.setattr(rpm, "MAPS_DIR", tmp_path)
+    p = Plan(code="XYZ", symbol="XYZ", expiry=date(2026, 11, 24), side=-1, qty=-100, entry=1000.0, atr=40.0,
+             stop=1030.0, emergency=1070.0, target=970.0, entry_date=date(2026, 10, 29))
+    assert "(cash prices)" in rpm.map_lines(p, 1000)[0]
+    assert "futures = cash +5" in rpm.map_lines(p, 1000, basis=5)[0]
+    sent = []
+    m = rpm.Manager.__new__(rpm.Manager)
+    m.notify = type("N", (), {"send": staticmethod(sent.append)})()
+    m.zone_alert("k", p, 978, date(2026, 10, 30), basis=5)            # 978 is in 965-980 on futures, not in cash 960-975
+    assert len(sent) == 1 and "965–980" in sent[0]
+    m.zone_alert("k", p, 978, date(2026, 10, 30), basis=0)
+    assert len(sent) == 1

@@ -63,6 +63,17 @@ def build_map(symbol: str, daily: list, intraday: list, today: date) -> dict:
     }
 
 
+def shift(m: dict, by: float) -> dict:
+    """The map moved by `by` points, e.g. onto futures prices (by = futures - cash).
+    Maps are built from cash bars; a futures plan compares against the shifted copy."""
+    if not m or "zones" not in m or not by:
+        return m
+    mv = (lambda x: round(x + by, 2))
+    zs = [{**z, "low": mv(z["low"]), "high": mv(z["high"]), "mid": mv(z["mid"]),
+           "levels": [{**lv, "price": mv(lv["price"])} for lv in z["levels"]]} for z in m["zones"]]
+    return {**m, "zones": zs, "shifted_by": round(by, 2)}
+
+
 def nearest(m: dict, price: float, strong_only: bool = True) -> dict:
     """The nearest zone below and above `price`."""
     zs = [z for z in m.get("zones", []) if z["strong"] or not strong_only]
@@ -93,7 +104,8 @@ def markers(m: dict, price: float, entry: float, side: int, r: float, target: Op
     if not m or "zones" not in m:
         return ["• Map: none built -- run scripts/price_map.py"]
     n = nearest(m, price)
-    out = [f"• Map ({m['built_for']}): below {rng(n['below']) + ' (' + why(n['below']) + ')' if n['below'] else 'no strong zone'}; "
+    basis = f", futures = cash {m['shifted_by']:+g}" if m.get("shifted_by") else ""
+    out = [f"• Map ({m['built_for']}{basis}): below {rng(n['below']) + ' (' + why(n['below']) + ')' if n['below'] else 'no strong zone'}; "
            f"above {rng(n['above']) + ' (' + why(n['above']) + ')' if n['above'] else 'no strong zone'}"]
     ob = first_obstacle(m["zones"], entry, side, r)
     if ob is None:

@@ -68,6 +68,7 @@ STATE_PATH = QUANTOS_DIR / "position_manager_state.json"
 LEVELS_PATH = QUANTOS_DIR / "position_manager_levels.json"
 MAPS_DIR = QUANTOS_DIR / "price_maps"            # scripts/price_map.py
 MAP_MAX_AGE_DAYS = 7
+BASIS_EVERY_S = 600          # futures - cash, re-measured this often (maps are in cash prices)
 NL = "\n"
 CONFIG_PATH = Path("agent/config.yaml")
 POSITIONS_EVERY_S = 60
@@ -154,6 +155,10 @@ class Data:
             raise RuntimeError(f"quote {p.code} FUT: {r.get('Error')}")
         return float(rows[0]["ltp"])
 
+    def cash_ltp(self, p: FutPosition) -> float:
+        from scripts.run_spread_watcher import stock_price
+        return stock_price(self.client, p.code)
+
     def symbol(self, code: str) -> str:
         if code not in self.symbols:
             try:
@@ -210,9 +215,17 @@ def load_map(symbol: str) -> dict:
         return {}
 
 
-def map_lines(p: Plan, price: Optional[float] = None) -> list[str]:
+def futures_map(p: Plan, basis: Optional[float]) -> dict:
+    """The stock's map on the futures' prices (the map is cash; basis = futures - cash).
+    Unknown basis: the cash map, which reads a zone off by the basis (~0.6% a month out)."""
+    from core.price_map.build import shift
+    return shift(load_map(p.symbol), basis or 0.0)
+
+
+def map_lines(p: Plan, price: Optional[float] = None, basis: Optional[float] = None) -> list[str]:
     from core.price_map.build import markers
-    return markers(load_map(p.symbol), price if price is not None else p.entry, p.entry, p.side, p.r, p.target)
+    lines = markers(futures_map(p, basis), price if price is not None else p.entry, p.entry, p.side, p.r, p.target)
+    return lines if basis is not None or len(lines) < 2 else [lines[0] + " (cash prices)"] + lines[1:]
 
 
 def plan_text(p: Plan, auto: bool = False) -> str:
@@ -259,6 +272,20 @@ class Manager:
         self.auto = not dry and load_cfg("position_manager").get("orders") == "auto"
         self.orders_cfg = load_cfg("orders")
         self.executor: Optional[Executor] = None
+        self.basis: dict[str, tuple[float, float]] = {}      # key -> (monotonic time, futures - cash)
+
+    def basis_for(self, key: str, pos: FutPosition, fut_price: float) -> Optional[float]:
+        """Futures minus cash, re-measured every BASIS_EVERY_S; None if the cash quote fails."""
+        got = self.basis.get(key)
+        if got and time.monotonic() - got[0] < BASIS_EVERY_S:
+            return got[1]
+        try:
+            b = round(fut_price - self.data.cash_ltp(pos), 2)
+        except Exception as e:
+            print(f"  cash quote {pos.code} failed ({e}); map read in cash prices", flush=True)
+            return got[1] if got else None
+        self.basis[key] = (time.monotonic(), b)
+        return b
 
     def save(self) -> None:
         if not self.dry:
@@ -316,6 +343,7 @@ class Manager:
             if pos is None:
                 continue
             price = self.data.ltp(pos)
+            basis = self.basis_for(key, pos, price)
             if key not in self.morning_sent:
                 self.morning_sent.add(key)
                 if plan.entry_date < today:
@@ -324,11 +352,12 @@ class Manager:
                             "and keep the target limit resting")
                     self.notify.send(NL.join([f"☀️ {name(plan)} · now {price:g} · stop {plan.stop:g} (daily close){stop} · "
                                                 f"target {plan.target if plan.target is not None else '-'}{todo}"]
-                                               + map_lines(plan, price)))
+                                               + map_lines(plan, price, basis)))
                 if self.executor:
                     self.executor.daily_check(key, plan)
             self.explainer.check_gap(key, plan.symbol, name(plan), plan.side)
-            self.zone_alert(key, plan, price, today)
+            if basis is not None:                         # no alert off a cash map: it'd be a basis away
+                self.zone_alert(key, plan, price, today, basis)
             moved = update_trail(plan, price)
             if moved is not None:
                 self.notify.send(f"🔒 {name(plan)}: price {price:g} -- profit stop moved to {moved:g} "
@@ -352,10 +381,11 @@ class Manager:
                     self.explainer.explain(plan.symbol, event_for(plan, ev.kind, price))
         self.save()
 
-    def zone_alert(self, key: str, plan: Plan, price: float, today: date) -> None:
-        """Once a day per zone: price walked into a strong zone of the stock's map. Information only."""
+    def zone_alert(self, key: str, plan: Plan, price: float, today: date, basis: float = 0.0) -> None:
+        """Once a day per zone: price walked into a strong zone of the stock's map (on futures prices).
+        Information only."""
         from core.price_map.build import rng, why, zone_at
-        z = zone_at(load_map(plan.symbol), price)
+        z = zone_at(futures_map(plan, basis), price)
         tag = f"zone-{z['low']:g}-{today}" if z else None
         if z is None or tag in plan.sent:
             return
