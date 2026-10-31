@@ -114,6 +114,21 @@ FAIL is reported as FAIL. None of the thresholds, filters, exits, slot count or 
 - **Context indexes:** Nifty 500 and Nifty Smallcap 250 over the same dates, where real index data can be fetched.
 - **The layers without fundamentals:** price filters only, and price + F1 only. Each is run under the same rules, to show what each layer adds.
 
+## Amendment 1 (2026-11-01, approved by the user before any return was computed)
+
+**What changed at NSE:** NSE's results feed (`corporates-financial-results`) is nearly empty from April 2025. From then on, results are filed as "Integrated Filing - Financials" (`/api/integrated-filing-results`). Those records carry no `bank` / `indAs` fields, so gate D5 as written would stop.
+
+**The amended rule:** for integrated filings, the financial-format classification is read from the XBRL file name. That name is the format the company filed under, the same fact the old fields recorded.
+
+- `INTEGRATED_FILING_INDAS_*`: the standard format, eligible.
+- `INTEGRATED_FILING_NBFC_INDAS_*`, `_NONINDAS_*`, `_GI_*`, `_LI_*` (NBFC, non-Ind-AS, general and life insurers): excluded, as rule 2 excludes them in the old feed.
+
+Old-feed filings (to March 2025) still use `bank` / `indAs`. A stock's eligibility follows its latest usable filing, whichever feed it came from.
+
+D5 now checks that every filing from 2018 to 2026 has a classification: the fields for the old feed, the file-name prefix for the integrated feed. Any filing with neither is reported, and that stock is ineligible while it is the latest filing.
+
+Nothing else in the pre-registration changes.
+
 ## Piotroski (forward only)
 
 From the FY2025 annual results (filed April–May 2025), a standard F-score can be built from real filings. It will be computed and logged alongside this rule for the stocks that qualify. Its own pre-registration comes when it has enough history. It has no part in this verdict.
