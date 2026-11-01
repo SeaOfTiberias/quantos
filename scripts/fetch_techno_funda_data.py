@@ -229,7 +229,9 @@ def if_targets(rows: list[dict]) -> list[dict]:
     out = []
     for g in groups.values():
         cons = [r for r in g if r.get("consolidated") == "Consolidated"]
-        out += [dict(name=f"if_{r['seq_Id']}.xml", url=r["xbrl"], when=r["broadcast_Date"]) for r in cons or g]
+        # revisions carry no broadcast_Date; revised_Date is NSE's timestamp of the revision
+        out += [dict(name=f"if_{r['seq_Id']}.xml", url=r["xbrl"], when=r["broadcast_Date"] or r["revised_Date"])
+                for r in cons or g]
     return out
 
 
