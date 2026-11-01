@@ -41,6 +41,11 @@ from core.techno_funda.panel import build  # noqa: E402
 START, SPLIT, END = pd.Timestamp(2019, 7, 1), pd.Timestamp(2024, 10, 23), pd.Timestamp(2026, 10, 23)
 GATES = Path("data_cache/techno_funda/gates.json")
 OUT = Path("docs/TECHNO_FUNDA_RESULTS.md")
+# context only, not a criterion: NSE price indices (TradingView daily closes, matched to
+# NSE's own ind_close_all files on sample dates); a missing session carries the last close
+INDICES = Path("data_cache/techno_funda/indices")
+CONTEXT = [("Nifty 500", "NIFTY500"), ("Nifty MidSmallcap 400", "MIDSMALLCAP400"),
+           ("Nifty Smallcap 250", "SMALLCAP250")]
 LAYERS = [("price filters only", "price_sig"), ("price + profit growth", "sig_f1"),
           ("price + growth + OPM (the pre-registered rule)", "sig")]
 
@@ -75,6 +80,14 @@ def benchmark(a) -> np.ndarray:
     r = c[1:] / c[:-1] - 1
     ok = a["univ"][:-1] & a["has_bar"][1:] & a["has_bar"][:-1]
     return np.where(ok, r, 0).sum(axis=1) / np.maximum(ok.sum(axis=1), 1)
+
+
+def index_nav(name: str, dates: pd.DatetimeIndex) -> np.ndarray | None:
+    path = INDICES / f"{name}.csv"
+    if not path.exists():
+        return None
+    c = pd.read_csv(path, parse_dates=["date"]).set_index("date")["c"]
+    return c.reindex(c.index.union(dates)).ffill().reindex(dates).to_numpy()
 
 
 def stats(nav: np.ndarray, dates: pd.DatetimeIndex) -> dict:
@@ -152,6 +165,14 @@ def main(argv=None) -> int:
         lines.append(f"| {name} | " + " | ".join(fmt(stats(nav[per[x]], dates[per[x]])) for x in ("test", "dev", "full")) + " |")
     lines.append("| equal-weight universe (benchmark, no costs) | "
                  + " | ".join(fmt(stats(bench[per[x]], dates[per[x]])) for x in ("test", "dev", "full")) + " |")
+    missing = []
+    for label, name in CONTEXT:
+        nav = index_nav(name, dates)
+        if nav is None or np.isnan(nav).any():
+            missing.append(label)
+            continue
+        lines.append(f"| {label} (context, price index) | "
+                     + " | ".join(fmt(stats(nav[per[x]], dates[per[x]])) for x in ("test", "dev", "full")) + " |")
 
     lines += ["", "## Trades (pre-registered rule, full period)", ""]
     ts = trade_stats(main_run.trades, dates)
@@ -168,8 +189,9 @@ def main(argv=None) -> int:
     lines += ["", "## Per year (rule vs benchmark, price return within the year)", "", "| year | rule | benchmark |", "|---|---|---|"]
     lines += [f"| {y} | {r['last'] / r['first'] - 1:+.1%} | {byear.loc[y, 'last'] / byear.loc[y, 'first'] - 1:+.1%} |"
               for y, r in years.iterrows()]
-    lines += ["", "Nifty 500 / Smallcap 250 context: not included -- no real index series is on hand "
-              "(niftyindices.com is not fetchable from here; Fyers works only from the VM).", ""]
+    lines += ["", "Index rows are context, not a pass criterion: NSE price indices (no dividends, like the "
+              "strategy and benchmark rows), daily closes from TradingView, matched exactly to NSE's own "
+              f"ind_close_all files on sample dates. {'Not on hand: ' + ', '.join(missing) + '.' if missing else ''}", ""]
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print("\n".join(lines))
     return 0
