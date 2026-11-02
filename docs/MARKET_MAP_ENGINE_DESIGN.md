@@ -131,6 +131,44 @@ It reads:
 
   Whether "positioning agrees with structure" improves outcomes is a situation to test (`POSITIONING`), not an assumption.
 
+### F. Fundamentals and ownership (added 2026-11-03)
+
+Point-in-time only: a figure counts from the day after it was published. This layer reuses the
+techno-funda pipeline (`core/techno_funda/fundamentals.py`, NSE results XBRL).
+
+- **Quality and growth:**
+  - profit growth (quarter on the same quarter a year ago);
+  - TTM operating margin;
+  - their trend over the last 4 quarters.
+- **Event risk:** the next results date from NSE board meetings. A swing trade across results is a different trade.
+- **Ownership: who holds it and who is adding.**
+  - NSE quarterly shareholding patterns: promoter, FII, mutual fund, insurance, retail;
+  - the change on the quarter;
+  - index membership and weight.
+
+  This tests the HDFCBANK thesis directly: institutional holders adding at a multi-year base.
+- **The techno-funda backtest decides how much of this filters.** If fundamentals add nothing there, they stay context.
+
+### Noise assessment (2026-11-03, before any test)
+
+Expected to be the weakest for swing trades. All are still tested, but none gets a place on
+trust:
+
+- **Daily pivots and daily Camarilla:** intraday tools. Out of the swing phase.
+- **Weekly and monthly classical pivots:** formulas of the last period's high, low and close, so largely redundant with swing highs and lows. Expected weak.
+- **Order blocks:** definitions vary and there are many candidates, so the overfit risk is high. Strict test.
+- **Premium and discount:** depends on which dealing range is chosen, which is arbitrary.
+- **Option put-call ratio, max-pain, and day-to-day FII/DII cash flows:** noisy for a swing decision. Context, at most a weekly trend.
+- **VIX:** five volatility-conditioning signals have already failed. Context only.
+
+Expected to be the strongest:
+
+- multi-year HTF zones and structure;
+- ROOM (pure risk:reward geometry);
+- timeframe alignment;
+- relative strength;
+- fundamentals and ownership.
+
 ## 4. Inference: from levels to situations
 
 The "intelligence" is here, and it is code: a fixed, named vocabulary computed for any symbol, on

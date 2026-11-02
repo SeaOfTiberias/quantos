@@ -101,6 +101,15 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 - **Pre-market brief** (Telegram and cockpit): market first, then sectors, then the watchlist.
 - **Done when:** the brief runs on the VM, and `map_read` includes the market backdrop.
 
+### S6b. Layer F: fundamentals and ownership
+
+- Reuse the techno-funda point-in-time fundamentals: growth, OPM and their trend.
+- Fetch NSE quarterly shareholding patterns (promoter, FII, MF, insurance, retail; change on the quarter) and index weights.
+- Add the results date (event risk) from NSE board meetings.
+- Extend `map_read` with layer F.
+- How much of it filters depends on the S1 techno-funda verdict and the S8 tests.
+- **Done when:** `map_read HDFCBANK` shows growth, OPM, the FII/MF holding trend and the next results date, all as of the day.
+
 ### S7. P4: situations and the trade verdict
 
 - Code the situation vocabulary (design section 4):
@@ -139,6 +148,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [ ] S4 golden set + definitions + pre-registration
 - [ ] S5 L1 stock HTF + SMC
 - [ ] S6 L0 market map + brief
+- [ ] S6b layer F: fundamentals + ownership
 - [ ] S7 situations + verdict + pre-registrations
 - [ ] S8 tests run, filters promoted
 - [ ] S9 in-trade map events
