@@ -58,6 +58,10 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 ### S3. P1: run the 2026-10-28 zone test, as frozen
 
 - Measure how much Fyers 5-minute history the VM can pull, and at what rate, before committing to the full pull.
+- **Before the runner exists,** commit amendment 1 to the pre-registration: a macro-context split, reported only, not part of pass or fail.
+  - Rejection rate by the stock's Weinstein stage on the day (`core/vault/stages.py`: stage 2 = HTF up, stage 4 = HTF down), crossed with support or resistance.
+  - Each cell is labelled "with the HTF trend" (support in an uptrend, resistance in a downtrend) or "against it".
+  - The pass criteria and zone definitions stay frozen.
 - Write the runner for `docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md`: point-in-time maps, the event and outcome rules, placebo and weak-zone controls, and the session bootstrap.
 - Run it and report pass or fail on criteria 1-5. No re-tuning.
 - If the history isn't deep enough for about 300 events: report that and stop. Don't shorten the test.
@@ -135,6 +139,12 @@ A session that can't finish says so in its tracker line. It isn't ticked.
   - the backdrop flipping.
 - Any exit rule built on these needs its own pre-registration and the user's go-ahead.
 - **Done when:** alerts fire on a replayed past trade (HDFCBANK, SUPREMEIND), and the code is deployed.
+
+### Later: intraday on the same engine (not in this sprint)
+
+- Intraday reads use `map_read` with intraday as-of times and **inherit the swing bias**: macro sets the direction, micro sets the location.
+- Every intraday test is pre-registered with the HTF split.
+- The failed intraday candidates (ORB 18 and others) can be re-looked at with HTF-structure conditioning, as new pre-registered tests.
 
 ### Gate: resume trading?
 

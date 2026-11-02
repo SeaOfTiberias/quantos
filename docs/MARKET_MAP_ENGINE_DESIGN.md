@@ -169,6 +169,27 @@ Expected to be the strongest:
 - relative strength;
 - fundamentals and ownership.
 
+### Nesting: the macro layer sets the bias, the micro layer sets the location (added 2026-11-03)
+
+The user's principle: a micro tool tells you **where** price is; the macro context tells you
+**which way it is likely to go from there**.
+
+- Example: the session POC is a micro fact. Whether price rotates from it to the value area high or to the value area low depends on the stock's trend on the higher timeframe, and on the market's.
+- The swing map therefore isn't only for swing trades. It is the context every lower-timeframe decision reads first.
+
+This is Dalton's "other timeframe" participant, and the classic multi-timeframe rule: trade the
+lower timeframe in the direction of the higher one.
+
+The design consequences:
+
+1. **Every layer passes a context down.** Monthly and weekly (L1) plus the market backdrop (L0) produce the HTF bias; L2 and any intraday reading are always evaluated together with it. `map_read` reports a micro situation as "at value area low, with an HTF uptrend", never "at value area low" alone.
+2. **The intraday phase is not a separate engine.** It is the same `map_read`, with intraday as-of times, inheriting the swing bias. That is why swing comes first: the macro layer is the prerequisite.
+3. **Every micro test is split by macro context, and the split is pre-registered.** The same setup can have opposite outcomes with and against the HTF trend, and an average across both can hide a real effect. A split is declared before the run, never found afterwards.
+4. **Earlier intraday failures get a fair re-look, as new pre-registered tests.**
+   - Four intraday-direction candidates failed (ORB 18 and others), and none were conditioned on HTF structure.
+   - Volatility conditioning was tried and failed five times. HTF *structure* conditioning has never been tried.
+   - This is a re-look in a new round, not a re-tune of the old ones.
+
 ## 4. Inference: from levels to situations
 
 The "intelligence" is here, and it is code: a fixed, named vocabulary computed for any symbol, on
