@@ -140,6 +140,22 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 - Any exit rule built on these needs its own pre-registration and the user's go-ahead.
 - **Done when:** alerts fire on a replayed past trade (HDFCBANK, SUPREMEIND), and the code is deployed.
 
+### S10. Re-look at failed candidates with HTF conditioning
+
+Re-testing about 20 failed strategies under several conditions makes a pass by luck likely, so
+the discipline here is stricter than for a fresh candidate.
+
+- **The list is fixed by a rule, before looking at any conditioned result.**
+  - Candidates that failed on direction or edge, not on data or liquidity.
+  - Each needs at least 200 trades in its original test.
+  - Only HTF conditions that S8 showed carry information are used.
+- **One pre-registration covers them all,** with:
+  - a multiple-testing correction across every candidate × condition (Bonferroni or Holm);
+  - a held-out period that none of the original tests touched;
+  - pass bars at least as strict as the originals.
+- **Each candidate's original FAIL stays on record.** A conditioned pass is a new, narrower strategy, not a reversal of the old verdict.
+- **Done when:** the results are committed and each candidate is reported pass or fail, corrected.
+
 ### Later: intraday on the same engine (not in this sprint)
 
 - Intraday reads use `map_read` with intraday as-of times and **inherit the swing bias**: macro sets the direction, micro sets the location.
@@ -162,6 +178,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [ ] S7 situations + verdict + pre-registrations
 - [ ] S8 tests run, filters promoted
 - [ ] S9 in-trade map events
+- [ ] S10 re-look failed candidates with HTF conditioning (corrected for multiple tests)
 
 ## Changes to the plan
 
