@@ -41,6 +41,28 @@ and of execution.
   - The same functions build the map for today and for any past day D, from data before D only.
   - That way what we test is exactly what we use.
 
+## 2b. Decisions (user, 2026-11-03)
+
+- **Swing first, intraday later.**
+  - The first build works on monthly, weekly and daily bars, plus composite profiles built from daily bars.
+  - Opening range, initial balance and open types wait for the intraday phase.
+  - This also removes most of the dependence on Fyers 5-minute history.
+- **Frameworks apply at both levels.** Each framework below is applied to indices and stocks alike:
+  - Ochoa (classical and Camarilla pivots, CPR, pivot width, two-day relationships, money zone, market structure);
+  - Dalton market profile;
+  - SMC.
+
+  The Nifty CPR is the most-watched pivot in India, so pivots belong in the market layer too.
+- **SMC and pivots combine as confluence, not as rival systems.**
+  - SMC says where structure and liquidity are: trend state, order blocks, equal highs/lows, strong lows.
+  - Pivots and profile give fixed reference prices.
+  - A zone where an SMC level and a pivot or value-area edge agree is exactly the "two families agree" rule the existing map already uses.
+  - Some ideas appear in more than one framework; these count as one family, not two, so agreement isn't double-counted:
+    - Dalton's poor highs and lows (unfinished auctions) and SMC's equal highs and lows are the same idea: resting orders at a clean edge;
+    - an SMC order block is close to the origin of a profile imbalance.
+- **Golden set:** the user annotates charts in Zerodha (Kite) and TradingView. Process in section 6.
+- **OI and positioning:** added as an independent witness, not as "smart money" (section 3, L0 and L3).
+
 ## 3. The map: four layers, top-down
 
 Each layer reads the one above it first: the forest, then the trees.
@@ -63,6 +85,11 @@ It reads:
 - **Sector rotation:** relative strength of each sector against the Nifty 500 on two speeds (for example 13 and 52 weeks), giving quadrants: leading, weakening, lagging, improving.
 - **Volatility, as context only:** the India VIX level and its percentile.
   - Five volatility-conditioning signals have already failed, so VIX never filters on its own.
+- **Positioning:**
+  - NSE participant-wise OI: FII, DII, Pro and Client long/short in index futures and options. This is the one public dataset that says *who* holds positions.
+  - Nifty and Bank Nifty option OI by strike (put-call ratio, max-OI strikes) and FII/DII cash flows.
+
+  Positioning is read as "who is positioned where, and who is trapped", not as smart money's direction. Every open contract has a buyer and a seller, and most index option volume is retail.
 
 ### L1. Stock: higher timeframe (monthly and weekly)
 
@@ -94,6 +121,15 @@ It reads:
 - Relative strength of the stock against its sector and against the Nifty 500.
 - **Index-heavyweight flag:** the stock's weight in the Nifty and in its sector index. For a stock like HDFCBANK, index flows matter at major levels.
 - **Alignment:** is the stock moving with its sector and the market, or against them? For example, on 23 Oct HDFCBANK held at -0.2% while Bank Nifty fell 1.4%. That is a stock absorbing selling at support, and it was noted and then ignored.
+- **OI at location.** Stock futures OI build-up is read against the map, not on its own:
+  - short build-up into HTF supply means shorts are positioned with structure;
+  - short build-up into HTF demand means late shorts who are fuel for a squeeze.
+
+  Two examples from our own record:
+  - HDFCBANK, 10-23: +5.4% OI short build-up at its multi-year base. We read it as confirmation for the short; it was the crowd selling into demand.
+  - RELIANCE: +56% OI short build-up in the week before the 11-02 results gap of +6%.
+
+  Whether "positioning agrees with structure" improves outcomes is a situation to test (`POSITIONING`), not an assumption.
 
 ## 4. Inference: from levels to situations
 
@@ -111,6 +147,7 @@ any day, and for any proposed trade. These are first drafts, to be refined with 
 | `STRUCTURE_SHIFT` | a CHoCH on a named timeframe, plus its direction and age |
 | `ACCEPTANCE` | at a zone: closes and value building inside (acceptance), or wicks and quick rejection |
 | `RELATIVE_STRENGTH` | the stock holds or leads while its sector or index falls, or the reverse |
+| `POSITIONING` | OI build-up (stock futures; participant-wise OI for indices) with structure, or against it (trapped side) |
 
 **Trade verdict.** For a proposed trade (side, entry, stop, target), the engine returns:
 
@@ -150,6 +187,10 @@ to remember it.
    - The engine must reproduce those labels.
    - It is also compared with LuxAlgo SMC on the same charts, for verification only.
    - These become unit tests.
+   - **How to annotate:**
+     - one screenshot per chart (symbol, timeframe, date visible);
+     - a short note listing each level: price or zone, type (demand/supply, strong low, EQL, order block, pivot, value area...), and why.
+     - Crop out any positions, holdings or order panels from Zerodha first. Account data never goes into the repo.
 2. **Signal: does a fact turn price?**
    - A pre-registered test per family and per situation, against placebo levels.
    - The first one exists and has not been run: `docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md`. It is run as frozen.
