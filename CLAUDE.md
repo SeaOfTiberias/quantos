@@ -2,6 +2,10 @@
 
 A household trading and portfolio terminal. Architecture: `docs/TERMINAL_ARCHITECTURE.md` (approved 2026-10-23). These rules hold in every session.
 
+## Current work
+- **Trading is paused** (user, 2026-11-02). Don't suggest new trades unless the user lifts the pause.
+- Active sprint: `docs/MARKET_MAP_SPRINT_PLAN.md` (design: `docs/MARKET_MAP_ENGINE_DESIGN.md`). Read its tracker at the start of any session about trading, maps or strategy.
+
 ## Money and orders
 - **No change to capital, position size or `dry_run` without the user's explicit go-ahead in that session.**
 - **Stage 2 is approved** (user, 2026-10-22 for API orders; 2026-10-24 for automated exits): orders go to ICICI Direct from the VM's static IP. The order rule is **a model drafts, code checks, the user releases; rule-driven exits are placed by code, never by a model.**
