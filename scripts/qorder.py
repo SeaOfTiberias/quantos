@@ -78,13 +78,13 @@ def map_reader(symbol: str, price):
 
 def show_map(g: Gateway, i: Intent) -> None:
     """The underlying's map read. A futures limit is placed on the cash map (off by the basis);
-    for options the read is at the stock's last close. Display only: never fails the command."""
+    for options the read is at the close the map was built from. Display only: never fails the command."""
     try:
         from core.market_map.read import lines
         rd = map_reader(g.symbol(i.code), i.price if i.product == "futures" and i.price > 0.05 else None)
         out = lines(rd)
         if "error" not in rd:
-            out[0] += " (cash prices; futures differ by the basis)" if i.product == "futures" else " (stock's last close)"
+            out[0] += " (cash prices; futures differ by the basis)" if i.product == "futures" else " (at the map's close)"
         print("\n".join(out))
     except Exception as e:
         print(f"MAP  unavailable ({type(e).__name__})")

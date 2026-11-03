@@ -97,7 +97,9 @@ def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
     today = datetime.now(IST).date()
     allbars = m.daily(sym, 365)
     done = [b for b in allbars if b.timestamp.astimezone(IST).date() < today] if allbars else []
-    rd = map_read(sym, market=m, daily=allbars, maps_dir=maps_dir or MAPS_DIR)
+    # Read from the latest completed close: a reused map file (< 7 days) stores an older one.
+    rd = map_read(sym, market=m, daily=allbars, maps_dir=maps_dir or MAPS_DIR,
+                  price=done[-1].close if done else None)
     if len(done) < 30:
         return {"symbol": sym, "map": rd, "error": f"only {len(done)} daily bars"}
     closes = [b.close for b in done]

@@ -59,6 +59,15 @@ def test_levels_uses_completed_sessions():
     assert lv["high_52w"] >= lv["close"] >= lv["low_52w"]
     assert list(lv)[:2] == ["symbol", "map"]                         # leads with the map read
     assert lv["map"]["status"] == "untested" and lv["map"]["source"] == "built"
+    assert lv["map"]["price"] == lv["close"]                          # read at the latest close, not the map's
+
+
+def test_levels_reads_an_older_map_file_at_the_latest_close(tmp_path, monkeypatch):
+    import core.market_map.read as mr
+    (tmp_path / "ABC.json").write_text(json.dumps({"symbol": "ABC", "built_for": "2020-01-01", "close": 1.0,
+                                                   "atr": 1.0, "zones": []}))
+    lv = mt.levels(FakeMarket(), "abc", maps_dir=tmp_path)
+    assert lv["map"]["source"] == "file" and lv["map"]["close"] == 1.0 and lv["map"]["price"] == lv["close"]
 
 
 def test_option_chain_rows_iv_and_bhav_oi():
