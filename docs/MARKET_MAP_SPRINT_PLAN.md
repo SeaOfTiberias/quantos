@@ -168,7 +168,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 
 ## Tracker
 
-- [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, COMMIT
+- [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, 1e332e2
 - [ ] S2 P0 wiring
 - [ ] S3 zone test (frozen)
 - [ ] S4 golden set + definitions + pre-registration
