@@ -192,7 +192,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 
 - [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, 1e332e2
 - [x] S2 P0 wiring: deployed 1668cd5 + bfbcb1c. On the VM, `levels HDFCBANK` leads with the map read (11-03 close 725.5: inside strong zone 725–728.73, below 712.13–718.25, above 731.5–736, all untested). An idea with no map read is refused. bfbcb1c fixes the read being taken at a reused map file's older close.
-- [ ] S3 zone test (frozen)
+- [x] S3 zone test: **FAIL** (fd2d5e6). Strong zones 60.1% rejection vs placebo 61.1% (−1.1 pp, CI [−4.2, +2.1]), 22,620 events, 218 stocks; criteria 1-3 fail. Criterion 4's pass is band-width geometry. The HTF split gives no lead. map_read now labels these zones "failed its test" (af01025, deployed). Amendments 1-2 committed before any outcome (2 = the user's placebo rule C).
 - [ ] S2b screens: stock map page + trade check + map on Ideas (spec docs/MARKET_MAP_SCREENS.md)
 - [ ] S4 golden set + definitions + pre-registration
 - [ ] S5 L1 stock HTF + SMC
@@ -206,6 +206,13 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-04 (S3):** the L2 strong zones (the 100-day price map) failed. For later sessions:
+  - The zones stay on the map as markers, labelled "failed its test". No alert, trigger or filter is built on them. The S2b screens draw them in the failed style, not the untested one.
+  - S4's pre-registration covers the HTF/SMC zones as a **new definition** with its own placebo test. Two lessons from S3 apply:
+    - check placebo feasibility on counts before freezing the clearance rule;
+    - width-match every control, since a wider band rejects more often by construction (rejection is measured from the near edge, a break from the far edge).
+  - S10: no HTF condition came out of S3's split; S10's conditions still come only from S8.
 
 - **2026-11-04 (user):** screens added. S2b builds the stock map page, the trade check and the map on Ideas, after S3. The market page (S6), the Picks map columns (S7) and the in-trade card (S9) are part of those sessions' "done", so a screen never runs ahead of the layer it shows.
 
