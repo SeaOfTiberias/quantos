@@ -165,6 +165,36 @@ split is declared now.
 
 ---
 
+## Amendment 2 (2026-11-04, the user's decision, before any outcome was seen)
+
+**What a smoke run showed.** A 3-stock smoke run of the runner (f60d7a3) was inspected for event
+**counts only**, never outcomes. It showed the frozen placebo rule can't produce a usable control:
+
+- maps hold about 21 zones within roughly ±8 ATR of price, so a band "more than 0.3 ATR from every zone, strong or weak" almost never exists near price;
+- on the sampled sessions, 443 of 1,743 strong candidates had a valid placebo, mostly beyond the map's outermost zone, and 1 was entered (against 261 strong-zone entries);
+- scaled up, that's about 200 placebo events against about 19,000 strong ones. Criterion 2 would be decided by placebo scarcity, not by the zones.
+
+**The user's choice (rule C), replacing the 0.3-ATR clearance in "Controls":** a placebo band is valid when it is:
+
+- more than **0.3 ATR from every strong zone**, and
+- **not overlapping any weak zone** (no padding).
+
+Expected placebo events: about 1,700. Everything else (mirroring through the previous close,
+entry and outcome rules, criteria 1-5) is unchanged.
+
+Options considered, with sample counts and no outcomes:
+
+| Rule | Valid placebos | Entered |
+|---|---|---|
+| frozen (all zones, 0.3 ATR) | 443 | 1 |
+| A (strong zones only, 0.3 ATR) | 872 | 36 |
+| B (all zones, no padding) | 776 | 14 |
+| **C (strong 0.3 ATR + no weak overlap)** | 649 | 8 |
+
+Strong candidates: 1,743; strong zones entered: 261 (3 stocks, every third session).
+
+---
+
 ## Results
 
 _Not run yet._

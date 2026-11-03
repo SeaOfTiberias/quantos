@@ -11,8 +11,10 @@ reads a file, a clock or a broker.
               rejected = 0.5 ATR back past the near edge (from the bar AFTER entry),
               broken   = 0.5 ATR past the far edge (from the entry bar; a bar
                          doing both counts as broken), else timeout
-  placebo     a strong-zone candidate mirrored through the previous close,
-              valid if more than 0.3 ATR from every zone of the day's map
+  placebo     a strong-zone candidate mirrored through the previous close, valid if
+              more than 0.3 ATR from every strong zone and overlapping no weak zone
+              (amendment 2, the user's rule C; the frozen 0.3 ATR from every zone left
+              almost no placebo near price)
 """
 
 from __future__ import annotations
@@ -69,12 +71,13 @@ def outcome(bars: Sequence, band: Band, sd: str, atr: float, complete: bool) -> 
 
 
 def placebo(band: Band, prev_close: float, zones: Sequence[dict], atr: float) -> Optional[Band]:
-    """The band mirrored through the previous close, if it is clear of every zone by 0.3 ATR."""
+    """The band mirrored through the previous close, if it is more than 0.3 ATR from every strong
+    zone and overlaps no weak zone (amendment 2, rule C)."""
     p = Band(round(2 * prev_close - band.high, 4), round(2 * prev_close - band.low, 4))
-    pad = PLACEBO_CLEAR_ATR * atr
     if p.low <= 0:
         return None
     for z in zones:
+        pad = PLACEBO_CLEAR_ATR * atr if z["strong"] else 0.0
         if z["low"] - pad <= p.high and z["high"] + pad >= p.low:
             return None
     return p

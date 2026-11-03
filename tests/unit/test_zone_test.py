@@ -51,10 +51,14 @@ def test_resistance_mirrors_support():
 
 
 def test_placebo_mirrors_through_the_close_and_keeps_clear_of_zones():
-    zones = [{"low": 95.0, "high": 100.0}]
+    zones = [{"low": 95.0, "high": 100.0, "strong": True}]
     assert placebo(Z, 110, zones, ATR) == Band(120.0, 125.0)
-    assert placebo(Z, 110, zones + [{"low": 127.0, "high": 128.0}], ATR) is None      # 127 - 3 <= 125
-    assert placebo(Z, 110, zones + [{"low": 128.5, "high": 130.0}], ATR) == Band(120.0, 125.0)
+    strong = lambda lo, hi: {"low": lo, "high": hi, "strong": True}     # noqa: E731
+    weak = lambda lo, hi: {"low": lo, "high": hi, "strong": False}      # noqa: E731
+    assert placebo(Z, 110, zones + [strong(127.0, 128.0)], ATR) is None              # 127 - 3 <= 125
+    assert placebo(Z, 110, zones + [strong(128.5, 130.0)], ATR) == Band(120.0, 125.0)
+    assert placebo(Z, 110, zones + [weak(126.0, 127.0)], ATR) == Band(120.0, 125.0)  # a weak zone needs no padding
+    assert placebo(Z, 110, zones + [weak(124.0, 127.0)], ATR) is None                # but must not overlap
 
 
 def test_seen_skips_an_overlapping_band_for_five_sessions_within_its_kind():
