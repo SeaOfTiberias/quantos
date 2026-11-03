@@ -13,8 +13,10 @@ target lies beyond it, and whether the stop sits inside a zone.
 The map comes from ~/.quantos/price_maps/<SYMBOL>.json when one was built in
 the last MAX_AGE_DAYS; otherwise it is built on demand from the market's bars
 (and saved). With as_of, it is built from bars before that day only and not
-saved. Every line is labelled "untested": that these zones turn price is the
-open question of docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md. A read informs a
+saved. Every zone line carries its test status: these L2 strong zones FAILED
+their pre-registered test (docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md, 2026-11-04:
+they turn price no more often than placebo levels). They stay on the map as
+markers for reading a trade, labelled so; they never filter. A read informs a
 decision; it never blocks or moves an order by itself.
 """
 
@@ -33,8 +35,11 @@ MAPS_DIR = Path.home() / ".quantos" / "price_maps"   # = scripts/price_map.py OU
 MAX_AGE_DAYS = 7                                       # = run_position_manager.MAP_MAX_AGE_DAYS
 INTRADAY_DAYS = 99                                     # Fyers allows 100 days of 5-minute bars
 UNTESTED = "untested"
-NOTE = ("Zones describe where price did business and turned; that they turn it again is untested "
-        "(docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md). Shown for judgement, never a filter.")
+FAILED = "failed its test"
+ZONE_TEST = FAILED                                     # L2 strong zones: zone test 2026-11-04, FAIL
+NOTE = ("Zones mark where price did business and turned. In the 2026-11-04 test they turned price no "
+        "more often than placebo levels (docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md): markers for "
+        "reading a trade, never a signal or a filter.")
 
 
 def side_of(x: Any) -> int:
@@ -58,7 +63,7 @@ def _zone(z: Optional[dict], price: float, atr: float) -> Optional[dict]:
     return {"range": rng(z), "low": z["low"], "high": z["high"], "why": why(z),
             "distance": round(abs(edge - price), 2),
             "distance_atr": round(abs(edge - price) / atr, 2) if atr else None,
-            "distance_pct": round(abs(edge - price) / price * 100, 2), "test": UNTESTED}
+            "distance_pct": round(abs(edge - price) / price * 100, 2), "test": ZONE_TEST}
 
 
 def read(m: dict, trade: Optional[dict] = None, price: Optional[float] = None) -> dict:
@@ -78,9 +83,9 @@ def read(m: dict, trade: Optional[dict] = None, price: Optional[float] = None) -
     out: dict[str, Any] = {
         "symbol": m["symbol"], "built_for": m["built_for"], "close": m["close"], "price": px, "atr": m.get("atr"),
         "shifted_by": m.get("shifted_by"),
-        "inside": {"range": rng(inside), "why": why(inside), "test": UNTESTED} if inside else None,
+        "inside": {"range": rng(inside), "why": why(inside), "test": ZONE_TEST} if inside else None,
         "below": _zone(n["below"], px, atr), "above": _zone(n["above"], px, atr),
-        "status": UNTESTED, "note": NOTE,
+        "status": ZONE_TEST, "note": NOTE,
     }
     if t:
         out["trade"] = trade_read(m, t)
@@ -102,10 +107,10 @@ def trade_read(m: dict, t: dict) -> dict:
             "r": round(r, 2) if r else None,
             "target_r": round(abs(target - entry) / r, 2) if r and target is not None else None,
             "first_obstacle": {"range": rng(ob["zone"]), "why": why(ob["zone"]), "edge": ob["edge"], "r": ob["r"],
-                               "test": UNTESTED} if ob else None,
+                               "test": ZONE_TEST} if ob else None,
             "target_beyond_obstacle": beyond,
-            "stop_in_zone": {"range": rng(sz), "why": why(sz), "test": UNTESTED} if sz else None,
-            "flags": flags, "test": UNTESTED}
+            "stop_in_zone": {"range": rng(sz), "why": why(sz), "test": ZONE_TEST} if sz else None,
+            "flags": flags, "test": ZONE_TEST}
 
 
 def lines(rd: dict) -> list[str]:
@@ -114,7 +119,7 @@ def lines(rd: dict) -> list[str]:
         return [f"MAP  {rd.get('symbol') or ''}: none ({rd['error']})"]
     fmt = (lambda z: f"{z['range']} ({z['why']}), {z['distance_pct']:g}% away" if z else "no strong zone")
     basis = f", shifted {rd['shifted_by']:+g} onto futures" if rd.get("shifted_by") else ""
-    out = [f"MAP  {rd['symbol']} at {rd['price']:g} (map built for {rd['built_for']}{basis}) -- every line {UNTESTED}",
+    out = [f"MAP  {rd['symbol']} at {rd['price']:g} (map built for {rd['built_for']}{basis}) -- zones {ZONE_TEST} (zone test 2026-11-04)",
            f"     below: {fmt(rd['below'])}", f"     above: {fmt(rd['above'])}"]
     if rd.get("inside"):
         out.append(f"     price is inside the strong zone {rd['inside']['range']} ({rd['inside']['why']})")

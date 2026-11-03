@@ -4,7 +4,7 @@ A household trading and portfolio terminal. Architecture: `docs/TERMINAL_ARCHITE
 
 ## Current work
 - **Trading is paused** (user, 2026-11-02). Don't suggest new trades unless the user lifts the pause.
-- **Any trade discussion starts from `map_read`** (`core/market_map/read.py`; the `levels` MCP tool leads with it). Its lines are untested until their pre-registered tests pass.
+- **Any trade discussion starts from `map_read`** (`core/market_map/read.py`; the `levels` MCP tool leads with it). Each line carries its test status. The current (L2) strong zones FAILED theirs (2026-11-04): markers, never signals.
 - Active sprint: `docs/MARKET_MAP_SPRINT_PLAN.md` (design: `docs/MARKET_MAP_ENGINE_DESIGN.md`). Read its tracker at the start of any session about trading, maps or strategy.
 
 ## Money and orders

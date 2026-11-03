@@ -392,7 +392,8 @@ class Manager:
         plan.sent.append(tag)
         way = "toward the target" if (z["mid"] - plan.entry) * plan.side > 0 else "against you"
         self.notify.send(f"📍 {name(plan)}: price {price:g} is in the strong zone {rng(z)} ({why(z)}), {way}. "
-                         "Price has turned here before -- expect a reaction. Information only; the plan's exits stand.")
+                         "Price did business here before; such zones turned price no more often than random levels in the "
+                         "2026-11-04 test. Information only; the plan's exits stand.")
 
     def run(self, once: bool) -> int:
         last_pos = -1e9

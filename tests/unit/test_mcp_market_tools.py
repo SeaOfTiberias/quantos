@@ -58,7 +58,7 @@ def test_levels_uses_completed_sessions():
     assert lv["as_of"] < TODAY.isoformat() and len(lv["recent"]) == 10
     assert lv["high_52w"] >= lv["close"] >= lv["low_52w"]
     assert list(lv)[:2] == ["symbol", "map"]                         # leads with the map read
-    assert lv["map"]["status"] == "untested" and lv["map"]["source"] == "built"
+    assert lv["map"]["status"] == "failed its test" and lv["map"]["source"] == "built"
     assert lv["map"]["price"] == lv["close"]                          # read at the latest close, not the map's
 
 

@@ -24,10 +24,10 @@ MAP = {"symbol": "HDFC", "built_for": "2026-10-23", "close": 680.0, "atr": 10.0,
 
 def test_location_only_read():
     rd = mr.read(MAP)
-    assert rd["price"] == 680.0 and rd["status"] == "untested" and "trade" not in rd
+    assert rd["price"] == 680.0 and rd["status"] == "failed its test" and "trade" not in rd
     assert rd["below"]["range"] == "664–666" and rd["below"]["distance"] == 14 and rd["below"]["distance_atr"] == 1.4
     assert rd["above"]["range"] == "700–702" and rd["above"]["distance_pct"] == pytest.approx(2.94)
-    assert rd["below"]["test"] == rd["above"]["test"] == "untested"
+    assert rd["below"]["test"] == rd["above"]["test"] == "failed its test"
     assert rd["inside"] is None                                        # the single pivot at 672 is not strong
     assert mr.read(MAP, price=665)["inside"]["range"] == "664–666"
 
@@ -60,9 +60,9 @@ def test_side_words():
         mr.side_of("flat")
 
 
-def test_lines_label_untested():
+def test_lines_carry_the_zone_test_status():
     out = mr.lines(mr.read(MAP, {"side": "short", "entry": 678, "stop": 690, "target": 660}))
-    assert "untested" in out[0] and "664–666" in out[1] and out[-1].strip().startswith("! target 660")
+    assert "failed its test" in out[0] and "664–666" in out[1] and out[-1].strip().startswith("! target 660")
     assert mr.lines({"symbol": "X", "error": "no map"}) == ["MAP  X: none (no map)"]
 
 
