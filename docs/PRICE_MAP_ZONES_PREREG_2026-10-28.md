@@ -197,4 +197,93 @@ Strong candidates: 1,743; strong zones entered: 261 (3 stocks, every third sessi
 
 ## Results
 
-_Not run yet._
+**Verdict: FAIL**
+
+Run 2026-11-04 01:26 IST by `scripts/run_zone_test.py` on 218 F&O stocks, sessions 2025-11-03..2026-10-27. Events with an outcome (rejected + broken); timeouts reported separately.
+
+| | rejection rate | rejected / scored | events (incl. timeouts) | timeouts |
+|---|---|---|---|---|
+| strong | 60.1% | 13587 / 22620 | 23162 | 542 |
+| placebo | 61.1% | 887 / 1451 | 1463 | 12 |
+| weak | 53.9% | 10609 / 19697 | 19847 | 150 |
+
+Difference strong - placebo: **-1.1 pp**, 95% session-bootstrap CI [-4.2, +2.1] pp (10,000 draws, seed 20261104).
+
+Halves, split at the median strong-event date 2026-04-28:
+
+- first: strong 60.2% (n=11262), placebo 61.3% (n=770), diff -1.1 pp
+- second: strong 60.0% (n=11358), placebo 60.9% (n=681), diff -1.0 pp
+
+| Criterion | Result |
+|---|---|
+| 1 strong - placebo >= 5pp | **FAIL** |
+| 2 95% CI excludes 0 | **FAIL** |
+| 3 diff > 0 in both halves | **FAIL** |
+| 4 strong rate > weak rate | pass |
+| 5 >= 300 strong events | pass |
+
+### Reported only (not part of pass or fail)
+
+**Support and resistance:**
+
+| side | strong | placebo | diff |
+|---|---|---|---|
+| support | 59.6% (n=11838) | 63.9% (n=710) | -4.3 pp |
+| resistance | 60.5% (n=10782) | 58.4% (n=741) | +2.1 pp |
+
+**Family combinations (strong zones):**
+
+| families | rate | n |
+|---|---|---|
+| pivot+swing+volume | 61.1% | 10418 |
+| pivot+volume | 60.0% | 5447 |
+| pivot+swing | 58.8% | 4828 |
+| swing+volume | 57.7% | 1927 |
+
+**ATR% terciles** (cuts 2.32%, 3% from strong events):
+
+| tercile | strong | placebo | diff |
+|---|---|---|---|
+| low | 60.6% (n=7564) | 60.0% (n=510) | +0.6 pp |
+| mid | 59.7% (n=7595) | 60.1% (n=494) | -0.4 pp |
+| high | 59.9% (n=7461) | 63.5% (n=447) | -3.6 pp |
+
+**Amendment 1 A: HTF stage split** (stage on D from daily bars to D−1):
+
+| stage | side | HTF | strong | placebo | diff |
+|---|---|---|---|---|---|
+| 1 | support | none | 56.9% (n=1345) | 61.8% (n=68) | -4.9 pp |
+| 1 | resistance | none | 61.0% (n=1115) | 57.4% (n=61) | +3.6 pp |
+| 2 | support | with | 61.4% (n=5393) | 68.5% (n=165) | -7.1 pp |
+| 2 | resistance | against | 61.1% (n=4320) | 59.6% (n=453) | +1.5 pp |
+| 3 | support | none | 58.2% (n=1650) | 62.3% (n=122) | -4.1 pp |
+| 3 | resistance | none | 61.7% (n=1571) | 53.8% (n=80) | +8.0 pp |
+| 4 | support | against | 58.7% (n=3423) | 63.1% (n=352) | -4.4 pp |
+| 4 | resistance | with | 59.2% (n=3753) | 58.2% (n=146) | +1.0 pp |
+| unclassified | support | unclassified | 55.6% (n=27) | 33.3% (n=3) | +22.2 pp |
+| unclassified | resistance | unclassified | 60.9% (n=23) | 0.0% (n=1) | +60.9 pp |
+
+| HTF | strong | placebo | diff | 95% CI |
+|---|---|---|---|---|
+| with | 60.5% (n=9146) | 63.7% (n=311) | -3.2 pp | [-8.6, +2.4] |
+| against | 60.1% (n=7743) | 61.1% (n=805) | -1.1 pp | [-5.4, +3.2] |
+| none | 59.4% (n=5681) | 59.2% (n=331) | +0.2 pp | [-5.4, +5.9] |
+
+Note: a placebo's HTF label follows its own test side (a stage-2 placebo tested as resistance is 'against'), so the with/against placebo groups are not the mirrors of the zone groups.
+
+### Notes on reading the results
+
+- **Criterion 4's pass is band width, not information.**
+  - Rejection is measured from the near edge and a break from the far edge, so a wider band rejects more often by construction.
+  - Weak zones are much narrower than strong ones: median 0.06 ATR against 0.36, and 38% are a single price. Zero-width weak bands reject 50.2% of the time, which is what symmetric geometry gives.
+  - The placebo control is width-matched; the weak-zone control is not.
+- **The FAIL doesn't depend on that geometry.** Placebos are slightly narrower than strong zones (mean 0.28 vs 0.34 ATR), which favours the zones, and the zones still don't beat them.
+- **The HTF split (amendment 1 A) gives no lead.** Zones tested with the higher-timeframe trend are 3.2 pp *below* their placebos, CI [−8.6, +2.4]. No cell suggests a conditioned test worth pre-registering from this result.
+- **Data:** 218 F&O stocks (today's list; names that left F&O are missing), Fyers bars fetched 2026-11-04, runner at commit c7eb053 (rules) / 30aa030.
+  - Events: `data_cache/zone_test/events.csv` (not committed: derived from cached broker data, regenerable with the two scripts).
+
+### What follows (from "Afterwards", above)
+
+- The price map's strong zones **failed** their test. Maps stay as markers for reading a trade; no trigger, alert-as-opportunity or filter is built on them.
+- `map_read` labels these zones "failed its test" instead of "untested" (design §2: a failed item is still shown, never filters).
+- The 640-840-type multi-year zones (S5) are a different definition. They get their own pre-registered test in S4; this result doesn't carry over to them either way.
