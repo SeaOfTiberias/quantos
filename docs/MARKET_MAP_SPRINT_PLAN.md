@@ -67,6 +67,22 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 - If the history isn't deep enough for about 300 events: report that and stop. Don't shorten the test.
 - **Done when:** the results doc is committed and the user has the verdict.
 
+### S2b. Screens: the stock map page, the trade check, the map on Ideas
+
+Spec: `docs/MARKET_MAP_SCREENS.md` (screens 1-6, with mockups). This session builds screens 1, 2 and 4; screens 3, 5 and 6 are built inside S7, S6 and S9.
+
+- **API:** `GET /map/{symbol}` returns `map_read` for a symbol; `POST /map/{symbol}/check` returns it for a trade (side, entry, stop, target).
+  - Both are read-only. A model never feeds them; the numbers come from code.
+  - Add the new prefix to the VM's nginx allowlist by hand: deploy doesn't sync it.
+- **Stock map page (`#/map/SYMBOL`):**
+  - a vertical price ladder: zones as bands (strong/weak, families), the current price, distances in ATR and %;
+  - a test-status badge on every element (untested, passed, failed its test);
+  - a banner naming what isn't built yet ("lookback 100 days; HTF layer from S5"), shown until S5 lands.
+- **Trade check panel** on the same page: side, entry, stop, target in; R, ROOM to the first obstacle, stop placement and flags out. Advisory, places nothing.
+- **Ideas page:** each idea shows its frozen map read.
+- Every screen states which layers it shows and which aren't built yet. A screen never presents an untested line as a signal.
+- **Done when:** on the VM's cockpit, `#/map/HDFCBANK` draws the ladder, the trade check flags the 10-23 short's stop inside the 688.77–693 zone (on the 11-02 map), and the Ideas page shows a logged idea's frozen read.
+
 ### S4. Golden set and definitions (with the user)
 
 - **Input:** the user's annotated charts from Zerodha and TradingView. HDFCBANK and SUPREMEIND first, 10-20 in all, cropped of any account panels.
@@ -103,7 +119,9 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 - **Sector rotation:** relative strength against the Nifty 500 on 13 and 52 weeks, with quadrants.
 - **Positioning:** NSE participant-wise OI (FII, DII, Pro, Client) and FII/DII cash flows. Context only.
 - **Pre-market brief** (Telegram and cockpit): market first, then sectors, then the watchlist.
-- **Done when:** the brief runs on the VM, and `map_read` includes the market backdrop.
+- **Screen 5 (market page, `#/market`):** indices, breadth, sector quadrants, positioning as context; the same content as the brief.
+- On the stock map page, the market backdrop strip sits above the ladder.
+- **Done when:** the brief runs on the VM, `map_read` includes the market backdrop, and `#/market` shows it.
 
 ### S6b. Layer F: fundamentals and ownership
 
@@ -112,6 +130,7 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 - Add the results date (event risk) from NSE board meetings.
 - Extend `map_read` with layer F.
 - How much of it filters depends on the S1 techno-funda verdict and the S8 tests.
+- The stock map page gets a layer-F panel (growth, OPM, ownership trend, next results date).
 - **Done when:** `map_read HDFCBANK` shows growth, OPM, the FII/MF holding trend and the next results date, all as of the day.
 
 ### S7. P4: situations and the trade verdict
@@ -122,7 +141,9 @@ A session that can't finish says so in its tracker line. It isn't ticked.
 - Code the trade verdict in `map_read`.
 - Add screener columns for LOCATION, ROOM and MARKET_BACKDROP.
 - Pre-register the situation tests and the usefulness test. Example: on the put-retest plan's history, do shorts at HTF demand or with no room do worse?
-- **Done when:** the verdict appears everywhere `map_read` is wired, and the pre-registrations are committed.
+- **Screen 3 (map columns on Picks):** LOCATION, ROOM and MARKET_BACKDROP per candidate, each with its test status.
+- The trade check panel shows the full verdict (situations per timeframe).
+- **Done when:** the verdict appears everywhere `map_read` is wired, including the Picks columns and the trade check, and the pre-registrations are committed.
 
 ### S8. Run the tests
 
@@ -138,7 +159,8 @@ A session that can't finish says so in its tracker line. It isn't ticked.
   - a CHoCH against the position;
   - the backdrop flipping.
 - Any exit rule built on these needs its own pre-registration and the user's go-ahead.
-- **Done when:** alerts fire on a replayed past trade (HDFCBANK, SUPREMEIND), and the code is deployed.
+- **Screen 6 (in-trade card):** an open position drawn against its zones, with the map events as they fire. Alerts only, no exit controls.
+- **Done when:** alerts fire on a replayed past trade (HDFCBANK, SUPREMEIND), the in-trade card shows them, and the code is deployed.
 
 ### S10. Re-look at failed candidates with HTF conditioning
 
@@ -171,6 +193,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, 1e332e2
 - [x] S2 P0 wiring: deployed 1668cd5 + bfbcb1c. On the VM, `levels HDFCBANK` leads with the map read (11-03 close 725.5: inside strong zone 725–728.73, below 712.13–718.25, above 731.5–736, all untested). An idea with no map read is refused. bfbcb1c fixes the read being taken at a reused map file's older close.
 - [ ] S3 zone test (frozen)
+- [ ] S2b screens: stock map page + trade check + map on Ideas (spec docs/MARKET_MAP_SCREENS.md)
 - [ ] S4 golden set + definitions + pre-registration
 - [ ] S5 L1 stock HTF + SMC
 - [ ] S6 L0 market map + brief
@@ -183,6 +206,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-04 (user):** screens added. S2b builds the stock map page, the trade check and the map on Ideas, after S3. The market page (S6), the Picks map columns (S7) and the in-trade card (S9) are part of those sessions' "done", so a screen never runs ahead of the layer it shows.
 
 - **2026-11-03 (S2):** the HDFCBANK map from 11-02 shows **no strong zone below** 692.8. This is the gap the design names: 100-day lookback, slowest pivot monthly. The 640-840 base and the 665 strong low arrive with L1 in S5.
   - Until then, `map_read` reads "below: no strong zone" as "nothing within ~100 days", not "nothing there".
