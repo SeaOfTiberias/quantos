@@ -144,9 +144,13 @@ split is declared now.
 - **The entry bar can only break.** Its high (for a support test) may have printed before it entered the zone, and the order of prints inside a bar is unknown. Counting a rejection on it could credit a move that came first, so rejection is checked from the next bar on. This is the conservative reading of "both in the same bar counts as broken".
 - **Fewer than 4 later sessions** in the data (events near the end of the period) is a timeout.
 
-**Placebo**
+**Placebo** (corrected 2026-11-04 in this same amendment, still before any data was fetched or any runner code written)
 
-- For a strong-zone event at [low, high] with previous close C, the placebo band is the zone mirrored through C: [2C − high, 2C − low].
+- **Built per strong-zone candidate, not per event.** A candidate is every strong zone in D's map with the previous close more than 0.1 ATR outside it, which is the set that *can* produce an event.
+  - The literal reading ("for each strong-zone event", then the same entry rule on D) would make a placebo exist only when price entered the zone on one side of C *and* the mirror band on the other, on the same day.
+  - That restricts placebos to wide two-sided days, a different and break-prone population, and would bias the comparison in the zones' favour.
+  - Building placebos from candidates gives them the same distance-from-C distribution as the zones, which is the control's purpose.
+- For a strong-zone candidate at [low, high] with previous close C, the placebo band is the zone mirrored through C: [2C − high, 2C − low].
   - The band is the same width, at the same distance from C on the other side, tested from the opposite side. A zone tested as support gives a placebo tested as resistance.
 - **Valid** only if the band stays more than 0.3 ATR from every zone of D's map, strong or weak: no zone's [low − 0.3 ATR, high + 0.3 ATR] overlaps it.
 - The band then goes through the same entry and outcome rules on D. If price never enters it, there is no placebo event, just as a zone that isn't entered has no event.
