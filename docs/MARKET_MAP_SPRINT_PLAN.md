@@ -168,7 +168,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 
 ## Tracker
 
-- [ ] S1 techno-funda close-out
+- [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, COMMIT
 - [ ] S2 P0 wiring
 - [ ] S3 zone test (frozen)
 - [ ] S4 golden set + definitions + pre-registration
@@ -183,3 +183,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-03 (S1):** techno-funda stopped at gate D4, so there is no techno-funda verdict on fundamentals.
+  - S6b: layer F is shown as context, labelled untested. No fundamentals filter can come from S1.
+  - Point-in-time fundamentals are thin before 2021: 43,865 non-financial filings have no parsed figures. Any later test that uses layer F must start its sample in 2021, or first close that gap as a separate, user-approved data task.
