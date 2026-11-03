@@ -43,7 +43,13 @@ def chunks(start: datetime, end: datetime, days: int):
 def fetch(broker, fyers_symbol: str, tf: str, start: datetime, days: int, pause: float) -> list[list]:
     rows: dict[int, list] = {}
     for a, b in chunks(start, TO, days):
-        for bar in broker.get_historical_data(fyers_symbol, tf, a, b) or []:
+        try:
+            got = broker.get_historical_data(fyers_symbol, tf, a, b) or []
+        except Exception as e:                # a window before listing is empty, not a failure
+            if "no_data" not in str(e):
+                raise
+            got = []
+        for bar in got:
             t = int(bar.timestamp.timestamp())
             rows[t] = [t, bar.open, bar.high, bar.low, bar.close, bar.volume]
         time.sleep(pause)
