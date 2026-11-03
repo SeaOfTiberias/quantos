@@ -169,7 +169,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Tracker
 
 - [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, 1e332e2
-- [ ] S2 P0 wiring
+- [ ] S2 P0 wiring: BUILT and DEPLOYED 1668cd5 (2860 tests). Verified on the VM 11-03 15:40 IST: map_read reads HDFCBANK, labelled untested ("stop 690 is inside the strong zone 688.77–693" for the 10-23 short), and an idea with no map read is refused, log unchanged. **Open:** the `levels HDFCBANK` MCP call couldn't run, because the Fyers token had expired. Tick after the token refresh, once `levels HDFCBANK` shows the map
 - [ ] S3 zone test (frozen)
 - [ ] S4 golden set + definitions + pre-registration
 - [ ] S5 L1 stock HTF + SMC
@@ -184,6 +184,9 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 
 _Dated notes on anything a session changed for later sessions._
 
+- **2026-11-03 (S2):** the HDFCBANK map from 11-02 shows **no strong zone below** 692.8. This is the gap the design names: 100-day lookback, slowest pivot monthly. The 640-840 base and the 665 strong low arrive with L1 in S5.
+  - Until then, `map_read` reads "below: no strong zone" as "nothing within ~100 days", not "nothing there".
+  - The idea log now needs a map read for every idea. With the Fyers token expired and no map file under 7 days old, ideas can't be logged. That is by design: refresh the token, or run `scripts/price_map.py SYMBOL`.
 - **2026-11-03 (S1):** techno-funda stopped at gate D4, so there is no techno-funda verdict on fundamentals.
   - S6b: layer F is shown as context, labelled untested. No fundamentals filter can come from S1.
   - Point-in-time fundamentals are thin before 2021: 43,865 non-financial filings have no parsed figures. Any later test that uses layer F must start its sample in 2021, or first close that gap as a separate, user-approved data task.
