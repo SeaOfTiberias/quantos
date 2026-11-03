@@ -6,7 +6,9 @@ QuantOS -- pick the structure for a directional view (core/ideas/structure.py)
 
 Fetches the live chain (strikes within +-10 steps of spot, every listed
 expiry, both rights) and futures from Fyers, then prints the best candidate
-of each family and the overall top 8. Places NO orders.
+of each family and the overall top 8, after the map read (core/market_map/read.py:
+the first strong zone in the view's way, a target beyond it, a stop inside a zone;
+untested and advisory -- the ranking ignores it). Places NO orders.
 """
 
 from __future__ import annotations
@@ -44,7 +46,15 @@ def regime_lines(chain: Chain, view: View, top) -> list[str]:
     return [" · ".join(out)] + [f"! {w}" for w in regime.warnings(vw, vel, iv, top_row, ev)]
 
 
-def report(chain: Chain, view: View, p: float) -> str:
+def map_lines(chain: Chain, view: View, market_factory=None) -> list[str]:
+    """The location flags next to R1-R6: advisory, they don't change the ranking."""
+    from core.market_map.read import lines, map_read
+    rd = map_read(chain.symbol, {"side": view.direction, "entry": chain.spot, "stop": view.stop, "target": view.target},
+                  market_factory=market_factory)
+    return lines(rd)
+
+
+def report(chain: Chain, view: View, p: float, market_factory=None) -> str:
     ranked = candidates(chain, view, p=p)
     lines = [f"{chain.symbol} spot {chain.spot:g} · lot {chain.lot} · ATR {view.atr or 0:.2f} · "
              f"view {'BULL' if view.direction > 0 else 'BEAR'} ({view.thesis}) "
@@ -52,7 +62,7 @@ def report(chain: Chain, view: View, p: float) -> str:
              f"{'budget ₹{:,.0f}'.format(view.risk_budget) if view.risk_budget else 'research mode (no budget)'} · p={p}",
              f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'if flat':>9}{'worst':>9}"
              f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  {'deltas':<14}rules (if_event: R7)"]
-    lines[1:1] = regime_lines(chain, view, ranked[0] if ranked else None)
+    lines[1:1] = regime_lines(chain, view, ranked[0] if ranked else None) + map_lines(chain, view, market_factory)
 
     def row(c):
         rules = "ok" if not c.flags else " | ".join(c.flags)
@@ -122,7 +132,8 @@ def main(argv=None) -> int:
     if ev.get("inside_horizon"):
         view.event_date = _date.fromisoformat(ev["results_date"])
     view._event_ctx = ev
-    print(report(chain, view, args.p))
+    from core.market_map.read import live_market
+    print(report(chain, view, args.p, market_factory=live_market))
     return 0
 
 

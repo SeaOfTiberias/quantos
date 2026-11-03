@@ -44,12 +44,16 @@ def broker(tmp_path, monkeypatch):
         self._lots["INDHOT"] = 1000
     monkeypatch.setattr(gw_mod.Gateway, "__init__", init)
     monkeypatch.setattr(gw_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(q, "map_reader", lambda sym, price: {"symbol": sym, "built_for": "2026-10-23", "price": 812.0,
+                                                             "below": None, "above": None, "status": "untested"})
     return b
 
 
 def test_without_yes_nothing_is_sent(broker, capsys):
     assert q.main(["buy", "INDHOT", "2026-11-23", "1000", "13.1", "--right", "call", "--strike", "820"]) == 0
-    assert broker.calls == [] and "Not sent" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert broker.calls == [] and "Not sent" in out
+    assert out.index("MAP  INDHOTEL") < out.index("Not sent")          # the map read sits above the confirm line
 
 
 def test_spread_open_buys_the_long_leg_first(broker):
@@ -79,3 +83,12 @@ def test_spread_close_buys_back_the_short_first(broker):
 def test_a_naked_short_is_refused(broker):
     assert q.main(["sell", "INDHOT", "2026-11-23", "1000", "5.3", "--right", "call", "--strike", "860", "--yes"]) == 1
     assert broker.calls == []
+
+
+def test_a_broken_map_never_stops_the_ticket(broker, capsys, monkeypatch):
+    def boom(sym, price):
+        raise RuntimeError("no Fyers")
+    monkeypatch.setattr(q, "map_reader", boom)
+    assert q.main(["buy", "INDHOT", "2026-11-23", "1000", "13.1", "--right", "call", "--strike", "820"]) == 0
+    out = capsys.readouterr().out
+    assert "MAP  unavailable" in out and "Not sent" in out

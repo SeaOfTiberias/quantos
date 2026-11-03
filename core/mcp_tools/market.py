@@ -85,10 +85,11 @@ def _atr(bars: list[OHLCV], n: int = 14) -> Optional[float]:
     return sum(tr) / n
 
 
-def levels(m: Market, symbol: str) -> dict:
-    """Daily trend, volatility and Darvas box state, plus the screener's tested
-    retest plan for each side. Uses completed sessions only (today's forming
-    bar is reported separately)."""
+def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
+    """The map read first (core/market_map/read.py: strong zones either side, untested), then
+    daily trend, volatility and Darvas box state, plus the screener's tested retest plan for
+    each side. Uses completed sessions only (today's forming bar is reported separately)."""
+    from core.market_map.read import MAPS_DIR, map_read
     from core.darvas.weekly_discovery import analyse_symbol
     from core.fno_screener.screener import (PLAN_ENTRY_ATR, PLAN_MAX_SESSIONS, PLAN_STOP_ATR, PLAN_TARGET_R,
                                             invert_bars)
@@ -96,14 +97,15 @@ def levels(m: Market, symbol: str) -> dict:
     today = datetime.now(IST).date()
     allbars = m.daily(sym, 365)
     done = [b for b in allbars if b.timestamp.astimezone(IST).date() < today] if allbars else []
+    rd = map_read(sym, market=m, daily=allbars, maps_dir=maps_dir or MAPS_DIR)
     if len(done) < 30:
-        return {"symbol": sym, "error": f"only {len(done)} daily bars"}
+        return {"symbol": sym, "map": rd, "error": f"only {len(done)} daily bars"}
     closes = [b.close for b in done]
     last = done[-1]
     yr = done[-252:]
     atr = _atr(done)
     out: dict[str, Any] = {
-        "symbol": sym, "as_of": last.timestamp.astimezone(IST).date().isoformat(), "close": last.close,
+        "symbol": sym, "map": rd, "as_of": last.timestamp.astimezone(IST).date().isoformat(), "close": last.close,
         "atr14": _r(atr), "atr_pct": _r(atr / last.close * 100) if atr else None,
         "ema9": _r(_ema(closes, 9)), "ema21": _r(_ema(closes, 21)),
         "sma50": _r(sum(closes[-50:]) / 50) if len(closes) >= 50 else None,
@@ -233,8 +235,9 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                    budget: float = 0, p: float = 0.5, intraday: bool = False, gap_pct: Optional[float] = None,
                    thesis: str = "move", atr: Optional[float] = None, iv_history: Optional[Path] = IV_HISTORY,
                    bhav_dir: Optional[Path] = QUANTOS_DIR / "nse_fo_bhavcopy",
-                   events_path: Optional[Path] = EVENTS) -> dict:
+                   events_path: Optional[Path] = EVENTS, maps_dir: Optional[Path] = None) -> dict:
     from core.ideas import events, regime
+    from core.market_map.read import MAPS_DIR, map_read
     sym = symbol.strip().upper()
     ch = m.chain(sym, 10)
     atr = atr or completed_atr(m, sym)
@@ -259,7 +262,10 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
     vw = {"direction": direction, "target": target, "stop": stop, "days": days, "budget": budget or None,
           "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis}
     top = [row(c) for c in ranked[:8]]
-    return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw,
+    rd = map_read(sym, {"side": view.direction, "entry": ch.spot, "stop": stop, "target": target},
+                  market=m, maps_dir=maps_dir or MAPS_DIR)
+    return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw, "map": rd,
+            "location_flags": (rd.get("trade") or {}).get("flags", []),
             "regime": {"velocity": velocity, "iv": iv}, "event": ev,
             "warnings": regime.warnings(vw, velocity, iv, top[0] if top else None, ev),
             "best_by_family": [row(c) for c in best_by_family(ranked)],
@@ -272,7 +278,9 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                     "favours credit, low <= 0.3 favours debit); max_at = the velocity a debit spread's maximum needs; "
                     "deltas per leg, position-signed. warnings are advisory. event: the next results date from NSE board "
                     "meetings; when inside the horizon, if_event = the session after results with a 1.5 ATR gap against "
-                    "the view and IV down to its 1y median, and R7 flags a structure whose worst case that is."}
+                    "the view and IV down to its 1y median, and R7 flags a structure whose worst case that is. "
+                    "map / location_flags: the strong zones around spot, the first one in the view's way (in R), "
+                    "a target beyond it, a stop inside one -- untested and advisory; they don't change the ranking."}
 
 
 # ─── OI build-up ─────────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.ideas import dual, reviewer  # noqa: E402
-from core.ideas.log import IST, make_idea  # noqa: E402
+from core.ideas.log import IST, IdeaError  # noqa: E402
 
 
 def fmt_row(r: dict) -> str:
@@ -141,16 +141,15 @@ def main(argv=None) -> int:
         print("\nFinal pick: none (the reviewer passed on this view)")
 
     if a.log:
-        from scripts.trade_ideas import load, save
+        from scripts.trade_ideas import add
         pair = f"{datetime.now(IST):%Y%m%d%H%M}-{ps['symbol']}"
-        ideas = load()
         for raw in dual.ideas_for_review(rev, ps, model_for(reviewer.FEATURE), pair):
-            idea = make_idea(raw)
-            if any(i["id"] == idea["id"] for i in ideas):
-                idea["id"] = f"{idea['id']}-{sum(i['id'].startswith(idea['id']) for i in ideas) + 1}"
-            ideas.append(idea)
+            try:
+                idea = add(raw)                          # attaches the map read, or refuses the idea
+            except IdeaError as e:
+                print(f"NOT logged: {e}")
+                continue
             print(f"logged {idea['id']} ({idea['source']})")
-        save(ideas)
     if a.json:
         print(json.dumps({"review": rev.__dict__, "context": ctx}, default=str, indent=1))
     return 0

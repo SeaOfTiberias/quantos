@@ -23,6 +23,9 @@ Option legs take --right call|put --strike K. Prices are limits.
                                      resting target + stop (GTT) on the open futures position
   qorder status OID | cancel OID [--yes] | gtt-book | gtt-cancel GID [--yes] | book | journal [N]
 
+Every ticket shows the stock's map read above the confirm line (core/market_map/
+read.py: strong zones either side, untested). It informs; the checks decide.
+
 Places orders only for the spouse's ICICI Direct account; the son's account
 can't be named here at all (core/orders/checks.Limits.accounts).
 """
@@ -68,12 +71,32 @@ def ticket(i: Intent) -> str:
     return f"{i.action.upper()} {i.qty} {i.code} {i.expiry:%d-%b-%Y} {what} @ {i.price:g}{trig} [{i.purpose}]"
 
 
+def map_reader(symbol: str, price):
+    from core.market_map.read import live_market, map_read
+    return map_read(symbol, price=price, market_factory=live_market)
+
+
+def show_map(g: Gateway, i: Intent) -> None:
+    """The underlying's map read. A futures limit is placed on the cash map (off by the basis);
+    for options the read is at the stock's last close. Display only: never fails the command."""
+    try:
+        from core.market_map.read import lines
+        rd = map_reader(g.symbol(i.code), i.price if i.product == "futures" and i.price > 0.05 else None)
+        out = lines(rd)
+        if "error" not in rd:
+            out[0] += " (cash prices; futures differ by the basis)" if i.product == "futures" else " (stock's last close)"
+        print("\n".join(out))
+    except Exception as e:
+        print(f"MAP  unavailable ({type(e).__name__})")
+
+
 def dry(g: Gateway, i: Intent) -> int:
-    """Without --yes: show the ticket and what the checks say, send nothing."""
+    """Without --yes: show the ticket, what the checks say and the map read, send nothing."""
     from core.orders.checks import check
     reasons = check(i, g.context(i), g.limits)
     print("TICKET ", ticket(i))
     print("CHECKS ", "pass" if not reasons else "FAIL: " + "; ".join(reasons))
+    show_map(g, i)
     print("Not sent. Add --yes to release it." + ("" if g.live else " (orders.live is false: it would be paper)"))
     return 0 if not reasons else 1
 
@@ -189,6 +212,7 @@ def main(argv=None) -> int:
         tgt = g.snap(replace(base, price=a.target, trigger=a.target, purpose="target"))     # onto the contract's tick
         stp = g.snap(replace(base, price=a.stop * (1 - slip), trigger=a.stop, purpose="stop"))
         print("TARGET", ticket(tgt)); print("STOP  ", ticket(stp))
+        show_map(g, replace(tgt, price=0.05))                # location only: the read at the last close
         if not a.yes:
             print("Not sent. Add --yes to release it.")
             return 0

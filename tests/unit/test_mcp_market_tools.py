@@ -57,6 +57,8 @@ def test_levels_uses_completed_sessions():
     assert lv["symbol"] == "ABC" and lv["atr14"] > 0 and lv["trend"] == "up"
     assert lv["as_of"] < TODAY.isoformat() and len(lv["recent"]) == 10
     assert lv["high_52w"] >= lv["close"] >= lv["low_52w"]
+    assert list(lv)[:2] == ["symbol", "map"]                         # leads with the map read
+    assert lv["map"]["status"] == "untested" and lv["map"]["source"] == "built"
 
 
 def test_option_chain_rows_iv_and_bhav_oi():
@@ -82,6 +84,8 @@ def test_pick_structure_returns_families():
     assert {"if_flat", "if_stall", "flags", "rules_ok", "fits"} <= set(row) and ps["view"]["thesis"] == "move"
     keys = [(not r["rules_ok"], -r["ev_per_worst"]) for r in ps["top"]]
     assert keys == sorted(keys)                       # rule-passing rows first
+    assert ps["map"]["trade"]["side"] == "long" and ps["map"]["trade"]["r"] == 20.0     # spot 1000, stop 980
+    assert isinstance(ps["location_flags"], list)
 
 
 def test_oi_buildup_from_bhavcopies():

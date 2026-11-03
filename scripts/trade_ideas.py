@@ -17,6 +17,10 @@ known, then scored daily against the market, including the ones passed on.
            Runs from quantos-trade-ideas.timer at 15:25 IST, while the
            option quotes are still live.
 
+Every idea is stored with a frozen map read (core/market_map/read.py: the strong
+zones around the entry, the first one in the idea's way, stop inside a zone),
+computed by code when it is logged. No map read, no idea: `add` refuses it.
+
 File: ~/.quantos/trade_ideas.json. Places NO orders.
 """
 
@@ -65,9 +69,41 @@ def _find(ideas: list[dict], idea_id: str) -> dict:
     return hits[0]
 
 
-def add(raw: dict, path: Optional[Path] = None) -> dict:
+def idea_trade(idea: dict) -> Optional[dict]:
+    """The idea as a trade for the map read: side from the view, entry at the trigger (else spot),
+    the stop and target levels. None for a view-less idea (the read then shows location only)."""
+    if idea.get("view") not in ("bull", "bear"):
+        return None
+    entry = (idea.get("trigger") or {}).get("level") or idea.get("spot")
+    if entry is None:
+        return None
+    tgt = idea.get("target")
+    return {"side": idea["view"], "entry": float(entry), "stop": (idea.get("stop") or {}).get("level"),
+            "target": tgt.get("level") if isinstance(tgt, dict) else tgt}
+
+
+def read_map(symbol: str, trade: Optional[dict]) -> dict:
+    """The live map read: a map file under 7 days old, else one built from Fyers bars."""
+    from core.market_map.read import live_market, map_read
+    return map_read(symbol, trade, market_factory=live_market)
+
+
+def with_map(idea: dict, reader=None) -> dict:
+    """Attach the frozen map read; IdeaError if there is none (the idea is then not logged)."""
+    from core.market_map.read import frozen
+    rd = (reader or read_map)(idea["symbol"], idea_trade(idea))
+    if not rd or "error" in rd:
+        raise IdeaError(f"no map read for {idea['symbol']} ({(rd or {}).get('error', 'none')}) -- "
+                        "an idea is not logged without one; build it with scripts/price_map.py")
+    idea["map_read"] = frozen(rd)
+    return idea
+
+
+def add(raw: dict, path: Optional[Path] = None, reader=None) -> dict:
+    """Validate, attach the map read (refused without one) and store. `reader(symbol, trade)`
+    defaults to the live map_read."""
     ideas = load(path)
-    idea = make_idea(raw)
+    idea = with_map(make_idea(raw), reader)
     if any(i["id"] == idea["id"] for i in ideas):
         n = sum(i["id"].startswith(idea["id"]) for i in ideas) + 1
         idea["id"] = f"{idea['id']}-{n}"
@@ -180,6 +216,8 @@ def main(argv: Optional[list] = None) -> int:
             print(f"ERROR: {e}")
             return 1
         print(f"logged {idea['id']}")
+        from core.market_map.read import lines
+        print("\n".join(lines(idea["map_read"])))
     elif args.cmd in ("take", "close"):
         ideas = load()
         idea = _find(ideas, args.id)

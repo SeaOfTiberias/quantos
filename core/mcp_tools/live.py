@@ -36,6 +36,12 @@ class LiveMarket:
         return sorted(self.broker.get_historical_data(symbol, "1d", now - timedelta(days=min(days, 365)), now) or [],
                       key=lambda c: c.timestamp)
 
+    def intraday(self, symbol: str, days: int):
+        """5-minute bars of an NSE stock (Fyers allows 100 days per call)."""
+        now = datetime.now(timezone.utc)
+        return sorted(self.broker.get_historical_data(f"NSE:{symbol}-EQ", "5m", now - timedelta(days=min(days, 99)), now)
+                      or [], key=lambda c: c.timestamp)
+
     def chain(self, symbol: str, steps: int):
         from core.ideas.chain import fetch_chain
         return fetch_chain(self.client, symbol, steps)

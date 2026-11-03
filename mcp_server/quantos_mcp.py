@@ -56,7 +56,9 @@ def quote(symbols: list[str]) -> list[dict]:
 
 @server.tool(annotations=READ)
 def levels(symbol: str) -> dict:
-    """Daily trend and levels for one stock: ATR(14), EMA9/21, SMA50/200, 52-week high/low, the last
+    """Start any trade discussion here. Leads with the map read ("map"): the nearest strong zones
+    below and above the last close and the zone price is in, every line labelled untested. Then
+    daily trend and levels for one stock: ATR(14), EMA9/21, SMA50/200, 52-week high/low, the last
     10 sessions, the weekly Darvas box (ceiling, and the floor seen from the put side) and the
     screener's retest plan per side (limit, daily-close stop, 1R target). Only the put plan has a
     measured edge (1-year backtest)."""
@@ -87,7 +89,9 @@ def pick_structure(symbol: str, direction: str, target: float, stop: float, days
     target and stop as stock prices, horizon in trading days) by the hit rate each needs to break
     even (needs_p) and EV per worst-case rupee. budget 0 = no budget filter. thesis "move" (reaches
     the target) or "hold" (won't cross the stop level). Each row carries the strike-rule flags
-    (R1-R6) and the no-move (if_flat) outcome; rule-passing rows rank first."""
+    (R1-R6) and the no-move (if_flat) outcome; rule-passing rows rank first. "map" and
+    "location_flags" add where the view sits on the price map: the first strong zone in its way
+    (in R), a target beyond it, a stop inside a zone. Untested and advisory; the ranking ignores them."""
     return mt.pick_structure(market(), symbol, direction, target, stop, days, budget, p, intraday, gap_pct, thesis)
 
 

@@ -100,9 +100,14 @@ def test_scoreboard_counts():
     assert sb["avoid"]["wins"] == 0
 
 
+MAP_READ = {"symbol": "NESTLEIND", "built_for": "2026-10-21", "price": 1238.0, "below": None, "above": None,
+            "status": "untested"}
+
+
 def test_cli_storage_and_route(tmp_path, monkeypatch):
     monkeypatch.setenv("QUANTOS_HOME_DIR", str(tmp_path))
     from scripts import trade_ideas as ti
+    monkeypatch.setattr(ti, "read_map", lambda sym, trade: MAP_READ)
     assert ti.main(["add", "--json", json.dumps(NESTLE)]) == 0
     assert ti.main(["add", "--json", json.dumps(NESTLE)]) == 0          # same day, same legs -> suffixed id
     ids = [i["id"] for i in ti.load()]
@@ -146,3 +151,29 @@ def test_structure_route_validates_and_serialises(tmp_path, monkeypatch):
     out = c.post("/ideas/structure", json=body).json()
     assert seen["sym"] == "NESTLEIND" and out["best"][0]["family"] == "debit" and out["best"][0]["expiry"] == "2026-11-23"
     assert "legs" not in out["best"][0]
+
+
+def test_an_idea_is_refused_without_a_map_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("QUANTOS_HOME_DIR", str(tmp_path))
+    from scripts import trade_ideas as ti
+    monkeypatch.setattr(ti, "read_map", lambda sym, trade: {"symbol": sym, "error": "no map file"})
+    assert ti.main(["add", "--json", json.dumps(NESTLE)]) == 1
+    assert ti.load() == []
+    with pytest.raises(IdeaError):
+        ti.add(NESTLE, reader=lambda sym, trade: None)
+
+
+def test_the_map_read_is_frozen_with_the_idea_and_sees_the_trade(tmp_path, monkeypatch):
+    monkeypatch.setenv("QUANTOS_HOME_DIR", str(tmp_path))
+    from scripts import trade_ideas as ti
+    seen = {}
+
+    def reader(sym, trade):
+        seen.update(sym=sym, trade=trade)
+        return MAP_READ
+    idea = ti.add(NESTLE, reader=reader)
+    assert seen == {"sym": "NESTLEIND", "trade": {"side": "bear", "entry": 1238.0, "stop": 1290, "target": None}}
+    stored = ti.load()[0]["map_read"]
+    assert stored["status"] == "untested" and stored["read_at"] and idea["map_read"] == stored
+    assert ti.idea_trade({"view": "none", "spot": 100}) is None              # an avoid / no-view idea: location only
+    assert ti.idea_trade({"view": "bull", "spot": 100, "stop": None})["entry"] == 100
