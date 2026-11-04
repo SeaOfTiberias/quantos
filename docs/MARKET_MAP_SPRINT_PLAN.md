@@ -193,7 +193,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [x] S1 techno-funda close-out: **STOP at D4** (coverage 43.8% in 2019, 57.3% in 2020, bar 70%); D1/D3/D5 pass, D2 reported. Backtest not run, nothing substituted. `docs/TECHNO_FUNDA_DATA_GATES.md`, 1e332e2
 - [x] S2 P0 wiring: deployed 1668cd5 + bfbcb1c. On the VM, `levels HDFCBANK` leads with the map read (11-03 close 725.5: inside strong zone 725–728.73, below 712.13–718.25, above 731.5–736, all untested). An idea with no map read is refused. bfbcb1c fixes the read being taken at a reused map file's older close.
 - [x] S3 zone test: **FAIL** (fd2d5e6). Strong zones 60.1% rejection vs placebo 61.1% (−1.1 pp, CI [−4.2, +2.1]), 22,620 events, 218 stocks; criteria 1-3 fail. Criterion 4's pass is band-width geometry. The HTF split gives no lead. map_read now labels these zones "failed its test" (af01025, deployed). Amendments 1-2 committed before any outcome (2 = the user's placebo rule C).
-- [ ] S2b screens: stock map page + trade check + map on Ideas (spec docs/MARKET_MAP_SCREENS.md)
+- [ ] S2b screens: built and deployed 4ddbd23, nginx `/map` added by hand. On the VM, 2 of 3 done checks pass: `GET /map/HDFCBANK` serves the 11-02 map (27 zones, 6 strong, all "failed its test", banner layers), and the trade check on the 10-23 short (678 / stop 690 / target 660) flags "stop 690 is inside the strong zone 688.77–693". **Open:** the Ideas page shows a frozen read only for ideas logged since 11-03, and none has been logged on the VM yet (verified locally on a synthetic idea). Tick when the first real idea is logged and shows its read.
 - [ ] S4 golden set + definitions + pre-registration
 - [ ] S5 L1 stock HTF + SMC
 - [ ] S6 L0 market map + brief
@@ -206,6 +206,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-04 (S2b):** the map page reads at the live Fyers price, falling back to the map's close (labelled). Weak zones carry "failed its test" too (they were S3's control and did worse). `map_read(zones=True)` returns the ladder with per-zone distances and `LAYERS` (shown/missing); later layers (S5, S6, S6b) update `LAYERS` so the banner shrinks as they land.
 
 - **2026-11-04 (S3):** the L2 strong zones (the 100-day price map) failed. For later sessions:
   - The zones stay on the map as markers, labelled "failed its test". No alert, trigger or filter is built on them. The S2b screens draw them in the failed style, not the untested one.
