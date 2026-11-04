@@ -118,6 +118,12 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   If BC > TC, swap them, so that TC is the upper edge.
   - **Width** = (TC − BC) / P × 100.
   - **Narrow:** width below the 25th percentile of the last 20 periods of the same kind. **Wide:** above the 75th percentile.
+  - Ochoa compares the width with recent periods by eye and gives no number (Ch. 3, checked by the user 2026-11-04). The percentile cutoffs are the v1 adaptation of that comparison.
+  - Ochoa's reading: narrow means a trending period is likely, wide means a range. v1 records narrow or wide and does not use it as a signal.
+- **Virgin CPR** (Ochoa Ch. 6). The CPR in force during a period is virgin if no bar of that period traded into [BC, TC].
+  - It stays a level until a later bar trades into it. That bar retires it, and the touch date is recorded.
+  - Computed for week and month CPRs, from daily bars.
+  - Ochoa reads it as a magnet and as support or resistance. v1 records it as a level in the pivot family; whether it attracts price is for the signal test.
 - **Two-period relationship.** The CPR of the current period ([BC, TC]) against the one before it ([pBC, pTC]), the first rule that holds:
   1. **Unchanged:** both edges within 10% of the previous width;
   2. **Higher value:** BC > pTC;
@@ -127,11 +133,14 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   6. **Overlapping higher:** TC > pTC (and BC within [pBC, pTC]);
   7. **Overlapping lower:** BC < pBC (and TC within [pBC, pTC]).
 
-  Ochoa reads these as bias:
-  - higher and overlapping higher: bullish;
-  - lower and overlapping lower: bearish;
-  - outside: sideways;
-  - inside: breakout.
+  Ochoa reads these as bias (Ch. 3, checked by the user 2026-11-04):
+  - higher: bullish; overlapping higher: moderately bullish;
+  - lower: bearish; overlapping lower: moderately bearish;
+  - outside: sideways, a two-way auction;
+  - inside: volatility expansion or breakout likely;
+  - unchanged: consolidation or accumulation before a move.
+
+  Ochoa names "unchanged" without a numeric tolerance. The 10%-of-width tolerance in rule 1 is the v1 adaptation.
 
   v1 **records** the relationship and does not encode the bias as a signal. The bias is a hypothesis for S7/S8.
 - **Camarilla** (as in the existing map):
@@ -139,11 +148,17 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   - H4 = C + 1.1(H−L)/2;
   - L3 = C − 1.1(H−L)/4;
   - L4 = C − 1.1(H−L)/2.
+
+  In Ochoa's reading, H3/L3 bound the reversal (mean-reversion) range and H4/L4 are the breakout levels (Ch. 4).
+  - H1/H2/L1/L2 are minor intraday reaction levels, so they stay out of the swing map.
+  - H5/L5 (extreme trend targets) are left out of v1: they are targets, not zones, and their formula differs between sources. They can be added in v2 with the formula from the book.
 - **Money zone** (Ochoa's value area for the period):
   - POC, VAL and VAH of the period's volume profile (§5 method), with a value area of 70% around the POC (the existing `value_area` rule);
   - month, quarter and year come from daily bars;
   - the week comes from 5-minute bars, and only where those exist (the last 100 days);
   - a weekly money zone is otherwise not computed.
+- **CPR against the money zone** (Ochoa Ch. 5). For each period, v1 records where the current CPR sits against the previous period's value area: inside it, above it, below it, or overlapping an edge. It is recorded only, not used as a signal.
+- **Periods** (Ochoa Ch. 8): week and month pivots are the swing horizon (1–20 days); quarter and year pivots are the macro backdrop. The read labels each pivot with its period.
 
 ## 5. Long composite volume profile
 
@@ -164,7 +179,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 | imbalance | demand/supply zones (§3.1), order blocks (§3.3), LVN edges (§5) |
 | liquidity | EQH/EQL and poor highs/lows (§3.4) |
 | volume | POC, VAL/VAH, HVN shelves, money zones (§4, §5) |
-| pivot | classical, CPR and Camarilla, all periods (§4); one family, as they are all formulas of H, L and C |
+| pivot | classical, CPR, virgin CPR and Camarilla, all periods (§4); one family, as they are all formulas of H, L and C |
 
 - **HTF zone:** levels and bands from M and W clustered within 0.3 ATR(W). The same clustering as the existing map, at the weekly scale.
 - **HTF strong zone:** at least 2 families. There are no weights in v1: families are counted, not scored.
@@ -179,7 +194,9 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 
 ## 8. Not in v1
 
-- Intraday items: opening range, initial balance, open types, daily CPR, developing pivots. These belong to the intraday phase.
+- Intraday items: opening range, initial balance, open types, daily CPR, developing pivots, Camarilla H1/H2/L1/L2. These belong to the intraday phase.
+- Camarilla H5/L5 (see §4).
+- Ochoa's candlestick reversal setups and indicator chapters: they are entry triggers, not map levels.
 - Role reversal of invalidated zones.
 - Weights between families.
 - Any bias read as a signal.
@@ -198,7 +215,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 | strong or weak low/high, swing | structure |
 | EQH, EQL, poor high/low | liquidity |
 | POC, value area, money zone | volume |
-| pivot, CPR, Camarilla | pivot |
+| pivot, CPR, virgin CPR, Camarilla | pivot |
 
 - A mark with no listed type is matched against any family, and reported separately.
 
