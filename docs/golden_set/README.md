@@ -31,7 +31,7 @@ Not marked but worth saying: (anything the chart shows that you ignore, and why)
 
 Types to use where they fit (add your own if none fits): demand, supply, strong
 low/high, weak low/high, EQH/EQL (poor high/low), order block, BOS, CHoCH,
-premium/discount, CPR (daily/weekly/monthly), virgin CPR, Camarilla, money zone / value area,
+premium/discount, CPR (daily/weekly/monthly), Camarilla, money zone / value area, virgin (naked) POC/VAH/VAL,
 POC, two-day relationship.
 
 ## The set
