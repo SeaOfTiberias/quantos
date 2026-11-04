@@ -1,8 +1,14 @@
 # Market Map golden set (sprint S4)
 
-Charts the user annotates, so the map's definitions match what the user sees
-(`docs/MARKET_MAP_ENGINE_DESIGN.md` §6.1). Each chart becomes a unit test: the
-engine must reproduce the marked levels from bars before the chart's date.
+Charts the user annotates, to test whether the map sees what the user sees
+(`docs/MARKET_MAP_ENGINE_DESIGN.md` §6.1). The rules are NOT fitted to these marks
+(user, 2026-11-04): `docs/MARKET_MAP_DEFINITIONS.md` v1 is frozen first, then scored
+against the marks by its §9 fidelity test. A miss is reported as a miss.
+
+- **Mark without reading the definitions,** so the marks stay your own reading.
+- Hand the charts over only after v1 is committed and approved.
+- HDFCBANK and SUPREMEIND were discussed before v1 was written: still mark them, but
+  they illustrate and are never scored.
 
 ## Per chart: two files
 
@@ -12,14 +18,12 @@ engine must reproduce the marked levels from bars before the chart's date.
 - `<SYMBOL>_<TF>_<YYYY-MM-DD>.md`: the note, in this shape:
 
 ```markdown
-# HDFCBANK, weekly, 2026-11-02
+# XYZ, weekly, 2026-11-02
 Source: TradingView | Zerodha. Read as of the close of 2026-11-02.
 
 | Level / zone | Type | Why you marked it | Would you act on it? |
 |---|---|---|---|
-| 640–665 | demand (multi-year) | base 2022-24, three tests, left fast each time | yes: no shorts into it |
-| 665 | strong low | made the BOS up in 2024 | yes |
-| 735–742 | supply | ... | ... |
+| 100–104 | (your type) | (your reason) | yes / no |
 
 Structure: HTF trend up / down / range, and the swing that defines it.
 Not marked but worth saying: (anything the chart shows that you ignore, and why)
@@ -32,5 +36,5 @@ POC, two-day relationship.
 
 ## The set
 
-HDFCBANK and SUPREMEIND first (the 2026-11-02 screenshots), then 10-20 charts in all,
-across stocks and indices, uptrends, downtrends and ranges.
+10-20 scored charts, chosen by you, across stocks and indices, uptrends, downtrends and
+ranges, plus HDFCBANK and SUPREMEIND (unscored). Pick charts we haven't discussed.

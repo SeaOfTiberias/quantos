@@ -83,18 +83,20 @@ Spec: `docs/MARKET_MAP_SCREENS.md` (screens 1-6, with mockups). This session bui
 - Every screen states which layers it shows and which aren't built yet. A screen never presents an untested line as a signal.
 - **Done when:** on the VM's cockpit, `#/map/HDFCBANK` draws the ladder, the trade check flags the 10-23 short's stop inside the 688.77–693 zone (on the 11-02 map), and the Ideas page shows a logged idea's frozen read.
 
-### S4. Golden set and definitions (with the user)
+### S4. Definitions, golden set and pre-registration (with the user)
 
-- **Input:** the user's annotated charts from Zerodha and TradingView. HDFCBANK and SUPREMEIND first, 10-20 in all, cropped of any account panels.
-- Store them under `docs/golden_set/` as screenshot plus note. No account data.
-- Write `docs/MARKET_MAP_DEFINITIONS.md`: exact, codeable rules for each item below, settled against the user's marks and the user's copy of Ochoa:
+Order changed by the user 2026-11-04: **the rules come from the concepts, not from the marks.**
+
+- Write `docs/MARKET_MAP_DEFINITIONS.md` v1 from the concepts already agreed (design §2b, §3; Ochoa, Dalton, SMC): exact, codeable rules for
   - HTF swing structure, multi-year demand and supply zones;
   - SMC (BOS, CHoCH, order block, EQH/EQL, strong and weak highs/lows, premium and discount);
-  - weekly and monthly CPR, two-day relationships, Camarilla, money zone;
-  - long composite profile.
-- Mark which ideas overlap (poor highs/lows = EQH/EQL), so they count as one family.
-- Pre-register the test of the HTF and SMC layers (zones turn price versus placebo, each family separately) **before any L1 code**.
-- **Done when:** the definitions and the pre-registration are committed and the user has approved them.
+  - weekly, monthly, quarterly and yearly CPR, two-period relationships, Camarilla, money zone;
+  - long composite profile;
+  - families, with overlapping ideas counted as one (poor highs/lows = EQH/EQL).
+- v1 carries its own fidelity test (recall and precision against the marks, pass criteria fixed) and is frozen **before any chart is seen**.
+- **Golden set:** the user marks 10-20 charts without reading v1 (template `docs/golden_set/README.md`), cropped of any account panels, and hands them over after v1 is committed. HDFCBANK and SUPREMEIND were discussed before v1, so they illustrate and are never scored.
+- Pre-register the signal test of the HTF and SMC layers (zones turn price versus placebo, each family separately) **before any L1 code**. S3's lessons apply: placebo feasibility on counts first, width-matched controls.
+- **Done when:** definitions v1 (with its fidelity test) and the signal pre-registration are committed and approved by the user. Scoring the golden set needs L1 code, so the fidelity verdict is part of S5's done.
 
 ### S5. P2: L1, the stock's higher-timeframe layer
 
@@ -107,7 +109,7 @@ Spec: `docs/MARKET_MAP_SCREENS.md` (screens 1-6, with mockups). This session bui
   - long composite profile from daily bars, labelled as an approximation.
 - Golden-set unit tests: the engine must reproduce the user's marks within tolerance.
 - Extend `map_read` with L1, so it's used the day it lands.
-- **Done when:** the golden-set tests pass, and `levels HDFCBANK` shows the 640-840 base and the strong low near 665 as at 2026-10-23.
+- **Done when:** the definitions v1 fidelity test (§9) has run on the golden set and its verdict is reported (a fail is reported, then v2 per §9), and `levels HDFCBANK` shows the 640-840 base and the strong low near 665 as at 2026-10-23 (an illustration check, not a score: those levels were known before v1).
 
 ### S6. P3: L0, the market map
 
@@ -194,7 +196,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [x] S2 P0 wiring: deployed 1668cd5 + bfbcb1c. On the VM, `levels HDFCBANK` leads with the map read (11-03 close 725.5: inside strong zone 725–728.73, below 712.13–718.25, above 731.5–736, all untested). An idea with no map read is refused. bfbcb1c fixes the read being taken at a reused map file's older close.
 - [x] S3 zone test: **FAIL** (fd2d5e6). Strong zones 60.1% rejection vs placebo 61.1% (−1.1 pp, CI [−4.2, +2.1]), 22,620 events, 218 stocks; criteria 1-3 fail. Criterion 4's pass is band-width geometry. The HTF split gives no lead. map_read now labels these zones "failed its test" (af01025, deployed). Amendments 1-2 committed before any outcome (2 = the user's placebo rule C).
 - [ ] S2b screens: built and deployed 4ddbd23, nginx `/map` added by hand. On the VM, 2 of 3 done checks pass: `GET /map/HDFCBANK` serves the 11-02 map (27 zones, 6 strong, all "failed its test", banner layers), and the trade check on the 10-23 short (678 / stop 690 / target 660) flags "stop 690 is inside the strong zone 688.77–693". **Open:** the Ideas page shows a frozen read only for ideas logged since 11-03, and none has been logged on the VM yet (verified locally on a synthetic idea). Tick when the first real idea is logged and shows its read.
-- [ ] S4 golden set + definitions + pre-registration
+- [ ] S4 definitions v1 (from concepts, frozen before marks) + signal pre-registration; golden set marked blind (v1 DRAFT 2026-11-04, awaiting approval)
 - [ ] S5 L1 stock HTF + SMC
 - [ ] S6 L0 market map + brief
 - [ ] S6b layer F: fundamentals + ownership
@@ -206,6 +208,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-04 (user, S4):** the definitions come from the concepts and are frozen before the golden set is seen; the golden set tests them (fidelity, pre-registered in the definitions §9) and is never used to fit them. A miss leads to v2, scored on fresh charts. HDFCBANK and SUPREMEIND are unscored (already discussed). S5's done gains the fidelity verdict.
 
 - **2026-11-04 (S2b):** the map page reads at the live Fyers price, falling back to the map's close (labelled). Weak zones carry "failed its test" too (they were S3's control and did worse). `map_read(zones=True)` returns the ladder with per-zone distances and `LAYERS` (shown/missing); later layers (S5, S6, S6b) update `LAYERS` so the banner shrinks as they land.
 
