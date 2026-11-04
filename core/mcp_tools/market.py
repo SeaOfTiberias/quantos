@@ -89,7 +89,7 @@ def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
     """The map read first (core/market_map/read.py: strong zones either side, labelled 'failed its test'), then
     daily trend, volatility and Darvas box state, plus the screener's tested retest plan for
     each side. Uses completed sessions only (today's forming bar is reported separately)."""
-    from core.market_map.read import MAPS_DIR, map_read
+    from core.market_map.read import map_read
     from core.darvas.weekly_discovery import analyse_symbol
     from core.fno_screener.screener import (PLAN_ENTRY_ATR, PLAN_MAX_SESSIONS, PLAN_STOP_ATR, PLAN_TARGET_R,
                                             invert_bars)
@@ -98,7 +98,7 @@ def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
     allbars = m.daily(sym, 365)
     done = [b for b in allbars if b.timestamp.astimezone(IST).date() < today] if allbars else []
     # Read from the latest completed close: a reused map file (< 7 days) stores an older one.
-    rd = map_read(sym, market=m, daily=allbars, maps_dir=maps_dir or MAPS_DIR,
+    rd = map_read(sym, market=m, daily=allbars, maps_dir=maps_dir,
                   price=done[-1].close if done else None)
     if len(done) < 30:
         return {"symbol": sym, "map": rd, "error": f"only {len(done)} daily bars"}
@@ -239,7 +239,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                    bhav_dir: Optional[Path] = QUANTOS_DIR / "nse_fo_bhavcopy",
                    events_path: Optional[Path] = EVENTS, maps_dir: Optional[Path] = None) -> dict:
     from core.ideas import events, regime
-    from core.market_map.read import MAPS_DIR, map_read
+    from core.market_map.read import map_read
     sym = symbol.strip().upper()
     ch = m.chain(sym, 10)
     atr = atr or completed_atr(m, sym)
@@ -265,7 +265,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
           "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis}
     top = [row(c) for c in ranked[:8]]
     rd = map_read(sym, {"side": view.direction, "entry": ch.spot, "stop": stop, "target": target},
-                  market=m, maps_dir=maps_dir or MAPS_DIR)
+                  market=m, maps_dir=maps_dir)
     return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw, "map": rd,
             "location_flags": (rd.get("trade") or {}).get("flags", []),
             "regime": {"velocity": velocity, "iv": iv}, "event": ev,

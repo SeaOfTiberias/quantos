@@ -5,9 +5,11 @@
 // stop, horizon) it prices futures, single options and spreads on the live
 // chain and ranks them by the hit rate each needs to break even
 // (POST /ideas/structure -> core/ideas/structure.py). Prices only, no orders.
+// Each idea opens to the map read frozen with it when it was logged (MapRead.jsx).
 import { Fragment, useEffect, useState } from "react";
 import Shell, { getJson, postJson } from "./Shell.jsx";
 import { T, inr, pct, px, shortDate, signedInr, tone } from "./theme.js";
+import { FrozenRead } from "./MapRead.jsx";
 
 const ACTION = { enter_if: "Enter if", enter_now: "Entered now", avoid: "Avoid" };
 const FAMILY = { future: "Futures", single: "Single option", debit: "Debit spread", credit: "Credit spread" };
@@ -54,6 +56,7 @@ function Scoreboard({ sb }) {
 }
 
 function IdeasTable({ ideas, onPrice }) {
+  const [open, setOpen] = useState({});
   if (!ideas.length) return <div className="q-empty">No ideas logged yet.</div>;
   return (
     <div className="q-scroll">
@@ -80,8 +83,14 @@ function IdeasTable({ ideas, onPrice }) {
                   <td style={{ textAlign: "right", color: T.muted }}>{ev.spot_move_pct == null ? "—" : pct(ev.spot_move_pct)}</td>
                   <td style={{ textAlign: "right", color: tone(ev.pnl) }}>{ev.pnl == null ? "—" : signedInr(ev.pnl)}</td>
                   <td style={{ textAlign: "right", color: tone(ev.actual_pnl) }}>{ev.actual_pnl == null ? (i.taken ? "open" : "—") : signedInr(ev.actual_pnl)}</td>
-                  <td><button className="q-btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => onPrice(i)}>Price</button></td>
+                  <td className="q-row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                    <button className="q-btn ghost" style={{ padding: "3px 10px", fontSize: 12, color: i.map_read ? T.text : T.faint }}
+                            onClick={() => setOpen(o => ({ ...o, [i.id]: !o[i.id] }))}>{open[i.id] ? "Hide map" : "Map"}</button>
+                    <button className="q-btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => onPrice(i)}>Price</button></td>
                 </tr>
+                {open[i.id] && (
+                  <tr><td colSpan={9} className="w" style={{ background: T.raised, padding: "12px 14px" }}><FrozenRead rd={i.map_read} /></td></tr>
+                )}
                 {i.note && (
                   <tr><td colSpan={9} className="w q-faint" style={{ whiteSpace: "normal", fontSize: 12.5, paddingTop: 0 }}>{i.note}</td></tr>
                 )}

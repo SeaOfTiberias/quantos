@@ -40,6 +40,11 @@ ZONE_TEST = FAILED                                     # L2 strong zones: zone t
 NOTE = ("Zones mark where price did business and turned. In the 2026-11-04 test they turned price no "
         "more often than placebo levels (docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md): markers for "
         "reading a trade, never a signal or a filter.")
+# What the map is built from and what it lacks, for every screen that draws it (docs/MARKET_MAP_SCREENS.md rule 3).
+LAYERS = {"shown": ["daily swings (last year)", f"5-minute volume profile (last {INTRADAY_DAYS} days)",
+                    "pivots (last day, week, month)"],
+          "missing": ["higher-timeframe structure and multi-year zones (S5)", "market backdrop (S6)",
+                      "fundamentals (S6b)"]}
 
 
 def side_of(x: Any) -> int:
@@ -113,6 +118,23 @@ def trade_read(m: dict, t: dict) -> dict:
             "flags": flags, "test": ZONE_TEST}
 
 
+def ladder(m: dict, price: float) -> list[dict]:
+    """Every zone of the map (strong and weak), high to low, for drawing, with its distance from
+    `price` (0 inside); levels folded into `why`. Weak zones carry the same status: the 11-04 test
+    ran them as its control and they turned price less often than the strong ones, which did no
+    better than placebo."""
+    atr = m.get("atr") or 0
+    out = []
+    for z in sorted(m.get("zones", []), key=lambda z: -z["high"]):
+        where = "above" if z["low"] > price else "below" if z["high"] < price else "inside"
+        gap = z["low"] - price if where == "above" else price - z["high"] if where == "below" else 0.0
+        out.append({"low": z["low"], "high": z["high"], "range": rng(z), "strong": z["strong"], "score": z["score"],
+                    "families": z["families"], "why": why(z, 6), "where": where, "distance": round(gap, 2),
+                    "distance_atr": round(gap / atr, 2) if atr else None,
+                    "distance_pct": round(gap / price * 100, 2), "test": ZONE_TEST})
+    return out
+
+
 def lines(rd: dict) -> list[str]:
     """The read as text, for the CLIs and Telegram."""
     if "error" in rd:
@@ -166,12 +188,14 @@ def save(m: dict, maps_dir: Path = MAPS_DIR) -> None:
 
 def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = None, *,
              market: Any = None, market_factory: Optional[Callable[[], Any]] = None,
-             maps_dir: Path = MAPS_DIR, max_age_days: float = MAX_AGE_DAYS,
-             daily: Optional[list] = None, price: Optional[float] = None) -> dict:
+             maps_dir: Optional[Path] = None, max_age_days: float = MAX_AGE_DAYS,
+             daily: Optional[list] = None, price: Optional[float] = None, zones: bool = False) -> dict:
     """The map read for `symbol`, and for `trade` if given. Never raises: a failure comes back
     as {"symbol", "error"}, which callers that require a read (the idea log) refuse on.
-    `market_factory` is called only when a build is needed (no fresh file, or as_of)."""
+    `market_factory` is called only when a build is needed (no fresh file, or as_of).
+    zones=True adds the whole ladder and the layers shown/missing (the cockpit's map page)."""
     sym = symbol.strip().upper()
+    maps_dir = maps_dir or MAPS_DIR                          # at call time, so tests can move it
     try:
         m = None if as_of else load(sym, maps_dir, max_age_days)
         source = "file"
@@ -187,6 +211,8 @@ def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = 
         rd = read(m, trade, price)
         if "error" not in rd:
             rd["source"] = source
+            if zones:
+                rd.update(zones=ladder(m, rd["price"]), zone_width=m.get("zone_width"), layers=LAYERS)
         return rd
     except Exception as e:                                   # a read must never break the tool it serves
         return {"symbol": sym, "error": f"{type(e).__name__}: {str(e)[:160]}"}

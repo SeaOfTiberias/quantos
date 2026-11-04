@@ -60,6 +60,7 @@ from cloud.api.breeze_auth_routes import router as breeze_auth_router
 from cloud.api.spreads_routes import router as spreads_router
 from cloud.api.ideas_routes import router as ideas_router
 from cloud.api.fyers_auth_routes import router as fyers_auth_router
+from cloud.api.map_routes import router as map_router
 from cloud.api import metrics
 from core import prompts
 from cloud.api.notifier import (
@@ -104,6 +105,7 @@ app.include_router(breeze_auth_router)
 app.include_router(spreads_router)
 app.include_router(ideas_router)
 app.include_router(fyers_auth_router)
+app.include_router(map_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -167,6 +167,7 @@ export default function Shell({ active, children }) {
           <a href="#/spreads" className={active === "spreads" ? "on" : ""}>Spreads</a>
           <a href="#/picks" className={active === "picks" ? "on" : ""}>Options picks</a>
           <a href="#/ideas" className={active === "ideas" ? "on" : ""}>Ideas</a>
+          <a href="#/map" className={active === "map" ? "on" : ""}>Map</a>
           <a href="#/reports">Reports</a>
           <a href="#/">Dashboard</a>
         </nav>

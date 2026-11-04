@@ -40,4 +40,6 @@ Later layers land on screen 1 as they are built:
 | `POST /map/{symbol}/check` | body `{side, entry, stop, target}` → `map_read(symbol, trade)` | read-only, advisory |
 
 - Symbols are validated like `/ideas/structure` (NSE ticker pattern).
+- Built 2026-11-04 (`cloud/api/map_routes.py`). `GET` reads at the live Fyers price when it can, else at the map's close, and says which (`price_source`); `/check` reads at the trade's entry and refuses a stop or target on the wrong side. Each ladder zone carries its distance from price (points, ATR, %) from code, and the map's `layers` (shown / missing) feed the banner.
+- Weak zones show the same "failed its test" status as strong ones: the 11-04 test ran them as its control and they turned price less often than the strong zones, which did no better than placebo.
 - **Trap:** a new API prefix must be added to the VM's nginx allowlist by hand; `deploy-vm.ps1` doesn't sync it.
