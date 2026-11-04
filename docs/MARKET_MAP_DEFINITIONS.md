@@ -117,8 +117,8 @@ From the completed previous period's high H, low L and close C. Periods: week, m
 
   If BC > TC, swap them, so that TC is the upper edge.
   - **Width** = (TC − BC) / P × 100.
-  - **Narrow:** width below the 25th percentile of the last 20 periods of the same kind. **Wide:** above the 75th percentile.
-  - Ochoa compares the width with recent periods by eye and gives no number (Ch. 3, checked by the user 2026-11-04). The percentile cutoffs are the v1 adaptation of that comparison.
+  - **Narrow:** width below the 25th percentile of the previous 10 periods of the same kind. **Wide:** above the 75th percentile.
+  - Ochoa gives no number. He compares the width with the last 3 to 10 sessions by eye (Ch. 3, per the user 2026-11-04). v1 encodes that comparison as percentiles over his longer window, 10 periods.
   - Ochoa's reading: narrow means a trending period is likely, wide means a range. v1 records narrow or wide and does not use it as a signal.
 - **Virgin CPR** (Ochoa Ch. 6). The CPR in force during a period is virgin if no bar of that period traded into [BC, TC].
   - It stays a level until a later bar trades into it. That bar retires it, and the touch date is recorded.
