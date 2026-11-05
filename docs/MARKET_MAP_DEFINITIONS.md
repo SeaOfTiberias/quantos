@@ -174,9 +174,11 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   - H5/L5 are targets after a break through H4/L4;
   - L1/L2/H1/H2 "are typically ignored and generally not even plotted".
 
-  **v1 map levels:** H3, H4, L3 and L4 only. H5/L5 are targets, not zones: they are computed and shown, but kept out of clustering and out of the fidelity test. H1, H2, L1 and L2 are left out.
+  **The hidden layers** *(book: Ch. 8, The Hidden Layers, Figs 8.15–8.17; Ch. 9, Figs 9.11–9.12)*. Ch. 7's "typically ignored" has a stated exception. When the prior period's range was abnormally wide, so that the pivots are wide, Ochoa turns on H1, H2, L1 and L2. They "are always played for reversals just like the third layer" (Ch. 8). Ch. 9 does this on monthly pivots: a trending September gave October a wide third layer, and "every significant reversal during this month occurred off the hidden layers" (FSLR, Figs 9.11–9.12).
 
-  **Camarilla width** (Ch. 8, *Pivot Width Analysis*): the L3–H3 width, read like CPR width with the same percentile rule. Recorded only.
+  **v1 map levels:** H3, H4, L3 and L4. H5/L5 are targets, not zones: they are computed and shown, but kept out of clustering and out of the fidelity test. H1, H2, L1 and L2 are computed and shown **only when that period's Camarilla width reads "wide"** (below), with the same treatment: out of clustering and out of the fidelity test. Otherwise they are left out.
+
+  **Camarilla width** (Ch. 8, *Pivot Width Analysis*): the L3–H3 width, read like CPR width with the same percentile rule. Recorded only, apart from switching the hidden layers on.
 - **Two profiles per period** (user, 2026-11-05: follow Ochoa's price-based method and keep the volume-based one too). Ochoa's Money Zone POC is price-based (time at price, Market Profile style). He treats the volume POC (VPOC) as a separate level that is "usually the same" but can differ (Ch. 4, *Understanding Volume at Price*). v1 computes both, and each is labelled with its kind:
   - **Money zone, price-based (Ochoa's)** *(book: Ch. 3, Figs 3.1–3.2; Ch. 4)*. "The Money Zone is derived solely from price-based, market-generated information" (Ch. 3). It takes the Market Profile's POC, VAH and VAL and draws them as levels for the next period:
     - **Time-price opportunities (TPOs):** each 30-minute segment of the session places one letter at every price it traded (Ch. 3, Fig. 3.1). v1 builds the weekly profile from 30-minute brackets of 5-minute bars, as the book describes.
@@ -242,7 +244,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 ## 8. Not in v1
 
 - Intraday items: opening range, initial balance, open types, daily CPR and daily Camarilla, daily virgin money-zone levels, the developing pivot range, the magnet trade (Ch. 6) and the Unchanged VPOC relationship (Ch. 4). These belong to the intraday phase.
-- Camarilla H1/H2/L1/L2, and H5/L5 as map levels (see §4).
+- Camarilla H1/H2/L1/L2 outside a wide period, and H5/L5 as clustered map levels (see §4).
 - Ochoa's candlestick reversal setups and indicator chapters: they are entry triggers, not map levels.
 - Role reversal of invalidated zones.
 - "Virgin CPR": not in Ochoa (his virgin levels are money-zone levels, Ch. 4). Left out.
