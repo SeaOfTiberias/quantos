@@ -200,6 +200,9 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   - **Age and distance:** every virgin level carries its age in periods and its distance in ATR, with no cutoff. Ochoa says significance fades but gives no number, so the signal test scores by age instead.
   - **Periods:** week, month, quarter and year, from the same profiles as the money zone. Daily virgin levels belong to the intraday layer (§8).
   - **Family:** volume (§6). His first-sixty-minutes timing rule is intraday execution and stays out of v1.
+- **Previous period's range** *(book: Ch. 9, Figs 9.8–9.10; Ch. 11, Fig. 11.1)*. The completed period's high and low, as levels for the next period (week, month, quarter, year). Ch. 9 makes them part of the confirmation: "a violation through VAH and the top of the prior month's price range" (Fig. 9.8) and a break of "the prior month's low" (Fig. 9.10). "Previous Price Range" is the first block of Ochoa's flight plan (Fig. 11.1).
+  - **Family: pivot**, not structure. These are the H and L every pivot is built from, and R1 − H = S1 − L = (2C − H − L)/3: R1 and S1 sit within one CPR width of the prior high and low. If they were in the structure family, they would make two-family strong zones by arithmetic alone.
+  - In clustering; in the fidelity test under "pivot".
 - **Periods** *(book: Ch. 9, Types of Higher Timeframe Pivots; Table 10.1)*. Ochoa applies the CPR and Camarilla to any timeframe (Ch. 5: "the prior day (or week, month, and year)"; Ch. 6; Ch. 7: "quite powerful for all timeframes"; his CPR code takes a daily or monthly periodicity, `iCentralPivotRange`, Appendix B). Ch. 9 names three higher-timeframe periods, weekly, monthly and yearly, each from the prior period's H, L and C (the week runs Monday to Friday). Each draws a different group of traders:
   - weekly pivots: swing traders (two- to three-day swings, Fig. 9.5);
   - monthly pivots: position and swing traders, "moves range anywhere from a week to several months" (Figs 9.3–9.4);
@@ -230,7 +233,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 | imbalance | demand/supply zones (§3.1), order blocks (§3.3), LVN edges (§5) |
 | liquidity | EQH/EQL and poor highs/lows (§3.4) |
 | volume | price-based money zones and volume profiles (POC, VAL/VAH), their virgin levels, HVN shelves (§4, §5) |
-| pivot | classical, CPR and Camarilla, all periods (§4); one family, as they are all formulas of H, L and C |
+| pivot | classical, CPR and Camarilla, all periods, and the previous period's high and low (§4); one family, as they are all formulas of H, L and C |
 
 - **HTF zone:** levels and bands from M and W clustered within 0.3 ATR(W). The same clustering as the existing map, at the weekly scale.
 - **HTF strong zone:** at least 2 families. There are no weights in v1: families are counted, not scored.
@@ -268,7 +271,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 | strong or weak low/high, swing | structure |
 | EQH, EQL, poor high/low | liquidity |
 | POC, value area, money zone, virgin/naked POC, VAH or VAL | volume |
-| pivot, CPR, Camarilla | pivot |
+| pivot, CPR, Camarilla, previous week/month/year high or low | pivot |
 
 - A mark with no listed type is matched against any family, and reported separately.
 
