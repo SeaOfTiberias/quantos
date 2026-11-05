@@ -211,6 +211,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 
 _Dated notes on anything a session changed for later sessions._
 
+- **2026-11-05 (S4, book check complete):** every Ochoa item in definitions §4 is now checked against the book (Ch. 3–8, Appendices A and B). Ch. 5 confirms the floor pivots, which match the existing map, and adds R4/S4. Ch. 3 confirms 30-minute TPOs and the POC tie rule; it gives no value-area growth procedure, so v1 keeps the Market Profile convention. Appendix B shows the Pivot Range Histogram is raw width %, with 0.25 and 0.75 as absolute daily thresholds. v1 applies it as written to daily CPRs (intraday layer); for week and longer, v1 uses its own percentile rule, labelled as not Ochoa's. Appendix A's touch counts are frequencies with no placebo, so they don't substitute for the S8 tests.
+
 - **2026-11-05 (user, S4):** Ochoa's Money Zone is price-based (time at price); QuantOS had only volume-based profiles. The user chose to follow his price-based method and keep the volume one too. Definitions §4 now carries both, as one family. S5 builds both for L1 and adds them to the L2 price map as v2. The 11-04 FAIL stays on v1, and v2 is untested until its own test. Ch. 3, Ch. 5 and Appendix B of the book are still to be checked; the TPO conventions (30-minute brackets, the tie rule, the growth rule) may change when Ch. 3 is read.
 
 - **2026-11-04 (user, S4):** the definitions come from the concepts and are frozen before the golden set is seen; the golden set tests them (fidelity, pre-registered in the definitions §9) and is never used to fit them. A miss leads to v2, scored on fresh charts. HDFCBANK and SUPREMEIND are unscored (already discussed). S5's done gains the fidelity verdict.

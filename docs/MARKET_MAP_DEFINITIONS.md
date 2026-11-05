@@ -105,13 +105,17 @@ On W and M:
 
 From the completed previous period's high H, low L and close C. Periods: week, month, quarter, year.
 
-**Sources.** Checked on 2026-11-05 against the user's copy of *Secrets of a Pivot Boss*: Ch. 4 *Advanced Money Zone Concepts*, Ch. 6 *The Central Pivot Range*, Ch. 7 *Introducing the Camarilla Equation*, Ch. 8 *Advanced Camarilla Concepts*. Items cite the chapter, table or figure. Items marked *(not yet checked)* come from parts of the book not provided yet: the Floor Pivots and Money Zone construction chapters (Ch. 5 and 3, by the book's own cross-references) and Appendix B (indicator code). An earlier AI summary of the book got several points wrong (chapter numbers, "the last 3–10 sessions", the meaning of "unchanged", virgin CPR), so nothing in v1 rests on it.
+**Sources.** Checked on 2026-11-05 against the user's copy of *Secrets of a Pivot Boss*: Ch. 4 *Advanced Money Zone Concepts*, Ch. 6 *The Central Pivot Range*, Ch. 7 *Introducing the Camarilla Equation*, Ch. 8 *Advanced Camarilla Concepts*; then Ch. 3 *Introducing the Money Zone*, Ch. 5 (Floor Pivots), Appendix A *Floor Pivots Research* and Appendix B *Custom Code Library*. Items cite the chapter, table, figure or code file. Where the book gives no rule, the text says the rule is v1's own. An earlier AI summary of the book got several points wrong (chapter numbers, "the last 3–10 sessions", the meaning of "unchanged", virgin CPR), so nothing in v1 rests on it.
 
-- **Classical floor pivots** *(not yet checked: Ch. 5)*, as in the existing map:
-  - P = (H+L+C)/3;
-  - R1 = 2P−L, S1 = 2P−H;
-  - R2 = P+(H−L), S2 = P−(H−L);
-  - R3 = H+2(P−L), S3 = L−2(H−P).
+- **Floor pivots** *(book: Ch. 5, Table 5.1 standard and Table 5.2 expanded)*:
+  - Pivot = (H+L+C)/3;
+  - R1 = 2 × Pivot − L, S1 = 2 × Pivot − H;
+  - R2 = Pivot + (H−L), S2 = Pivot − (H−L);
+  - R3 = R1 + (H−L), S3 = S1 − (H−L). This is algebraically the same as the existing map's H+2(P−L) and L−2(H−P);
+  - R4 = R3 + (R2 − R1), S4 = S3 − (S1 − S2). Ochoa's own additions; he uses the expanded set "throughout the book".
+
+  **v1 map levels:** Pivot, R1, R2, S1 and S2, the existing map's set. Ochoa's touch statistics (Appendix A) show the first layer reached on 73% of days and the second on 38%, with the outer layers rarer. R3, R4, S3 and S4 are computed and shown but kept out of clustering and out of the fidelity test, the same treatment as Camarilla H5/L5.
+- **Ochoa's own evidence** (Appendix A): touch and close-beyond counts at each pivot layer, from 8 months of Mini Dow futures on intraday charts (Nov 2008–Jun 2009). They are frequencies with no placebo comparison, so they say how often price reaches a level, not whether the level turns price. They are not evidence of the kind the S8 tests require.
 - **Central pivot range (CPR)** *(book: Ch. 6, Table 6.1)*:
   - Pivot = (H+L+C)/3;
   - BC = (H+L)/2;
@@ -120,8 +124,10 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   The higher of the two is TC and the lower is BC; Ochoa's software makes this swap automatically.
 - **CPR width** = (TC − BC) / P × 100.
   - Ochoa reads an *abnormally* narrow CPR as a likely trend or breakout and an abnormally wide one as a likely range. Width of average size tells you nothing (Ch. 6, *Pivot Width Forecasting*).
-  - He quantifies it with his Pivot Range Histogram: below 0.25 means trending is more likely, above 0.75 means sideways is more likely, with 0.5 as the midline (Ch. 6, *The Pivot Range Histogram*). Its code is in Appendix B *(not yet checked)*.
-  - **v1 reading:** the percentile rank of the width among the previous 20 periods of the same kind. Narrow is ≤ 0.25, wide is ≥ 0.75, and anything between is "average, no reading". The thresholds are Ochoa's. The percentile-rank form and the 20-period window are v1's own until Appendix B shows his formula.
+  - He quantifies it with his Pivot Range Histogram (Ch. 6; code `iPivotRangeHIST`, Appendix B): `fPivotRange = ((FLOOR_PIV(1) − FLOOR_PIV(−1)) / FLOOR_PIV(0)) × 100`, that is (TC − BC) / Pivot × 100, plotted on a 0–1 scale with markers at 0.25 and 0.75. So his thresholds are **absolute widths**: below 0.25% of price points to a trending day, above 0.75% to a sideways day, with 0.5% as the midline. They are not percentiles, and they are set for daily pivots.
+  - **Daily CPR** (intraday layer, §8): Ochoa's absolute thresholds apply as written.
+  - **Week, month, quarter and year: v1's own rule, not Ochoa's.** A week's or month's range is several times a day's, so his daily thresholds would label almost every period "wide". v1 uses the percentile rank of the width among the previous 20 periods of the same kind: narrow is ≤ 0.25, wide is ≥ 0.75, and anything between is "average, no reading". It borrows his cut points, not his formula. The raw width % is always recorded too.
+  - **A property of the formula:** TC − BC = |2C − H − L| / 3. The width measures how far the close sat from the middle of the period's range, not the size of the range. A wide-range period that closes mid-range gives a narrow CPR. Ochoa reads narrow as "the prior period was quiet"; whether that holds is for the signal test.
   - Recorded only, not used as a signal.
 - **Two-period relationship** *(book: Ch. 6, Table 6.2 and Fig. 6.15; the same seven in Ch. 4 for value areas and Ch. 8 for Camarilla)*. The current range [BC, TC] against the previous one [pBC, pTC], the first rule that holds:
   1. **Unchanged:** "virtually unchanged". v1's tolerance: both edges within 10% of the previous width;
@@ -164,12 +170,12 @@ From the completed previous period's high H, low L and close C. Periods: week, m
 
   **Camarilla width** (Ch. 8, *Pivot Width Analysis*): the L3–H3 width, read like CPR width with the same percentile rule. Recorded only.
 - **Two profiles per period** (user, 2026-11-05: follow Ochoa's price-based method and keep the volume-based one too). Ochoa's Money Zone POC is price-based (time at price, Market Profile style). He treats the volume POC (VPOC) as a separate level that is "usually the same" but can differ (Ch. 4, *Understanding Volume at Price*). v1 computes both, and each is labelled with its kind:
-  - **Money zone, price-based (Ochoa's)** *(book: Ch. 4, 70% of the activity; construction in Ch. 3, not yet checked)*:
-    - **Time-price opportunities (TPOs):** each time bracket adds one TPO to every price bucket inside its high–low range. A bracket is 30 minutes of 5-minute bars (the Market Profile standard) for the week. It is one daily bar for the month, quarter and year, so each day counts once at every price it traded.
-    - **POC:** the bucket with the most TPOs. On a tie, the one nearest the middle of the period's range.
-    - **Value area:** 70% of the TPOs, grown from the POC toward the heavier neighbour. That is the same growth rule as the volume profile.
-    - The bracket length, the tie rule and the growth rule are Market Profile conventions, held open until Ch. 3 shows Ochoa's own. A difference found there is a correction to the concept, made before the freeze.
-  - **Volume profile (VPOC)**: POC, VAL and VAH from volume at price, with a 70% value area (the existing `value_area` rule). Ochoa's VPOC (Ch. 4).
+  - **Money zone, price-based (Ochoa's)** *(book: Ch. 3, Figs 3.1–3.2; Ch. 4)*. "The Money Zone is derived solely from price-based, market-generated information" (Ch. 3). It takes the Market Profile's POC, VAH and VAL and draws them as levels for the next period:
+    - **Time-price opportunities (TPOs):** each 30-minute segment of the session places one letter at every price it traded (Ch. 3, Fig. 3.1). v1 builds the weekly profile from 30-minute brackets of 5-minute bars, as the book describes.
+    - **Month, quarter and year:** one TPO per daily bar, at every price that day traded. **This is v1's own adaptation:** the book builds the profile from intraday segments, and 5-minute bars don't go back far enough for long periods.
+    - **POC** (Ch. 3): "the longest line of TPOs nearest to the center of the entire structure". So it's the bucket with the most TPOs, and on a tie, the one nearest the middle of the period's range.
+    - **Value area** (Ch. 3): where 70% of the period's activity took place. The book doesn't give the growth procedure. v1 grows from the POC toward the heavier neighbour until 70% of TPOs are inside, the Market Profile convention and the same rule as the volume profile.
+  - **Volume profile (VPOC)**: POC, VAL and VAH from volume at price, with a 70% value area (the existing `value_area` rule). Ochoa's volume at price "divides volume equally across all of the price points that were reached during a specific period", and the VPOC is its longest line (Ch. 3, *Volume at Price*, Fig. 3.7). That matches how QuantOS spreads each bar's volume.
   - **Bars:** both profiles use the same buckets (`step_for(ATR(D))`). Month, quarter and year come from daily bars. The week comes from 5-minute bars, only where those exist (the last 100 days); otherwise a weekly profile is not computed.
   - **One family:** both profiles belong to the volume family (§6). When the price-based and volume-based levels agree, they count once and never make a strong zone on their own.
   - **Width and two-period relationships** use the price-based value area, since that is the one Ochoa reads (Ch. 4). An abnormally wide or narrow value area carries the same reading as CPR width (Ch. 4, *Value Area Width*), with the same percentile rule. The same two figures are also recorded for the volume value area, so the two can be compared.
@@ -182,7 +188,7 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   - **Age and distance:** every virgin level carries its age in periods and its distance in ATR, with no cutoff. Ochoa says significance fades but gives no number, so the signal test scores by age instead.
   - **Periods:** week, month, quarter and year, from the same profiles as the money zone. Daily virgin levels belong to the intraday layer (§8).
   - **Family:** volume (§6). His first-sixty-minutes timing rule is intraday execution and stays out of v1.
-- **Periods.** Ochoa applies the CPR and Camarilla to any timeframe (Ch. 6; Ch. 7: "quite powerful for all timeframes"). The book doesn't assign periods to roles: the split here (week and month for the swing horizon, quarter and year for the backdrop) is v1's own. The read labels each pivot with its period.
+- **Periods.** Ochoa applies the CPR and Camarilla to any timeframe (Ch. 5: "the prior day (or week, month, and year)"; Ch. 6; Ch. 7: "quite powerful for all timeframes"). His CPR code takes a daily or monthly periodicity (`iCentralPivotRange`, Appendix B). The book doesn't assign periods to roles: the split here (week and month for the swing horizon, quarter and year for the backdrop) is v1's own. The read labels each pivot with its period.
 
 ## 5. Long composite volume profile
 
