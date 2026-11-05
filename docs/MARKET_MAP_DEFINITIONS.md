@@ -154,7 +154,9 @@ From the completed previous period's high H, low L and close C. Periods: week, m
 
   v1 records the relationship, the width ratio to the previous range, and the two close readings above.
 
-  **Same rule on two more ranges** (Ochoa: "these relationships are the same", Ch. 8): v1 also records the relationship of [VAL, VAH] against the previous value area (Ch. 4) and of [L3, H3] against the previous [L3, H3] (Ch. 8).
+  **Same rule on two more ranges** (Ochoa: "these relationships are the same", Ch. 8): v1 also records the relationship of [VAL, VAH] against the previous value area (Ch. 4) and of [L3, H3] against the previous [L3, H3] (Ch. 8). Ch. 9 applies them to months: an Overlapping Higher Value money zone (Fig. 9.8) and a narrow Inside Value money zone (Fig. 9.10).
+
+  **VPOC relationship** *(book: Ch. 4, Unchanged VPOC, Fig. 4.23; Ch. 9, Fig. 9.17)*. Ch. 4: "the volume point of control is virtually the same price for two or more days in a row", read as a coming breakout. Ch. 9 uses it on monthly VPOCs: "the two-month Unchanged Value relationship in the Volume Point of Control for May and June provided the initial breakout opportunity" (Whirlpool, Fig. 9.17). For week and month, v1 records the VPOC against the previous one as unchanged (v1's tolerance: within 10% of the previous volume value-area width), higher or lower, plus the run of unchanged periods.
 
   Recorded only, never used as a signal. Whether the biases hold on NSE swing periods is a hypothesis for S7/S8.
 - **CPR trend** *(book: Ch. 6, Pivot Range Trend Analysis, Figs 6.26–6.27)*. In a trend, price holds above BC (up) or below TC (down). A close beyond the range marks a trend change or a range. Ochoa says this works on any timeframe ("next day, month, or year").
@@ -243,7 +245,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 
 ## 8. Not in v1
 
-- Intraday items: opening range, initial balance, open types, daily CPR and daily Camarilla, daily virgin money-zone levels, the developing pivot range, the magnet trade (Ch. 6) and the Unchanged VPOC relationship (Ch. 4). These belong to the intraday phase.
+- Intraday items: opening range, initial balance, open types, daily CPR and daily Camarilla, daily virgin money-zone levels, the developing pivot range, the magnet trade (Ch. 6) and the daily Unchanged VPOC relationship (Ch. 4; the weekly and monthly one is in §4). These belong to the intraday phase.
 - Camarilla H1/H2/L1/L2 outside a wide period, and H5/L5 as clustered map levels (see §4).
 - Ochoa's candlestick reversal setups and indicator chapters: they are entry triggers, not map levels.
 - Role reversal of invalidated zones.
