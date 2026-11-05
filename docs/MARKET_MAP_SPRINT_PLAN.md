@@ -198,7 +198,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [x] S2 P0 wiring: deployed 1668cd5 + bfbcb1c. On the VM, `levels HDFCBANK` leads with the map read (11-03 close 725.5: inside strong zone 725–728.73, below 712.13–718.25, above 731.5–736, all untested). An idea with no map read is refused. bfbcb1c fixes the read being taken at a reused map file's older close.
 - [x] S3 zone test: **FAIL** (fd2d5e6). Strong zones 60.1% rejection vs placebo 61.1% (−1.1 pp, CI [−4.2, +2.1]), 22,620 events, 218 stocks; criteria 1-3 fail. Criterion 4's pass is band-width geometry. The HTF split gives no lead. map_read now labels these zones "failed its test" (af01025, deployed). Amendments 1-2 committed before any outcome (2 = the user's placebo rule C).
 - [ ] S2b screens: built and deployed 4ddbd23, nginx `/map` added by hand. On the VM, 2 of 3 done checks pass: `GET /map/HDFCBANK` serves the 11-02 map (27 zones, 6 strong, all "failed its test", banner layers), and the trade check on the 10-23 short (678 / stop 690 / target 660) flags "stop 690 is inside the strong zone 688.77–693". **Open:** the Ideas page shows a frozen read only for ideas logged since 11-03, and none has been logged on the VM yet (verified locally on a synthetic idea). Tick when the first real idea is logged and shows its read.
-- [ ] S4 definitions v1 (from concepts, frozen before marks) + signal pre-registration; golden set marked blind (v1 DRAFT 2026-11-04, awaiting approval)
+- [ ] S4 definitions v1 (from concepts, frozen before marks) + signal pre-registration; golden set marked blind (v1 DRAFT 2026-11-04; Ochoa book check complete incl. Ch. 9–11 on 11-05, 4bc7f17..bb65366; awaiting the user's approval, then the signal pre-registration)
 - [ ] S5 L1 stock HTF + SMC
 - [ ] S6 L0 market map + brief
 - [ ] S6b layer F: fundamentals + ownership
@@ -210,6 +210,15 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-05 (S4, Ch. 9–11 checked):** the whole book is now checked. Seven commits (4bc7f17..bb65366):
+  - **Periods:** Ochoa's are weekly (swing), monthly (position and swing) and yearly (investors). The quarter is not his; v1 keeps it, labelled. The monthly money zone has no construction rule in the book, so the M/Q/Y one-TPO-per-day rule stays v1's own.
+  - **Width:** long-period width is read relative to earlier periods. The percentile needs at least 8 previous periods, so yearly readings start in 2019.
+  - **Correction, close against the CPR:** the close against the CPR a period creates only says which half of the range it closed in (algebra, checked numerically). The CPR trend uses the CPR in force. The next open goes to S7 (ACCEPTANCE).
+  - **Correction, Camarilla hidden layers:** H1/H2/L1/L2 are shown when the period's width reads wide (Ch. 8; Ch. 9 Fig. 9.12).
+  - **Added:** the weekly and monthly VPOC relationship; the previous period's high and low (pivot family, because R1 − H = CPR width).
+  - **Added, Ochoa's hot zones (DPZ, GPZ, MTZ):** recorded beside the families, not strong zones. A same-period H3/L3 GPZ is the close in the bottom or top 22.5% of the range. **S4's signal pre-registration should test the hot zones as Ochoa defines them, and the GPZ against that close-position control.**
+  - **Placement:** the flight plan is the S6 brief. Acceptance, the trend filter and triggers go to S7; trailing stops to S9. Sizing up at hot zones and pivot-responsive watch lists are not adopted.
 
 - **2026-11-05 (S4, still open):** Ochoa Ch. 9 (higher timeframe analysis: monthly, quarterly, yearly) and Ch. 10–11 (the trading plan) are to come from the user and must be checked before v1 is frozen. The user is also preparing the 10–20 golden-set charts.
 - **2026-11-05 (S4, book check complete):** every Ochoa item in definitions §4 is now checked against the book (Ch. 3–8, Appendices A and B). Ch. 5 confirms the floor pivots, which match the existing map, and adds R4/S4. Ch. 3 confirms 30-minute TPOs and the POC tie rule; it gives no value-area growth procedure, so v1 keeps the Market Profile convention. Appendix B shows the Pivot Range Histogram is raw width %, with 0.25 and 0.75 as absolute daily thresholds. v1 applies it as written to daily CPRs (intraday layer); for week and longer, v1 uses its own percentile rule, labelled as not Ochoa's. Appendix A's touch counts are frequencies with no placebo, so they don't substitute for the S8 tests.
