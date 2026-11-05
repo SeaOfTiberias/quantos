@@ -272,6 +272,22 @@ Ochoa calls a level where two or more pivots agree a **hot zone**, and counts ag
 - Weights between families.
 - Any bias read as a signal.
 
+### 8.1 Ochoa Ch. 10–11: what is in the map, and what comes later
+
+**Ch. 11's flight plan is the map read before the period opens.** Ochoa's sample (Fig. 11.1) has these blocks: previous price range; money zone levels; central pivot range; Camarilla third layer; virgin money zone levels; hot zones; two-day relationships with their expected outcome; pivot width relationships with their expected outcome. Every block is a §4 or §6.1 record, so the map holds no extra levels for it. Ch. 11: "position traders or long-term investors may want to include monthly and yearly pivot relationships in their flight plan, while swing traders may want to include daily and weekly". v1's swing map carries week, month and year. Daily relationships come with the intraday phase. Showing the flight plan as a pre-period block is S6's pre-market brief, reading from `map_read`.
+
+**Later sessions, not the map:**
+- **S7 situations:**
+  - *Acceptance:* the opening print confirms or rejects the forecast. Examples: an open beyond the prior range confirms a breakout (Ch. 11, Fig. 11.2; Ch. 10, *Boss in Action*, Fig. 10.4); an open above the CPR before buying a dip (Ch. 10, Fig. 10.7; Ch. 9, Fig. 9.13).
+  - *Location and alignment:* "Understanding that the market has been in an uptrend should immediately turn your focus away from any pivot level below S1" (Ch. 10, *Engaging Hot Zones*). Check the overriding trend at a hot zone (Ch. 10, DPZ).
+  - *Entry triggers:* candlestick confirmation at a zone (Chs 10–11, every example), already outside v1.
+  - *The plan before the trade:* "Know your entry, target, and stop loss before you enter a trade" (Ch. 11, *Preparation Breeds Confidence*). The idea log and the trade check already require this (S2, S2b). The verdict is S7.
+- **S9 and exit rules:** the 1.5 ATR trailing profit stop and the close-of-session exit (Figs 10.4, 10.11). Any exit rule needs its own pre-registration and the user's go-ahead.
+- **Not adopted:**
+  - "Upping the ante" at hot zones (Ch. 10): sizing, outside the map; see CLAUDE.md.
+  - Ch. 11: "If you make it a habit to trade only the charts that have a history of responding to the pivots". Choosing symbols by how well pivots fit them in the past is selection on outcomes. If it is ever used, it is a pre-registered rule tested out of sample (S8/S10), never a watch-list habit.
+  - Ochoa's examples in Ch. 9–10 are chosen charts. His mechanical results (Ch. 9: the crude-oil fund signal; the extreme reversal "back and forward tested") come with no numbers. Like Appendix A, they are not evidence of the kind the S8 tests require.
+
 ## 9. Fidelity test (pre-registered here, run on the golden set)
 
 **Charts.** 10 to 20 charts the user marks without reading this document. Stocks and indices, across uptrends, downtrends and ranges. Each chart has a symbol, a timeframe and an as-of date. HDFCBANK and SUPREMEIND are excluded from scoring.
