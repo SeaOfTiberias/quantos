@@ -1,4 +1,7 @@
-# Market Map HTF layer: signal pre-registration (DRAFT 2026-11-05, for the user's approval)
+# Market Map HTF layer: signal pre-registration (APPROVED by the user 2026-11-06)
+
+**Frozen 2026-11-06,** before any L1 code and before any outcome. Any change from here on is a
+dated amendment written before the data it touches is seen, as in the S3 test.
 
 Sprint S4. Written before any L1 code exists and before any outcome is seen. It runs in S8, on
 the engine S5 builds exactly to `docs/MARKET_MAP_DEFINITIONS.md` v1 (frozen 0067700).

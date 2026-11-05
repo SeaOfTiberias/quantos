@@ -100,6 +100,8 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
 
 ### S5. P2: L1, the stock's higher-timeframe layer
 
+- **Daily data refresh (VM job, after the close):** append the day's bhavcopy and corporate actions, and keep the adjusted series current (design §7). L1 and the universe ranking read it.
+- **Universe:** the top 500 NSE EQ stocks by 60-day median traded value, refreshed daily; any other symbol on demand, labelled "outside the tested universe" (design §3 L1).
 - Build weekly and monthly bars from the adjusted daily bhavcopy, reusing `core/techno_funda/prices.py` adjustment.
 - Code exactly per the definitions doc:
   - swing structure and multi-year zones;
@@ -108,6 +110,7 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
   - weekly and monthly CPR with Camarilla;
   - long composite profile from daily bars, labelled as an approximation;
   - period profiles, both kinds: Ochoa's price-based money zone (time at price) and the volume profile (VPOC), with their virgin levels.
+- **Joining L1 and L2** (design §3): L1 owns the week, month, quarter and year pivots, and L2 keeps only the daily ones; every level carries its price source; check that Fyers and bhavcopy agree on recent closes, and flag pre-split L2 levels.
 - **Price map v2 (L2):** the same price-based money zone and virgin POC/VAH/VAL go into the existing price map, beside its volume levels, labelled by kind. The naked-level window follows the definitions §4 (age recorded, no 20-session cutoff). This is a new map version: the 2026-11-04 FAIL stays on v1, and v2 is labelled "untested" until its own pre-registered zone test runs (S8).
 - Unit tests on synthetic fixtures for every rule. The golden set is scored by the §9 fidelity test, never used as a fitting target.
 - Extend `map_read` with L1, so it's used the day it lands.
@@ -132,6 +135,7 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
 - Reuse the techno-funda point-in-time fundamentals: growth, OPM and their trend.
 - Fetch NSE quarterly shareholding patterns (promoter, FII, MF, insurance, retail; change on the quarter) and index weights.
 - Add the results date (event risk) from NSE board meetings.
+- **Results-season refresh (VM job):** fetch new filings and parse their XBRL, storing each figure with its publication date (design §7). Log Piotroski inputs from now on, where filed (not backtestable before about 2023).
 - Extend `map_read` with layer F.
 - How much of it filters depends on the S1 techno-funda verdict and the S8 tests.
 - The stock map page gets a layer-F panel (growth, OPM, ownership trend, next results date).
@@ -162,6 +166,7 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
   - a sweep;
   - a CHoCH against the position;
   - the backdrop flipping.
+- L1 levels are on cash prices: shift them by the current futures basis before a futures position's alert uses them, and show the shift (design §3).
 - Any exit rule built on these needs its own pre-registration and the user's go-ahead.
 - **Screen 6 (in-trade card):** an open position drawn against its zones, with the map events as they fire. Alerts only, no exit controls.
 - **Done when:** alerts fire on a replayed past trade (HDFCBANK, SUPREMEIND), the in-trade card shows them, and the code is deployed.
@@ -198,7 +203,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [x] S2 P0 wiring: deployed 1668cd5 + bfbcb1c. On the VM, `levels HDFCBANK` leads with the map read (11-03 close 725.5: inside strong zone 725–728.73, below 712.13–718.25, above 731.5–736, all untested). An idea with no map read is refused. bfbcb1c fixes the read being taken at a reused map file's older close.
 - [x] S3 zone test: **FAIL** (fd2d5e6). Strong zones 60.1% rejection vs placebo 61.1% (−1.1 pp, CI [−4.2, +2.1]), 22,620 events, 218 stocks; criteria 1-3 fail. Criterion 4's pass is band-width geometry. The HTF split gives no lead. map_read now labels these zones "failed its test" (af01025, deployed). Amendments 1-2 committed before any outcome (2 = the user's placebo rule C).
 - [ ] S2b screens: built and deployed 4ddbd23, nginx `/map` added by hand. On the VM, 2 of 3 done checks pass: `GET /map/HDFCBANK` serves the 11-02 map (27 zones, 6 strong, all "failed its test", banner layers), and the trade check on the 10-23 short (678 / stop 690 / target 660) flags "stop 690 is inside the strong zone 688.77–693". **Open:** the Ideas page shows a frozen read only for ideas logged since 11-03, and none has been logged on the VM yet (verified locally on a synthetic idea). Tick when the first real idea is logged and shows its read.
-- [ ] S4 definitions v1 (from concepts, frozen before marks) + signal pre-registration; golden set marked blind (Ochoa book check complete incl. Ch. 9–11, 4bc7f17..bb65366; **v1 FROZEN 11-05, approved by the user, 0067700**; signal pre-registration DRAFT `docs/MARKET_MAP_SIGNAL_PREREG_2026-11-05.md`, awaiting approval; golden-set charts to come)
+- [x] S4 definitions + signal pre-registration: **v1 FROZEN 11-05** (0067700; Ochoa Ch. 3–11 checked, 4bc7f17..bb65366, user's R3/S3 choice 39c089c). Signal pre-registration **APPROVED 11-06** (`docs/MARKET_MAP_SIGNAL_PREREG_2026-11-05.md`): 9 hypotheses, mirrored width-matched placebos, side-balanced, Holm. Golden-set charts still to come: filed, not scored, until S5.
 - [ ] S5 L1 stock HTF + SMC
 - [ ] S6 L0 market map + brief
 - [ ] S6b layer F: fundamentals + ownership
@@ -210,6 +215,13 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-06 (user, closing S4):**
+  - **L1 universe:** the top 500 by traded value (the same as the signal test), plus indices (S6), plus any symbol on demand, labelled "outside the tested universe".
+  - **Joining L1 and L2:** L1 owns the W/M/Q/Y pivots and L2 keeps the daily ones (part of price map v2); every level carries its price source; L1 levels are shifted by the futures basis for futures positions (S9).
+  - **Data:** nothing refreshed the bhavcopy or fundamentals caches. A daily price refresh goes into S5 and a results-season fundamentals refresh into S6b.
+  - **Techno-funda (outside this sprint):** the next step is a re-scoped 2021–2026 backtest pre-registration. No returns have been computed, so this is not a re-tune of a failed test. A paper scanner, on the Darvas pattern, follows only if the backtest passes. Real money stays the user's call.
+  - **Darvas and 18b** are not changed by the map while they are being measured. A map-filtered variant would run as a separate, pre-registered paper variant beside the original.
 
 - **2026-11-05 (S4, Ch. 9–11 checked):** the whole book is now checked. Seven commits (4bc7f17..bb65366):
   - **Periods:** Ochoa's are weekly (swing), monthly (position and swing) and yearly (investors). The quarter is not his; v1 keeps it, labelled. The monthly money zone has no construction rule in the book, so the M/Q/Y one-TPO-per-day rule stays v1's own.
