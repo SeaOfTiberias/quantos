@@ -106,6 +106,16 @@ It reads:
   - built from daily bars (volume spread evenly over the day's range), and labelled as an approximation;
   - the 5-minute profile stays for the last 100 days.
 - **Quarterly and yearly pivots,** alongside the existing monthly ones.
+- **Universe (user, 2026-11-06):**
+  - **Core:** the top 500 NSE EQ stocks by 60-day median traded value, refreshed daily. This is the same universe the signal test uses (`docs/MARKET_MAP_SIGNAL_PREREG_2026-11-05.md`), so what the screens show is what was tested.
+  - **Indices:** Nifty and Bank Nifty (and the L0 indices) get the same L1 engine in S6. 18b trades index options, so this is the map it would read.
+  - **On demand:** any other symbol (a position, a watchlist name, a typed symbol) gets a map when asked, labelled "outside the tested universe". Test results don't carry over to it.
+
+### Joining L1 and L2 (user, 2026-11-06)
+
+- **Who owns the period pivots:** L1 owns the week, month, quarter and year. L2 keeps only the daily pivots. This stops a weekly or monthly pivot being counted twice. It changes L2's strong zones, so it is part of price map v2 (S5), which is untested until its own test; the 11-04 FAIL stays on v1.
+- **Two price series:** L1 uses adjusted bhavcopy bars and L2 uses Fyers bars. Every level carries its source. S5 checks that the two agree on recent closes. Around a split or bonus, an L2 level from before the event is flagged until it ages out of the 100-day window.
+- **Futures:** the position manager reads maps on futures prices (ea8f34a), while L1 is on cash. Before an in-trade alert (S9) uses an L1 level, the level is shifted by the current futures basis, and the shift is shown.
 
 ### L2. Stock: tactical (daily and intraday)
 
@@ -268,6 +278,12 @@ to remember it.
 | Intraday 5-min bars | Fyers history from the VM | 100-day window works; depth for a 1-year test to be measured (rate limits seen before) |
 | Index weights | NSE index factsheets / constituents files | to check |
 | Option chain / OI | VM recorder (since 09-30), bhavcopy F&O | have; context only |
+| Quarterly results (growth, OPM), point-in-time | NSE XBRL, `scripts/fetch_techno_funda_data.py` | backfilled to Oct 2026, one-off; **no refresh job** |
+| Balance sheet, cash flow (Piotroski) | NSE XBRL | half-yearly, only from about Nov 2022; can be logged going forward, not backtested |
+
+**Keeping it current (user, 2026-11-06).** The bhavcopy and fundamentals caches were filled once, for the techno-funda work, and nothing refreshes them. Two VM jobs fix that:
+- **Daily, after the close (S5):** append the day's bhavcopy and corporate actions and keep the adjusted series current. L1, the universe ranking and the signal test read it.
+- **Results season (S6b):** fetch new filings and parse their XBRL. Each figure is stored with the date it was published, so every read stays point-in-time. Layer F and any techno-funda scanner read it. Piotroski inputs are logged from now on, where filed.
 
 ## 8. Build order
 
