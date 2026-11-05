@@ -105,64 +105,78 @@ On W and M:
 
 From the completed previous period's high H, low L and close C. Periods: week, month, quarter, year.
 
-**Sources.** Items marked *(book)* were checked against the user's copy of the book on 2026-11-04. Items marked *(attribution unchecked)* follow the user's summary but have not yet been checked on the page. The rule stands either way; only the citation is in question. Chapter numbers are not cited until the contents page is checked: the Money Zone material is in Ch. 4 (Figs 4.18–4.19), which contradicts an earlier summary that placed it in Ch. 5.
+**Sources.** Checked on 2026-11-05 against the user's copy of *Secrets of a Pivot Boss*: Ch. 4 *Advanced Money Zone Concepts*, Ch. 6 *The Central Pivot Range*, Ch. 7 *Introducing the Camarilla Equation*, Ch. 8 *Advanced Camarilla Concepts*. Items cite the chapter, table or figure. Items marked *(not yet checked)* come from parts of the book not provided yet: the Floor Pivots and Money Zone construction chapters (Ch. 5 and 3, by the book's own cross-references) and Appendix B (indicator code). An earlier AI summary of the book got several points wrong (chapter numbers, "the last 3–10 sessions", the meaning of "unchanged", virgin CPR), so nothing in v1 rests on it.
 
-- **Classical** (as in the existing map):
+- **Classical floor pivots** *(not yet checked: Ch. 5)*, as in the existing map:
   - P = (H+L+C)/3;
   - R1 = 2P−L, S1 = 2P−H;
   - R2 = P+(H−L), S2 = P−(H−L);
   - R3 = H+2(P−L), S3 = L−2(H−P).
-- **CPR:**
-  - pivot P;
+- **Central pivot range (CPR)** *(book: Ch. 6, Table 6.1)*:
+  - Pivot = (H+L+C)/3;
   - BC = (H+L)/2;
-  - TC = 2P − BC.
+  - TC = (Pivot − BC) + Pivot.
 
-  If BC > TC, swap them, so that TC is the upper edge.
-  - **Width** = (TC − BC) / P × 100.
-  - **Narrow:** width below the 25th percentile of the previous 10 periods of the same kind. **Wide:** above the 75th percentile.
-  - Ochoa gives no number. He compares the width with the last 3 to 10 sessions by eye (attribution unchecked). v1 encodes that comparison as percentiles over his longer window, 10 periods.
-  - Ochoa's reading: narrow means a trending period is likely, wide means a range. v1 records narrow or wide and does not use it as a signal.
-- **Two-period relationship.** The CPR of the current period ([BC, TC]) against the one before it ([pBC, pTC]), the first rule that holds:
-  1. **Unchanged:** both edges within 10% of the previous width;
+  The higher of the two is TC and the lower is BC; Ochoa's software makes this swap automatically.
+- **CPR width** = (TC − BC) / P × 100.
+  - Ochoa reads an *abnormally* narrow CPR as a likely trend or breakout and an abnormally wide one as a likely range. Width of average size tells you nothing (Ch. 6, *Pivot Width Forecasting*).
+  - He quantifies it with his Pivot Range Histogram: below 0.25 means trending is more likely, above 0.75 means sideways is more likely, with 0.5 as the midline (Ch. 6, *The Pivot Range Histogram*). Its code is in Appendix B *(not yet checked)*.
+  - **v1 reading:** the percentile rank of the width among the previous 20 periods of the same kind. Narrow is ≤ 0.25, wide is ≥ 0.75, and anything between is "average, no reading". The thresholds are Ochoa's. The percentile-rank form and the 20-period window are v1's own until Appendix B shows his formula.
+  - Recorded only, not used as a signal.
+- **Two-period relationship** *(book: Ch. 6, Table 6.2 and Fig. 6.15; the same seven in Ch. 4 for value areas and Ch. 8 for Camarilla)*. The current range [BC, TC] against the previous one [pBC, pTC], the first rule that holds:
+  1. **Unchanged:** "virtually unchanged". v1's tolerance: both edges within 10% of the previous width;
   2. **Higher value:** BC > pTC;
   3. **Lower value:** TC < pBC;
-  4. **Outside:** TC > pTC and BC < pBC;
+  4. **Outside:** TC > pTC and BC < pBC (the current range engulfs the previous one);
   5. **Inside:** TC < pTC and BC > pBC;
-  6. **Overlapping higher:** TC > pTC (and BC within [pBC, pTC]);
-  7. **Overlapping lower:** BC < pBC (and TC within [pBC, pTC]).
+  6. **Overlapping higher:** TC > pTC and BC within [pBC, pTC];
+  7. **Overlapping lower:** BC < pBC and TC within [pBC, pTC].
 
-  Ochoa reads these as bias (attribution unchecked):
-  - higher: bullish; overlapping higher: moderately bullish;
-  - lower: bearish; overlapping lower: moderately bearish;
-  - outside: sideways, a two-way auction;
-  - inside: volatility expansion or breakout likely;
-  - unchanged: consolidation or accumulation before a move.
+  Ochoa's biases (Table 6.2):
+  - higher: bullish (the most bullish); overlapping higher: moderately bullish;
+  - lower: bearish (the most bearish); overlapping lower: moderately bearish;
+  - unchanged: sideways or breakout. It is the one relationship with two outcomes, quiet trade inside the range or a major breakout, and the open decides which;
+  - outside: sideways, more telling when the current range is significantly wider;
+  - inside: breakout (the most explosive), more telling when the current range is noticeably narrower.
 
-  Ochoa names "unchanged" without a numeric tolerance. The 10%-of-width tolerance in rule 1 is the v1 adaptation.
+  **His condition:** each bias is a starting point, confirmed or rejected by where the prior period closed against its pivot range and by the next open. v1 records the relationship, the width ratio to the previous range, and where the period's close sits against its own CPR (above TC, inside, below BC).
 
-  v1 **records** the relationship and does not encode the bias as a signal. The bias is a hypothesis for S7/S8.
-- **Camarilla** (as in the existing map):
-  - H3 = C + 1.1(H−L)/4;
-  - H4 = C + 1.1(H−L)/2;
-  - L3 = C − 1.1(H−L)/4;
-  - L4 = C − 1.1(H−L)/2.
+  **Same rule on two more ranges** (Ochoa: "these relationships are the same", Ch. 8): v1 also records the relationship of [VAL, VAH] against the previous value area (Ch. 4) and of [L3, H3] against the previous [L3, H3] (Ch. 8).
 
-  In Ochoa's reading, H3/L3 bound the reversal (mean-reversion) range and H4/L4 are the breakout levels (attribution unchecked).
-  - H1/H2/L1/L2 are minor intraday reaction levels, so they stay out of the swing map.
-  - H5/L5 (extreme trend targets) are left out of v1: they are targets, not zones, and their formula differs between sources. They can be added in v2 with the formula from the book.
-- **Money zone** (Ochoa's value area for the period):
-  - POC, VAL and VAH of the period's volume profile (§5 method), with a value area of 70% around the POC (the existing `value_area` rule);
-  - month, quarter and year come from daily bars;
-  - the week comes from 5-minute bars, and only where those exist (the last 100 days);
-  - a weekly money zone is otherwise not computed.
-- **Virgin money zone levels** *(book: Ch. 4, Figs 4.18–4.19)*. Ochoa: "A Money Zone level that was never touched during its session of origin is called a virgin Money Zone level", also called a naked level. He treats it like an unfilled gap: it tends to attract price later, and the first test usually turns price back toward value.
-  - **Operational rule:** a period's POC, VAH or VAL is virgin from the period's close until a later bar trades through it. That bar retires the level, and the fill date is recorded. Ochoa's phrase "during its session of origin" cannot be computed from a profile built from that same session, so v1 uses the usual naked-level reading: untouched since the session ended.
-  - **Which levels:** Ochoa finds two of the three most relevant: the virgin POC (VPC), and whichever of the virgin VAH or VAL is closest to price. v1 records all three and flags those two.
-  - **Periods:** week, month, quarter and year, from the same profiles as the money zone above. Ochoa's examples are daily sessions; daily virgin levels belong to the intraday layer (§8).
-  - **Family:** volume (§6). Whether these levels attract price or turn it is for the signal test.
-  - Ochoa's timing note (fade a test in the first sixty minutes; late in the session, use the level as a target) is an intraday execution rule and stays out of v1.
-- **CPR against the money zone** (attribution unchecked). For each period, v1 records where the current CPR sits against the previous period's value area: inside it, above it, below it, or overlapping an edge. It is recorded only, not used as a signal.
-- **Periods** (attribution unchecked): week and month pivots are the swing horizon (1–20 days); quarter and year pivots are the macro backdrop. The read labels each pivot with its period.
+  Recorded only, never used as a signal. Whether the biases hold on NSE swing periods is a hypothesis for S7/S8.
+- **CPR trend** *(book: Ch. 6, Pivot Range Trend Analysis, Figs 6.26–6.27)*. In a trend, price holds above BC (up) or below TC (down). A close beyond the range marks a trend change or a range. Ochoa says this works on any timeframe ("next day, month, or year").
+  - v1 records, for week and month CPRs, the run of consecutive periods that closed above TC or below BC, and the date of the last close beyond the opposite edge.
+  - Recorded only. His trailing-centrals stop is an exit rule and stays out of the map.
+- **Camarilla** *(book: Ch. 7, Table 7.2 "Expanded Formula")*, RANGE = H − L:
+  - H1/L1 = C ± RANGE × 1.1/12;
+  - H2/L2 = C ± RANGE × 1.1/6;
+  - H3/L3 = C ± RANGE × 1.1/4;
+  - H4/L4 = C ± RANGE × 1.1/2;
+  - H5 = (H/L) × C, L5 = C − (H5 − C).
+
+  How Ochoa reads them (Ch. 7):
+  - H3/L3 are the reversal layer, where responsive traders push price back toward value;
+  - H4/L4 are "the last line" and the breakout layer, and also "as prone to reversals as the third layer";
+  - H5/L5 are targets after a break through H4/L4;
+  - L1/L2/H1/H2 "are typically ignored and generally not even plotted".
+
+  **v1 map levels:** H3, H4, L3 and L4 only. H5/L5 are targets, not zones: they are computed and shown, but kept out of clustering and out of the fidelity test. H1, H2, L1 and L2 are left out.
+
+  **Camarilla width** (Ch. 8, *Pivot Width Analysis*): the L3–H3 width, read like CPR width with the same percentile rule. Recorded only.
+- **Money zone** (the period's value area) *(book: Ch. 4, 70% of the activity; construction in Ch. 3, not yet checked)*:
+  - POC, VAL and VAH, with a value area of 70% around the POC (the existing `value_area` rule);
+  - month, quarter and year come from daily bars. The week comes from 5-minute bars, and only where those exist (the last 100 days); a weekly money zone is otherwise not computed;
+  - **Caveat:** QuantOS builds these from **volume** at price. Ochoa's Money Zone POC is price-based (Market Profile time at price), and he treats the volume POC (VPOC) as a separate level that is "usually the same" but can differ (Ch. 4, *Understanding Volume at Price*). v1 labels them "volume-based".
+  - **Value-area width:** an abnormally wide or narrow value area carries the same reading as CPR width (Ch. 4, *Value Area Width*). Recorded with the same percentile rule.
+- **Virgin money-zone levels** *(book: Ch. 4, Virgin Money Zone Levels, Figs 4.18–4.19; The Virgin Volume Point of Control, Fig. 4.24)*. Ochoa: "A Money Zone level that was never touched during its session of origin is called a virgin Money Zone level", also called a naked level; "A VPOC that is not touched during its session of origin is called a Virgin Volume Point of Control."
+  - He treats them like unfilled gaps that attract price. The first test usually turns price back toward value.
+  - Timing: price "will usually return to a virgin VPOC and test it within a week of its creation", and "the farther price moves away from this level, or the longer price stays away from it, the less significance the level will carry" (Ch. 4).
+  - **Operational rule:** a period's POC, VAH or VAL is virgin from the period's close until a later bar trades through it. That bar retires the level, and the fill date is recorded. His phrase "during its session of origin" can't be computed from a profile built from that same session, so v1 uses the usual naked-level reading.
+  - **Which levels:** Ochoa watches two of the three: the virgin POC, and whichever of the virgin VAH or VAL is closest to price. v1 records all three and flags those two.
+  - **Age and distance:** every virgin level carries its age in periods and its distance in ATR, with no cutoff. Ochoa says significance fades but gives no number, so the signal test scores by age instead.
+  - **Periods:** week, month, quarter and year, from the same profiles as the money zone. Daily virgin levels belong to the intraday layer (§8).
+  - **Family:** volume (§6). His first-sixty-minutes timing rule is intraday execution and stays out of v1.
+- **Periods.** Ochoa applies the CPR and Camarilla to any timeframe (Ch. 6; Ch. 7: "quite powerful for all timeframes"). The book doesn't assign periods to roles: the split here (week and month for the swing horizon, quarter and year for the backdrop) is v1's own. The read labels each pivot with its period.
 
 ## 5. Long composite volume profile
 
@@ -171,6 +185,7 @@ From the completed previous period's high H, low L and close C. Periods: week, m
 - **POC and value area:** 70%, the existing rule.
 - **HVN shelves:** runs of buckets at 1.5× the median or more (the existing `shelves` rule).
 - **LVN:** runs of buckets below 0.5× the median, lying between two HVN shelves.
+- Ochoa's high- and low-volume areas are the same idea: price moves freely between volume peaks, and a low-volume area between two peaks "can be easily penetrated" (book: Ch. 4, *Understanding Volume at Price*, Figs 4.21–4.22).
 - Labelled "approximation (daily bars)" wherever shown.
 
 ## 6. Families and the HTF strong zone
@@ -198,11 +213,12 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 
 ## 8. Not in v1
 
-- Intraday items: opening range, initial balance, open types, daily CPR, developing pivots, Camarilla H1/H2/L1/L2, daily virgin money zone levels. These belong to the intraday phase.
-- Camarilla H5/L5 (see §4).
+- Intraday items: opening range, initial balance, open types, daily CPR and daily Camarilla, daily virgin money-zone levels, the developing pivot range, the magnet trade (Ch. 6) and the Unchanged VPOC relationship (Ch. 4). These belong to the intraday phase.
+- Camarilla H1/H2/L1/L2, and H5/L5 as map levels (see §4).
 - Ochoa's candlestick reversal setups and indicator chapters: they are entry triggers, not map levels.
 - Role reversal of invalidated zones.
-- "Virgin CPR": not in Ochoa as far as the user's copy shows (his virgin levels are money zone levels). Left out of v1.
+- "Virgin CPR": not in Ochoa (his virgin levels are money-zone levels, Ch. 4). Left out.
+- CPR against the previous value area: not found in Ch. 4 or 6–8. It came from the AI summary, so it is left out.
 - Weights between families.
 - Any bias read as a signal.
 
