@@ -239,6 +239,21 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 - **HTF strong zone:** at least 2 families. There are no weights in v1: families are counted, not scored.
 - Each element keeps its timeframe, family, date and source, so the S4 signal test can score every family separately.
 
+### 6.1 Ochoa's hot zones, recorded beside the families *(book: Ch. 10)*
+
+Ochoa calls a level where two or more pivots agree a **hot zone**, and counts agreement differently from §6. For him, floor pivots, the Camarilla and the money zone are "uncorrelated" ("two completely different mathematical formulas"), and the same indicator on two timeframes also counts ("Notice I used the word 'pivots' instead of 'indicators'", Ch. 10, *The Power of Confluence*). v1 doesn't follow this for the strong zone: floor and Camarilla levels are both linear in the same H, L and C (§4, R1 − H = CPR width), so §6 counts them as one family. To test his claim fairly, v1 records his three hot zones as their own records. They are not strong zones unless §6 also makes them one.
+
+- **Vicinity.** "The pivots just have to be close enough that they are in the same vicinity" (Ch. 10, Fig. 10.2: a few cents apart). He gives no number. v1 uses the §6 tolerance: 0.3 ATR(W).
+- **Double Pivot Hot Zone (DPZ)** (Ch. 10, Figs 10.1–10.4): any two §4 levels within the vicinity, from different formulas (floor, Camarilla, money zone, VPOC) or from different periods. Recorded with its members.
+- **Golden Pivot Zone (GPZ)** (Ch. 10, Figs 10.5–10.11): one Camarilla or money-zone level of a period lies within that period's CPR, "TC >= MZ/CE >= BC".
+  - Bearish: H3, VAL, VAH, POC or VPOC inside the CPR (Fig. 10.5; target "generally S1 or L3"). Bullish: L3, VAL, VAH, POC or VPOC inside (Fig. 10.6; target "usually R1 or H3"). H3 and L3 are "the original" GPZs (Ch. 10).
+  - v1 records the period, the member level and kind, and the direction: bearish for H3, bullish for L3. A money-zone member gets no direction of its own; Ochoa takes it from the trend ("depending on the current trend").
+  - **A property of the formula** (same H, L and C): H3 lies inside the CPR exactly when the close is in the bottom 22.5% of the period's range, and L3 exactly when it is in the top 22.5%. An H3/L3 GPZ is a weak or strong close, nothing more, and the signal test should compare it against that.
+  - A GPZ with a money-zone member already joins two families (pivot and volume), so §6 may also count it strong. An H3/L3 GPZ is pivot-only.
+  - Ochoa uses it on months too ("a monthly GPZ", AAPL, Fig. 10.16). v1 records it for week, month, quarter and year; the daily GPZ is intraday (§8).
+- **Multiple Timeframe Hot Zone (MTZ)** (Ch. 10, Figs 10.12–10.16; Table 10.1): a hot zone whose members come from two or more periods (week, month, year; the quarter counts, labelled not Ochoa). Recorded with its periods: each period stands for a group of traders (§4, Periods), and more groups means more participation, in Ochoa's reading.
+- All three are recorded only, never signals. Ochoa's "upping the ante" at hot zones (sizing up when "the stars align") is not adopted: sizing is outside the map and needs the user's go-ahead.
+
 ## 7. Alignment and stage
 
 - **ALIGNMENT:** the §2 state on M, W and D.
@@ -272,6 +287,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 | EQH, EQL, poor high/low | liquidity |
 | POC, value area, money zone, virgin/naked POC, VAH or VAL | volume |
 | pivot, CPR, Camarilla, previous week/month/year high or low | pivot |
+| hot zone, DPZ, GPZ, MTZ (Ochoa's confluence) | pivot, or any §6.1 record |
 
 - A mark with no listed type is matched against any family, and reported separately.
 
