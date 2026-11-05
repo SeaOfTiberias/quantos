@@ -1,4 +1,4 @@
-# Market Map: definitions v1 (DRAFT 2026-11-04, for the user's approval)
+# Market Map: definitions v1 (FROZEN 2026-11-05, approved by the user)
 
 Sprint S4. Exact rules for the higher-timeframe (L1) and SMC layers, the period pivots and the
 long profile. Concepts: `docs/MARKET_MAP_ENGINE_DESIGN.md` §2b and §3 (agreed 2026-11-03),
@@ -12,6 +12,8 @@ and v2 never saw. HDFCBANK and SUPREMEIND were discussed before v1 was written, 
 illustrate it but are never scored.
 
 Every parameter below is fixed in v1. None is tuned on outcomes or on marks.
+
+**Frozen 2026-11-05.** The user approved v1 after the book check (Ochoa Ch. 3–11, Appendices A and B), before seeing any golden-set chart or any outcome. From here on, any change is v2: written from §9's misses or from the concepts, and scored only on charts v1 and v2 never saw.
 
 ## 0. Common ground
 
