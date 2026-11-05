@@ -106,8 +106,10 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
   - the SMC layer;
   - quarterly and yearly pivots;
   - weekly and monthly CPR with Camarilla;
-  - long composite profile from daily bars, labelled as an approximation.
-- Golden-set unit tests: the engine must reproduce the user's marks within tolerance.
+  - long composite profile from daily bars, labelled as an approximation;
+  - period profiles, both kinds: Ochoa's price-based money zone (time at price) and the volume profile (VPOC), with their virgin levels.
+- **Price map v2 (L2):** the same price-based money zone and virgin POC/VAH/VAL go into the existing price map, beside its volume levels, labelled by kind. The naked-level window follows the definitions §4 (age recorded, no 20-session cutoff). This is a new map version: the 2026-11-04 FAIL stays on v1, and v2 is labelled "untested" until its own pre-registered zone test runs (S8).
+- Unit tests on synthetic fixtures for every rule. The golden set is scored by the §9 fidelity test, never used as a fitting target.
 - Extend `map_read` with L1, so it's used the day it lands.
 - **Done when:** the definitions v1 fidelity test (§9) has run on the golden set and its verdict is reported (a fail is reported, then v2 per §9), and `levels HDFCBANK` shows the 640-840 base and the strong low near 665 as at 2026-10-23 (an illustration check, not a score: those levels were known before v1).
 
@@ -208,6 +210,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-05 (user, S4):** Ochoa's Money Zone is price-based (time at price); QuantOS had only volume-based profiles. The user chose to follow his price-based method and keep the volume one too. Definitions §4 now carries both, as one family. S5 builds both for L1 and adds them to the L2 price map as v2. The 11-04 FAIL stays on v1, and v2 is untested until its own test. Ch. 3, Ch. 5 and Appendix B of the book are still to be checked; the TPO conventions (30-minute brackets, the tie rule, the growth rule) may change when Ch. 3 is read.
 
 - **2026-11-04 (user, S4):** the definitions come from the concepts and are frozen before the golden set is seen; the golden set tests them (fidelity, pre-registered in the definitions §9) and is never used to fit them. A miss leads to v2, scored on fresh charts. HDFCBANK and SUPREMEIND are unscored (already discussed). S5's done gains the fidelity verdict.
 

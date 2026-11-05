@@ -163,14 +163,20 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   **v1 map levels:** H3, H4, L3 and L4 only. H5/L5 are targets, not zones: they are computed and shown, but kept out of clustering and out of the fidelity test. H1, H2, L1 and L2 are left out.
 
   **Camarilla width** (Ch. 8, *Pivot Width Analysis*): the L3–H3 width, read like CPR width with the same percentile rule. Recorded only.
-- **Money zone** (the period's value area) *(book: Ch. 4, 70% of the activity; construction in Ch. 3, not yet checked)*:
-  - POC, VAL and VAH, with a value area of 70% around the POC (the existing `value_area` rule);
-  - month, quarter and year come from daily bars. The week comes from 5-minute bars, and only where those exist (the last 100 days); a weekly money zone is otherwise not computed;
-  - **Caveat:** QuantOS builds these from **volume** at price. Ochoa's Money Zone POC is price-based (Market Profile time at price), and he treats the volume POC (VPOC) as a separate level that is "usually the same" but can differ (Ch. 4, *Understanding Volume at Price*). v1 labels them "volume-based".
-  - **Value-area width:** an abnormally wide or narrow value area carries the same reading as CPR width (Ch. 4, *Value Area Width*). Recorded with the same percentile rule.
+- **Two profiles per period** (user, 2026-11-05: follow Ochoa's price-based method and keep the volume-based one too). Ochoa's Money Zone POC is price-based (time at price, Market Profile style). He treats the volume POC (VPOC) as a separate level that is "usually the same" but can differ (Ch. 4, *Understanding Volume at Price*). v1 computes both, and each is labelled with its kind:
+  - **Money zone, price-based (Ochoa's)** *(book: Ch. 4, 70% of the activity; construction in Ch. 3, not yet checked)*:
+    - **Time-price opportunities (TPOs):** each time bracket adds one TPO to every price bucket inside its high–low range. A bracket is 30 minutes of 5-minute bars (the Market Profile standard) for the week. It is one daily bar for the month, quarter and year, so each day counts once at every price it traded.
+    - **POC:** the bucket with the most TPOs. On a tie, the one nearest the middle of the period's range.
+    - **Value area:** 70% of the TPOs, grown from the POC toward the heavier neighbour. That is the same growth rule as the volume profile.
+    - The bracket length, the tie rule and the growth rule are Market Profile conventions, held open until Ch. 3 shows Ochoa's own. A difference found there is a correction to the concept, made before the freeze.
+  - **Volume profile (VPOC)**: POC, VAL and VAH from volume at price, with a 70% value area (the existing `value_area` rule). Ochoa's VPOC (Ch. 4).
+  - **Bars:** both profiles use the same buckets (`step_for(ATR(D))`). Month, quarter and year come from daily bars. The week comes from 5-minute bars, only where those exist (the last 100 days); otherwise a weekly profile is not computed.
+  - **One family:** both profiles belong to the volume family (§6). When the price-based and volume-based levels agree, they count once and never make a strong zone on their own.
+  - **Width and two-period relationships** use the price-based value area, since that is the one Ochoa reads (Ch. 4). An abnormally wide or narrow value area carries the same reading as CPR width (Ch. 4, *Value Area Width*), with the same percentile rule. The same two figures are also recorded for the volume value area, so the two can be compared.
 - **Virgin money-zone levels** *(book: Ch. 4, Virgin Money Zone Levels, Figs 4.18–4.19; The Virgin Volume Point of Control, Fig. 4.24)*. Ochoa: "A Money Zone level that was never touched during its session of origin is called a virgin Money Zone level", also called a naked level; "A VPOC that is not touched during its session of origin is called a Virgin Volume Point of Control."
   - He treats them like unfilled gaps that attract price. The first test usually turns price back toward value.
   - Timing: price "will usually return to a virgin VPOC and test it within a week of its creation", and "the farther price moves away from this level, or the longer price stays away from it, the less significance the level will carry" (Ch. 4).
+  - **Both kinds:** virgin Money Zone levels (price-based POC, VAH, VAL) and virgin VPOCs (volume-based) are tracked separately, each labelled with its kind. The book names both.
   - **Operational rule:** a period's POC, VAH or VAL is virgin from the period's close until a later bar trades through it. That bar retires the level, and the fill date is recorded. His phrase "during its session of origin" can't be computed from a profile built from that same session, so v1 uses the usual naked-level reading.
   - **Which levels:** Ochoa watches two of the three: the virgin POC, and whichever of the virgin VAH or VAL is closest to price. v1 records all three and flags those two.
   - **Age and distance:** every virgin level carries its age in periods and its distance in ATR, with no cutoff. Ochoa says significance fades but gives no number, so the signal test scores by age instead.
@@ -197,7 +203,7 @@ Agreement counts once per family (design §2b: ideas that appear in two framewor
 | structure | swing highs/lows (§1), protected and weak levels (§2), multi-touch levels (§3.2) |
 | imbalance | demand/supply zones (§3.1), order blocks (§3.3), LVN edges (§5) |
 | liquidity | EQH/EQL and poor highs/lows (§3.4) |
-| volume | POC, VAL/VAH, HVN shelves, money zones, virgin money zone levels (§4, §5) |
+| volume | price-based money zones and volume profiles (POC, VAL/VAH), their virgin levels, HVN shelves (§4, §5) |
 | pivot | classical, CPR and Camarilla, all periods (§4); one family, as they are all formulas of H, L and C |
 
 - **HTF zone:** levels and bands from M and W clustered within 0.3 ATR(W). The same clustering as the existing map, at the weekly scale.
