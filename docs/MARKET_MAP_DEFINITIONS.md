@@ -147,13 +147,19 @@ From the completed previous period's high H, low L and close C. Periods: week, m
   - outside: sideways, more telling when the current range is significantly wider;
   - inside: breakout (the most explosive), more telling when the current range is noticeably narrower.
 
-  **His condition:** each bias is a starting point, confirmed or rejected by where the prior period closed against its pivot range and by the next open. v1 records the relationship, the width ratio to the previous range, and where the period's close sits against its own CPR (above TC, inside, below BC).
+  **His condition:** each bias is a starting point, confirmed or rejected by where the prior period closed against its pivot range and by the next open (Ch. 6: "the prior day's closing price and the current day's opening price"). The book uses two different "closed against the pivot range" comparisons, so v1 names both:
+  - **Close against the CPR it creates** (Ch. 9, Fig. 9.13: "if price closes the prior month above the pivot range for the following month, continued trending behavior is likely"). **A property of the formula:** this CPR is built from the same H, L and C, and TC = (H + L + 4C)/6 when C is above the midpoint. So the close is above TC exactly when C > (H+L)/2, below BC exactly when C < (H+L)/2, and inside only when C sits on the midpoint. This comparison says only which half of its range the period closed in. v1 records it under that name ("close in upper/lower half").
+  - **Close against the CPR in force during the period** (computed from the period before; Ch. 10, Fig. 10.7: "the prior session's closing price should fall above the prior day's central pivot range"): above TC, inside or below BC. This is the non-trivial reading, and the CPR trend below uses it.
+  - **The next open against the CPR** (Ch. 9: the next month "must accept this theory by opening anywhere above the bottom of the pivot range"; Ch. 10, Fig. 10.7: open above the CPR) is acceptance at the start of the new period. It is an S7 situation (ACCEPTANCE), not a map level.
+
+  v1 records the relationship, the width ratio to the previous range, and the two close readings above.
 
   **Same rule on two more ranges** (Ochoa: "these relationships are the same", Ch. 8): v1 also records the relationship of [VAL, VAH] against the previous value area (Ch. 4) and of [L3, H3] against the previous [L3, H3] (Ch. 8).
 
   Recorded only, never used as a signal. Whether the biases hold on NSE swing periods is a hypothesis for S7/S8.
 - **CPR trend** *(book: Ch. 6, Pivot Range Trend Analysis, Figs 6.26–6.27)*. In a trend, price holds above BC (up) or below TC (down). A close beyond the range marks a trend change or a range. Ochoa says this works on any timeframe ("next day, month, or year").
-  - v1 records, for week and month CPRs, the run of consecutive periods that closed above TC or below BC, and the date of the last close beyond the opposite edge.
+  - v1 records, for week and month CPRs, the run of consecutive periods that closed above TC or below BC **of the CPR in force during that period**, and the date of the last close beyond the opposite edge. (Against the CPR a period creates, the run would only count closes in the upper half of the range; see above.)
+  - Ch. 9 applies this to monthly CPRs (Figs 9.13–9.14: pull-backs to the monthly pivot range bought in uptrends), monthly money zones (Fig. 9.15: price held below the top of the money zone in a decline) and monthly Camarilla H3 (Fig. 9.16: "as long as price opens the month below H3, any pull-back to this zone should be a sell"). The levels are already in the map. The pull-back entries are S7 situations.
   - Recorded only. His trailing-centrals stop is an exit rule and stays out of the map.
 - **Camarilla** *(book: Ch. 7, Table 7.2 "Expanded Formula")*, RANGE = H − L:
   - H1/L1 = C ± RANGE × 1.1/12;
