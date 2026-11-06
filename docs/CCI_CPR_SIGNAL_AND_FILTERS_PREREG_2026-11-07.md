@@ -1,6 +1,6 @@
-# CCI + monthly CPR signal, and CCI / RSI entry filters (pre-registration DRAFT, for the user's approval)
+# CCI + monthly CPR signal, and CCI / RSI entry filters (pre-registration, APPROVED by the user 2026-11-07)
 
-Written 2026-11-07, before any code or outcome. Once the user approves it, it is frozen: any
+Written 2026-11-07, before any code or outcome. **Approved and frozen 2026-11-07.** Any
 change is a dated amendment written before the data it touches is seen.
 
 **Where the ideas came from (disclosed):**
