@@ -1,0 +1,13 @@
+[Unit]
+Description=QuantOS techno-funda screen snapshot -- saves the user's screener.in screen once a day (record only, no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_screen_snapshot.py
+Environment=HOME=/home/ubuntu
+TimeoutStartSec=2min
+ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ]'

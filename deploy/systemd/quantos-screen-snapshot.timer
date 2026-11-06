@@ -1,0 +1,10 @@
+[Unit]
+Description=Saves the techno-funda screener.in screen after the close, 16:30 IST
+
+[Timer]
+# 11:00 UTC = 16:30 IST. The VM runs in Etc/UTC. Holidays are skipped by the script.
+OnCalendar=Mon..Fri *-*-* 11:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

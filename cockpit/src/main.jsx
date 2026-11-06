@@ -7,6 +7,7 @@ const PicksPage = lazy(() => import("./trading/PicksPage.jsx"));
 const SpreadsPage = lazy(() => import("./trading/SpreadsPage.jsx"));
 const IdeasPage = lazy(() => import("./trading/IdeasPage.jsx"));
 const MapPage = lazy(() => import("./trading/MapPage.jsx"));
+const ScreenPage = lazy(() => import("./trading/ScreenPage.jsx"));
 
 // Hash routing, no router dependency: "#/reports" is the paper-strategy
 // reports page, "#/spreads", "#/picks", "#/ideas" and "#/map/SYMBOL" the trading pages (cockpit/src/trading/,
@@ -21,7 +22,7 @@ function Root() {
   }, []);
   const route = hash.split("/").slice(0, 2).join("/");      // "#/map/HDFCBANK" -> "#/map"
   const Page = { "#/reports": ReportsPage, "#/picks": PicksPage, "#/spreads": SpreadsPage, "#/ideas": IdeasPage,
-                 "#/map": MapPage }[route];
+                 "#/map": MapPage, "#/screen": ScreenPage }[route];
   if (!Page) return <QuantOSCockpit />;
   return (
     <Suspense fallback={<div style={{ background: "#0A0E1A", minHeight: "100vh" }} />}>
