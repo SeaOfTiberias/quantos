@@ -44,8 +44,9 @@ def load():
     df["sym"] = df["sym"].astype(str)
     df["series"] = df["series"].astype(str)
     df = df.sort_values(["sym", "date"]).reset_index(drop=True)
-    cal = np.array(sorted(df["date"].unique()))
-    df["gi"] = np.searchsorted(cal, df["date"].to_numpy())
+    dts = df["date"].to_numpy().astype("datetime64[ns]")
+    cal = np.unique(dts)
+    df["gi"] = np.searchsorted(cal, dts)
     syms = np.array(sorted(df["sym"].unique()))
     df["si"] = np.searchsorted(syms, df["sym"].to_numpy())
     # universe: top 500 EQ by median traded value over the 60 sessions BEFORE D
@@ -306,7 +307,7 @@ def main() -> int:
             "**Verdicts:** " + "; ".join(va + vb), ""]
     doc = "\n".join(head + [text_a, "", text_b]) + "\n"
     Path(a.out).write_text(doc, encoding="utf-8")
-    print(doc)
+    print(f"wrote {a.out}: " + "; ".join(va + vb))     # the doc itself has characters a Windows console can't print
     return 0
 
 

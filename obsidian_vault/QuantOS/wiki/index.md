@@ -27,6 +27,7 @@ _agent-compiled entity pages — context and retrieval only_
 - [[candle-confirm-momentum-gutcheck-candidate-19]] — Candle-Confirm Momentum (Candidate 19, Gut-Check)
 - [[capital-readiness-validation]] — Capital-Readiness Validation
 - [[cci-sma-cross-signals]] — CCI(34)/EMA52 and SMA 5/40 Crosses as Standalone Signals
+- [[cci-cpr-signal-and-filters]] — CCI(34)/SMA52 + Monthly CPR Signal, and CCI / RSI Entry Filters
 - [[darvas-atr-stop-bucket-b]] — Darvas ATR-Scaled Stop, Bucket B
 - [[darvas-box-width]] — Darvas Box-Width Buckets (Static Exit)
 - [[darvas-bucket-b-cues]] — Darvas Bucket B Cue Tests (Universe, Entry Filters, Exits)
