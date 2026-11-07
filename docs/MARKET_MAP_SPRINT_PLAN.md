@@ -214,7 +214,12 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - HDFCBANK at 2026-10-23 (illustration, not scored): M down since the March 2026 CHoCH below 812.15, protected high 1020.5; W down, protected high 843, weak low 681.9; D up since the 15 Sep CHoCH at 716.5, protected low 681.9. Not aligned: D conflicts.
   - [x] Slice 3, zones (11-07): `core/market_map/zones.py`, definitions §3.1 to §3.5 on W and M. Demand and supply bases, multi-touch levels (W), order blocks from each BOS/CHoCH's protected bar, EQH/EQL with swept or broken status, premium/discount per timeframe. The choices v1 leaves open are fixed in the module docstring. `map_read`'s L1 lines add the nearest zones below and above price and those around it, labelled untested. Sweep of 273 random stocks: 0 errors, 0.37 s a stock, median 27 zones.
     - **HDFCBANK, against the done check (illustration, not scored):** v1 §3.1 does **not** make the 640–840 base. A §3.1 base is 1 to 6 bars each within 1 ATR, and the 2021–24 range was many wide months. The range shows instead as weekly multi-touch levels at 639, 682, 707, 730, 768, 780, 820, 835 and 861, plus an active weekly EQL at 681.77 (swing lows in 2022, 2024 and 2026). v1 is not changed for this; slice 6's families decide whether `levels` shows the range.
-  - [ ] Slice 4: period pivots (§4)
+  - [x] Slice 4, period pivots (11-08): `core/market_map/pivots.py`, definitions §4 for week, month, quarter (labelled not Ochoa) and year.
+    - **Levels:** floor pivots to R4/S4, CPR and Camarilla to H5/L5, the hidden layers only when the Camarilla width reads wide, and the previous period's high and low.
+    - **Readings:** width % and the percentile among the last 20 periods (at least 8), the two-period relationship with Ochoa's bias for CPR and for Camarilla L3–H3, the close half, the close against the CPR in force, and the CPR trend run (W, M).
+    - **Map levels:** each level carries `in_map` per §4 (week and quarter R3/R4/S3/S4, H5/L5 and the hidden layers are shown only).
+    - **Left for slice 5:** money zone and VPOC, their relationships and virgin levels.
+    - HDFCBANK's September 2026 monthly pivots were checked by hand (P 713.3, CPR 711–715.6, H3 727.24). Sweep of 264 random stocks: 0 errors, 0.39 s a stock. The week to 23 Oct read weekly-wide on 60% of stocks (a market-wide one-way week); four other weeks give a normal mix.
   - [ ] Slice 5: profiles and virgin levels, the long profile (§4, §5)
   - [ ] Slice 6: families, strong zones, hot zones, the L1/L2 join, map_read, the HDFCBANK check
   - [ ] Slice 7: price map v2

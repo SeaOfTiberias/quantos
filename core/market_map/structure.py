@@ -54,6 +54,10 @@ def _period(dates: pd.Series, tf: str) -> pd.Series:
         return iso["year"].astype(int).astype(str) + "-W" + iso["week"].astype(int).map("{:02d}".format)
     if tf == "M":
         return dates.dt.strftime("%Y-%m")
+    if tf == "Q":
+        return dates.dt.year.astype(str) + "-Q" + dates.dt.quarter.astype(str)
+    if tf == "Y":
+        return dates.dt.year.astype(str)
     return dates.dt.strftime("%Y-%m-%d")
 
 
@@ -62,8 +66,8 @@ def period_of(d: date, tf: str) -> str:
 
 
 def resample(daily: pd.DataFrame, tf: str) -> pd.DataFrame:
-    """Daily bars (date, o, h, l, c, vol) -> bars on `tf` (D, W = ISO week, M = calendar
-    month): open first, high max, low min, close last, volume sum. Columns: period, start,
+    """Daily bars (date, o, h, l, c, vol) -> bars on `tf` (D, W = ISO week, M, Q, Y =
+    calendar month, quarter, year): open first, high max, low min, close last, volume sum. Columns: period, start,
     date (the period's last session), o, h, l, c, vol."""
     d = daily.sort_values("date").reset_index(drop=True)
     p = _period(d["date"], tf)
@@ -310,6 +314,8 @@ def l1_read(daily: pd.DataFrame, as_of: date) -> dict:
         if tf in ("M", "W"):
             for v in zn.tf_zones(bars, r, tf).values():
                 zs += v
+    from core.market_map import pivots as pv
+    out["pivots"] = pv.all_pivots({tf: completed(seg, tf, as_of) for tf in pv.PERIODS})
     out["price"] = price
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})
@@ -362,4 +368,7 @@ def lines(l1: dict) -> list[str]:
         out.append(f"     zones (untested) below: {'; '.join(map(_zfmt, below)) or 'none'} | "
                    f"above: {'; '.join(map(_zfmt, above)) or 'none'}"
                    + (f" | inside: {'; '.join(map(_zfmt, inside))}" if inside else ""))
+    if l1.get("pivots"):
+        from core.market_map import pivots as pv
+        out += pv.lines(l1["pivots"], l1.get("price"))
     return out
