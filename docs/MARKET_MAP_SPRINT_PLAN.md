@@ -205,6 +205,18 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [ ] S2b screens: built and deployed 4ddbd23, nginx `/map` added by hand. On the VM, 2 of 3 done checks pass: `GET /map/HDFCBANK` serves the 11-02 map (27 zones, 6 strong, all "failed its test", banner layers), and the trade check on the 10-23 short (678 / stop 690 / target 660) flags "stop 690 is inside the strong zone 688.77–693". **Open:** the Ideas page shows a frozen read only for ideas logged since 11-03, and none has been logged on the VM yet (verified locally on a synthetic idea). Tick when the first real idea is logged and shows its read.
 - [x] S4 definitions + signal pre-registration: **v1 FROZEN 11-05** (0067700; Ochoa Ch. 3–11 checked, 4bc7f17..bb65366, user's R3/S3 choice 39c089c). Signal pre-registration **APPROVED 11-06** (`docs/MARKET_MAP_SIGNAL_PREREG_2026-11-05.md`): 9 hypotheses, mirrored width-matched placebos, side-balanced, Holm. Golden-set charts still to come: filed, not scored, until S5.
 - [ ] S5 L1 stock HTF + SMC
+  - [x] Slice 1, data (72ceb28, 7860f18; deployed 11-07):
+    - **Store:** `core/market_map/l1_store.py`, one CSV per stock in `~/.quantos/l1_store` on the VM. It holds 3,793 stocks from 2010, adjusted when read. Its adjusted closes and segments match the techno-funda panel exactly on 300 sampled stocks.
+    - **Refresh:** `quantos-l1-refresh.timer` runs at 14:00 UTC (19:30 IST) on weekdays and is enabled. Each run adds the day's NSE prices, the PR-bundle splits and bonuses, the renames, and the top 500, which now leaves out NSE's ETF list.
+    - **First run:** it added 26 Oct to 6 Nov, 29 corporate actions (24 Jun to 6 Nov) and 2 renames.
+    - **Fyers check:** 494 of the top 500 agree. The 6 that don't (VEDL, HEGAM, GUJENERGY, HCC, ADANIENT, GENUSPOWER) are demergers and rights issues, which v1 §0 doesn't adjust (splits and bonuses only).
+  - [ ] Slice 2: W/M bars, swings, BOS/CHoCH, alignment
+  - [ ] Slice 3: zones (§3)
+  - [ ] Slice 4: period pivots (§4)
+  - [ ] Slice 5: profiles and virgin levels, the long profile (§4, §5)
+  - [ ] Slice 6: families, strong zones, hot zones, the L1/L2 join, map_read, the HDFCBANK check
+  - [ ] Slice 7: price map v2
+  - [ ] Slice 8: fidelity test (needs the golden-set charts)
 - [ ] S6 L0 market map + brief
 - [ ] S6b layer F: fundamentals + ownership
 - [ ] S7 situations + verdict + pre-registrations
