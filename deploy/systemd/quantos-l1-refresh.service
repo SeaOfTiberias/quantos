@@ -9,5 +9,5 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_l1_refresh.py
 Environment=HOME=/home/ubuntu
-TimeoutStartSec=30min
+TimeoutStartSec=2h
 Nice=10

@@ -14,6 +14,9 @@ Data only: no orders, no alerts, no change to any live job.
   6. On Fridays (or with --fyers-check): Fyers' adjusted daily closes against the store's,
      over the last year, for the top 500. A missed or wrong split shows as a step in the
      ratio between the two.
+  7. 5-minute bars (scripts/fetch_m5.py, slice 5b): first a backfill of any symbol not yet
+     backfilled (new entrants to the top 500, earlier failures), then the day's top-up.
+     A Fyers failure is reported; it doesn't stop the job.
 
 Usage (VM):
   .venv/bin/python scripts/run_l1_refresh.py
@@ -113,6 +116,8 @@ def main(argv=None) -> int:
                     help="re-read PR bundles from this date (the first run fills the gap after 2026-06-24)")
     ap.add_argument("--fyers-check", action="store_true")
     ap.add_argument("--config", default="agent/config.yaml")
+    ap.add_argument("--no-m5", action="store_true", help="skip the 5-minute bars")
+    ap.add_argument("--extra", default="HDFCBANK,SUPREMEIND", help="5-minute bars for these too (the golden set)")
     a = ap.parse_args(argv)
 
     store = Store(a.root)
@@ -185,6 +190,14 @@ def main(argv=None) -> int:
             report["fyers_check"] = fyers_check(store, syms, acts, a.config)
         except Exception as e:
             report["fyers_check"] = [dict(status="not_run", error=str(e)[:200])]
+    # 7. 5-minute bars
+    if not a.no_m5:
+        from scripts import fetch_m5
+        try:
+            args = ["--config", a.config, "--extra", a.extra] + (["--root", str(a.root)] if a.root else [])
+            report["m5"] = dict(backfill=fetch_m5.main(["--backfill"] + args), topup=fetch_m5.main(args))
+        except Exception as e:
+            report["m5"] = dict(status="not_run", error=str(e)[:200])
     rp = store.root / "reports" / f"{last.isoformat()}.json"
     rp.parent.mkdir(parents=True, exist_ok=True)
     rp.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
