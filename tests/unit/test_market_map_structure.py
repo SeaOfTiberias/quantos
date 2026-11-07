@@ -134,5 +134,17 @@ def test_map_read_carries_the_l1_read_from_the_store(tmp_path):
     assert mr.l1_for("XYZ", date(2026, 6, 1), st)["error"].startswith("XYZ is not in")
     txt = s.lines(l1)
     assert txt[0].startswith("L1   structure (untested") and len(txt) >= 9
-    assert "zones (untested)" in txt[4] and "pivots (untested" in txt[5] and "pivot levels below" in txt[6]
+    for part in ("zones (untested)", "HTF strong zones (untested", "hot zones (Ochoa", "pivots (untested",
+                 "pivot levels below", "profiles (untested", "long profile"):
+        assert any(part in ln for ln in txt), part
     assert s.lines({"error": "no store"}) == ["L1   none (no store)"]
+
+
+def test_join_checks_flag_a_close_mismatch_and_a_recent_split():
+    rd = dict(close=101.0, l1=dict(price=100.0, last_date="2026-11-06",
+                                   actions_l2_window=[dict(ex="2026-06-01", purpose="BONUS 1:1")]))
+    j = mr.join_checks(rd)
+    assert not j["close_check"]["ok"] and len(j["flags"]) == 2 and "BONUS 1:1 ex 2026-06-01" in j["flags"][1]
+    rd["close"] = 100.3
+    assert mr.join_checks(rd)["close_check"]["ok"]
+    assert mr.join_checks(dict(close=1, l1=dict(error="x")))["flags"] == []

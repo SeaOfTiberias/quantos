@@ -300,7 +300,7 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
            "history_from": seg["date"].iat[0].date().isoformat() if len(seg) else None,
            "segment_break": bool(len(seg) < len(daily))}
     from core.market_map import zones as zn             # zones builds on this module
-    tfs, zs = {}, []
+    tfs, zs, swings_all = {}, [], {}
     dbars = completed(seg, "D", as_of)
     price = float(dbars["c"].iat[-1]) if len(dbars) else None
     for tf in TFS:
@@ -314,6 +314,7 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
         if tf in ("M", "W"):
             for v in zn.tf_zones(bars, r, tf).values():
                 zs += v
+            swings_all[tf] = [(w.kind, w.label, w.price, bars["period"].iat[w.i]) for w in r.swings]
     from core.market_map import pivots as pv
     out["pivots"] = pv.all_pivots({tf: completed(seg, tf, as_of) for tf in pv.PERIODS})
     from core.market_map import profiles as pf
@@ -324,6 +325,16 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})
     out["zones"] = zs
+    from core.market_map import htf
+    atr_w = tfs.get("W", {}).get("atr")
+    els = htf.elements(out, swings_all)
+    allz = htf.htf_zones(els, atr_w)
+    strong = [z for z in allz if z["strong"]]
+    out["htf"] = dict(status=UNTESTED, source=htf.SOURCE, atr_w=atr_w,
+                      width=round(htf.HTF_ATR * atr_w, 2) if atr_w else None,
+                      n_elements=len(els), n_zones=len(allz),
+                      strong=[htf.compact(z) for z in strong],
+                      hot=htf.hot_zones(els, atr_w, out, strong))
     return out
 
 
@@ -372,6 +383,17 @@ def lines(l1: dict) -> list[str]:
         out.append(f"     zones (untested) below: {'; '.join(map(_zfmt, below)) or 'none'} | "
                    f"above: {'; '.join(map(_zfmt, above)) or 'none'}"
                    + (f" | inside: {'; '.join(map(_zfmt, inside))}" if inside else ""))
+    if l1.get("htf") and l1.get("price") is not None:
+        from core.market_map import htf
+        n = htf.nearest_strong(l1["htf"]["strong"], l1["price"])
+        f = (lambda z: f"{z['low']:g}-{z['high']:g} [{'+'.join(z['families'])}] ({z['why']})" if z else "none")
+        out.append(f"     HTF strong zones (untested; >=2 families within {l1['htf']['width']}): "
+                   f"below {f(n['below'])} | above {f(n['above'])}" + (f" | inside {f(n['inside'])}" if n["inside"] else ""))
+        hot = l1["htf"]["hot"]
+        g = "; ".join(f"{x['tf']} {x['member']} {x['price']:g}" + (f" {x['direction']}" if x["direction"] else "")
+                      for x in hot["gpz"])
+        out.append(f"     hot zones (Ochoa, recorded only): {len(hot['dpz'])} DPZ, "
+                   f"{sum(x['mtz'] for x in hot['dpz'])} multi-timeframe; GPZ: {g or 'none'}")
     if l1.get("pivots"):
         from core.market_map import pivots as pv
         out += pv.lines(l1["pivots"], l1.get("price"))

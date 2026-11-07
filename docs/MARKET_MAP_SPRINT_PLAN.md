@@ -231,7 +231,13 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - **Weekly money zone:** TPOs from 30-minute brackets of 5-minute bars, as in the book. A week needs 5-minute bars for every session. The weekly VPOC, relationships and virgin levels are as for the month.
     - **Backfill (started 11-08 01:20 IST):** top 500 plus HDFCBANK and SUPREMEIND, ~15 s and ~2.3 MB a stock. The first pass lost about 20 symbols to `no_data` before listing (fixed in 31afa99) and 3 to one minute over Fyers' rate limit. A second pass starts automatically when the first ends.
     - **Tick when:** the second pass reports 0 failures.
-  - [ ] Slice 6: families, strong zones, hot zones, the L1/L2 join, map_read, the HDFCBANK check
+  - [x] Slice 6, HTF zones (11-08): `core/market_map/htf.py`, definitions §6 and §6.1.
+    - **Elements:** every L1 element as a point (a band contributes its two edges), with tf, family, kind and period.
+    - **Clustering:** the existing map's rule at 0.3 ATR(W). Strong = 2 or more families.
+    - **Hot zones:** DPZ and MTZ clusters of §4 levels, and GPZs, recorded beside the families.
+    - **L1/L2 join in `map_read`:** price sources named; the Fyers close is checked against the bhavcopy close; a split or bonus inside L2's 365-day lookback is flagged. Moving L2's week and month pivots out of L2 is part of price map v2 (slice 7). The map page's banner says L1 is in the levels read and not yet drawn.
+    - **Finding (reported, rule unchanged):** v1's strong flag barely selects. Across 79 stocks the median share of HTF zones that are strong is 73% (p10 47%, p90 88%), with a median of 11 strong zones within 3 ATR(W) of price, which is close to continuous cover. HDFCBANK: 50 of 59. The §9 fidelity test and the S8 signal test decide whether that matters; any change is v2.
+    - **HDFCBANK done check, as at 2026-10-23 (illustration):** "strong low near 665": yes, a 5-family strong zone at 669–682.5 (22 members, including the active weekly EQL 681.77) and one at 652–664.4. "640–840 base": **not as one zone**. v1 shows the range as an unbroken ladder of strong 10–15-point zones from 600 to 887. The wording of this check is the user's call.
   - [ ] Slice 7: price map v2
   - [ ] Slice 8: fidelity test (needs the golden-set charts)
 - [ ] S6 L0 market map + brief

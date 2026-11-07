@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -34,6 +34,8 @@ from core.price_map.levels import IST, _d, first_obstacle
 
 MAPS_DIR = Path.home() / ".quantos" / "price_maps"   # = scripts/price_map.py OUT
 MAX_AGE_DAYS = 7                                       # = run_position_manager.MAP_MAX_AGE_DAYS
+L2_LOOKBACK_DAYS = 365                                 # = build(): market.daily(symbol, 365)
+CLOSE_TOL = 0.005                                      # Fyers vs bhavcopy close, L1/L2 join check
 INTRADAY_DAYS = 99                                     # Fyers allows 100 days of 5-minute bars
 UNTESTED = "untested"
 FAILED = "failed its test"
@@ -44,7 +46,8 @@ NOTE = ("Zones mark where price did business and turned. In the 2026-11-04 test 
 # What the map is built from and what it lacks, for every screen that draws it (docs/MARKET_MAP_SCREENS.md rule 3).
 LAYERS = {"shown": ["daily swings (last year)", f"5-minute volume profile (last {INTRADAY_DAYS} days)",
                     "pivots (last day, week, month)"],
-          "missing": ["higher-timeframe structure and multi-year zones (S5)", "market backdrop (S6)",
+          "missing": ["higher-timeframe (L1) zones drawn on this page: L1 is in the levels read, untested (S5)",
+                      "market backdrop (S6)",
                       "fundamentals (S6b)"]}
 
 
@@ -155,6 +158,8 @@ def lines(rd: dict) -> list[str]:
         out += [f"     ! {f}" for f in t["flags"]]
     if "l1" in rd:
         out += structure.lines(rd["l1"])
+    for f in (rd.get("join") or {}).get("flags", []):
+        out.append(f"     ! join: {f}")
     return out
 
 
@@ -220,6 +225,7 @@ def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = 
             if zones:
                 rd.update(zones=ladder(m, rd["price"]), zone_width=m.get("zone_width"), layers=LAYERS)
             rd["l1"] = l1_for(sym, as_of or datetime.now(IST).date(), l1_store)
+            rd["join"] = join_checks(rd)
         return rd
     except Exception as e:                                   # a read must never break the tool it serves
         return {"symbol": sym, "error": f"{type(e).__name__}: {str(e)[:160]}"}
@@ -235,9 +241,36 @@ def l1_for(symbol: str, as_of: date, store: Any = None) -> dict:
             return {"error": f"{symbol} is not in the L1 store at {st.root}"}
         from core.market_map.m5_store import M5Store
         m5 = M5Store(st.root).adjusted(symbol, adj, st.actions().get(symbol, []))
-        return structure.l1_read(adj, as_of, m5 if len(m5) else None)
+        rd = structure.l1_read(adj, as_of, m5 if len(m5) else None)
+        lo = (as_of - timedelta(days=L2_LOOKBACK_DAYS)).isoformat()
+        rd["actions_l2_window"] = [a for a in st.actions().get(symbol, []) if lo <= a["ex"] < as_of.isoformat()]
+        rd["last_date"] = adj["date"][adj["date"] < str(as_of)].iat[-1].date().isoformat()
+        return rd
     except Exception as e:
         return {"error": f"{type(e).__name__}: {str(e)[:160]}"}
+
+
+def join_checks(rd: dict) -> dict:
+    """L1/L2 join (sprint plan S5): L1 owns the week/month/quarter/year levels, built from
+    the NSE bhavcopy; L2 is the price map from Fyers' daily and 5-minute bars. Checks that
+    the two sources agree on the last close, and flags a split or bonus inside L2's lookback
+    (L2's older levels then rest on Fyers' own adjustment)."""
+    l1 = rd.get("l1") or {}
+    out = dict(l1_source="NSE bhavcopy (adjusted), L1 store", l2_source="Fyers daily + 5-minute (price map)",
+               flags=[])
+    if "error" in l1:
+        return out
+    if l1.get("price") is not None and rd.get("close"):
+        diff = abs(rd["close"] - l1["price"]) / l1["price"]
+        out["close_check"] = dict(l2_close=rd["close"], l1_close=l1["price"], l1_date=l1.get("last_date"),
+                                  ok=diff <= CLOSE_TOL)
+        if diff > CLOSE_TOL:
+            out["flags"].append(f"Fyers close {rd['close']:g} vs bhavcopy {l1['price']:g} ({l1.get('last_date')}): "
+                                f"{diff:.1%} apart (dates may differ, or a corporate action)")
+    for a in l1.get("actions_l2_window", []):
+        out["flags"].append(f"{a['purpose']} ex {a['ex']} inside L2's {L2_LOOKBACK_DAYS}-day lookback: "
+                            "L2 levels before it rest on Fyers' adjustment")
+    return out
 
 
 def live_market():
