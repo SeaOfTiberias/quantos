@@ -233,7 +233,9 @@ def l1_for(symbol: str, as_of: date, store: Any = None) -> dict:
         adj, _ = st.adjusted(symbol)
         if adj.empty:
             return {"error": f"{symbol} is not in the L1 store at {st.root}"}
-        return structure.l1_read(adj, as_of)
+        from core.market_map.m5_store import M5Store
+        m5 = M5Store(st.root).adjusted(symbol, adj)
+        return structure.l1_read(adj, as_of, m5 if len(m5) else None)
     except Exception as e:
         return {"error": f"{type(e).__name__}: {str(e)[:160]}"}
 

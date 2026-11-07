@@ -88,3 +88,35 @@ def test_read_leaves_out_the_current_month_and_labels_q_and_y():
     assert "not Ochoa" in pr["periods"]["Q"]["note"] and "not Ochoa" not in pr["periods"]["M"]["note"]
     assert all(v["filled"] is None for v in pr["virgin"])
     assert pr["long"]["750"] is not None
+
+
+def _m5(days, px=100.0):
+    rows = []
+    for d in days:
+        for i in range(75):                                         # 09:15 .. 15:25 IST
+            t = pd.Timestamp(d) + pd.Timedelta(hours=9, minutes=15 + 5 * i)
+            lo = px + (i // 6)                                      # a new 30-minute bracket every 6 bars
+            rows.append((t, lo, lo + 0.5, 1000.0))
+    m = pd.DataFrame(rows, columns=["dt", "l", "h", "vol"])
+    m["o"] = m["c"] = m["l"]
+    m["date"] = m["dt"].dt.normalize()
+    return m
+
+
+def test_brackets_are_30_minutes_from_0915():
+    br = pf.brackets(_m5(["2026-01-05"]))
+    assert len(br) == 13 and list(br["bracket"][:3]) == [0, 1, 2]
+    assert (br["l"].iat[0], br["h"].iat[0], br["l"].iat[1]) == (100.0, 100.5, 101.0)
+
+
+def test_weekly_profile_needs_5_minute_bars_for_every_session():
+    days = pd.bdate_range("2025-12-01", "2026-01-16")
+    daily = pd.DataFrame({"date": days, "o": 100.0, "h": 113.0, "l": 100.0, "c": 106.0, "vol": 1})
+    full = _m5(pd.bdate_range("2026-01-05", "2026-01-09"))
+    w = pf.weekly_profiles(daily, full, date(2026, 1, 14))
+    assert [x["period"] for x in w] == ["2026-W02"]                    # other weeks have no 5-minute bars
+    assert w[0]["mz"]["VAL"] <= w[0]["mz"]["POC"] <= w[0]["mz"]["VAH"]
+    part = full[full["date"] != pd.Timestamp("2026-01-07")]
+    assert pf.weekly_profiles(daily, part, date(2026, 1, 14)) == []     # a session without 5-minute bars
+    pr = pf.read(daily, date(2026, 1, 14), 106.0, full)
+    assert pr["periods"]["W"]["from_period"] == "2026-W02" and "30-minute" in pr["periods"]["W"]["note"]

@@ -292,7 +292,7 @@ def latest_segment(adj: pd.DataFrame) -> pd.DataFrame:
     return adj.reset_index(drop=True)
 
 
-def l1_read(daily: pd.DataFrame, as_of: date) -> dict:
+def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None) -> dict:
     """The L1 structure read for day `as_of` from adjusted daily bars (date, o, h, l, c, vol;
     seg if present)."""
     seg = latest_segment(daily)
@@ -317,7 +317,9 @@ def l1_read(daily: pd.DataFrame, as_of: date) -> dict:
     from core.market_map import pivots as pv
     out["pivots"] = pv.all_pivots({tf: completed(seg, tf, as_of) for tf in pv.PERIODS})
     from core.market_map import profiles as pf
-    out["profiles"] = pf.read(seg, as_of, price) if len(seg) else None
+    if m5 is not None and len(m5) and len(seg):
+        m5 = m5[m5["date"] >= seg["date"].iat[0]]
+    out["profiles"] = pf.read(seg, as_of, price, m5) if len(seg) else None
     out["price"] = price
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})

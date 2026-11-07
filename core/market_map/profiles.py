@@ -2,7 +2,12 @@
 L1 profiles from daily bars (sprint plan S5, slice 5a; docs/MARKET_MAP_DEFINITIONS.md v1
 §4 "Two profiles per period" and "Virgin money-zone levels", and §5): month, quarter and
 year profiles, their virgin levels, and the long 250/750-session composite. The weekly
-profile needs 5-minute bars and comes in slice 5b.
+profile (slice 5b) is built from 5-minute bars, as below.
+
+Week (§4, Ochoa's own method): money-zone TPOs from 30-minute brackets (from 09:15 IST) of
+5-minute bars, the VPOC from 5-minute volume. A week gets a profile only when every session
+the daily store holds for it has 5-minute bars (v1's own rule: a partial week would give a
+lopsided profile); Fyers' 5-minute history starts 2017-12-01.
 
 Two profiles per period (§4):
   money zone (Ochoa's, price-based): one TPO per daily bar at every bucket it traded. This
@@ -52,7 +57,8 @@ from core.market_map import structure as st
 from core.price_map.build import step_for
 from core.price_map.levels import SHELF_X, VALUE_SHARE, profile, shelves, value_area
 
-PERIODS = ("M", "Q", "Y")
+PERIODS = ("W", "M", "Q", "Y")
+BRACKET_MIN = 30
 LONG = (250, 750)
 LVN_X = 0.5
 APPROX = "approximation (daily bars)"
@@ -145,6 +151,49 @@ def period_profiles(daily: pd.DataFrame, tf: str, as_of) -> list[dict]:
     return out
 
 
+def brackets(m5: pd.DataFrame) -> pd.DataFrame:
+    """30-minute brackets from 09:15 IST (Ochoa's TPO segments, Ch. 3): one row per
+    session and bracket with its high and low."""
+    mins = ((m5["dt"].dt.hour * 60 + m5["dt"].dt.minute - (9 * 60 + 15)) // BRACKET_MIN).rename("bracket")
+    g = m5.groupby([m5["date"], mins], sort=True).agg(h=("h", "max"), l=("l", "min"))
+    return g.reset_index()
+
+
+def weekly_profiles(daily: pd.DataFrame, m5: Optional[pd.DataFrame], as_of) -> list[dict]:
+    """§4 weekly money zone (TPOs from 30-minute brackets of 5-minute bars) and weekly VPOC
+    (5-minute volume), for every completed week whose sessions all have 5-minute bars."""
+    if m5 is None or m5.empty:
+        return []
+    d = daily[daily["date"] < pd.Timestamp(as_of)].reset_index(drop=True)
+    if d.empty:
+        return []
+    atr_d = st.atr(d)
+    cur = st.period_of(as_of, "W")
+    m5 = m5[m5["date"] < pd.Timestamp(as_of)]
+    m5_by_day = dict(tuple(m5.groupby("date", sort=False)))
+    out = []
+    for p, idx in d.groupby(st._period(d["date"], "W"), sort=False).indices.items():
+        if p == cur:
+            continue
+        days = list(d["date"].iloc[idx])
+        if any(x not in m5_by_day for x in days):
+            continue                                   # 5-minute bars missing for a session
+        a = atr_d[idx[-1]]
+        if np.isnan(a) or a <= 0:
+            continue
+        step = step_for(float(a))
+        bars = pd.concat([m5_by_day[x] for x in days])
+        br = brackets(bars)
+        hi, lo = float(bars["h"].max()), float(bars["l"].min())
+        mz = money_zone(tpo(br, step), (hi + lo) / 2, step)
+        vp = value_area(vol_profile(bars, step))
+        if not mz or not vp:
+            continue
+        out.append(dict(tf="W", period=p, end_i=int(idx[-1]), step=step,
+                        mz=dict(POC=mz[0], VAL=mz[1], VAH=mz[2]), vol=dict(POC=vp[0], VAL=vp[1], VAH=vp[2])))
+    return out
+
+
 def _va_reading(profs: list[dict], kind: str) -> dict:
     cur = profs[-1][kind]
     w = np.array([(p[kind]["VAH"] - p[kind]["VAL"]) / p[kind]["POC"] * 100 if p[kind]["POC"] else np.nan
@@ -232,25 +281,27 @@ def long_profile(daily: pd.DataFrame, as_of, n: int, atr_now: float) -> Optional
                 lvn=[dict(lo=a, hi=b, family="imbalance") for a, b in lvn])
 
 
-def read(daily: pd.DataFrame, as_of, price: Optional[float]) -> dict:
-    """The profile part of the L1 read."""
+def read(daily: pd.DataFrame, as_of, price: Optional[float], m5: Optional[pd.DataFrame] = None) -> dict:
+    """The profile part of the L1 read. `m5` = adjusted 5-minute bars (M5Store.adjusted);
+    without them there is no weekly profile."""
     d = daily[daily["date"] < pd.Timestamp(as_of)].reset_index(drop=True)
     a = st.atr(d) if len(d) else np.array([])
     atr_now = float(a[-1]) if len(a) and not np.isnan(a[-1]) else None
     periods, virgins = {}, []
     for tf in PERIODS:
-        profs = period_profiles(daily, tf, as_of)
+        profs = weekly_profiles(daily, m5, as_of) if tf == "W" else period_profiles(daily, tf, as_of)
         if not profs:
             continue
         last = profs[-1]
-        periods[tf] = dict(tf=tf, from_period=last["period"], step=last["step"],
-                           note="v1's own adaptation (daily-bar TPOs)" + ("; not Ochoa" if tf in ("Q", "Y") else ""),
+        note = ("TPOs from 30-minute brackets of 5-minute bars (Ochoa's method)" if tf == "W" else
+                "v1's own adaptation (daily-bar TPOs)" + ("; not Ochoa" if tf in ("Q", "Y") else ""))
+        periods[tf] = dict(tf=tf, from_period=last["period"], step=last["step"], note=note,
                            money_zone=_va_reading(profs, "mz"), volume=_va_reading(profs, "vol"))
-        if tf == "M":
+        if tf in ("W", "M"):
             periods[tf]["vpoc"] = vpoc_relationship(profs)
         virgins += virgin_levels(daily, profs, as_of, price, atr_now)
     return dict(periods=periods, virgin=[v for v in virgins if v["filled"] is None],
-                filled_recent=[v for v in virgins if v["filled"] and v["age_periods"] <= 12 and v["tf"] == "M"],
+                filled_recent=[v for v in virgins if v["filled"] and v["age_periods"] <= 12 and v["tf"] in ("W", "M")],
                 long={str(n): long_profile(daily, as_of, n, atr_now) for n in LONG})
 
 
@@ -264,10 +315,10 @@ def lines(pr: dict, price: Optional[float]) -> list[str]:
         m, v = p["money_zone"], p["volume"]
         rel = f", {m['relationship']}" if m.get("relationship") else ""
         w = f", {m['width']}" if m.get("width") else ""
-        parts.append(f"{tf}{'*' if tf != 'M' else ''} MZ POC {m['POC']:g} VA {m['VAL']:g}-{m['VAH']:g}{w}{rel}"
+        parts.append(f"{tf}{'*' if tf in ('Q', 'Y') else ''} MZ POC {m['POC']:g} VA {m['VAL']:g}-{m['VAH']:g}{w}{rel}"
                      f" / VPOC {v['POC']:g}")
     if parts:
-        out.append("     profiles (untested; daily-bar TPOs, *not Ochoa): " + "; ".join(parts))
+        out.append("     profiles (untested; W from 5-min, M/Q/Y daily-bar TPOs, *not Ochoa): " + "; ".join(parts))
     w = [x for x in pr["virgin"] if x["watch"]]
     if w and price is not None:
         w.sort(key=lambda x: abs(x["price"] - price))
