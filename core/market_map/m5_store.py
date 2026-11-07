@@ -32,6 +32,7 @@ import pandas as pd
 IST = ZoneInfo("Asia/Kolkata")
 COLS = ["ts", "o", "h", "l", "c", "vol"]
 DEFAULT_BASIS = "2026-11-07"
+IST_OFFSET = 5 * 3600 + 30 * 60
 
 
 class M5Store:
@@ -93,7 +94,7 @@ class M5Store:
         if not parts:
             return pd.DataFrame(columns=COLS + ["dt"])
         df = pd.concat(parts).drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True)
-        df["dt"] = pd.to_datetime(df["ts"], unit="s", utc=True).dt.tz_convert(IST).dt.tz_localize(None)
+        df["dt"] = pd.to_datetime(df["ts"].to_numpy(np.int64) + IST_OFFSET, unit="s")   # IST has no DST
         return df
 
     def adjusted(self, sym: str, daily_adj: pd.DataFrame, actions: list[dict]) -> pd.DataFrame:

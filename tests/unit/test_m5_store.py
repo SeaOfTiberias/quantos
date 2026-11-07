@@ -59,3 +59,14 @@ def test_fetch_raises_when_any_request_fails():
         assert False
     except RuntimeError:
         pass
+
+
+def test_a_no_data_window_before_the_listing_is_empty_not_a_failure():
+    class B:
+        def get_historical_data(self, sym, tf, s, e):
+            if s.year < 2018:
+                raise RuntimeError("History fetch failed: {'candles': [], 'message': '', 's': 'no_data'}")
+            return [_bar(e, 10.0)]
+    s = datetime(2017, 12, 1, tzinfo=timezone.utc)
+    rows = job.fetch(B(), "NEWCO", s, s + timedelta(days=200), sleep=lambda x: None)
+    assert len(rows) == 2

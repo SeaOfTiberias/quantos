@@ -56,7 +56,12 @@ def fetch(broker, sym: str, start: datetime, end: datetime, sleep=time.sleep):
     """All bars in [start, end] as one frame; raises if any request fails."""
     frames = []
     for s, e in chunks(start, end):
-        bars = broker.get_historical_data(f"NSE:{sym}-EQ", "5m", s, e) or []
+        try:
+            bars = broker.get_historical_data(f"NSE:{sym}-EQ", "5m", s, e) or []
+        except Exception as ex:
+            if "no_data" not in str(ex):
+                raise
+            bars = []                        # a window before the listing: Fyers says no_data
         frames.append(bars_frame(bars))
         sleep(PAUSE)
     import pandas as pd
