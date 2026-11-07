@@ -216,6 +216,14 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 
 _Dated notes on anything a session changed for later sessions._
 
+- **2026-11-07 (S5 start, intraday data for the weekly profile):**
+  - The weekly money zone and volume profile (definitions §4) use Fyers 5-minute bars, fetched on the VM in chunks of up to 100 days. Fyers' "100 days" is the limit **per request**, not the depth. Probed on HDFCBANK and SUPREMEIND: full weeks (375 bars) back to January 2018. Intraday history starts on **2017-12-01**; earlier start dates are refused (code −50).
+  - So weekly profiles exist from December 2017, and the definitions are unchanged (they name 5-minute bars). Weekly profile records start there; month, quarter and year profiles come from daily bhavcopy bars from 2010.
+  - Also checked, not used:
+    - **TradingView** caps intraday history at about 5,900 bars: 30-minute bars back to 2025-01-01, 5-minute bars to late July 2026. It is PC-only.
+    - **Breeze** has no history client in the repo.
+  - VM memory is 956 MB, so the 1.7 GB techno-funda panel can't load there. L1 reads a per-symbol store (slice 1).
+
 - **2026-11-06 (user, closing S4):**
   - **L1 universe:** the top 500 by traded value (the same as the signal test), plus indices (S6), plus any symbol on demand, labelled "outside the tested universe".
   - **Joining L1 and L2:** L1 owns the W/M/Q/Y pivots and L2 keeps the daily ones (part of price map v2); every level carries its price source; L1 levels are shifted by the futures basis for futures positions (S9).
