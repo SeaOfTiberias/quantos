@@ -188,6 +188,9 @@ def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Str
     def event(t, typ, direction, level):
         st.events.append(dict(type=typ, direction=direction, i=t, level=level))
 
+    def prot():                                          # the protected bar set by the last event (§3.3)
+        st.events[-1]["prot_i"] = st.protected.i
+
     for t in range(len(bars)):
         hi, lo = zz.last("H"), zz.last("L")
         up_ok = hi is not None and not hi.broken and c[t] > hi.price
@@ -196,26 +199,26 @@ def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Str
             if up_ok:
                 st.state, st.state_i, brk_i = "up", t, t
                 st.protected = _ext(l, hi.i, t, hi=False)
-                event(t, "BOS", "up", hi.price)
+                event(t, "BOS", "up", hi.price); prot()
             elif dn_ok:
                 st.state, st.state_i, brk_i = "down", t, t
                 st.protected = _ext(h, lo.i, t, hi=True)
-                event(t, "BOS", "down", lo.price)
+                event(t, "BOS", "down", lo.price); prot()
         elif st.state == "up":
             if up_ok:
                 st.protected, brk_i = _ext(l, hi.i, t, hi=False), t
-                event(t, "BOS", "up", hi.price)
+                event(t, "BOS", "up", hi.price); prot()
             elif c[t] < st.protected.price:
                 event(t, "CHoCH", "down", st.protected.price)
-                st.protected = _ext(h, st.protected.i, t, hi=True)
+                st.protected = _ext(h, st.protected.i, t, hi=True); prot()
                 st.state, st.state_i, brk_i = "down", t, t
         else:
             if dn_ok:
                 st.protected, brk_i = _ext(h, lo.i, t, hi=True), t
-                event(t, "BOS", "down", lo.price)
+                event(t, "BOS", "down", lo.price); prot()
             elif c[t] > st.protected.price:
                 event(t, "CHoCH", "up", st.protected.price)
-                st.protected = _ext(l, st.protected.i, t, hi=False)
+                st.protected = _ext(l, st.protected.i, t, hi=False); prot()
                 st.state, st.state_i, brk_i = "up", t, t
         if hi is not None and c[t] > hi.price:
             hi.broken = True
@@ -292,13 +295,48 @@ def l1_read(daily: pd.DataFrame, as_of: date) -> dict:
     out = {"as_of": as_of.isoformat(), "status": UNTESTED,
            "history_from": seg["date"].iat[0].date().isoformat() if len(seg) else None,
            "segment_break": bool(len(seg) < len(daily))}
-    tfs = {}
+    from core.market_map import zones as zn             # zones builds on this module
+    tfs, zs = {}, []
+    dbars = completed(seg, "D", as_of)
+    price = float(dbars["c"].iat[-1]) if len(dbars) else None
     for tf in TFS:
         bars = completed(seg, tf, as_of)
-        tfs[tf] = summary(bars, run(bars, TF_K[tf]), tf) if len(bars) else dict(tf=tf, bars=0, state="none")
+        if not len(bars):
+            tfs[tf] = dict(tf=tf, bars=0, state="none")
+            continue
+        r = run(bars, TF_K[tf])
+        tfs[tf] = summary(bars, r, tf)
+        tfs[tf]["premium_discount"] = zn.premium_discount(tfs[tf], price)
+        if tf in ("M", "W"):
+            for v in zn.tf_zones(bars, r, tf).values():
+                zs += v
+    out["price"] = price
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})
+    out["zones"] = zs
     return out
+
+
+ZONE_NAMES = {"demand": "demand", "supply": "supply", "bull_ob": "bull OB", "bear_ob": "bear OB",
+              "multi_touch": "multi-touch", "EQH": "EQH", "EQL": "EQL"}
+
+
+def nearest_zones(l1: dict, n: int = 2) -> tuple[list[dict], list[dict], list[dict]]:
+    """Valid zones (EQH/EQL only while active): those around the price, then those wholly
+    below and wholly above it, nearest first."""
+    px = l1.get("price")
+    if px is None:
+        return [], [], []
+    zs = [z for z in l1.get("zones", []) if z["kind"] not in ("EQH", "EQL") or z["status"] == "active"]
+    inside = sorted([z for z in zs if z["lo"] <= px <= z["hi"]], key=lambda z: z["hi"] - z["lo"])
+    below = sorted([z for z in zs if z["hi"] < px], key=lambda z: px - z["hi"])
+    above = sorted([z for z in zs if z["lo"] > px], key=lambda z: z["lo"] - px)
+    return inside[:n], below[:n], above[:n]
+
+
+def _zfmt(z: dict) -> str:
+    rng = f"{z['lo']:.2f}-{z['hi']:.2f}" if z["hi"] - z["lo"] > 1e-9 else f"{z['lo']:.2f}"
+    return f"{ZONE_NAMES[z['kind']]} {z['tf']} {rng}"
 
 
 def lines(l1: dict) -> list[str]:
@@ -316,5 +354,12 @@ def lines(l1: dict) -> list[str]:
         pk, wk = ("low", "high") if s["state"] == "up" else ("high", "low")
         out.append(f"     {tf}: {s['state']} for {s['age_bars']} bars; last {e['type']} {e['direction']} "
                    f"{e['period']} at {e['level']:g}; protected {pk} {p['price']:g} ({p['period']}), "
-                   f"weak {wk} {w['price']:g} ({w['period']})")
+                   f"weak {wk} {w['price']:g} ({w['period']})"
+                   + (f"; {s['premium_discount']['side']} {s['premium_discount']['position_pct']:g}%"
+                      if s.get("premium_discount") else ""))
+    if "zones" in l1:
+        inside, below, above = nearest_zones(l1)
+        out.append(f"     zones (untested) below: {'; '.join(map(_zfmt, below)) or 'none'} | "
+                   f"above: {'; '.join(map(_zfmt, above)) or 'none'}"
+                   + (f" | inside: {'; '.join(map(_zfmt, inside))}" if inside else ""))
     return out

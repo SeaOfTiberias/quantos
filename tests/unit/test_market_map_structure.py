@@ -133,5 +133,5 @@ def test_map_read_carries_the_l1_read_from_the_store(tmp_path):
     assert l1["status"] == "untested" and l1["tf"]["W"]["bars"] > 100
     assert mr.l1_for("XYZ", date(2026, 6, 1), st)["error"].startswith("XYZ is not in")
     txt = s.lines(l1)
-    assert txt[0].startswith("L1   structure (untested") and len(txt) == 4
+    assert txt[0].startswith("L1   structure (untested") and len(txt) == 5 and "zones (untested)" in txt[-1]
     assert s.lines({"error": "no store"}) == ["L1   none (no store)"]
