@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from core.price_map.build import build_map, nearest, render, rng, why, zone_at
+from core.market_map import structure
 from core.price_map.levels import IST, _d, first_obstacle
 
 MAPS_DIR = Path.home() / ".quantos" / "price_maps"   # = scripts/price_map.py OUT
@@ -152,6 +153,8 @@ def lines(rd: dict) -> list[str]:
                    f", target {t['target'] if t['target'] is not None else '-'}: first obstacle "
                    + (f"{ob['range']} at {ob['r']:g}R" if ob else "none" if t["r"] else "n/a (no stop, so no R)"))
         out += [f"     ! {f}" for f in t["flags"]]
+    if "l1" in rd:
+        out += structure.lines(rd["l1"])
     return out
 
 
@@ -189,11 +192,14 @@ def save(m: dict, maps_dir: Path = MAPS_DIR) -> None:
 def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = None, *,
              market: Any = None, market_factory: Optional[Callable[[], Any]] = None,
              maps_dir: Optional[Path] = None, max_age_days: float = MAX_AGE_DAYS,
-             daily: Optional[list] = None, price: Optional[float] = None, zones: bool = False) -> dict:
+             daily: Optional[list] = None, price: Optional[float] = None, zones: bool = False,
+             l1_store: Any = None) -> dict:
     """The map read for `symbol`, and for `trade` if given. Never raises: a failure comes back
     as {"symbol", "error"}, which callers that require a read (the idea log) refuse on.
     `market_factory` is called only when a build is needed (no fresh file, or as_of).
-    zones=True adds the whole ladder and the layers shown/missing (the cockpit's map page)."""
+    zones=True adds the whole ladder and the layers shown/missing (the cockpit's map page).
+    rd["l1"] is the L1 structure read (M/W/D state, protected and weak levels, alignment)
+    from the L1 price store (`l1_store`, default ~/.quantos/l1_store), or {"error"}."""
     sym = symbol.strip().upper()
     maps_dir = maps_dir or MAPS_DIR                          # at call time, so tests can move it
     try:
@@ -213,9 +219,23 @@ def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = 
             rd["source"] = source
             if zones:
                 rd.update(zones=ladder(m, rd["price"]), zone_width=m.get("zone_width"), layers=LAYERS)
+            rd["l1"] = l1_for(sym, as_of or datetime.now(IST).date(), l1_store)
         return rd
     except Exception as e:                                   # a read must never break the tool it serves
         return {"symbol": sym, "error": f"{type(e).__name__}: {str(e)[:160]}"}
+
+
+def l1_for(symbol: str, as_of: date, store: Any = None) -> dict:
+    """The L1 structure read from the price store; never raises."""
+    try:
+        from core.market_map.l1_store import Store
+        st = store if store is not None else Store()
+        adj, _ = st.adjusted(symbol)
+        if adj.empty:
+            return {"error": f"{symbol} is not in the L1 store at {st.root}"}
+        return structure.l1_read(adj, as_of)
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {str(e)[:160]}"}
 
 
 def live_market():

@@ -210,7 +210,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - **Refresh:** `quantos-l1-refresh.timer` runs at 14:00 UTC (19:30 IST) on weekdays and is enabled. Each run adds the day's NSE prices, the PR-bundle splits and bonuses, the renames, and the top 500, which now leaves out NSE's ETF list.
     - **First run:** it added 26 Oct to 6 Nov, 29 corporate actions (24 Jun to 6 Nov) and 2 renames.
     - **Fyers check:** 494 of the top 500 agree. The 6 that don't (VEDL, HEGAM, GUJENERGY, HCC, ADANIENT, GENUSPOWER) are demergers and rights issues, which v1 §0 doesn't adjust (splits and bonuses only).
-  - [ ] Slice 2: W/M bars, swings, BOS/CHoCH, alignment
+  - [x] Slice 2, structure (11-07): `core/market_map/structure.py`, definitions §0, §1, §2, §7. ISO-week and calendar-month bars from completed periods only. Swings and the 1-ATR zig-zag run bar by bar, so a test checks that events never change when later bars arrive. BOS/CHoCH, protected and weak levels, age, M/W/D alignment. The choices v1 leaves open are fixed in the module docstring before any golden-set chart. `map_read` adds `l1` (labelled untested) and its lines. Top-500 sweep: 0 errors, about 0.3 s a stock; 25 read from their latest segment. Monthly is `none` only for young listings (24 to 37 months).
+    - HDFCBANK at 2026-10-23 (illustration, not scored): M down since the March 2026 CHoCH below 812.15, protected high 1020.5; W down, protected high 843, weak low 681.9; D up since the 15 Sep CHoCH at 716.5, protected low 681.9. Not aligned: D conflicts.
   - [ ] Slice 3: zones (§3)
   - [ ] Slice 4: period pivots (§4)
   - [ ] Slice 5: profiles and virgin levels, the long profile (§4, §5)
