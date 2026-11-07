@@ -169,24 +169,30 @@ def weekly_profiles(daily: pd.DataFrame, m5: Optional[pd.DataFrame], as_of) -> l
         return []
     atr_d = st.atr(d)
     cur = st.period_of(as_of, "W")
-    m5 = m5[m5["date"] < pd.Timestamp(as_of)]
-    m5_by_day = dict(tuple(m5.groupby("date", sort=False)))
+    m5 = m5[m5["date"] < pd.Timestamp(as_of)].sort_values("dt")
+    br = brackets(m5)                                  # sorted by date, then bracket
+    md, bd = m5["date"].to_numpy(), br["date"].to_numpy()
+    ml, mh, mv = (m5[x].to_numpy(float) for x in ("l", "h", "vol"))
+    bl, bh = br["l"].to_numpy(float), br["h"].to_numpy(float)
+    have = set(np.unique(md).tolist())
     out = []
     for p, idx in d.groupby(st._period(d["date"], "W"), sort=False).indices.items():
         if p == cur:
             continue
-        days = list(d["date"].iloc[idx])
-        if any(x not in m5_by_day for x in days):
+        days = d["date"].to_numpy()[idx]
+        if any(x not in have for x in days.tolist()):
             continue                                   # 5-minute bars missing for a session
         a = atr_d[idx[-1]]
         if np.isnan(a) or a <= 0:
             continue
         step = step_for(float(a))
-        bars = pd.concat([m5_by_day[x] for x in days])
-        br = brackets(bars)
-        hi, lo = float(bars["h"].max()), float(bars["l"].min())
-        mz = money_zone(tpo(br, step), (hi + lo) / 2, step)
-        vp = value_area(vol_profile(bars, step))
+        i0, i1 = np.searchsorted(md, days[0], "left"), np.searchsorted(md, days[-1], "right")
+        j0, j1 = np.searchsorted(bd, days[0], "left"), np.searchsorted(bd, days[-1], "right")
+        lo, hi = float(ml[i0:i1].min()), float(mh[i0:i1].max())
+        t = spread(bl[j0:j1], bh[j0:j1], (np.floor_divide(bh[j0:j1], step) - np.floor_divide(bl[j0:j1], step) + 1),
+                   step)
+        mz = money_zone({k: round(v) for k, v in t.items()}, (hi + lo) / 2, step)
+        vp = value_area(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step))
         if not mz or not vp:
             continue
         out.append(dict(tf="W", period=p, end_i=int(idx[-1]), step=step,

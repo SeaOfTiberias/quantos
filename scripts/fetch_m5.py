@@ -83,6 +83,7 @@ def main(argv=None) -> int:
         print("ERROR: Fyers connect() failed -- refresh the token")
         return 2
     now = datetime.now(timezone.utc)
+    basis = now.date().isoformat()           # Fyers' bars are adjusted up to this day (m5_store)
     state = m5.state()
     todo = [s for s in syms if not (a.backfill and state.get(s, {}).get("backfilled"))]
     if a.limit:
@@ -107,7 +108,7 @@ def main(argv=None) -> int:
             continue
         m5.write(sym, rows)
         last = int(rows["ts"].max()) if len(rows) else st.get("last_ts")
-        m5.set_state(sym, last_ts=last, **({"backfilled": True} if a.backfill else {}))
+        m5.set_state(sym, last_ts=last, **({"backfilled": True, "basis": basis} if a.backfill else {}))
         done += 1
         if a.backfill or i % 50 == 0:
             print(f"[{i}/{len(todo)}] {sym}: {len(rows)} bars, {time.time() - t0:.0f}s", flush=True)

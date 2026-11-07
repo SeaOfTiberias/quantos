@@ -22,8 +22,11 @@ def test_rows_split_by_ist_year_merge_on_rerun_and_adjust_by_date(tmp_path):
     assert sorted(p.name for p in (tmp_path / "m5" / "ABC").iterdir()) == ["2025.csv.gz", "2026.csv.gz"]
     raw = m.read_raw("ABC")
     assert list(raw["c"]) == [101.0, 50.0]
-    daily = pd.DataFrame({"date": pd.to_datetime(["2025-12-31", "2026-01-01"]), "mult": [0.5, 1.0]})
-    adj = m.adjusted("ABC", daily)
+    daily = pd.DataFrame({"date": pd.to_datetime(["2025-12-31", "2026-01-01"])})
+    m.set_state("ABC", basis="2025-12-30")
+    acts = [dict(ex="2025-12-15", factor=0.1),           # before the basis: Fyers already adjusted it
+            dict(ex="2026-01-01", factor=0.5)]           # after: applies to bars before 1 Jan
+    adj = m.adjusted("ABC", daily, acts)
     assert list(adj["c"]) == [50.5, 50.0] and list(adj["vol"]) == [200.0, 100.0]
 
 

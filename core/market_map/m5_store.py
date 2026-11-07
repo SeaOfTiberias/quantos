@@ -4,11 +4,15 @@ weekly money zone comes from 30-minute brackets of 5-minute bars, the weekly VPO
 their volume). Fyers holds 5-minute history from 2017-12-01 (probed 2026-11-07).
 
 Layout under the L1 store root:  m5/<SYM>/<YEAR>.csv.gz   ts,o,h,l,c,vol
-  ts = bar start, Unix seconds (UTC); prices raw, as Fyers sends them.
-  m5/_state.json  {sym: {"last_ts": int, "backfilled": bool}}
+  ts = bar start, Unix seconds (UTC); prices as Fyers sends them.
+  m5/_state.json  {sym: {"last_ts": int, "backfilled": bool, "basis": "YYYY-MM-DD"}}
 
-Adjusted on read with the daily store's multiplier for the bar's date (the same split and
-bonus factors as the daily bars), so both profiles share one price scale.
+Fyers sends 5-minute history already adjusted for every split and bonus up to the day it
+is fetched (checked 2026-11-08 on HDFCBANK: 2018 bars sit at a quarter of the raw price,
+matching the store's adjusted closes). So on read only the actions with an ex-date after
+the symbol's `basis` (its backfill day) are applied, to the bars dated before each
+ex-date: the same factors as the daily store, without adjusting twice. Symbols backfilled
+before `basis` was recorded use DEFAULT_BASIS (the first backfill ran on 2026-11-07 UTC).
 """
 
 from __future__ import annotations
@@ -22,10 +26,12 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import numpy as np
 import pandas as pd
 
 IST = ZoneInfo("Asia/Kolkata")
 COLS = ["ts", "o", "h", "l", "c", "vol"]
+DEFAULT_BASIS = "2026-11-07"
 
 
 class M5Store:
@@ -90,21 +96,26 @@ class M5Store:
         df["dt"] = pd.to_datetime(df["ts"], unit="s", utc=True).dt.tz_convert(IST).dt.tz_localize(None)
         return df
 
-    def adjusted(self, sym: str, daily_adj: pd.DataFrame) -> pd.DataFrame:
-        """5-minute bars on the daily store's adjusted scale: prices times the multiplier of
-        the bar's date (`mult` from Store.adjusted), volume divided by it. Bars on dates the
-        daily store doesn't hold are dropped."""
+    def adjusted(self, sym: str, daily_adj: pd.DataFrame, actions: list[dict]) -> pd.DataFrame:
+        """5-minute bars on the daily store's adjusted scale (see the module note): each
+        action with ex-date after the symbol's basis multiplies the prices of the bars
+        dated before it by its factor (volume divided). Bars on dates the daily store
+        doesn't hold are dropped."""
         df = self.read_raw(sym)
         if df.empty or daily_adj.empty:
             return df
-        mult = pd.Series(daily_adj["mult"].to_numpy(float), index=pd.to_datetime(daily_adj["date"]).dt.normalize())
-        m = df["dt"].dt.normalize().map(mult)
-        df = df[m.notna()].copy()
-        m = m[m.notna()].to_numpy(float)
-        for c in ("o", "h", "l", "c"):
-            df[c] = df[c].to_numpy(float) * m
-        df["vol"] = df["vol"].to_numpy(float) / m
         df["date"] = df["dt"].dt.normalize()
+        df = df[df["date"].isin(pd.to_datetime(daily_adj["date"]).dt.normalize())].copy()
+        basis = pd.Timestamp(self.state().get(sym, {}).get("basis") or DEFAULT_BASIS)
+        mult = np.ones(len(df))
+        dts = df["date"].to_numpy()
+        for a in actions:
+            ex = pd.Timestamp(a["ex"])
+            if ex > basis:
+                mult[dts < ex.to_datetime64()] *= float(a["factor"])
+        for c in ("o", "h", "l", "c"):
+            df[c] = df[c].to_numpy(float) * mult
+        df["vol"] = df["vol"].to_numpy(float) / mult
         return df.reset_index(drop=True)
 
 
