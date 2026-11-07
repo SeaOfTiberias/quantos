@@ -1,0 +1,13 @@
+[Unit]
+Description=QuantOS L1 data refresh -- appends the day's NSE bhavcopy and corporate actions to the L1 price store, refreshes the top-500 list (data only, no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_l1_refresh.py
+Environment=HOME=/home/ubuntu
+TimeoutStartSec=30min
+Nice=10

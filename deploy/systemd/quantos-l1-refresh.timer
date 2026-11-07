@@ -1,0 +1,11 @@
+[Unit]
+Description=L1 data refresh after NSE publishes the day's files, 19:30 IST weekdays
+
+[Timer]
+# 14:00 UTC = 19:30 IST. The VM runs in Etc/UTC. Holidays: NSE has no file (404), the job skips the day.
+# Fridays also run the Fyers cross-check (adjusted closes, last year, top 500).
+OnCalendar=Mon..Fri *-*-* 14:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
