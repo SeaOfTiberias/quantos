@@ -152,10 +152,12 @@ def main(argv=None) -> int:
                              if store.meta().get("pr_through") else last)
     new_actions = []
     for d in [x for x in weekdays_after(pr_from - timedelta(days=1), today)]:
-        rows = nd.pr_day(store.raw, d, chain)
-        if rows is None:
+        got = nd.pr_day(store.raw, d, chain)
+        if got is None:
             continue
+        rows, etfs = got
         new_actions += store.add_actions(rows)
+        store.add_etfs(etfs)
         store.set_meta(pr_through=d.isoformat())
     for x in new_actions:
         print(f"action: {x['sym']} ex {x['ex']} x{x['factor']:.4g} ({x['purpose']})")
@@ -165,7 +167,7 @@ def main(argv=None) -> int:
     store.root.mkdir(parents=True, exist_ok=True)
     store.universe_path.write_text(json.dumps(dict(
         as_of=last.isoformat(), for_session="the session after as_of",
-        rule="EQ on as_of; median traded value of the last 60 sessions; top 500",
+        rule="not on NSE's ETF list; EQ on as_of; median traded value of the last 60 sessions; top 500",
         n=len(uni), rows=uni), indent=0), encoding="utf-8")
 
     # 5. report

@@ -155,15 +155,32 @@ class Store:
         adj, gaps = pr.adjust_symbol(g, lst, _no_ratio, 0.0)
         return adj.drop(columns=["ath", "ath_known"]), gaps
 
+    def etfs(self) -> set[str]:
+        try:
+            return set(json.loads((self.root / "etfs.json").read_text(encoding="utf-8")))
+        except FileNotFoundError:
+            return set()
+
+    def add_etfs(self, syms: Iterable[str]) -> int:
+        have = self.etfs()
+        new = set(syms) - have
+        if new:
+            self.root.mkdir(parents=True, exist_ok=True)
+            _atomic_write(self.root / "etfs.json", json.dumps(sorted(have | new), indent=0))
+        return len(new)
+
     def universe(self, d: date, top_n: int = TOP_N, med_n: int = MED_N) -> list[dict]:
-        """Top `top_n` stocks for the session after `d`: traded in the EQ series on `d`,
+        """Top `top_n` stocks for the session after `d`: not on NSE's ETF list (`etfs()`;
+        the bhavcopy name filter misses liquid funds and many index ETFs), traded in the EQ series on `d`,
         ranked by the median traded value of their last `med_n` sessions up to `d`
         (at least `med_n` of them). The tests rank on D by the 60 sessions before D and
         need EQ on D itself; EQ on D isn't known the evening before, so `d`'s series stands
         in for it."""
         ts = pd.Timestamp(d)
-        rows = []
+        rows, etfs = [], self.etfs()
         for sym in self.symbols():
+            if sym in etfs:
+                continue
             g = self.read_raw(sym)
             if len(g) < med_n or g["date"].iat[-1] != ts or g["series"].iat[-1] != "EQ":
                 continue

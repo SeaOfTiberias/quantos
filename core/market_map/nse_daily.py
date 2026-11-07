@@ -120,6 +120,25 @@ def parse_pr_actions(pr_zip: bytes, chain: SymbolChain) -> list[dict]:
     return out
 
 
-def pr_day(raw_dir: Path, d: date, chain: SymbolChain) -> Optional[list[dict]]:
+def parse_pr_etfs(pr_zip: bytes) -> set[str]:
+    """Symbols on the PR bundle's ETF list (etfDDMMYYYY.csv, column SYMBOL)."""
+    with zipfile.ZipFile(io.BytesIO(pr_zip)) as zf:
+        names = [n for n in zf.namelist() if n.lower().startswith("etf") and n.lower().endswith(".csv")]
+        if not names:
+            return set()
+        text = zf.read(names[0]).decode("latin1")
+    rd = csv.reader(io.StringIO(text))
+    head = [h.strip().upper() for h in next(rd, [])]
+    if "SYMBOL" not in head:
+        raise ValueError(f"unexpected etf header: {head}")
+    i = head.index("SYMBOL")
+    return {r[i].strip() for r in rd if len(r) > i and r[i].strip()}
+
+
+def pr_day(raw_dir: Path, d: date, chain: SymbolChain) -> Optional[tuple[list[dict], set[str]]]:
+    """(splits and bonuses, ETF symbols) from day `d`'s PR bundle, or None if there is none."""
     p = fetch_to(PR_URL.format(d=d), raw_dir / "pr" / f"PR{d:%d%m%y}.zip")
-    return None if p is None else parse_pr_actions(p.read_bytes(), chain)
+    if p is None:
+        return None
+    body = p.read_bytes()
+    return parse_pr_actions(body, chain), parse_pr_etfs(body)

@@ -172,3 +172,19 @@ def test_fyers_ratio_check_flags_a_missed_split_at_its_date():
     res = job.ratio_check(ours, stepped)
     assert res["status"] == "mismatch" and res["step_date"] == dates[25].date().isoformat()
     assert job.ratio_check(ours.head(5), flat)["status"] == "too_few_dates"
+
+
+def test_etfs_on_nse_list_are_left_out_of_the_universe(tmp_path):
+    s = Store(tmp_path)
+    dates = _fill(s, "LIQUIDX", [1000.0] * 60, vals=[9e9] * 60)
+    _fill(s, "STOCK", [10.0] * 60, vals=[1e8] * 60)
+    assert [r["sym"] for r in s.universe(dates[-1].date())] == ["LIQUIDX", "STOCK"]
+    assert s.add_etfs({"LIQUIDX"}) == 1 and s.add_etfs({"LIQUIDX"}) == 0
+    assert [r["sym"] for r in s.universe(dates[-1].date())] == ["STOCK"]
+
+
+def test_pr_bundle_etf_list_reads_the_symbol_column():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("etf06112026.csv", "MARKET,SERIES,SYMBOL,SECURITY\nN,EQ,LIQUIDCASE,Liquid\nN,EQ,MON100,Nasdaq\n")
+    assert nd.parse_pr_etfs(buf.getvalue()) == {"LIQUIDCASE", "MON100"}
