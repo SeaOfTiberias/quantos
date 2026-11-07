@@ -34,7 +34,7 @@ from core.market_map.m5_store import M5Store, bars_frame  # noqa: E402
 
 START = datetime(2017, 12, 1, tzinfo=timezone.utc)
 CHUNK_DAYS = 99
-PAUSE = 0.35                        # seconds between requests: ~170 a minute at most
+PAUSE = 0.15                        # seconds between requests: ~130 a minute measured with the request time
 
 
 def chunks(start: datetime, end: datetime, days: int = CHUNK_DAYS) -> list[tuple[datetime, datetime]]:

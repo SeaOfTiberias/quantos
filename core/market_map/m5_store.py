@@ -66,7 +66,7 @@ class M5Store:
         n = 0
         for y, part in rows.groupby(years):
             old = self._read_year(sym, int(y))
-            m = pd.concat([old, part]).drop_duplicates("ts", keep="last").sort_values("ts")
+            m = (pd.concat([old, part]) if len(old) else part).drop_duplicates("ts", keep="last").sort_values("ts")
             p = self._path(sym, int(y))
             p.parent.mkdir(parents=True, exist_ok=True)
             buf = io.StringIO()
