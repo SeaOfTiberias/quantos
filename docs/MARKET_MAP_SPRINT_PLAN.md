@@ -220,7 +220,12 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - **Map levels:** each level carries `in_map` per §4 (week and quarter R3/R4/S3/S4, H5/L5 and the hidden layers are shown only).
     - **Left for slice 5:** money zone and VPOC, their relationships and virgin levels.
     - HDFCBANK's September 2026 monthly pivots were checked by hand (P 713.3, CPR 711–715.6, H3 727.24). Sweep of 264 random stocks: 0 errors, 0.39 s a stock. The week to 23 Oct read weekly-wide on 60% of stocks (a market-wide one-way week); four other weeks give a normal mix.
-  - [ ] Slice 5: profiles and virgin levels, the long profile (§4, §5)
+  - [x] Slice 5a, profiles from daily bars (11-08): `core/market_map/profiles.py`.
+    - **Per period (month, quarter and year, the last two labelled not Ochoa):** the money zone (one TPO per daily bar, v1's own adaptation) and the volume profile (VPOC). Both carry width, percentile and the two-period relationship; the month also gets the VPOC relationship and its unchanged run.
+    - **Virgin levels:** POC, VAH and VAL of both kinds, retired by a later bar that spans them, with age, distance and Ochoa's two `watch` flags.
+    - **Long profiles (250 and 750 sessions), labelled approximation:** POC and value area, HVN shelves, and LVNs between shelves.
+    - **Checks:** the fast profile matches `price_map.levels.profile` exactly. Sweep of 261 stocks: 0 errors, 0.78 s a stock, the read's JSON 46 KB median (87 max).
+  - [ ] Slice 5b: weekly money zone and VPOC from 5-minute bars (Fyers from 2017-12; size the download with a timed test first)
   - [ ] Slice 6: families, strong zones, hot zones, the L1/L2 join, map_read, the HDFCBANK check
   - [ ] Slice 7: price map v2
   - [ ] Slice 8: fidelity test (needs the golden-set charts)

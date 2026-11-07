@@ -316,6 +316,8 @@ def l1_read(daily: pd.DataFrame, as_of: date) -> dict:
                 zs += v
     from core.market_map import pivots as pv
     out["pivots"] = pv.all_pivots({tf: completed(seg, tf, as_of) for tf in pv.PERIODS})
+    from core.market_map import profiles as pf
+    out["profiles"] = pf.read(seg, as_of, price) if len(seg) else None
     out["price"] = price
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})
@@ -371,4 +373,7 @@ def lines(l1: dict) -> list[str]:
     if l1.get("pivots"):
         from core.market_map import pivots as pv
         out += pv.lines(l1["pivots"], l1.get("price"))
+    if l1.get("profiles"):
+        from core.market_map import profiles as pf
+        out += pf.lines(l1["profiles"], l1.get("price"))
     return out
