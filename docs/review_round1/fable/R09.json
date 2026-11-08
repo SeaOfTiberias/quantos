@@ -1,0 +1,238 @@
+{
+ "id": "R09",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R09.M.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: reproduced (up since CHoCH 2022-11; protected low 97.8 from the 2024-07 BOS never closed below). Chart: from the 229 top (2024-07) the monthly made LH 166.9 (2024-12) and LL 108.04 (2025-03), and closed below the HL 132.8 in 2025-02 (112.42); the engine's own swing labels read LH/LL. An analyst sees a monthly downtrend/correction with a bounce, not a 31-bar uptrend."
+  },
+  {
+   "id": "R09.M.event",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: 2024-07 close 193.65 > 192.8 (2024-05 high). Chart: a year old; the last monthly structural event an analyst marks is the bearish break of HL 132.8 (2025-02 close 112.42)."
+  },
+  {
+   "id": "R09.M.protected",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: the broken swing high is the 2024-01 high 192.8 (the 2024-05 high equals it but is not a k=2 swing), so the protected low is the lowest low 2024-01..2024-07 = 97.8, the low of the same 97%-range 2024-01 bar. Correct per v1. Chart: 97.8 is a pre-parabola low 26% below price; the monthly low that matters is 108.04 (2025-03)."
+  },
+  {
+   "id": "R09.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "229 (2024-07) all-time high."
+  },
+  {
+   "id": "R09.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "(132.03-97.8)/(229-97.8) = 26.1%; discount in any reasonable range."
+  },
+  {
+   "id": "R09.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "No frozen v1 definition for weak-level sweeps (the read says so); checked only against the general wick-through-and-close-back sentence in s0/s3.4. Bar facts: 2024-07 H 229 > 200 (2024-06 high), C 193.65 < 200: the blow-off top."
+  },
+  {
+   "id": "R09.W.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: down since CHoCH 2024-W42 (close 147.68 < 151.2), 40 bars; reproduced. Chart: since the 108.04 low (W10) the engine's own labels are HL 113 (W15), HH 148.95 (W24), HL 131.56 (W25); W20 closed 138.61 above the W13 lower high 134.6. An analyst reads a weekly turn up in 2025-W20 (now retesting), not a 40-bar downtrend; the state stays down only because the protected high is 155.52."
+  },
+  {
+   "id": "R09.W.event",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: W07 close 121.75 < W03 low 127.71. Chart: 24 weeks old; later bullish breaks (W20 close above LH 134.6, W23 close 146.41 above 137.66) are ignored because v1 has no break events against the trend except at the protected level."
+  },
+  {
+   "id": "R09.W.protected",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: highest high W03..W07 = 155.52 (W05). Chart: still the level that would confirm a full weekly reversal, but with the HL/HH sequence since W10 an analyst's relevant weekly levels are 148.95 (high) and 131.56/130.51 (lows)."
+  },
+  {
+   "id": "R09.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "108.04 (2025-03-07), the March low."
+  },
+  {
+   "id": "R09.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "(132.03-108.04)/(155.52-108.04) = 50.5%."
+  },
+  {
+   "id": "R09.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "No frozen v1 definition for weak-level sweeps (the read says so); checked only against the general wick-through-and-close-back sentence in s0/s3.4. Bar facts: W10 L 108.04 < 111.7 (W09 low), C 123.42 > 111.7: the March low, a clear weekly spring."
+  },
+  {
+   "id": "R09.D.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "CHoCH down 2025-06-19 (close 132.35 < 134.59), 26 bars; LH 143.15, LL 130.51. Matches."
+  },
+  {
+   "id": "R09.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "07-22 close 130.77 < 131.56 (06-19 low)."
+  },
+  {
+   "id": "R09.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Highest high 06-19..07-22 = 143.15 (07-01)."
+  },
+  {
+   "id": "R09.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R09.D.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "(132.03-130.51)/(143.15-130.51) = 12.0%."
+  },
+  {
+   "id": "R09.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "No frozen v1 definition for weak-level sweeps (the read says so); checked only against the general wick-through-and-close-back sentence in s0/s3.4. Bar facts: 06-09 H 148.95 > 148.0 (06-05 high), C 146.96 < 148. Correctly the last weak-level sweep (no wick below 131.56 or 130.51 since)."
+  },
+  {
+   "id": "R09.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.48x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: the 130.5-131.6 D lows (06-19, 07-22, 07-25) and 127.7 (2025-W03 low): the support price sits on. Chart: note 31/45 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R09.Z.b1",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.06x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Marginal width (1.06x). Chart: the 122.4-125 April base (W13/W14 lows 123.69/122.36, W18 low 123.5). Chart: note 31/45 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R09.Z.b2",
+   "rule": "unclear",
+   "chart": "unclear",
+   "note": "Zone spans 1.39x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: little price structure in 118-122.2 (W20 low 120.88, W19 close 116.42 below); a formula/virgin-level cluster [volume+pivot] between two real supports (122.4-125 and 113-114.3). Chart: note 31/45 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R09.Z.b3",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.40x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: the 113.0 / 114.33 double bottom (W15, W19). Chart: note 31/45 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R09.Z.a1",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.45x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: the July balance area 133.7-136.8 (W29/W30) and the 134.6 W13 high. Chart: note 31/45 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R09.Z.a2",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.39x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: 138.0 (W30 high, 07-24), 140-141.7 June/July closes. Chart: note 31/45 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R09.Z.a3",
+   "rule": "unclear",
+   "chart": "N",
+   "note": "Zone spans 1.19x the 0.3 ATR(W) clustering tolerance (3.03); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: this band holds the D protected high 143.15 (07-01) and the 143.61 May high (W21), the nearest structural resistance above, yet it is labelled volume-only and not strong because D swings are not clustered."
+  },
+  {
+   "id": "R09.H.hot",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: GPZs verified (W H3 134.09 inside W CPR 132.77-134.25, close in bottom 20% of the week; Q L3 131.83 inside Q CPR 130.97-138.14, close in top 20%); M MZ POC 140.0 is 0.25 below M BC, correctly excluded. Chart: counts are not a chart object."
+  },
+  {
+   "id": "R09.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Reproduced: W average 0.35, 3 closes below; M narrow 0.25, 3 closes above; Q average 0.71 overlapping higher; Y no width (3 prior years)."
+  },
+  {
+   "id": "R09.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R09.V.periods",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "W30 MZ VA 132.2-135.8 is reproduced only with plain float floor(price/0.2), which drops prices that sit exactly on a bucket edge into the bucket below; with exact bucketing it is 131.6-135.2 (same POC 134.4). The 'overlapping lower' W MZ relationship holds with my exact numbers but would be 'outside' against the engine's 132.2-135.8 and my W29 VA 134.0-135.6, so I cannot fully reproduce it. M, Q, Y match; M VPOC 'unchanged' (140.0 vs 139.8, inside 10% of 14.4) is right."
+  },
+  {
+   "id": "R09.V.virgin",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: correct under v1's naked-level reading. Chart: the listed levels are the just-completed period's own POC/VA, 'virgin' only because no bar has traded since (age 0, within 0.2 ATR of price); they are ordinary reference levels for the next period, and the list crowds out older, genuinely left-behind virgin levels. 3 of 4 are 2025-W30 (as_of is a Monday); W20 MZ POC 130 (untouched by the 130.51 low) is a real left-behind level. The 132.2 VAL depends on the bucketing issue in V.periods."
+  },
+  {
+   "id": "R09.V.long",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "250d VA 122.8-160.2 reproduces only with the same float floor; exact bucketing gives 122.4-159.8 (POC 140 same). Small, but it is a code-level precision effect for decimal steps."
+  },
+  {
+   "id": "R09.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "From 07-25 (H 135.5 L 130.98 C 132.03): CPR 0.607% average; lower value vs 07-24 CPR 135.83-136.18."
+  },
+  {
+   "id": "R09.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Reproduced at step 0.2."
+  },
+  {
+   "id": "R09.L2.virgin",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: correct under v1's naked-level reading. Chart: the listed levels are the just-completed period's own POC/VA, 'virgin' only because no bar has traded since (age 0, within 0.2 ATR of price); they are ordinary reference levels for the next period, and the list crowds out older, genuinely left-behind virgin levels. 5 of 6 from 07-25 itself; vol VAL 130.9 (07-22) is the left-behind one."
+  },
+  {
+   "id": "R09.X.watch",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Follows the engine states, but an analyst reads M down (correction since 2024-07), W turning up/retesting, D down, so the conflict is not 'M up' and the sentence misstates the higher-timeframe picture."
+  }
+ ],
+ "missing": [
+  {
+   "type": "CHoCH",
+   "tf": "W",
+   "price": "134.6",
+   "note": "2025-W20 close 138.61 above the W13 lower high, followed by HH 148.95: the weekly turn the engine ignores (its W state stays down until 155.52)."
+  },
+  {
+   "type": "CHoCH",
+   "tf": "M",
+   "price": "132.8",
+   "note": "2025-02 close 112.42 below the 2024-10 higher low: the monthly break of structure after the 229 top; the engine's M state stays up on a 97.8 protected low."
+  },
+  {
+   "type": "swing high (structure)",
+   "tf": "D",
+   "price": "143.15-143.61",
+   "note": "D protected high (07-01) and May high (05-21): nearest structural resistance, sitting in zone a3 which is labelled volume-only/not strong."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "D structure and the zones nearest price match the bars, but both higher-timeframe states contradict the bars' own swing labels (M 'up' after LH 166.9 / LL 108.04; W 'down' after HL 113 / HH 148.95), so the alignment sentence misleads; decimal-step profiles show a float-bucketing effect."
+}

@@ -1,0 +1,232 @@
+{
+ "id": "R02",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R02.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Down since the 2024-12 CHoCH, 19 bars, verified. On the chart M is a 3340-4950 range with lower highs, which reads as down or sideways."
+  },
+  {
+   "id": "R02.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2024-12 close 3561.85, below the protected low 3644.3 (2024-02), verified."
+  },
+  {
+   "id": "R02.M.protected",
+   "rule": "Y",
+   "chart": "N",
+   "note": "v1's rule gives the 2024-09 all-time high 5484.85, verified. Since then M has made lower highs at 4949.5 (2025-09) and 4644 (2026-04). An analyst's strong high is one of those, not a level 43% above price."
+  },
+  {
+   "id": "R02.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "3340 (2025-03), verified."
+  },
+  {
+   "id": "R02.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "23.7% is right. Against 3340-4949.5 it would be 31.5%, still discount."
+  },
+  {
+   "id": "R02.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2025-03 low 3340, close 4083.2, the key monthly reversal bar."
+  },
+  {
+   "id": "R02.W.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Down per v1, verified. But '36 bars' runs across the 2026-W05 to W16 rally from 3529 to 4644, which the engine's own swings label HL 3630 / HH 4644 / HL 3955. An analyst has W up from about 2026-W14 (close 4362 above the 4032.2 LH) and down again only from 2026-W29, about 6 bars."
+  },
+  {
+   "id": "R02.W.event",
+   "rule": "Y",
+   "chart": "N",
+   "note": "The close below the 3955 HL (2026-W24) in 2026-W29 is verified. Because the W never flipped up (protected high 4949.5 was never closed above), v1 calls it a BOS. On the chart it's a bearish CHoCH ending the 2026 HH/HL leg."
+  },
+  {
+   "id": "R02.W.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "4429.4 (2026-W26), the highest high between W24 and W29, verified. The LH matches the chart."
+  },
+  {
+   "id": "R02.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "3755.1 (2026-W31), verified."
+  },
+  {
+   "id": "R02.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "13.7%, verified."
+  },
+  {
+   "id": "R02.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2026-W31 low 3755.1, close 3921, above 3886.7."
+  },
+  {
+   "id": "R02.D.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Down since the 2026-07-14 CHoCH, 32 sessions, verified."
+  },
+  {
+   "id": "R02.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2026-07-28 close below 3886.7, verified."
+  },
+  {
+   "id": "R02.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "4124.9 (07-23), verified. The lower high 4098.9 (08-14) sits just below it."
+  },
+  {
+   "id": "R02.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "3737.2 (08-26), verified."
+  },
+  {
+   "id": "R02.D.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R02.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 08-26 low 3737.2, close 3826.9."
+  },
+  {
+   "id": "R02.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "The W demand 3736.1-3824.3 (base 2026-W12, departure W14, verified per 3.1) is split: its high edge is a member here, its low edge a member of b1, and 3794-3824, inside the demand, is in no zone. On the chart the zone holds the 3850-3881 role-reversal band and the 3866.4 W34 low. Real."
+  },
+  {
+   "id": "R02.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 3737-3761 lows (2025-W15, 2026-W31, 08-26) and the untouched 3715/3735 Q1 VALs. Every zone between 3130 and 4670 is STRONG (40 of 49 zones on the map), so the flag picks out nothing here."
+  },
+  {
+   "id": "R02.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 3605-3644 lows (2023-W40/W44, 2024-W07, 2026-01, 2026-W13)."
+  },
+  {
+   "id": "R02.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 2026-02 low 3529 and the 2024-W47 low 3564."
+  },
+  {
+   "id": "R02.Z.a1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 3928-3955 broken lows (2025-W24/W29, 2026-W24 HL 3955, which was the W29 break level)."
+  },
+  {
+   "id": "R02.Z.a2",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "v1 says only 'clustered within 0.3 ATR(W), the same clustering as the existing map'. The output can't come from single linkage (neighbouring zone edges are far closer than 0.3 ATR(W)) or from a width cap (zones run up to ~1.5x 0.3 ATR(W)). It looks like a greedy pass, so the zone edges fall where the pass cut, not where the chart has a gap. It starts at 4030, 1.47 points above a1's top edge (4028.53), a gap of 0.006 ATR(W)."
+  },
+  {
+   "id": "R02.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 4150-4206 highs (2023-W49, 2024-W01, 2025-W01). But see Missing: the D 4098.9-4124.9 highs fall in the gap between a2 and a3."
+  },
+  {
+   "id": "R02.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Checked all 6 GPZs (W H3 3961.99 and W MZ VAL 3965 in 3926.73-3968.2; M POC 3985 and VPOC 3980 in 3968.97-4064.9; Y POC and VPOC 4042 in 3903-4145). No Q member, correctly. The DPZ and MTZ counts weren't verified."
+  },
+  {
+   "id": "R02.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Everything matches. A side note outside this item: the engine's Camarilla width is (H3-L3)/C, while CPR width is /P. 4 says Camarilla is 'read like CPR width'. For Y 2025 that moves the Camarilla percentile from 0.12 (narrow, with /P) to 0.50 (average)."
+  },
+  {
+   "id": "R02.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "These are the 3 nearest in-map levels each side. The M hidden layers (L1 3864.2, L2 3807.4; M Camarilla reads wide) are correctly kept out of the map levels."
+  },
+  {
+   "id": "R02.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W34 (5-minute bars), M 2026-07, Q2 and Y 2025 all match my recomputation."
+  },
+  {
+   "id": "R02.V.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W13 MZ VAL 3735 and the Q1 VALs 3715/3735 are untouched (the 08-26 low was 3737.2, 2.2 points above). W34 VAL 3965 has survived the 4 W35 sessions. Real levels."
+  },
+  {
+   "id": "R02.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "250d and 750d POC/VA match."
+  },
+  {
+   "id": "R02.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Everything matches. 'Higher value' is verified (BC 3846.2 is above the previous TC 3836.35)."
+  },
+  {
+   "id": "R02.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R02.L2.virgin",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Five of the six are from the last session itself (age 0), 0.03-0.19 ATR away, virgin only because nothing has traded since. The sixth is the 08-26 VPOC 3810."
+  },
+  {
+   "id": "R02.X.watch",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Aligned down. Distances 0.58 and 0.87 ATR(D) are verified."
+  }
+ ],
+ "missing": [
+  {
+   "type": "swing high / protected high (structure)",
+   "tf": "D",
+   "price": "4098.9-4124.9",
+   "note": "The D protected high 4124.9 (07-23) and the D lower high 4098.9 (08-14), the two highs that define the daily downtrend. They sit in the 4095-4140 gap between zones a2 and a3, because D structure isn't clustered into HTF zones."
+  },
+  {
+   "type": "protected high (structure)",
+   "tf": "M",
+   "price": "4644 (2026-04) / 4949.5 (2025-09)",
+   "note": "The monthly lower highs of the 2-year 3340-4950 range. v1 keeps the 2024 all-time high 5484.85 as the strong high."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "The arithmetic is exact throughout, and the D picture (down, protected 4124.9, sweep of 3755) matches the chart. But the W '36 bars down / BOS' runs through a clear 2026 HH/HL up leg, and the M protected high is a 2024 all-time high. The zones tile 3130-4670 with 14 strong zones in a row (40 of 49 strong). Bands such as the W demand are split into edges, and the daily lower highs 4099-4125 fall in an unzoned gap."
+}

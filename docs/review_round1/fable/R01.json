@@ -1,0 +1,238 @@
+{
+ "id": "R01",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R01.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Recomputed from the M bars: up since the 2021-05 CHoCH, 48 bars. The 2025 drop to 2424 broke the M HLs 3705 and 3375.6 on closes but held above the protected low 2223, so 'up' (in a deep pullback) is a fair reading."
+  },
+  {
+   "id": "R01.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Close above the 2815.15 swing high (2023-07) in 2023-11, verified."
+  },
+  {
+   "id": "R01.M.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Lowest low between 2023-07 and 2023-11 is 2223 (2023-08), verified. No intact HL above it, so it's the right strong low."
+  },
+  {
+   "id": "R01.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R01.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "(3574.5-2223)/(5039.7-2223) = 48.0%, eq 3631.35, verified."
+  },
+  {
+   "id": "R01.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: the 2024-05 high was 4350 and the close 4099.8, below the 2024-04 high of 4117. The event is 13 months old."
+  },
+  {
+   "id": "R01.W.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Down, verified. The age is short to the eye: closes went below the 3926 HL in 2024-W43 and below the 3705 LL in 2025-W07, so an analyst dates the down state from 2025-W07 (~19 bars) or earlier, not from 2025-W14 (11 bars)."
+  },
+  {
+   "id": "R01.W.event",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Per v1 the CHoCH waits for a close below the protected low 2822.45 (2025-W14, close 2645.1), verified. On the chart the turn came earlier: the 2025-W07 close of 3411.65 broke the 3705 LL (2024-W47) after the 4706 LH (2024-W50). 2025-W14 is a continuation, about 1,100 points and 7 weeks later."
+  },
+  {
+   "id": "R01.W.protected",
+   "rule": "Y",
+   "chart": "N",
+   "note": "v1's CHoCH rule (highest high between the protected low's bar and the CHoCH bar) gives the all-time high 5039.7 (2024-W24), verified. An analyst's strong high is 4706 (2024-W50), the lower high the breakdown leg started from. 5039.7 sits two lower highs back."
+  },
+  {
+   "id": "R01.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2424 (2025-W15), verified."
+  },
+  {
+   "id": "R01.W.pd",
+   "rule": "Y",
+   "chart": "N",
+   "note": "The arithmetic is right (44%, eq 3731.85), but it inherits the stale 5039.7. Against 2424-4706 price is at 50.4%, right at equilibrium rather than in discount."
+  },
+  {
+   "id": "R01.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2024-W17 high 4117, close 3897.15, below the 2024-W15 high of 4043. It is 14 months old and comes from the earlier up state. No weak-low sweep has happened in the current down state."
+  },
+  {
+   "id": "R01.D.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since the 2025-05-05 CHoCH, 34 sessions, verified."
+  },
+  {
+   "id": "R01.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Close above 3522.7 on 2025-05-27, verified."
+  },
+  {
+   "id": "R01.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "3411.4 (2025-05-21), verified."
+  },
+  {
+   "id": "R01.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R01.D.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "36.3%, verified."
+  },
+  {
+   "id": "R01.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2025-06-11 high 3861, close 3793.5, below 3846.9."
+  },
+  {
+   "id": "R01.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "v1 says only 'clustered within 0.3 ATR(W), the same clustering as the existing map'. The output can't come from single linkage (neighbouring zone edges are far closer than 0.3 ATR(W)) or from a width cap (zones run up to ~1.5x 0.3 ATR(W)). It looks like a greedy pass, so the zone edges fall where the pass cut, not where the chart has a gap. This zone ends at 3620 and zone a1 starts at 3622.5, a 2.5-point gap (0.008 ATR(W)), so the 3484-3740 area is cut in two at an arbitrary point. On the chart the zone holds the 3500-3523 breakout shelf (D high 3522.7 on 05-16, low 3500 on 06-04)."
+  },
+  {
+   "id": "R01.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "The W19 virgin VAH 3325 and W20 VAL 3355 are really untouched (W20's low was 3332.9). The 2024-06 M low 3375.6 is in it, and so is the D protected low 3411.4, though not as a member. Every zone between 2815 and 4370 is STRONG (32 of 41 zones on the map), so the flag picks out nothing here."
+  },
+  {
+   "id": "R01.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "It has no D or W swing in the last year, but it holds the 2025-05-05 D CHoCH level 3169.95 (D isn't clustered, so that isn't a member)."
+  },
+  {
+   "id": "R01.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "The late-April 2025 base (2025-W17/W18, 2942-3050) and the 2025-05 low 3001.7."
+  },
+  {
+   "id": "R01.Z.a1",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "See Z.inside: there's a 2.5-point gap to the zone below. On the chart it's real resistance: the 2025-05 high 3678.3, the 3705 W LL (2024-W47) and 3722.1."
+  },
+  {
+   "id": "R01.Z.a2",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "The W supply 3875.5-3964.85 is split: its low edge is a member here and its high edge a member of a3. Bands are clustered as two edge points, so one supply zone credits 'imbalance' to two zones and leaves its inside unzoned. On the chart: the 3846.9-3861 June top and the 2025-01 low 3867.95."
+  },
+  {
+   "id": "R01.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "The 3926-4022 swing lows (2024-07/08/10) and the 2025-02 breakdown area."
+  },
+  {
+   "id": "R01.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Checked all 8 GPZs against the period CPRs (W H3 3619.88 in 3590.5-3622.5; M L3, M POC, M VAH 3520, M VPOC in 3340-3520.13; Q H3 and Q VAL in 3151-3667; Y POC 4240 in 3931-4268) and found no missing or extra members. The DPZ and MTZ counts (32/31) weren't verified."
+  },
+  {
+   "id": "R01.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Every P, TC, BC, width percentile, relationship and close run matches my recomputation (W 0.35 average, lower value, below x1; M 0.90 wide, higher value, above x2; Q 0.95 wide; Y 0.50 average)."
+  },
+  {
+   "id": "R01.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "These are the 3 nearest map levels on each side. M L1/L2 and W L2 are correctly left out because those Camarilla widths aren't wide."
+  },
+  {
+   "id": "R01.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W25 from the 5-minute bars, 30-minute brackets: MZ 3590/3570-3645 and VPOC 3585, exact. M, Q and Y daily-bar TPO profiles are exact. The Q VPOC 2900 sits on a near-flat plateau (I get 2910)."
+  },
+  {
+   "id": "R01.V.virgin",
+   "rule": "Y",
+   "chart": "N",
+   "note": "All four are from 2025-W25, the week that just closed. No bar has printed since (as_of is Monday), so they are 'virgin' by construction, 0.05-0.16 ATR from price. The informative virgin levels go unshown: W24 MZ VAL 3720 (1.5 ATR), W20 VAL 3355, W19 VAH 3325, and the M 2025-05 POC 3445. I checked all 433 L1 virgin levels against later daily bars and none has been touched."
+  },
+  {
+   "id": "R01.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "250d POC 2870/VA 2535-4125 and 750d 2870/2220-4420 match within one bucket. The LVNs 3520-3550 and 3680-3740 lie between HVN shelves."
+  },
+  {
+   "id": "R01.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "All 13 levels and the CPR (0.006%, narrow on Ochoa's absolute scale) match. 'Lower value' is verified."
+  },
+  {
+   "id": "R01.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Matches from 30-minute brackets. The MZ POC is a 3570/3575 tie, broken toward the range middle by bucket centre."
+  },
+  {
+   "id": "R01.L2.virgin",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Five of the six listed levels are from the 2025-06-20 session itself (age 0), so they're virgin only because no bar has printed since. They sit 0.05-0.2 ATR away. Daily virgin levels are a 8 intraday item, shown beside the map."
+  },
+  {
+   "id": "R01.X.watch",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Distances 1.35 and 0.50 ATR(D) are verified, and so is the alignment."
+  }
+ ],
+ "missing": [
+  {
+   "type": "protected high (structure)",
+   "tf": "W",
+   "price": "4706 (2024-W50)",
+   "note": "The lower high the 2025 breakdown started from. The analyst's W strong high, and the top of a realistic W dealing range 2424-4706 (price sits at 50%)."
+  },
+  {
+   "type": "EQH / weak high (liquidity)",
+   "tf": "D",
+   "price": "3837.9-3861",
+   "note": "Triple top on 06-09/10/11 (3837.9, 3846.9, 3861), resting liquidity just above the D range. D levels aren't clustered, so it's only inside zone a2 by way of unrelated W R2 and Y VAL members, and isn't labelled liquidity."
+  },
+  {
+   "type": "demand",
+   "tf": "W",
+   "price": "2424-2700 (2025-W15)",
+   "note": "The April 2025 cycle low that the +59% rally rests on. v1's base rule (bars of at most 1 ATR(W)) can't form a zone at a V-bottom, so only two 2023 order blocks cover this price."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "Every computed number I could recheck matches exactly: structure, pivots, profiles, virgin status, L2. But the W map leans on the 5039.7 all-time high as its protected level and dates the W turn to 2025-W14, well after the chart turned. The zone layer doesn't discriminate: 32 of 41 zones are strong, and the 7 nearest zones tile 2970-4040 with gaps of 2.5-40 points, so 'strong' and the zone edges add little to the read."
+}

@@ -1,0 +1,238 @@
+{
+ "id": "R04",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R04.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Down since the 2026-02 CHoCH, 7 bars, verified."
+  },
+  {
+   "id": "R04.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2026-06 close 3538, below the 3802 LL (2025-04), verified."
+  },
+  {
+   "id": "R04.M.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "6429.5 (2026-01) is the top the collapse started from. Correct."
+  },
+  {
+   "id": "R04.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R04.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "16.9%, verified."
+  },
+  {
+   "id": "R04.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2026-05 low 3901, close 4061.6, above 4000."
+  },
+  {
+   "id": "R04.W.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Down per v1 since the 2025-W11 CHoCH, verified. But the 82 bars run through the 2025-W14 to 2026-W04 rally from 3802 to 6429.5 (+69%), which the engine's own swings label HL 5010 / HH 6429.5. It stayed 'down' only because v1's protected high (6767.95) was never closed above. An analyst has W down from 2026-W08, about 33 bars."
+  },
+  {
+   "id": "R04.W.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2026-W20 close 3968.4, below the 4000 LL (2026-W14), verified. A real continuation break."
+  },
+  {
+   "id": "R04.W.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "4784 (2026-W17), verified. 2026-W33 wicked to 4850 and closed at 4715, a failed test of it."
+  },
+  {
+   "id": "R04.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R04.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "39.1%, verified."
+  },
+  {
+   "id": "R04.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2026-W27 low 3528, close 3757.8, above 3737.3."
+  },
+  {
+   "id": "R04.D.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Up per v1, because the protected low 3528 is intact. On the chart D has fallen for two months from the 4850 top (08-11 and 08-12) through the lower highs 4700 (08-28), 4568.9 (09-15) and 4183.6 (09-29) to 3905.6 (10-07). It closed below the 4414.8 swing low (08-21) on 09-09. Cause: the 4850 top is two equal highs, so the strict 'greater than every bar' swing rule (1) makes neither a swing. The zigzag then keeps 3913.8 over 4414.8 and labels 4700 a HH, so v1 never sees the decline."
+  },
+  {
+   "id": "R04.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "07-29 close above 4360, verified."
+  },
+  {
+   "id": "R04.D.protected",
+   "rule": "Y",
+   "chart": "N",
+   "note": "3528 (06-30), verified per rule. In the D downtrend an analyst marks the protected high at 4700 (08-28) or 4568.9 (09-15). 3528 is 3.7 ATR(D) away and irrelevant to the current structure."
+  },
+  {
+   "id": "R04.D.weak",
+   "rule": "Y",
+   "chart": "N",
+   "note": "4850 is right as the highest high since the 07-29 break (the engine dates it 08-11, the first of the two equal highs). On the chart it's the top of a downtrend, a double-top EQH, not a weak high of an uptrend."
+  },
+  {
+   "id": "R04.D.pd",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "37.1% of 3528-4850 is right. Against a D down range (3905.6-4700) price is at 14%, deep discount, so the side happens to agree but the number doesn't."
+  },
+  {
+   "id": "R04.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 07-30 high 4518.7, close 4441.4, below 4488. A more recent and relevant sweep, the 10-07 wick to 3905.6 (close 3930) below the 07-23 HL 3913.8, isn't shown because 3913.8 isn't the weak level."
+  },
+  {
+   "id": "R04.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "v1 says only 'clustered within 0.3 ATR(W), the same clustering as the existing map'. Zones here run up to ~1.5x that width yet sit almost touching their neighbours, so the edges come from the clustering pass, not from the chart. This zone starts at 3930, 5 points above b1's top (3925), a gap of 0.017 ATR(W). On the chart it's the 3905-4000 base: the 2026-W14 low 4000, the 09-29 close 3936 and the 10-07/08 closes 3915-3930."
+  },
+  {
+   "id": "R04.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 3901-3913.8 D lows (05-14, 05-25, 07-23), the 2025-04 LL 3802, and the virgin D VALs 3895/3900. Every zone between 3040 and 5200 is STRONG (39 of 51 zones on the map), so the flag picks out nothing here."
+  },
+  {
+   "id": "R04.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 3737-3756 W25/W26 lows (both swept). One member is a 2021 W demand edge."
+  },
+  {
+   "id": "R04.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 2026-06 low 3528 and the M EQL."
+  },
+  {
+   "id": "R04.Z.a1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 4089.6 high (06-17), the 4091.8 (10-09) and 4104.9 (10-12) highs, and the 4182 low (05-04)."
+  },
+  {
+   "id": "R04.Z.a2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 4239.8 high (07-13). Mostly pivot and profile members."
+  },
+  {
+   "id": "R04.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 4389-4414.8 swings (03-20, 05-11, 08-21) and the W bear OB low 4400."
+  },
+  {
+   "id": "R04.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Checked all 7 GPZs (W L3 4018.8 and W VAH 4010 in 3998.7-4046.23; M H3 4243.08, MZ POC 4290 and VAL 4130 in 4128.72-4296.15; Q VAL 4100 in 4094.2-4192.6; Y L3 5354.55 in 5091-5739). See V.periods: an M VPOC of 4130 would add an 8th. The DPZ and MTZ counts weren't verified."
+  },
+  {
+   "id": "R04.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Everything matches (W 0.45 average, overlapping lower; M 0.75 wide, lower value; Q 0.15 narrow; Y 0.44 average, outside)."
+  },
+  {
+   "id": "R04.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R04.V.periods",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "All POCs and VAs match except the M 2026-09 VPOC. The volume histogram has an exact plateau from 4090 to 4130, and the engine takes the low end, 4090, the end farthest from the month's mid-range (4296). v1 gives a tie rule only for the TPO POC ('nearest the middle'). Applied by analogy it gives 4130, which would also sit inside the M CPR (a GPZ member). The Q VPOC 4065 is on a similar plateau."
+  },
+  {
+   "id": "R04.V.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W41 POC 3985 survived the 10-12 session (low 4002). The W40 MZ VAH 4105 survived it by 0.1 (high 4104.9). Real but recent."
+  },
+  {
+   "id": "R04.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R04.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Matches. The 0.57% CPR reads average. 'Overlapping higher' is verified."
+  },
+  {
+   "id": "R04.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R04.L2.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "The below side holds real untouched levels: 10-09 VAL 4000, 07-10 VAL 3900 and 06-15 VAL 3895 (the W41 low 3905.6 missed them). The above side is all age 0."
+  },
+  {
+   "id": "R04.X.watch",
+   "rule": "Y",
+   "chart": "N",
+   "note": "The distances are verified (0.71 and 0.35). The conflict it names, 'D up', is a v1 artefact (see D.state). On the chart all three timeframes are down."
+  }
+ ],
+ "missing": [
+  {
+   "type": "EQH (liquidity) / swing high",
+   "tf": "D",
+   "price": "4850 (2026-08-11 and 08-12)",
+   "note": "Equal highs that make the daily top. Neither counts as a swing high under the strict-inequality rule, and EQH is only computed on W/M, so the read never shows the daily top as structure or liquidity."
+  },
+  {
+   "type": "swing low, broken (CHoCH level)",
+   "tf": "D",
+   "price": "4414.8 (2026-08-21)",
+   "note": "Closed below on 09-09 (4412): the analyst's bearish D CHoCH. The zigzag drops it because it can't see the 4850 top between it and the 3913.8 low."
+  },
+  {
+   "type": "lower highs (protected high)",
+   "tf": "D",
+   "price": "4700 (08-28), 4568.9 (09-15), 4183.6 (09-29)",
+   "note": "The lower-high sequence of the current daily decline. 4700 or 4568.9 is the D strong high."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "M and W levels, pivots and profiles are right, and the zones near price are real swing areas. But D is called 'up' through a two-month decline from 4850, because the equal-high top isn't a swing under v1 (a definition gap that knocks out the whole D structure). The W '82 bars down' runs through a +69% rally, and 39 of 51 zones are strong."
+}

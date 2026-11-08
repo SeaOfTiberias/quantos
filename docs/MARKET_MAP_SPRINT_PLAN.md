@@ -252,7 +252,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
       - **Observations (reported, no change):** the nearest virgin levels are usually the last session's own, which no later bar has had the chance to span; 181–255 virgin session levels per stock, most far from price. A read takes 5.4–6.4 s on the VM (was ~4 s).
     - **Not changed:** the position manager's in-trade zone alert still reads the old map files (`~/.quantos/price_maps`). It is alerts only and a live job; moving it to the L1 map is S9 (in-trade map events).
   - [ ] Slice 8: fidelity test (needs the golden-set charts)
-    - [ ] Round 1 (user, 11-08): 15 random engine reads reviewed by the user, the user's model judge and Fable before the fidelity test; protocol pre-registered in `docs/MARKET_MAP_REVIEW_ROUND1.md`. Nothing built changes during the round.
+    - [ ] Round 1 (user, 11-08): 15 random engine reads reviewed by the user, the user's model judge and Fable before the fidelity test; protocol pre-registered in `docs/MARKET_MAP_REVIEW_ROUND1.md`. Nothing built changes during the round. Fable done 11-09 (`docs/review_round1/findings_fable.md`): 0/525 items break v1, 81% match the chart, all 15 "partly"; 2 small code bugs (bucket-edge float, unfiltered bad 5-min bars) held for approval; main v2 gaps: stale structure states, non-selective strong flag, equal highs never swings, sweeps unnamed. User review and model judge pending.
     - [ ] Round 2: the user's golden-set charts, scored by §9 as pre-registered
 - [ ] S6 L0 market map + brief
 - [ ] S6b layer F: fundamentals + ownership

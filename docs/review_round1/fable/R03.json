@@ -1,0 +1,232 @@
+{
+ "id": "R03",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R03.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since the 2021-07 CHoCH, 55 bars, verified."
+  },
+  {
+   "id": "R03.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2023-06 close above 329, verified. No M close above the 848 HH (2024-07) since: the best was 839.25 in 2025-12."
+  },
+  {
+   "id": "R03.M.protected",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Per v1 it stays at 255 (2023-04) because no BOS has happened since 2023-06, verified. On the chart the uptrend rests on the 2025-04 higher low 496.6, the engine's own M swing HL. 255 is 67% below price and carries no information."
+  },
+  {
+   "id": "R03.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "884 (2026-01), verified."
+  },
+  {
+   "id": "R03.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "84%, verified. Against 496.6-884 it would be 74%, still premium."
+  },
+  {
+   "id": "R03.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2026-01 high 884, close 822.55, below 867."
+  },
+  {
+   "id": "R03.W.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since the 2025-W23 CHoCH, 38 bars, verified."
+  },
+  {
+   "id": "R03.W.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2026-W01 close 855.4 above the 826 swing high (2025-W44), verified."
+  },
+  {
+   "id": "R03.W.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "715.5 (2025-W45), verified."
+  },
+  {
+   "id": "R03.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R03.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "40.3%, verified."
+  },
+  {
+   "id": "R03.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2026-W02 high 884, close 772.15, below 867."
+  },
+  {
+   "id": "R03.D.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Up per v1, because the protected low 715.5 (11-07) is intact. On the chart, after the failed 884 high (01-07) D has made the LL 730.2 (01-27), the LH 835.95 (01-29) and the low 734 (02-17), with a close of 740.25 on 02-17 below the 744.05 HL. That's a 730-836 range for 8 weeks, not an uptrend. The engine's own D swings label it LL/LH."
+  },
+  {
+   "id": "R03.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2025-12-30 close above 826, verified."
+  },
+  {
+   "id": "R03.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "715.5, verified. It still underpins the range floor at 730-734."
+  },
+  {
+   "id": "R03.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R03.D.pd",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "40.3% of 715.5-884 is right. Against the range that actually trades, 730.2-835.95, price is at 50%: mid-range rather than discount."
+  },
+  {
+   "id": "R03.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 01-07 high 884, close 855, below 871.2."
+  },
+  {
+   "id": "R03.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "v1 says only 'clustered within 0.3 ATR(W), the same clustering as the existing map'. Zones here run up to ~1.5x that width yet sit almost touching their neighbours, so the edges come from the clustering pass, not from the chart. This zone ends at 802 and a1 starts at 803, a 1-point gap (0.018 ATR(W)). On the chart it's the range's value area: 42 of the last 250 closes are in it. A volume+pivot pairing (M CPR and an HVN) makes it STRONG with no structure in it."
+  },
+  {
+   "id": "R03.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 748.55 low (01-12) and the 03-02 open and low at 740 just below. Every zone between 541 and 884 is STRONG (30 of 39 zones on the map), so the flag picks out nothing here."
+  },
+  {
+   "id": "R03.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "The best zone on this map: 8 D swing points in the last year (715.5-737.35), the W EQL 729.85/730.2 and the multi-touch 730.2."
+  },
+  {
+   "id": "R03.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 2025-08-11 low 674.2 and the HVN 674-698."
+  },
+  {
+   "id": "R03.Z.a1",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "There's a 1-point gap to the inside zone (see Z.inside). On the chart it's the 813-826 highs of 2025-08 to 10, the 2026-02 high 824.8 and the W06 high 819.5. Real resistance."
+  },
+  {
+   "id": "R03.Z.a2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 2024-07 HH 848. The D lower high 835.95 (01-29) falls in the 828-840.28 gap below it (see Missing)."
+  },
+  {
+   "id": "R03.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 867-884 top (2025-12, 2026-01)."
+  },
+  {
+   "id": "R03.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Checked all 5 GPZs (Q L3 797.59, MZ POC 792 and VAH 803 in 791.25-823.25; Y L3 737.39 and MZ POC 758 in 681.8-786.77). The W and M CPRs correctly have none. The DPZ and MTZ counts weren't verified."
+  },
+  {
+   "id": "R03.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Everything matches (W 0.60 average, higher value, above x1; M 0.0 narrow, lower value, below x1; Q 0.25 narrow; Y 0.30 average, overlapping higher)."
+  },
+  {
+   "id": "R03.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R03.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W09 from the 5-minute bars, and M, Q and Y from daily-bar TPOs, all match."
+  },
+  {
+   "id": "R03.V.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W09 POC 794 and the M 2026-02 VPOC 798 survived the 03-02 session (high 793.3). They're recent but not trivial."
+  },
+  {
+   "id": "R03.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Matches within one bucket."
+  },
+  {
+   "id": "R03.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Matches. The 1.442% CPR reads wide on Ochoa's absolute scale. 'Lower value' is verified."
+  },
+  {
+   "id": "R03.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Matches with step 2. Note that the L1 profiles for the same symbol use step 1, so the two layers bucket differently."
+  },
+  {
+   "id": "R03.L2.virgin",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Five of the six are from the 03-02 session itself (age 0), 0.09-0.24 ATR away, virgin only by construction. The 02-27 MZ VAH 797 is a real one."
+  },
+  {
+   "id": "R03.X.watch",
+   "rule": "Y",
+   "chart": "N",
+   "note": "The distances are verified (0.44 and 0.65). 'Aligned up' depends on D being up. On the chart D is a 730-836 range, so the timeframes aren't aligned."
+  }
+ ],
+ "missing": [
+  {
+   "type": "swing high (structure)",
+   "tf": "D",
+   "price": "835.95 (2026-01-29)",
+   "note": "The D lower high after the 884 top, and the top of the 730-836 range price has traded in since January. It falls in the 828-840.28 gap between zones a1 and a2."
+  },
+  {
+   "type": "protected low (structure)",
+   "tf": "M",
+   "price": "496.6 (2025-04)",
+   "note": "The monthly higher low the uptrend actually rests on. v1 keeps 255 (2023-04)."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "All formulas and structure states reproduce exactly, and the HTF zones near price are mostly real (b2 at 715-740 is excellent). But the D 'up' state hides an 8-week range with a lower high, the M protected low is a 2023 level, and 30 of 39 zones are strong. The two zones around price touch (802/803), and the range top 835.95 is unzoned."
+}

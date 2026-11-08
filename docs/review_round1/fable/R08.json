@@ -1,0 +1,238 @@
+{
+ "id": "R08",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R08.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since 2021-11, 56 bars; reproduced. Chart: the long-term uptrend is intact, ranging 1963.7-3538.4 since 2025-06."
+  },
+  {
+   "id": "R08.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2025-05 close 3003.2 > 2833.8 (2024-07 high)."
+  },
+  {
+   "id": "R08.M.protected",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: lowest low 2024-07..2025-05 = 1184.9 (2025-03). Chart: since then the monthly made LL 1963.7 (2026-03) below HL 2323 and then 3339; 1963.7 is the low an analyst watches now, 1184.9 is 54% below price."
+  },
+  {
+   "id": "R08.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R08.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "(2599.4-1184.9)/(3538.4-1184.9) = 60.1%."
+  },
+  {
+   "id": "R08.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "No frozen v1 definition for weak-level sweeps (the read says so); checked only against the general wick-through-and-close-back sentence in s0/s3.4. Bar facts: 2025-06 H 3538.4 > 3147 (2025-05 high), C 3015.2 < 3147."
+  },
+  {
+   "id": "R08.W.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since CHoCH up 2026-W17, 14 bars; reproduced. (W05 2026 is both a swing high 2844.9 and a swing low 2188.8; the engine orders the low first, which v1 does not specify; events are unaffected.)"
+  },
+  {
+   "id": "R08.W.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W17 close 2878.7 > protected high 2844.9 (W05)."
+  },
+  {
+   "id": "R08.W.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Lowest low W05..W17 = 1963.7 (W14)."
+  },
+  {
+   "id": "R08.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R08.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "(2599.4-1963.7)/(3339-1963.7) = 46.2%."
+  },
+  {
+   "id": "R08.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "No frozen v1 definition for weak-level sweeps (the read says so); checked only against the general wick-through-and-close-back sentence in s0/s3.4. Bar facts: W18 H 3339 > 2979 (W17 high), C 2930.8 < 2979."
+  },
+  {
+   "id": "R08.D.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: CHoCH down 08-05 (close 2507.3 < protected low 2530, set by the 06-17 BOS), age 1; reproduced. Chart: the D downtrend began after the 06-22 high (LH 2809.7 07-03, close below HL 2656.2 on 07-08, LL 2535.5 07-24, LH 2665 07-29), about 22 bars, and the 08-06 bar closed back above 2530 at 2599.4. 'Down for 1 bar' misreads both the age and the failed breakdown."
+  },
+  {
+   "id": "R08.D.event",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: correct. Chart: the 08-05 close below 2530 was reclaimed the next day (08-06 low 2471.7, close 2599.4): a sweep of the 2525-2535 lows rather than a clean CHoCH. The analyst's D change of character was 07-08 (close 2619.6 < HL 2656.2)."
+  },
+  {
+   "id": "R08.D.protected",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: highest high from the protected-low bar (06-11) to 08-05 = 2934.7 (06-22). Chart: the high that holds the D downtrend is the last lower high 2665 (07-29), or 2809.7 (07-03); 2934.7 is the top of the June spike, 13% above price."
+  },
+  {
+   "id": "R08.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2471.7 (08-06)."
+  },
+  {
+   "id": "R08.D.pd",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Rule: (2599.4-2471.7)/(2934.7-2471.7) = 27.6%. Chart: with the range anchored at the 2665 lower high, price is at 66.8% (premium), the opposite reading; v1 itself flags premium/discount as range-dependent."
+  },
+  {
+   "id": "R08.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "No frozen v1 definition for weak-level sweeps (the read says so); checked only against the general wick-through-and-close-back sentence in s0/s3.4. Bar facts: 08-06 L 2471.7 < 2500 (08-05 low), C 2599.4 > 2500. Strong reversal bar."
+  },
+  {
+   "id": "R08.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.50x the 0.3 ATR(W) clustering tolerance (65.04); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: the 2525/2530/2535.5 triple bottom (2025-W45, 2026-W24, 2026-W30) and multi-touch 2525-2579.7; real key support, swept on 08-06. Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.Z.b1",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.43x the 0.3 ATR(W) clustering tolerance (65.04); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: 2423 (2025-07 low) and the 2387-2395 lows of 2026-W06/W08/W09; real support. Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.Z.b2",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.45x the 0.3 ATR(W) clustering tolerance (65.04); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: 2300 (2026-W10 low), 2323 (2025-08 monthly HL). Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.Z.b3",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.48x the 0.3 ATR(W) clustering tolerance (65.04); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: 2188.8 (W05 swing low), 2214.8 (W04 low), bull OB top 2249. Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.Z.a1",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.46x the 0.3 ATR(W) clustering tolerance (65.04); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: formula/profile cluster (W P/TC, W31 POC, M CPR, M MZ POC/VAH) that lines up with the 2641-2665 D highs (07-22, 07-29, 08-06). Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.Z.a2",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Zone spans 1.24x the 0.3 ATR(W) clustering tolerance (65.04); v1 says 'clustered within 0.3 ATR(W)' and refers to 'the existing map' clustering, which is not given, so whether a chained/capped cluster this wide is allowed is ambiguous. Listed members and the family count (>=2 -> STRONG) are consistent. Chart: 2723.7 (06-05 high), 2718 (2025-08 high), Q TC 2716. Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Within tolerance (1.00x). Chart: 2809.7 (07-03 LH / M prev H) and the 2829.8-2844.9 multi-touch with the 2833.8 2024 high: real resistance. Chart: note 30/39 of this read's HTF zones are STRONG and they tile the price axis band after band, so STRONG carries little information here (definition gap: volume = hundreds of virgin W/M levels and pivot = W/M/Q/Y formulas cover almost every band)."
+  },
+  {
+   "id": "R08.H.hot",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: GPZs verified (W MZ POC 2612 and VPOC 2614 inside W CPR 2606.08-2615.85; M MZ POC 2632 and VAH 2664 inside M CPR 2625-2672.6); no H3/L3 GPZ (closes not in the outer 22.5%). Chart: counts are not a chart object."
+  },
+  {
+   "id": "R08.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Reproduced: W narrow (0.00), M narrow (0.20) lower value, Q narrow (0.05), Y no width (7 prior years < 8)."
+  },
+  {
+   "id": "R08.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R08.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Reproduced; M VPOC 2610 vs my 2614 (volume-spreading detail), Y vol VAH 3520 vs my 3535; no reading changes."
+  },
+  {
+   "id": "R08.V.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "M 2026-07 VAH 2664 and vol VAH 2694 untouched by the August high 2644.5; W28 levels untouched. W31's levels were correctly retired by the 08-03..08-06 bars. Real overhead levels."
+  },
+  {
+   "id": "R08.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Reproduced. The 250d 'HVN' 2385-2870 is a single 485-point shelf (coarse rule, per v1)."
+  },
+  {
+   "id": "R08.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "From 08-06 (H 2644.5 L 2471.7 C 2599.4): CPR 1.071% = wide; higher value vs 08-05 CPR 2516.2-2534.0."
+  },
+  {
+   "id": "R08.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Reproduced at step 5 (the weekly profile uses step 2; the step choice for L2 is not in v1)."
+  },
+  {
+   "id": "R08.L2.virgin",
+   "rule": "Y",
+   "chart": "unclear",
+   "note": "Rule: correct under v1's naked-level reading. Chart: the listed levels are the just-completed period's own POC/VA, 'virgin' only because no bar has traded since (age 0, within 0.2 ATR of price); they are ordinary reference levels for the next period, and the list crowds out older, genuinely left-behind virgin levels. 5 of 6 from 08-06 itself; vol VAL 2435 (2026-04-08) is the one left-behind level."
+  },
+  {
+   "id": "R08.X.watch",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "M up, W up, D down matches an analyst's read (with D's breakdown in doubt after 08-06)."
+  }
+ ],
+ "missing": [
+  {
+   "type": "swing high (structure, D protected high)",
+   "tf": "D",
+   "price": "2665 (and 2809.7)",
+   "note": "07-29 lower high (and 07-03 lower high): the levels that define the D downtrend; the read's D protected high is 2934.7."
+  },
+  {
+   "type": "CHoCH",
+   "tf": "D",
+   "price": "2656.2",
+   "note": "07-08 close 2619.6 below the 06-30 higher low: the D trend change an analyst marks, four weeks before the read's 08-05 CHoCH."
+  },
+  {
+   "type": "EQL / liquidity sweep",
+   "tf": "W/D",
+   "price": "2525-2535.5",
+   "note": "Triple bottom 2025-W45 2525, 2026-W24 2530, 2026-W30 2535.5, run on 08-06 to 2471.7 and closed back above at 2599.4. Not an EQL in v1 (closes below 2525 in Dec-25..Mar-26; W30 not yet a confirmed swing), but it is the liquidity event of the chart."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "M and W structure and the zones match the bars well (the 2525-2535 support, 2641-2665 and 2810-2845 resistance are all there). The D layer is the weak point: a 4-week-old downtrend reads as 'down for 1 bar', the protected high is the June top rather than the last lower high, and the 08-06 reclaim is not reflected. 30 of 39 zones are STRONG."
+}

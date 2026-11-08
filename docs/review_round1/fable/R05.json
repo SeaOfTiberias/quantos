@@ -1,0 +1,232 @@
+{
+ "id": "R05",
+ "reviewer": "fable",
+ "items": [
+  {
+   "id": "R05.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since the 2020-07 CHoCH, 59 bars, verified. The 2025 drop to 1302.75 held above 1235."
+  },
+  {
+   "id": "R05.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2024-08 close above 1697.35, verified."
+  },
+  {
+   "id": "R05.M.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "1235 (2024-06), verified. The 2025-04 HL 1302.75 is close above it."
+  },
+  {
+   "id": "R05.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R05.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "51.9%, verified. Price is near equilibrium."
+  },
+  {
+   "id": "R05.M.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2025-01 high 2012.2, close 1725.45, below 1980."
+  },
+  {
+   "id": "R05.W.state",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Up per v1 since the 2023-W50 CHoCH, verified. But the 82 bars run through the 2025-W03 to W15 fall from 2012.2 to 1302.75 (-35%), which closed below the 1745 W low (2024-W45) in 2025-W05. An analyst has W bearish then and up again from about 2025-W20 (close 1659.9 above the 1658.95 LH, W13), about 8 bars."
+  },
+  {
+   "id": "R05.W.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "2025-W25 close 1739.9 above the 1702.6 swing high (W20), verified. A continuation in the analyst's view too."
+  },
+  {
+   "id": "R05.W.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "1594 (W20 low), verified."
+  },
+  {
+   "id": "R05.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R05.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "27.9%, verified."
+  },
+  {
+   "id": "R05.W.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 2025-W26 high 1752.5, close 1723.3, below 1745."
+  },
+  {
+   "id": "R05.D.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Up since the 2025-05-12 CHoCH, 44 sessions, verified. Price has pulled back to discount above the 1605.7 protected low. The 06-24 HL 1689.2 was closed through on 07-10/07-11, so internal structure has weakened. Worth a note, but not a flip."
+  },
+  {
+   "id": "R05.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "06-11 close above 1675.8, verified."
+  },
+  {
+   "id": "R05.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "1605.7 (06-02), verified."
+  },
+  {
+   "id": "R05.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "1752.5 (06-27), part of a 1745/1745/1752.5 triple top."
+  },
+  {
+   "id": "R05.D.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "22.2%, verified."
+  },
+  {
+   "id": "R05.D.sweep",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Sweep definition is not frozen in v1 (only EQH/EQL sweeps are defined, 3.4), so the rule can't be checked. The bar facts are right: 06-27 high 1752.5, close 1723.3. It's the same bar as the W sweep."
+  },
+  {
+   "id": "R05.Z.inside",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "v1 says only 'clustered within 0.3 ATR(W), the same clustering as the existing map'. Zones here run up to ~1.5x that width yet sit almost touching their neighbours, so the edges come from the clustering pass, not from the chart. This zone starts at 1607.5, 1.8 points above b1's top (1605.7), 0.02 ATR(W). The D double bottom 1605.7/1614 (06-02, 05-22) ends up split across the two zones. On the chart it's the 1614-1638 shelf (05-22 low, 04-25 high 1618, the W28 low 1630). A volume+pivot pairing makes it STRONG."
+  },
+  {
+   "id": "R05.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the D protected low 1605.7 and the W bull OB 1545-1598 top. Every zone between 1400 and 1886 is STRONG (45 of 54 zones on the map), so the flag picks out nothing here."
+  },
+  {
+   "id": "R05.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 1537-1551 lows (2024-07/08) and the 1545 low (2025-05-07)."
+  },
+  {
+   "id": "R05.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 1507.1 low (2025-03-12). Thin."
+  },
+  {
+   "id": "R05.Z.a1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 1655.5-1675.8 highs (2024-08, 2025-03, 2025-05) and the 1661.5 low."
+  },
+  {
+   "id": "R05.Z.a2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 1697-1703 highs (2024-W08, 2025-W20) and the 06-24 HL 1689.2."
+  },
+  {
+   "id": "R05.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Holds the 1740-1752.5 cluster: the 1740-1750 lows (2024-09 to 2025-01) and the 2025-06 triple top. Good."
+  },
+  {
+   "id": "R05.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Checked all 10 GPZs against the W, M, Q and Y CPRs. M VPOC 1712 is just inside TC 1712.1. No missing members. The DPZ and MTZ counts weren't verified."
+  },
+  {
+   "id": "R05.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Everything matches (W 0.85 wide, lower value, below x1; M 0.45 average, higher value, above x2; Q 0.95 wide, overlapping lower; Y 0.86 wide, higher value)."
+  },
+  {
+   "id": "R05.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Q Camarilla reads wide, so its hidden L1/L2 (1687.4, 1646.2) are shown elsewhere but correctly kept out of the map levels."
+  },
+  {
+   "id": "R05.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "W28 from the 5-minute bars (MZ 1710/1658-1718, VPOC 1638) and M, Q and Y all match."
+  },
+  {
+   "id": "R05.V.virgin",
+   "rule": "Y",
+   "chart": "N",
+   "note": "The two nearest are from 2025-W28, the week that just closed, with no bar since (as_of is Monday): the VPOC 1638 sits 0.01 ATR from price. Virgin by construction. The W23 VALs 1624/1626 are real untouched levels (the W28 low was 1630)."
+  },
+  {
+   "id": "R05.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R05.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Matches. The 0.181% CPR reads narrow. 'Lower value' is verified."
+  },
+  {
+   "id": "R05.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": ""
+  },
+  {
+   "id": "R05.L2.virgin",
+   "rule": "Y",
+   "chart": "N",
+   "note": "Five of the six are from the 07-11 session itself (age 0, 0.01-0.18 ATR away). Only the 07-10 VAL 1656 carries information."
+  },
+  {
+   "id": "R05.X.watch",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Aligned up and the distances (1.01 and 0.24) are verified. The analyst agrees: W up since 2025-W20, D pulling back."
+  }
+ ],
+ "missing": [
+  {
+   "type": "EQL (liquidity)",
+   "tf": "D",
+   "price": "1605.7-1614",
+   "note": "The 05-22 (1614) and 06-02 (1605.7, the D protected low) double bottom under the current pullback. EQL is only computed on W/M, and the HTF zones split this pair between b1 and the inside zone."
+  },
+  {
+   "type": "EQH (liquidity)",
+   "tf": "D",
+   "price": "1745-1752.5",
+   "note": "Triple top (06-18 1745, 06-27 1752.5, W27 1745). It's inside zone a3 but not labelled as liquidity, because the W pair is only 2 bars apart and the third high isn't confirmed."
+  }
+ ],
+ "overall": "partly",
+ "overall_note": "The read closest to the chart in my set: states, levels, profiles and the zones near price are all real. The weak spots are the same as elsewhere: the W '82 bars up' runs through a -35% fall, 45 of 54 zones are strong (every zone from 1400 to 1886), neighbouring zones nearly touch (1605.7/1607.5), and the nearest 'virgin' levels are trivially fresh."
+}
