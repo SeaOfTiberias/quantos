@@ -110,6 +110,34 @@ function Structure({ l1 }) {
   );
 }
 
+// L2, the daily layer (rd.l1.l2): daily pivots and virgin session levels from 5-minute bars.
+// Shown beside the zones and never clustered into them (definitions v1 §8).
+function DailyLayer({ l2 }) {
+  if (!l2) return null;
+  const p = l2.pivots;
+  const vl = xs => (xs || []).map(x => `${x.kind} ${x.name} ${px(x.price)} (${x.session}, ${x.distance_atr} ATR)`).join(" · ") || "none";
+  return (
+    <div className="q-card">
+      <div className="q-between">
+        <div className="q-label">Daily layer</div>
+        <TestBadge test={l2.status} />
+      </div>
+      <div className="q-sub">Intraday levels, shown beside the zones and never counted in them.</div>
+      {p && <div style={{ fontSize: 13, marginTop: 10 }}>
+        <div>Pivots from {p.from_session}: CPR <span className="q-num">{px(p.cpr.BC)}–{px(p.cpr.TC)}</span>, width {p.cpr.width_pct}% ({p.cpr.reading}), {p.relationship} vs the day before</div>
+        <div className="q-faint" style={{ fontSize: 12 }}>{p.levels.map(x => `${x.name} ${px(x.price)}`).join(" · ")}</div>
+      </div>}
+      <div style={{ fontSize: 13, marginTop: 10 }}>
+        {l2.sessions ? <>
+          <div>Virgin session levels: {l2.n_virgin} from {l2.sessions} sessions since {l2.history_from}</div>
+          <div className="q-faint" style={{ fontSize: 12 }}>above: {vl(l2.virgin_above)}</div>
+          <div className="q-faint" style={{ fontSize: 12 }}>below: {vl(l2.virgin_below)}</div>
+        </> : <div className="q-faint">No 5-minute bars for session profiles.</div>}
+      </div>
+    </div>
+  );
+}
+
 function TradeCheck({ sym, onResult, status }) {
   const [f, setF] = useState({ side: "long", entry: "", stop: "", target: "" });
   const [busy, setBusy] = useState(false);
@@ -225,6 +253,7 @@ function StockMap({ sym }) {
                 <div className="q-faint" style={{ fontSize: 12, marginTop: 12 }}>{rd.note}</div>
               </div>
               <Structure l1={rd.l1} />
+              <DailyLayer l2={rd.l1?.l2} />
               <TradeCheck sym={sym} onResult={setCheck} status={rd.status} />
             </div>
           </div>

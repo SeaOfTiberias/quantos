@@ -63,9 +63,10 @@ LAYERS_OLD = {"shown": ["daily swings (last year)", f"5-minute volume profile (l
 LAYERS_L1 = {"shown": ["monthly, weekly and daily structure (SMC: BOS, CHoCH, protected and weak levels)",
                        "demand/supply zones, order blocks, equal highs and lows (weekly, monthly)",
                        "week, month, quarter and year pivots, CPR and Camarilla (Ochoa)",
-                       "money zones and volume profiles with virgin levels; 1- and 3-year profiles (approx.)"],
-             "missing": ["daily pivots and the session (5-minute) profile: intraday layer",
-                         "market backdrop (S6)",
+                       "money zones and volume profiles with virgin levels; 1- and 3-year profiles (approx.)",
+                       "daily layer, shown beside the zones and not in them: daily pivots, CPR, Camarilla, and "
+                       "session profiles with virgin levels from 5-minute bars since 2017"],
+             "missing": ["market backdrop (S6)",
                          "fundamentals (S6b)"]}
 LAYERS = LAYERS_OLD
 

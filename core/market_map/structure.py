@@ -342,6 +342,8 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     if m5 is not None and len(m5) and len(seg):
         m5 = m5[m5["date"] >= seg["date"].iat[0]]
     out["profiles"] = pf.read(seg, as_of, price, m5) if len(seg) else None
+    from core.market_map import daily as dl             # L2: shown beside the zones, never in them (§8)
+    out["l2"] = dl.read(seg, as_of, price, m5) if len(seg) else None
     out["price"] = price
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})
@@ -426,4 +428,7 @@ def lines(l1: dict) -> list[str]:
     if l1.get("profiles"):
         from core.market_map import profiles as pf
         out += pf.lines(l1["profiles"], l1.get("price"))
+    if l1.get("l2"):
+        from core.market_map import daily as dl
+        out += dl.lines(l1["l2"], l1.get("price"))
     return out
