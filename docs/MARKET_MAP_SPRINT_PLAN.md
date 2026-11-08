@@ -231,12 +231,13 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - **Virgin levels:** POC, VAH and VAL of both kinds, retired by a later bar that spans them, with age, distance and Ochoa's two `watch` flags.
     - **Long profiles (250 and 750 sessions), labelled approximation:** POC and value area, HVN shelves, and LVNs between shelves.
     - **Checks:** the fast profile matches `price_map.levels.profile` exactly. Sweep of 261 stocks: 0 errors, 0.78 s a stock, the read's JSON 46 KB median (87 max).
-  - [ ] Slice 5b, weekly profiles from 5-minute bars (code done 11-08; backfill running):
+  - [x] Slice 5b, weekly profiles from 5-minute bars (11-08; backfill complete):
     - **Store:** `core/market_map/m5_store.py`, `m5/<SYM>/<YEAR>.csv.gz` under the L1 store. `scripts/fetch_m5.py` backfills from 2017-12-01 in 99-day requests (resumable), and the 19:30 refresh (step 7) backfills new symbols and tops up daily.
     - **Fyers sends 5-minute history already split-adjusted** up to the fetch day. The first read adjusted it twice (HDFCBANK showed 2,471 weekly virgin levels), which was caught and fixed in bc1a1d5 before any read was used. Only actions after each symbol's fetch basis are applied now.
     - **Weekly money zone:** TPOs from 30-minute brackets of 5-minute bars, as in the book. A week needs 5-minute bars for every session. The weekly VPOC, relationships and virgin levels are as for the month.
     - **Backfill (started 11-08 01:20 IST):** top 500 plus HDFCBANK and SUPREMEIND, ~15 s and ~2.3 MB a stock. The first pass lost about 20 symbols to `no_data` before listing (fixed in 31afa99) and 3 to one minute over Fyers' rate limit. A second pass starts automatically when the first ends.
     - **Second pass (11-08):** 202 of 217 backfilled, 15 failed, all on Fyers' rate limit (-360). A third pass collects them.
+    - **Third pass (11-08, after a token refresh):** 15 of 15, 0 failed. All 500 symbols (the top 500 plus HDFCBANK and SUPREMEIND) are backfilled, 746 MB on the VM.
     - **Tick when:** a pass reports 0 failures.
   - [x] Slice 6, HTF zones (11-08): `core/market_map/htf.py`, definitions §6 and §6.1.
     - **Elements:** every L1 element as a point (a band contributes its two edges), with tf, family, kind and period.
