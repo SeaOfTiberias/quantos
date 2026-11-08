@@ -111,7 +111,10 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
   - long composite profile from daily bars, labelled as an approximation;
   - period profiles, both kinds: Ochoa's price-based money zone (time at price) and the volume profile (VPOC), with their virgin levels.
 - **Joining L1 and L2** (design §3): L1 owns the week, month, quarter and year pivots, and L2 keeps only the daily ones; every level carries its price source; check that Fyers and bhavcopy agree on recent closes, and flag pre-split L2 levels.
-- **Price map v2 (L2):** the same price-based money zone and virgin POC/VAH/VAL go into the existing price map, beside its volume levels, labelled by kind. The naked-level window follows the definitions §4 (age recorded, no 20-session cutoff). This is a new map version: the 2026-11-04 FAIL stays on v1, and v2 is labelled "untested" until its own pre-registered zone test runs (S8).
+- **The new map becomes the map (slice 7; replaces "price map v2", user 2026-11-08):** the L1 read built in slices 2–6 is what `map_read` leads with and what the stock map page draws. The old 100-day price map is retired from the screen; its 2026-11-04 FAIL stays in the record, attached to it. The new map is labelled "untested" until the §9 fidelity test and the S8 tests run. Slice 7 also:
+  - draws the daily structure beside the weekly and monthly (state, last BOS/CHoCH, protected and weak levels), as display only: adding daily levels to the strong-zone rule is a definitions change (v2), not done here;
+  - reports map events as they happen: BOS and CHoCH per timeframe, and sweeps. A sweep of an EQH/EQL is v1 §3.4's `LIQUIDITY_SWEEP`. A sweep of a weak or protected high/low (design §4's table) is shown but labelled "definition not frozen" until S7 freezes it;
+  - keeps L2 to the daily pivots and the 5-minute profile (definitions §4 naked-level window, age recorded, no 20-session cutoff), from the full 5-minute history rather than 99 days.
 - Unit tests on synthetic fixtures for every rule. The golden set is scored by the §9 fidelity test, never used as a fitting target.
 - Extend `map_read` with L1, so it's used the day it lands.
 - **Done when:** the definitions v1 fidelity test (§9) has run on the golden set and its verdict is reported (a fail is reported, then v2 per §9), and `levels HDFCBANK` shows the 640-840 base and the strong low near 665 as at 2026-10-23 (an illustration check, not a score: those levels were known before v1).
@@ -156,6 +159,9 @@ Order changed by the user 2026-11-04: **the rules come from the concepts, not fr
 ### S8. Run the tests
 
 - Run the S4 and S7 pre-registered tests. Report each family and each situation as pass or fail.
+- **Added 2026-11-08 (user), each pre-registered before it runs:**
+  - **History window:** the same zone rule built from 99 days of 5-minute data vs the full history since 2017-12, both against width-matched placebos. Answers whether the 2026-11-04 FAIL came from the short window or from the zone idea.
+  - **Sweep then shift:** a weak low (or EQL) swept inside a strong HTF zone, followed by a daily CHoCH back the other way within a window fixed in the pre-registration, and the mirror for highs. Does price move in the CHoCH direction more often than after a plain break? HDFCBANK and SUPREMEIND (2026-10) prompted this and are excluded from scoring.
 - Promote passing items to filters, in the screener and as `pick_structure` flags that affect ranking. Failed items stay shown, labelled "failed its test".
 - **Done when:** the results are committed, and the filters reflect only what passed.
 
@@ -230,7 +236,8 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - **Fyers sends 5-minute history already split-adjusted** up to the fetch day. The first read adjusted it twice (HDFCBANK showed 2,471 weekly virgin levels), which was caught and fixed in bc1a1d5 before any read was used. Only actions after each symbol's fetch basis are applied now.
     - **Weekly money zone:** TPOs from 30-minute brackets of 5-minute bars, as in the book. A week needs 5-minute bars for every session. The weekly VPOC, relationships and virgin levels are as for the month.
     - **Backfill (started 11-08 01:20 IST):** top 500 plus HDFCBANK and SUPREMEIND, ~15 s and ~2.3 MB a stock. The first pass lost about 20 symbols to `no_data` before listing (fixed in 31afa99) and 3 to one minute over Fyers' rate limit. A second pass starts automatically when the first ends.
-    - **Tick when:** the second pass reports 0 failures.
+    - **Second pass (11-08):** 202 of 217 backfilled, 15 failed, all on Fyers' rate limit (-360). A third pass collects them.
+    - **Tick when:** a pass reports 0 failures.
   - [x] Slice 6, HTF zones (11-08): `core/market_map/htf.py`, definitions §6 and §6.1.
     - **Elements:** every L1 element as a point (a band contributes its two edges), with tf, family, kind and period.
     - **Clustering:** the existing map's rule at 0.3 ATR(W). Strong = 2 or more families.
@@ -238,7 +245,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
     - **L1/L2 join in `map_read`:** price sources named; the Fyers close is checked against the bhavcopy close; a split or bonus inside L2's 365-day lookback is flagged. Moving L2's week and month pivots out of L2 is part of price map v2 (slice 7). The map page's banner says L1 is in the levels read and not yet drawn.
     - **Finding (reported, rule unchanged):** v1's strong flag barely selects. Across 79 stocks the median share of HTF zones that are strong is 73% (p10 47%, p90 88%), with a median of 11 strong zones within 3 ATR(W) of price, which is close to continuous cover. HDFCBANK: 50 of 59. The §9 fidelity test and the S8 signal test decide whether that matters; any change is v2.
     - **HDFCBANK done check, as at 2026-10-23 (illustration):** "strong low near 665": yes, a 5-family strong zone at 669–682.5 (22 members, including the active weekly EQL 681.77) and one at 652–664.4. "640–840 base": **not as one zone**. v1 shows the range as an unbroken ladder of strong 10–15-point zones from 600 to 887. The wording of this check is the user's call.
-  - [ ] Slice 7: price map v2
+  - [ ] Slice 7: the new map becomes the map (old 100-day map retired, daily structure drawn, map events and sweeps)
   - [ ] Slice 8: fidelity test (needs the golden-set charts)
 - [ ] S6 L0 market map + brief
 - [ ] S6b layer F: fundamentals + ownership
@@ -250,6 +257,14 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-08 (user, after slice 6):**
+  - **Slice 7 rewritten:** the L1 map replaces the old 100-day map on screen instead of patching it. The old map's 99-day 5-minute window came from reading Fyers' per-request limit as a history limit; Fyers holds 5-minute bars from 2017-12. Its swings used a year of daily bars and its pivots were period-based, so the window covered only the volume part.
+  - **SMC is the core of the map; Ochoa's hot zones are a side record.** Structure, imbalance and liquidity are three of the five families; hot zones never make a zone strong.
+  - **Illustrations (not scored).** The engine matches LuxAlgo SMC on the user's daily charts:
+    - **HDFCBANK:** weekly protected high 843.0, weak low 669.2, daily CHoCH up at 749.3 on 11-05. As at 10-23 the weak low was 681.9. Price closed below it on 10-27 (daily CHoCH down), swept to 669.2 inside the 669–682.5 strong zone, and reversed.
+    - **SUPREMEIND:** monthly EQL 3140 (Dec 2025, Jul 2026) was the monthly and weekly weak low. It was swept on 10-30 (low 3127, a weekly BOS down at 3270), bounced to 3300, and made a new low at 3078.5 on 11-06. There was no daily CHoCH up: the daily protected high stays 3653.9. Price around 3200 sat inside the 3135–3227.6 strong zone (structure, liquidity, volume, pivot), one of five stacked strong zones from 3035 to 3540 (2.3 ATR(W)), which is the non-selectivity finding again.
+    - Both prompted the S8 "sweep then shift" test and are excluded from its scoring.
 
 - **2026-11-07 (S5 start, intraday data for the weekly profile):**
   - The weekly money zone and volume profile (definitions §4) use Fyers 5-minute bars, fetched on the VM in chunks of up to 100 days. Fyers' "100 days" is the limit **per request**, not the depth. Probed on HDFCBANK and SUPREMEIND: full weeks (375 bars) back to January 2018. Intraday history starts on **2017-12-01**; earlier start dates are refused (code −50).
