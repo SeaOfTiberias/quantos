@@ -24,7 +24,7 @@ Option legs take --right call|put --strike K. Prices are limits.
   qorder status OID | cancel OID [--yes] | gtt-book | gtt-cancel GID [--yes] | book | journal [N]
 
 Every ticket shows the stock's map read above the confirm line (core/market_map/
-read.py: strong zones either side; they failed their test, so markers only). It informs; the checks decide.
+read.py: strong zones either side; untested, so markers only). It informs; the checks decide.
 
 Places orders only for the spouse's ICICI Direct account; the son's account
 can't be named here at all (core/orders/checks.Limits.accounts).

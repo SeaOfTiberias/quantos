@@ -8,8 +8,12 @@
 import { useEffect, useState } from "react";
 import Shell, { getJson, postJson } from "./Shell.jsx";
 import { T, px } from "./theme.js";
-import { GREY, TestBadge, TradeLines, ZoneLine } from "./MapRead.jsx";
+import { TestBadge, TradeLines, ZoneLine } from "./MapRead.jsx";
 
+// Strong-zone fill by test status (screens rule 2): untested amber, failed grey.
+const FILL = { untested: { bg: "rgba(245,165,36,.10)", line: "rgba(245,165,36,.45)" },
+               failed: { bg: "rgba(163,172,189,.16)", line: "rgba(163,172,189,.45)" } };
+FILL["failed its test"] = FILL.failed;
 const SPAN_ATR = 6;            // the ladder shows price +/- this many ATR (and any trade levels)
 const H = 560;
 
@@ -41,8 +45,8 @@ function Ladder({ rd, weak, trade }) {
           return (
             <div key={`${z.low}-${z.high}`} title={`${z.range} · ${z.why}`}
                  style={{ position: "absolute", left: 64, right: 0, top, height: h, borderRadius: 4,
-                          background: z.strong ? "rgba(163,172,189,.16)" : "transparent",
-                          border: `1px ${z.strong ? "solid" : "dashed"} ${z.strong ? "rgba(163,172,189,.45)" : "rgba(93,102,121,.6)"}` }}>
+                          background: z.strong ? FILL[z.test]?.bg ?? FILL.failed.bg : "transparent",
+                          border: `1px ${z.strong ? "solid" : "dashed"} ${z.strong ? FILL[z.test]?.line ?? FILL.failed.line : "rgba(93,102,121,.6)"}` }}>
               <div className="q-row" style={{ position: "absolute", right: 8, top: h / 2 - 9, gap: 6, fontSize: 11.5, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
                 <span className="q-num" style={{ color: z.strong ? T.text : T.faint, fontWeight: z.strong ? 650 : 400 }}>{z.range}</span>
                 <span className="q-faint q-zmeta">{z.families.join(" · ")} · {z.score}</span>
@@ -58,7 +62,7 @@ function Ladder({ rd, weak, trade }) {
       </div>
       {off.below > 0 && <div className="q-faint" style={{ fontSize: 12, marginTop: 6 }}>↓ {off.below} more strong zone{off.below > 1 ? "s" : ""} below the scale</div>}
       <div className="q-row q-faint" style={{ fontSize: 12, marginTop: 10, gap: 14 }}>
-        <span><span style={{ display: "inline-block", width: 14, height: 9, background: "rgba(163,172,189,.16)", border: `1px solid ${GREY}`, borderRadius: 2 }} /> strong zone</span>
+        <span><span style={{ display: "inline-block", width: 14, height: 9, background: (FILL[rd.status] || FILL.failed).bg, border: `1px solid ${(FILL[rd.status] || FILL.failed).line}`, borderRadius: 2 }} /> strong zone ({rd.status})</span>
         {weak && <span><span style={{ display: "inline-block", width: 14, height: 9, border: `1px dashed ${T.faint}`, borderRadius: 2 }} /> weak zone</span>}
         <span>scale ±{SPAN_ATR} ATR ({px(rd.atr)}) · zone width {px(rd.zone_width)}</span>
       </div>
@@ -66,7 +70,47 @@ function Ladder({ rd, weak, trade }) {
   );
 }
 
-function TradeCheck({ sym, onResult }) {
+// The L1 structure per timeframe (rd.l1.tf): SMC state, last BOS/CHoCH, protected and weak
+// levels, the last sweep of the weak level (display only: its definition is frozen in S7).
+const TF_NAME = { M: "Monthly", W: "Weekly", D: "Daily" };
+function Structure({ l1 }) {
+  if (!l1 || l1.error || !l1.tf) return null;
+  const col = st => (st === "up" ? T.green : st === "down" ? T.red : T.faint);
+  return (
+    <div className="q-card">
+      <div className="q-between">
+        <div className="q-label">Structure (SMC)</div>
+        <TestBadge test={l1.status} />
+      </div>
+      <div className="q-sub">{l1.alignment?.text}</div>
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        {["M", "W", "D"].map(tf => {
+          const s = l1.tf[tf];
+          if (!s || s.state === "none") return <div key={tf} className="q-faint" style={{ fontSize: 13 }}>{TF_NAME[tf]}: no structure yet</div>;
+          const e = s.last_event, p = s.protected, w = s.weak, sw = (s.sweeps || []).slice(-1)[0];
+          const [pk, wk] = s.state === "up" ? ["low", "high"] : ["high", "low"];
+          return (
+            <div key={tf} style={{ fontSize: 13 }}>
+              <div className="q-row" style={{ gap: 8, alignItems: "baseline" }}>
+                <b style={{ width: 66 }}>{TF_NAME[tf]}</b>
+                <span style={{ color: col(s.state), fontWeight: 650 }}>{s.state}</span>
+                <span className="q-faint">for {s.age_bars} bars · last {e.type} {e.direction} at {px(e.level)} ({e.date})</span>
+              </div>
+              <div className="q-faint" style={{ paddingLeft: 74 }}>
+                protected {pk} <span className="q-num" style={{ color: T.text }}>{px(p.price)}</span> ({p.date}) ·
+                weak {wk} <span className="q-num" style={{ color: T.text }}>{px(w.price)}</span> ({w.date})
+              </div>
+              {sw && <div className="q-faint" style={{ paddingLeft: 74, fontSize: 12 }}>
+                last sweep: weak {sw.side} {px(sw.level)} taken to {px(sw.extreme)} on {sw.date}, closed back inside ({sw.status})</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TradeCheck({ sym, onResult, status }) {
   const [f, setF] = useState({ side: "long", entry: "", stop: "", target: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -87,7 +131,7 @@ function TradeCheck({ sym, onResult }) {
   return (
     <div className="q-card">
       <div className="q-label">Trade check</div>
-      <div className="q-sub">Where a trade sits on this map. Advisory: it places nothing, and the zones it measures against failed their test.</div>
+      <div className="q-sub">Where a trade sits on this map. Advisory: it places nothing, and the zones it measures against are {status === "failed its test" ? "the old map's, which failed their test" : "untested"}.</div>
       <div className="q-row" style={{ marginTop: 12, alignItems: "flex-end" }}>
         <div><div className="q-label">Side</div>
           <div className="q-tabs">
@@ -139,24 +183,31 @@ function StockMap({ sym }) {
       {sym && !rd && !err && <div className="q-empty">Loading the map…</div>}
       {rd && (
         <>
-          <div className="q-banner amber" style={{ marginTop: 16 }}>
-            <b>Short-sighted map.</b> Built from {rd.layers.shown.join(", ")}. Not built yet: {rd.layers.missing.join("; ")}.
-            A multi-year base can sit where this map shows "no strong zone" (the 23 Oct HDFCBANK short).
-          </div>
+          {rd.source === "l1" ? (
+            <div className="q-banner amber" style={{ marginTop: 16 }}>
+              <b>Higher-timeframe map, untested.</b> Built from {rd.layers.shown.join("; ")}. Not built yet: {rd.layers.missing.join("; ")}.
+              Most zones count as strong under v1, so "strong" selects little until the tests run.
+            </div>
+          ) : (
+            <div className="q-banner amber" style={{ marginTop: 16 }}>
+              <b>Old 100-day map ({rd.fallback}).</b> Built from {rd.layers.shown.join(", ")}. Not built yet: {rd.layers.missing.join("; ")}.
+              A multi-year base can sit where this map shows "no strong zone".
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, marginTop: 16 }}>
             <div className="q-card">
               <div className="q-between">
                 <div>
                   <div className="q-label">Price ladder</div>
                   <div className="q-sub">
-                    Map built for {rd.built_for} ({rd.source === "file" ? "saved map" : "built now"}) · price {px(rd.price)}
+                    {rd.source === "l1" ? `Bhavcopy to ${rd.built_for}` : `Map built for ${rd.built_for} (${rd.source === "file" ? "saved map" : "built now"})`} · price {px(rd.price)}
                     {rd.price_source === "live" ? " live" : " (the map's close; live price unavailable)"}
                   </div>
                 </div>
                 <div className="q-row">
                   <TestBadge test={rd.status} />
                   <label className="q-row" style={{ gap: 6, fontSize: 13 }}>
-                    <input type="checkbox" checked={weak} onChange={e => setWeak(e.target.checked)} /> weak zones</label>
+                    <input type="checkbox" checked={weak} onChange={e => setWeak(e.target.checked)} /> {rd.source === "l1" ? "single-family zones" : "weak zones"}</label>
                 </div>
               </div>
               <div style={{ marginTop: 16 }}><Ladder rd={rd} weak={weak} trade={check?.trade} /></div>
@@ -173,7 +224,8 @@ function StockMap({ sym }) {
                 </div>
                 <div className="q-faint" style={{ fontSize: 12, marginTop: 12 }}>{rd.note}</div>
               </div>
-              <TradeCheck sym={sym} onResult={setCheck} />
+              <Structure l1={rd.l1} />
+              <TradeCheck sym={sym} onResult={setCheck} status={rd.status} />
             </div>
           </div>
         </>

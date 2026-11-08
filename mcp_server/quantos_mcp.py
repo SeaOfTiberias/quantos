@@ -57,7 +57,11 @@ def quote(symbols: list[str]) -> list[dict]:
 @server.tool(annotations=READ)
 def levels(symbol: str) -> dict:
     """Start any trade discussion here. Leads with the map read ("map"): the nearest strong zones
-    below and above the last close and the zone price is in, each labelled with its test status. These zones FAILED their test (2026-11-04: no better than placebo levels), so read them as markers, never as signals. Then
+    below and above the last close and the zone price is in, each labelled with its test status. The map is the
+    higher-timeframe (L1) map: SMC structure per timeframe (BOS, CHoCH, protected and weak levels, sweeps), zones
+    where 2+ families agree, pivots and profiles. It is UNTESTED (no fidelity or signal test yet), and most zones
+    count as strong, so read them as markers, never as signals. Stocks outside the L1 store fall back to the old
+    100-day map, which FAILED its test (2026-11-04). Then
     daily trend and levels for one stock: ATR(14), EMA9/21, SMA50/200, 52-week high/low, the last
     10 sessions, the weekly Darvas box (ceiling, and the floor seen from the put side) and the
     screener's retest plan per side (limit, daily-close stop, 1R target). Only the put plan has a

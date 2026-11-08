@@ -157,6 +157,11 @@ class ZigZag:
 
 # ─── §2 structure ────────────────────────────────────────────────────────────
 
+N_EVENTS = 5                     # BOS / CHoCH shown per timeframe
+N_SWEEPS = 3
+SWEEP_NOTE = "definition not frozen"   # weak-level sweeps: design §4 table; S7 freezes the definition
+
+
 @dataclass
 class Level:
     price: float
@@ -171,6 +176,7 @@ class Structure:
     weak: Optional[Level] = None
     state_i: Optional[int] = None
     swings: list[Swing] = field(default_factory=list)
+    sweeps: list[dict] = field(default_factory=list)     # display only, see SWEEP_NOTE
     n: int = 0
 
 
@@ -195,7 +201,13 @@ def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Str
     def prot():                                          # the protected bar set by the last event (§3.3)
         st.events[-1]["prot_i"] = st.protected.i
 
+    wk = None                                            # the running weak extreme since brk_i
     for t in range(len(bars)):
+        if wk is not None and t > brk_i:                 # a wick beyond the weak extreme that closes back inside
+            if st.state == "down" and l[t] < wk and c[t] >= wk:
+                st.sweeps.append(dict(side="low", i=t, level=wk, extreme=float(l[t])))
+            elif st.state == "up" and h[t] > wk and c[t] <= wk:
+                st.sweeps.append(dict(side="high", i=t, level=wk, extreme=float(h[t])))
         hi, lo = zz.last("H"), zz.last("L")
         up_ok = hi is not None and not hi.broken and c[t] > hi.price
         dn_ok = lo is not None and not lo.broken and c[t] < lo.price
@@ -224,6 +236,9 @@ def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Str
                 event(t, "CHoCH", "up", st.protected.price)
                 st.protected = _ext(l, st.protected.i, t, hi=False); prot()
                 st.state, st.state_i, brk_i = "up", t, t
+        if st.state != "none":
+            x = float(h[t] if st.state == "up" else l[t])
+            wk = x if brk_i == t or wk is None else (max(wk, x) if st.state == "up" else min(wk, x))
         if hi is not None and c[t] > hi.price:
             hi.broken = True
         if lo is not None and c[t] < lo.price:
@@ -261,6 +276,12 @@ def summary(bars: pd.DataFrame, st: Structure, tf: str, n_swings: int = 6) -> di
             period=bars["period"].iat[last["i"]], date=bars["date"].iat[last["i"]].date().isoformat()),
         protected=_lvl(bars, st.protected), weak=_lvl(bars, st.weak),
         age_bars=None if st.state_i is None else len(bars) - 1 - st.state_i,
+        events=[dict(type=e["type"], direction=e["direction"], level=round(e["level"], 2),
+                     period=bars["period"].iat[e["i"]], date=bars["date"].iat[e["i"]].date().isoformat())
+                for e in st.events[-N_EVENTS:]],
+        sweeps=[dict(side=w["side"], level=round(w["level"], 2), extreme=round(w["extreme"], 2),
+                     period=bars["period"].iat[w["i"]], date=bars["date"].iat[w["i"]].date().isoformat(),
+                     status=SWEEP_NOTE) for w in st.sweeps[-N_SWEEPS:]],
         swings=[dict(kind=s.kind, label=s.label, price=round(s.price, 2), period=bars["period"].iat[s.i],
                      confirmed=bars["period"].iat[s.confirm_i]) for s in st.swings[-n_swings:]],
     )
@@ -333,6 +354,7 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     out["htf"] = dict(status=UNTESTED, source=htf.SOURCE, atr_w=atr_w,
                       width=round(htf.HTF_ATR * atr_w, 2) if atr_w else None,
                       n_elements=len(els), n_zones=len(allz),
+                      zones=[htf.compact(z) for z in allz],
                       strong=[htf.compact(z) for z in strong],
                       hot=htf.hot_zones(els, atr_w, out, strong))
     return out
@@ -378,6 +400,10 @@ def lines(l1: dict) -> list[str]:
                    f"weak {wk} {w['price']:g} ({w['period']})"
                    + (f"; {s['premium_discount']['side']} {s['premium_discount']['position_pct']:g}%"
                       if s.get("premium_discount") else ""))
+        if s.get("sweeps"):
+            w = s["sweeps"][-1]
+            out.append(f"        last sweep: weak {w['side']} {w['level']:g} taken to {w['extreme']:g} on {w['date']}, "
+                       f"closed back inside ({w['status']})")
     if "zones" in l1:
         inside, below, above = nearest_zones(l1)
         out.append(f"     zones (untested) below: {'; '.join(map(_zfmt, below)) or 'none'} | "

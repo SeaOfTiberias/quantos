@@ -1,16 +1,22 @@
 """
 QuantOS — Market Map: map_read, the one call every decision path makes
 ──────────────────────────────────────────────────────────────────────
-docs/MARKET_MAP_ENGINE_DESIGN.md §5, phase P0. Wraps the existing price map
-(core/price_map/) and answers "where are we, and what does that mean for this
-trade?": the nearest strong zone below and above, the zone price is in, and,
-for a proposed trade, the first strong zone in its way (in R), whether the
-target lies beyond it, and whether the stop sits inside a zone.
+docs/MARKET_MAP_ENGINE_DESIGN.md §5. Answers "where are we, and what does that
+mean for this trade?": the nearest strong zone below and above, the zone price is
+in, and, for a proposed trade, the first strong zone in its way (in R), whether
+the target lies beyond it, and whether the stop sits inside a zone.
+
+The map (sprint plan S5 slice 7, user 2026-11-08) is the L1 higher-timeframe map:
+definitions v1, built from the adjusted NSE bhavcopy in the L1 store (structure,
+imbalance, liquidity, volume and pivot families; core/market_map/structure.py and
+htf.py). Its zones are UNTESTED: no fidelity (§9) or signal test (S8) has run.
+A symbol the L1 store doesn't hold falls back to the old 100-day price map below,
+labelled as the fallback, with that map's FAILED status.
 
     map_read("HDFCBANK")                                          # where price is
     map_read("HDFCBANK", {"side": "short", "entry": 678, "stop": 690, "target": 665})
 
-The map comes from ~/.quantos/price_maps/<SYMBOL>.json when one was built in
+The fallback map comes from ~/.quantos/price_maps/<SYMBOL>.json when one was built in
 the last MAX_AGE_DAYS; otherwise it is built on demand from the market's bars
 (and saved). With as_of, it is built from bars before that day only and not
 saved. Every zone line carries its test status: these L2 strong zones FAILED
@@ -44,11 +50,24 @@ NOTE = ("Zones mark where price did business and turned. In the 2026-11-04 test 
         "more often than placebo levels (docs/PRICE_MAP_ZONES_PREREG_2026-10-28.md): markers for "
         "reading a trade, never a signal or a filter.")
 # What the map is built from and what it lacks, for every screen that draws it (docs/MARKET_MAP_SCREENS.md rule 3).
-LAYERS = {"shown": ["daily swings (last year)", f"5-minute volume profile (last {INTRADAY_DAYS} days)",
-                    "pivots (last day, week, month)"],
-          "missing": ["higher-timeframe (L1) zones drawn on this page: L1 is in the levels read, untested (S5)",
-                      "market backdrop (S6)",
-                      "fundamentals (S6b)"]}
+L1_ROOT = None                                         # the L1 store's root (None: its default); tests move it
+NOTE_L1 = ("Higher-timeframe zones (definitions v1): where two or more families (structure, imbalance, liquidity, "
+           "volume, pivot) agree. Untested: no fidelity or signal test has run. Markers for reading a trade, never "
+           "a signal or a filter. Under v1 most zones count as strong (median 73%), so 'strong' selects little.")
+LAYERS_OLD = {"shown": ["daily swings (last year)", f"5-minute volume profile (last {INTRADAY_DAYS} days)",
+                        "pivots (last day, week, month)"],
+              "missing": ["the higher-timeframe (L1) map: this stock is not in the L1 store, so the old 100-day "
+                          "map is shown (it failed its test)",
+                          "market backdrop (S6)",
+                          "fundamentals (S6b)"]}
+LAYERS_L1 = {"shown": ["monthly, weekly and daily structure (SMC: BOS, CHoCH, protected and weak levels)",
+                       "demand/supply zones, order blocks, equal highs and lows (weekly, monthly)",
+                       "week, month, quarter and year pivots, CPR and Camarilla (Ochoa)",
+                       "money zones and volume profiles with virgin levels; 1- and 3-year profiles (approx.)"],
+             "missing": ["daily pivots and the session (5-minute) profile: intraday layer",
+                         "market backdrop (S6)",
+                         "fundamentals (S6b)"]}
+LAYERS = LAYERS_OLD
 
 
 def side_of(x: Any) -> int:
@@ -65,14 +84,22 @@ def side_of(x: Any) -> int:
 
 # ─── pure: a map dict in, a read out ─────────────────────────────────────────
 
-def _zone(z: Optional[dict], price: float, atr: float) -> Optional[dict]:
+def _why(z: dict, n: int = 3) -> str:
+    """A zone's members: the L1 map stores them as text, the old map as levels."""
+    return z["why"] if "why" in z and "levels" not in z else why(z, n)
+
+
+def _zone(z: Optional[dict], price: float, atr: float, status: str = ZONE_TEST) -> Optional[dict]:
     if not z:
         return None
     edge = z["high"] if z["high"] < price else z["low"]
-    return {"range": rng(z), "low": z["low"], "high": z["high"], "why": why(z),
-            "distance": round(abs(edge - price), 2),
-            "distance_atr": round(abs(edge - price) / atr, 2) if atr else None,
-            "distance_pct": round(abs(edge - price) / price * 100, 2), "test": ZONE_TEST}
+    out = {"range": rng(z), "low": z["low"], "high": z["high"], "why": _why(z),
+           "distance": round(abs(edge - price), 2),
+           "distance_atr": round(abs(edge - price) / atr, 2) if atr else None,
+           "distance_pct": round(abs(edge - price) / price * 100, 2), "test": status}
+    if "families" in z:
+        out["families"] = z["families"]
+    return out
 
 
 def read(m: dict, trade: Optional[dict] = None, price: Optional[float] = None) -> dict:
@@ -87,15 +114,18 @@ def read(m: dict, trade: Optional[dict] = None, price: Optional[float] = None) -
              "target": float(trade["target"]) if trade.get("target") is not None else None}
     px = float(price if price is not None else (t["entry"] if t else m["close"]))
     atr = m.get("atr") or 0
+    st = m.get("status", ZONE_TEST)
     n = nearest(m, px)
     inside = zone_at(m, px)
     out: dict[str, Any] = {
         "symbol": m["symbol"], "built_for": m["built_for"], "close": m["close"], "price": px, "atr": m.get("atr"),
-        "shifted_by": m.get("shifted_by"),
-        "inside": {"range": rng(inside), "why": why(inside), "test": ZONE_TEST} if inside else None,
-        "below": _zone(n["below"], px, atr), "above": _zone(n["above"], px, atr),
-        "status": ZONE_TEST, "note": NOTE,
+        "shifted_by": m.get("shifted_by"), "map": m.get("map", "old 100-day price map"),
+        "inside": {"range": rng(inside), "why": _why(inside), "test": st} if inside else None,
+        "below": _zone(n["below"], px, atr, st), "above": _zone(n["above"], px, atr, st),
+        "status": st, "note": m.get("note", NOTE),
     }
+    if m.get("atr_w"):
+        out["atr_w"] = m["atr_w"]
     if t:
         out["trade"] = trade_read(m, t)
     return out
@@ -103,6 +133,7 @@ def read(m: dict, trade: Optional[dict] = None, price: Optional[float] = None) -
 
 def trade_read(m: dict, t: dict) -> dict:
     side, entry, stop, target = t["side"], t["entry"], t["stop"], t["target"]
+    st = m.get("status", ZONE_TEST)
     r = abs(entry - stop) if stop is not None else 0.0
     ob = first_obstacle(m["zones"], entry, side, r) if r > 0 else None
     beyond = bool(ob and target is not None and (target - ob["edge"]) * side > 0)
@@ -115,11 +146,11 @@ def trade_read(m: dict, t: dict) -> dict:
     return {"side": "long" if side > 0 else "short", "entry": entry, "stop": stop, "target": target,
             "r": round(r, 2) if r else None,
             "target_r": round(abs(target - entry) / r, 2) if r and target is not None else None,
-            "first_obstacle": {"range": rng(ob["zone"]), "why": why(ob["zone"]), "edge": ob["edge"], "r": ob["r"],
-                               "test": ZONE_TEST} if ob else None,
+            "first_obstacle": {"range": rng(ob["zone"]), "why": _why(ob["zone"]), "edge": ob["edge"], "r": ob["r"],
+                               "test": st} if ob else None,
             "target_beyond_obstacle": beyond,
-            "stop_in_zone": {"range": rng(sz), "why": why(sz), "test": ZONE_TEST} if sz else None,
-            "flags": flags, "test": ZONE_TEST}
+            "stop_in_zone": {"range": rng(sz), "why": _why(sz), "test": st} if sz else None,
+            "flags": flags, "test": st}
 
 
 def ladder(m: dict, price: float) -> list[dict]:
@@ -128,14 +159,16 @@ def ladder(m: dict, price: float) -> list[dict]:
     ran them as its control and they turned price less often than the strong ones, which did no
     better than placebo."""
     atr = m.get("atr") or 0
+    st = m.get("status", ZONE_TEST)
     out = []
     for z in sorted(m.get("zones", []), key=lambda z: -z["high"]):
         where = "above" if z["low"] > price else "below" if z["high"] < price else "inside"
         gap = z["low"] - price if where == "above" else price - z["high"] if where == "below" else 0.0
-        out.append({"low": z["low"], "high": z["high"], "range": rng(z), "strong": z["strong"], "score": z["score"],
-                    "families": z["families"], "why": why(z, 6), "where": where, "distance": round(gap, 2),
+        out.append({"low": z["low"], "high": z["high"], "range": rng(z), "strong": z["strong"],
+                    "score": z.get("score", z.get("n")), "families": z["families"], "tfs": z.get("tfs"),
+                    "why": _why(z, 6), "where": where, "distance": round(gap, 2),
                     "distance_atr": round(gap / atr, 2) if atr else None,
-                    "distance_pct": round(gap / price * 100, 2), "test": ZONE_TEST})
+                    "distance_pct": round(gap / price * 100, 2), "test": st})
     return out
 
 
@@ -145,7 +178,13 @@ def lines(rd: dict) -> list[str]:
         return [f"MAP  {rd.get('symbol') or ''}: none ({rd['error']})"]
     fmt = (lambda z: f"{z['range']} ({z['why']}), {z['distance_pct']:g}% away" if z else "no strong zone")
     basis = f", shifted {rd['shifted_by']:+g} onto futures" if rd.get("shifted_by") else ""
-    out = [f"MAP  {rd['symbol']} at {rd['price']:g} (map built for {rd['built_for']}{basis}) -- zones {ZONE_TEST} (zone test 2026-11-04)",
+    if str(rd.get("map", "")).startswith("L1"):
+        head = (f"MAP  {rd['symbol']} at {rd['price']:g} (higher-timeframe map, bhavcopy to {rd['built_for']}) "
+                f"-- zones {rd['status']} (no fidelity or signal test yet)")
+    else:
+        head = (f"MAP  {rd['symbol']} at {rd['price']:g} (old 100-day map, built for {rd['built_for']}{basis}; "
+                f"not in the L1 store) -- zones {rd['status']} (zone test 2026-11-04)")
+    out = [head,
            f"     below: {fmt(rd['below'])}", f"     above: {fmt(rd['above'])}"]
     if rd.get("inside"):
         out.append(f"     price is inside the strong zone {rd['inside']['range']} ({rd['inside']['why']})")
@@ -208,6 +247,15 @@ def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = 
     sym = symbol.strip().upper()
     maps_dir = maps_dir or MAPS_DIR                          # at call time, so tests can move it
     try:
+        l1 = l1_for(sym, as_of or datetime.now(IST).date(), l1_store)
+        if "error" not in l1 and (l1.get("htf") or {}).get("zones"):
+            m = l1_map(sym, l1)
+            rd = read(m, trade, price)
+            rd["source"] = "l1"
+            if zones:
+                rd.update(zones=ladder(m, rd["price"]), zone_width=m["zone_width"], layers=LAYERS_L1)
+            rd["l1"] = l1
+            return rd
         m = None if as_of else load(sym, maps_dir, max_age_days)
         source = "file"
         if m is None:
@@ -222,20 +270,31 @@ def map_read(symbol: str, trade: Optional[dict] = None, as_of: Optional[date] = 
         rd = read(m, trade, price)
         if "error" not in rd:
             rd["source"] = source
+            rd["fallback"] = f"not in the L1 store ({l1.get('error', 'no HTF zones')})"
             if zones:
-                rd.update(zones=ladder(m, rd["price"]), zone_width=m.get("zone_width"), layers=LAYERS)
-            rd["l1"] = l1_for(sym, as_of or datetime.now(IST).date(), l1_store)
+                rd.update(zones=ladder(m, rd["price"]), zone_width=m.get("zone_width"), layers=LAYERS_OLD)
+            rd["l1"] = l1
             rd["join"] = join_checks(rd)
         return rd
     except Exception as e:                                   # a read must never break the tool it serves
         return {"symbol": sym, "error": f"{type(e).__name__}: {str(e)[:160]}"}
 
 
+def l1_map(symbol: str, l1: dict) -> dict:
+    """The L1 read as a map dict for read(), trade_read() and ladder(): every HTF zone
+    (strong = 2+ families), distances in ATR(D), the zone width in ATR(W)."""
+    h = l1["htf"]
+    return dict(symbol=symbol, built_for=l1.get("last_date"), close=l1["price"],
+                atr=(l1["tf"].get("D") or {}).get("atr"), atr_w=h.get("atr_w"), zone_width=h.get("width"),
+                zones=[dict(z) for z in h["zones"]], status=UNTESTED, note=NOTE_L1,
+                map="L1 higher-timeframe map (definitions v1)")
+
+
 def l1_for(symbol: str, as_of: date, store: Any = None) -> dict:
     """The L1 structure read from the price store; never raises."""
     try:
         from core.market_map.l1_store import Store
-        st = store if store is not None else Store()
+        st = store if store is not None else Store(L1_ROOT)
         adj, _ = st.adjusted(symbol)
         if adj.empty:
             return {"error": f"{symbol} is not in the L1 store at {st.root}"}

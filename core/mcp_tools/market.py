@@ -86,7 +86,7 @@ def _atr(bars: list[OHLCV], n: int = 14) -> Optional[float]:
 
 
 def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
-    """The map read first (core/market_map/read.py: strong zones either side, labelled 'failed its test'), then
+    """The map read first (core/market_map/read.py: higher-timeframe strong zones either side, untested), then
     daily trend, volatility and Darvas box state, plus the screener's tested retest plan for
     each side. Uses completed sessions only (today's forming bar is reported separately)."""
     from core.market_map.read import map_read
@@ -282,7 +282,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                     "meetings; when inside the horizon, if_event = the session after results with a 1.5 ATR gap against "
                     "the view and IV down to its 1y median, and R7 flags a structure whose worst case that is. "
                     "map / location_flags: the strong zones around spot, the first one in the view's way (in R), "
-                    "a target beyond it, a stop inside one -- the zones failed their test (2026-11-04), so markers only; they don't change the ranking."}
+                    "a target beyond it, a stop inside one -- the higher-timeframe zones are untested (the old 100-day map, used only for stocks outside the L1 store, failed its test), so markers only; they don't change the ranking."}
 
 
 # ─── OI build-up ─────────────────────────────────────────────────────────────

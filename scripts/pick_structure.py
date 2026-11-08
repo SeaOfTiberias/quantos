@@ -8,7 +8,7 @@ Fetches the live chain (strikes within +-10 steps of spot, every listed
 expiry, both rights) and futures from Fyers, then prints the best candidate
 of each family and the overall top 8, after the map read (core/market_map/read.py:
 the first strong zone in the view's way, a target beyond it, a stop inside a zone;
-the zones failed their test, so advisory only -- the ranking ignores it). Places NO orders.
+the zones are untested, so advisory only -- the ranking ignores it). Places NO orders.
 """
 
 from __future__ import annotations

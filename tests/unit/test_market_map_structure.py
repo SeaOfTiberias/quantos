@@ -41,6 +41,17 @@ def test_bos_then_choch_with_protected_and_weak_levels():
     assert sm["age_bars"] == 0 and sm["last_event"]["level"] == 9
 
 
+def test_a_wick_beyond_the_weak_low_that_closes_back_inside_is_a_sweep_and_a_close_beyond_is_not():
+    rows = TRACE + [(10, 7.5, 8.2),     # 11: below the weak low 8, closes back above it -> sweep of 8
+                    (9, 7, 7.2)]        # 12: below 7.5 and closes below it -> no sweep
+    b = _bars(rows)
+    st = s.run(b, 1, np.ones(len(b)))
+    assert [(w["side"], w["i"], w["level"], w["extreme"]) for w in st.sweeps] == [("low", 11, 8, 7.5)]
+    assert (st.weak.price, st.weak.i) == (7, 12)
+    sm = s.summary(b, st, "D")
+    assert sm["sweeps"][0]["status"] == s.SWEEP_NOTE and [e["type"] for e in sm["events"]][-1] == "CHoCH"
+
+
 def test_protected_low_after_a_bos_is_the_low_since_the_broken_high():
     b = _bars(TRACE[:10])
     st = s.run(b, 1, np.ones(len(b)))
@@ -138,6 +149,38 @@ def test_map_read_carries_the_l1_read_from_the_store(tmp_path):
                  "pivot levels below", "profiles (untested", "long profile"):
         assert any(part in ln for ln in txt), part
     assert s.lines({"error": "no store"}) == ["L1   none (no store)"]
+
+
+def test_map_read_leads_with_the_l1_map_when_the_store_holds_the_stock(tmp_path):
+    st = Store(tmp_path)
+    rng = np.random.default_rng(7)
+    c = 100 * np.exp(np.cumsum(rng.normal(0, 0.015, 900)))
+    for dt, x in zip(pd.bdate_range("2023-01-02", periods=900), c):
+        st.append_day(pd.DataFrame([("ABC", "EQ", x, x * 1.01, x * 0.99, x, 1, 1)],
+                                   columns=["sym", "series", "o", "h", "l", "c", "vol", "val"]), dt.date())
+    day = date(2026, 6, 1)
+
+    class NoMarket:                                      # the old map is never built for an L1 stock
+        def daily(self, *a):
+            raise AssertionError("old map built")
+    rd = mr.map_read("ABC", as_of=day, l1_store=st, market=NoMarket(), zones=True)
+    assert rd["source"] == "l1" and rd["map"].startswith("L1") and rd["status"] == "untested"
+    assert rd["price"] == rd["l1"]["price"] and rd["atr"] == rd["l1"]["tf"]["D"]["atr"] and "join" not in rd
+    assert len(rd["zones"]) == rd["l1"]["htf"]["n_zones"] and {z["test"] for z in rd["zones"]} == {"untested"}
+    assert any(not z["strong"] for z in rd["zones"]) and rd["layers"] is mr.LAYERS_L1
+    for k in ("below", "above"):
+        if rd[k]:
+            assert rd[k]["test"] == "untested" and rd[k]["families"]
+    px = rd["price"]
+    tr = mr.map_read("ABC", {"side": "short", "entry": px, "stop": px * 1.03, "target": px * 0.8},
+                     as_of=day, l1_store=st)
+    assert tr["trade"]["test"] == "untested"
+    if tr["trade"]["first_obstacle"]:
+        ob = tr["trade"]["first_obstacle"]
+        lo, hi = (float(x) for x in ob["range"].replace("–", "-").split("-")) if "–" in ob["range"] else (ob["edge"],) * 2
+        assert (lo + hi) / 2 < px and tr["trade"]["target_beyond_obstacle"]
+    txt = mr.lines(tr)
+    assert "higher-timeframe map" in txt[0] and "untested" in txt[0]
 
 
 def test_join_checks_flag_a_close_mismatch_and_a_recent_split():

@@ -39,7 +39,8 @@ def test_get_map_draws_the_whole_ladder_with_its_status(client):
     assert out["inside"]["range"] == "688.77–693"
     assert [(z["where"], z["distance"]) for z in out["zones"]] == [("above", 19.33), ("inside", 0), ("below", 20.8)]
     assert out["zones"][0]["distance_atr"] == 1.38 and out["zones"][2]["distance_pct"] == 3.0
-    assert any("S5" in m for m in out["layers"]["missing"]) and out["zone_width"] == 4.19
+    assert any("not in the L1 store" in m for m in out["layers"]["missing"]) and out["zone_width"] == 4.19
+    assert out["fallback"].startswith("not in the L1 store")
 
 
 def test_get_map_reads_at_the_live_price_when_fyers_answers(client, monkeypatch):
