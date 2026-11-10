@@ -66,3 +66,10 @@ def test_nearest_strong():
           dict(low=110, high=111, strong=True)]
     n = htf.nearest_strong(zs, 100.0)
     assert n["below"]["low"] == 90 and n["above"]["low"] == 110 and n["inside"]["low"] == 99
+
+
+def test_v2_g2_a_cluster_inside_overlapping_bands_joins_each():
+    b = lambda lo, hi: dict(_e(lo, "imbalance"), lo=lo, hi=hi, band=True)
+    zs = htf.cluster([b(90, 95), b(92, 98), _e(93, "pivot")], 1.0)
+    assert [(z["low"], z["high"], z["families"]) for z in zs] == [
+        (90, 95, ["imbalance", "pivot"]), (92, 98, ["imbalance", "pivot"])]

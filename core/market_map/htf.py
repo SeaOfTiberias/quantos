@@ -26,8 +26,9 @@ Choices v1 leaves open, fixed here before any golden-set chart:
   - v2 G2 rev 1 bands: demand, supply and order-block zones enter whole and are never
     split; bands never merge with each other (overlapping bands stay separate zones, as on
     a chart). A point cluster lying within 0.3 ATR(W) of a band joins the nearest band (the
-    one whose range is closest to the cluster's middle). A zone's range is the union of
-    its members. HVN and LVN shelves enter as their two edges, as in v1.
+    one whose range is closest to the cluster's middle); when several are equally near (the
+    cluster's middle lies inside overlapping bands), it joins each of them. A zone's range
+    is the union of its members. HVN and LVN shelves enter as their two edges, as in v1.
   - A strong zone has members from at least 2 families, one of them structure, imbalance
     or liquidity (v2 G2). Price-based and volume-based profile levels are one family.
   - Hot zones (§6.1): the same clustering over the §4 levels only (pivots, money zones,
@@ -149,9 +150,10 @@ def cluster(els: list[dict], width: float) -> list[dict]:
         if not near:
             out.append(z)
             continue
-        j = min(near, key=lambda j: max(core[j][0] - mid, 0, mid - core[j][1]))
-        bands[j]["members"] += z["members"]
-        bands[j]["low"], bands[j]["high"] = min(bands[j]["low"], z["low"]), max(bands[j]["high"], z["high"])
+        gap = {j: max(core[j][0] - mid, 0, mid - core[j][1]) for j in near}
+        for j in [j for j in near if gap[j] == min(gap.values())]:     # a tie (inside overlapping bands): each
+            bands[j]["members"] = bands[j]["members"] + z["members"]
+            bands[j]["low"], bands[j]["high"] = min(bands[j]["low"], z["low"]), max(bands[j]["high"], z["high"])
     out += bands
     return [_finish(z) for z in sorted(out, key=lambda z: (z["low"], z["high"]))]
 
