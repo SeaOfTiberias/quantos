@@ -88,8 +88,8 @@ def items(rid: str, rd: dict) -> list[dict]:
     lad = rd.get("zones") or []
     zf = (lambda z: f"{z['range']} [{'+'.join(z['families'])}]{' STRONG' if z['strong'] else ''} "
                     f"{z['distance_atr']} ATR(D) away; {z['why']}")
-    for z in [z for z in lad if z["where"] == "inside"]:
-        add("Z.inside", "zone", f"price inside zone {zf(z)}")
+    for i, z in enumerate([z for z in lad if z["where"] == "inside"], 1):     # v2: bands may overlap
+        add("Z.inside" if i == 1 else f"Z.inside{i}", "zone", f"price inside zone {zf(z)}")
     below = sorted([z for z in lad if z["where"] == "below"], key=lambda z: z["distance"])[:N_NEAR]
     above = sorted([z for z in lad if z["where"] == "above"], key=lambda z: z["distance"])[:N_NEAR]
     for i, z in enumerate(below, 1):
@@ -171,6 +171,8 @@ def main() -> int:
         txt = mr.lines(rd)                                    # includes the L1 and L2 lines
         doc = dict(id=rid, symbol=sym, as_of=as_of.isoformat(), last_bar=rd["l1"]["last_date"],
                    price=rd["price"], atr_d=rd["atr"], lines=txt, items=items(rid, rd), read=rd)
+        ids = [x["id"] for x in doc["items"]]
+        assert len(ids) == len(set(ids)), f"duplicate item ids in {rid}"
         (a.out / f"{rid}.json").write_text(json.dumps(doc, indent=1, default=str), encoding="utf-8")
         for tf in s.TFS:
             bars_out(s.completed(seg, tf, as_of)).to_csv(a.out / f"{rid}_{tf}.csv", index=False)
