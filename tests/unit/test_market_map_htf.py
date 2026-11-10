@@ -34,10 +34,10 @@ def test_v2_g2_a_band_enters_whole_and_is_never_split():
         (90.0, 95.8, ["imbalance", "volume", "pivot"], True), (99, 99, ["structure"], False)]
 
 
-def test_v2_g2_overlapping_bands_merge_and_a_cluster_joins_the_nearest_band():
-    b = lambda lo, hi, fam="imbalance": dict(_e(lo, fam), lo=lo, hi=hi, band=True)
-    zs = htf.cluster([b(90, 95), b(94, 96), b(97.5, 98, "volume"), _e(96.8, "pivot")], 1.0)
-    assert [(z["low"], z["high"]) for z in zs] == [(90, 96), (96.8, 98)]    # 96.8: 0.8 from 96, 0.7 from 97.5
+def test_v2_g2_rev1_bands_never_merge_and_a_cluster_joins_the_nearest_band():
+    b = lambda lo, hi: dict(_e(lo, "imbalance"), lo=lo, hi=hi, band=True)
+    zs = htf.cluster([b(90, 95), b(94, 96), b(97.5, 98), _e(96.8, "pivot")], 1.0)
+    assert [(z["low"], z["high"]) for z in zs] == [(90, 95), (94, 96), (96.8, 98)]   # 96.8: 0.8 from 96, 0.7 from 97.5
 
 
 def test_v2_g2_only_unbroken_swings_and_watched_virgin_levels_enter():

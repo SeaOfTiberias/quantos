@@ -63,17 +63,23 @@ A break in the trend's direction is a BOS. A break against it is a CHoCH.
     - the 250- and 750-day POC, VAL and VAH, and HVN bands;
     - **only the `watch` virgin levels** (G5). These are the two Ochoa watches per period and kind: the virgin POC, and the virgin VAH or VAL nearest the price.
   - Pivot: unchanged.
-- **Bands keep their range.** Demand, supply and order-block zones (§3.1, §3.3) and HVN and LVN runs (§5) enter as bands. A band is never split.
+- **Bands keep their range** *(rev 1, see below)*. Demand, supply and order-block zones (§3.1, §3.3) enter as bands. A band is never split, and **bands never merge with each other**: overlapping bands stay separate zones, as they would on a chart.
   - Point levels cluster as in v1: a level within 0.3 ATR(W) of the cluster's last level joins it, and a cluster stays at most 1.5 × 0.3 ATR(W) wide.
-  - A band and a point cluster merge when the cluster lies within 0.3 ATR(W) of the band.
-  - Bands that overlap merge.
-  - A merged zone's range is the union of its members, and the read shows that real range.
+  - A point cluster within 0.3 ATR(W) of a band joins the nearest band.
+  - A zone's range is the union of its members, and the read shows that real range.
+  - HVN and LVN runs (§5) enter as their two edges, as in v1. A shelf's edge is where acceptance ends, and that edge is the level that matters (Dalton; Ochoa Ch. 4).
 - **Strong zone:** at least 2 families, **at least one of which is structure, imbalance or liquidity**, that is, a level where price itself turned, left a base or left resting orders.
   - Pivot and volume levels are formulas over every period, so their agreement alone is everywhere by construction.
   - Pivot-and-volume confluence stays recorded as Ochoa's hot zones (§6.1, unchanged).
 - **Wording.** Zones are labelled "clustered at 0.3 ATR(W); point clusters at most 0.45 ATR(W); bands keep their full range".
 
 The share of strong zones is reported after the regeneration as a description, not a target. No parameter here is set from it.
+
+**Rev 1 (2026-11-11, after the first regeneration, before anyone reviewed it).** As first written, G2 merged overlapping bands and entered HVN and LVN runs as bands. The first regeneration of the 15 reads showed that this chains wide bands into one zone. DMART's "inside" zone ran 3292–5484.85, about 2,200 points; KEI had 2815–3445 and 2020–2762. That is a fault in how the rule is built, visible from the zones' widths alone. It was found without any price after an as-of date and before any review. Rev 1 changes two things:
+- bands no longer merge with each other;
+- HVN and LVN shelves are edges again.
+
+The rest of G2 is unchanged.
 
 ## G3. Equal highs and lows (amends v1 §1 and §3.4)
 

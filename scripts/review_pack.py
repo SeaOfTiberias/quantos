@@ -73,8 +73,9 @@ def items(rid: str, rd: dict) -> list[dict]:
                 f"{tf}: price in {q['side']} ({q['position_pct']:g}% of {q['lo']:g}-{q['hi']:g}, eq {q['eq']:g})")
         if t.get("sweeps"):
             x = t["sweeps"][-1]
-            add(f"{tf}.sweep", "sweep", f"{tf}: swing {x['side']} {x['level']:g} ({x['swing']}) swept to {x['extreme']:g} "
-                                        f"on {x['date']}, closed back inside ({x['status']})")
+            src = f"swing {x['side']} {x['level']:g} ({x['swing']})" if "swing" in x else f"weak {x['side']} {x['level']:g}"
+            add(f"{tf}.sweep", "sweep", f"{tf}: {src} swept to {x['extreme']:g} on {x['date']}, closed back inside "
+                                        f"({x['status']})")
         if t.get("failed_breaks"):
             x = t["failed_breaks"][-1]
             add(f"{tf}.failed", "sweep", f"{tf}: swing {x['side']} {x['level']:g} closed beyond in {x['broke']}, back inside "

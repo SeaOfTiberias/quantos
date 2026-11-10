@@ -1,10 +1,10 @@
 """
 HTF zones: L1 elements clustered by family (sprint plan S5, slice 6; definitions v1 §6 and
-§6.1, as amended by v2 G2, docs/MARKET_MAP_DEFINITIONS_V2.md).
+§6.1, as amended by v2 G2 rev 1, docs/MARKET_MAP_DEFINITIONS_V2.md).
 
 v2 G2 (2026-11-11): structure swings enter only while no close has gone beyond them;
-virgin profile levels only when flagged `watch`; bands (demand, supply, order blocks,
-HVN and LVN runs) keep their whole range and are never split; a strong zone needs 2+
+virgin profile levels only when flagged `watch`; demand, supply and order-block bands keep
+their whole range, are never split and never merge with each other; a strong zone needs 2+
 families, at least one of them structure, imbalance or liquidity.
 
 Elements (every one keeps its timeframe, family, kind and period, so the signal test can
@@ -23,10 +23,11 @@ Choices v1 leaves open, fixed here before any golden-set chart:
   - Point levels cluster by the existing map's rule (core/price_map/levels.zones) at the
     weekly scale: a level within 0.3 ATR(W) of the cluster's last level joins it while the
     cluster stays within 1.5x that. (v1 entered bands as their two edges; v2 G2 replaced it.)
-  - v2 G2 bands: overlapping bands merge into one zone (their union). A point cluster lying
-    within 0.3 ATR(W) of a band zone joins the nearest such band zone (the one whose range
-    is closest to the cluster's middle); band zones are never merged through a point
-    cluster. A zone's range is the union of its members.
+  - v2 G2 rev 1 bands: demand, supply and order-block zones enter whole and are never
+    split; bands never merge with each other (overlapping bands stay separate zones, as on
+    a chart). A point cluster lying within 0.3 ATR(W) of a band joins the nearest band (the
+    one whose range is closest to the cluster's middle). A zone's range is the union of
+    its members. HVN and LVN shelves enter as their two edges, as in v1.
   - A strong zone has members from at least 2 families, one of them structure, imbalance
     or liquidity (v2 G2). Price-based and volume-based profile levels are one family.
   - Hot zones (§6.1): the same clustering over the §4 levels only (pivots, money zones,
@@ -46,7 +47,8 @@ HTF_ATR = 0.3                 # §6 tolerance, in ATR(W)
 CAP = 1.5                     # the existing map's no-chaining cap
 FAMILIES = ("structure", "imbalance", "liquidity", "volume", "pivot")
 PRICE_ACTION = ("structure", "imbalance", "liquidity")         # v2 G2: a strong zone needs one of these
-RULE = "clustered at 0.3 ATR(W); point clusters at most 0.45 ATR(W); bands keep their full range"
+RULE = ("clustered at 0.3 ATR(W); point clusters at most 0.45 ATR(W); demand, supply and order-block bands "
+        "keep their full range")
 SOURCE = "L1: NSE bhavcopy daily (adjusted), Fyers 5-minute for the weekly profile"
 
 
@@ -110,11 +112,12 @@ def elements(l1: dict, swings: dict) -> list[dict]:
             continue
         for k in ("POC", "VAL", "VAH"):
             out.append(_e(lp[k], "volume", f"{n}d", "long", f"{n}d {k} (approx.)"))
-        for s in lp["hvn"]:
-            out.append(_band(s["lo"], s["hi"], "volume", f"{n}d", "hvn", f"{n}d HVN {s['lo']:g}-{s['hi']:g} (approx.)"))
+        for s in lp["hvn"]:                              # shelves: their edges (v2 G2 rev 1, as v1)
+            for edge, px in (("low", s["lo"]), ("high", s["hi"])):
+                out.append(_e(px, "volume", f"{n}d", "hvn", f"{n}d HVN {edge} (approx.)"))
         for s in lp["lvn"]:
-            out.append(_band(s["lo"], s["hi"], "imbalance", f"{n}d", "lvn",
-                             f"{n}d LVN {s['lo']:g}-{s['hi']:g} (approx.)"))
+            for edge, px in (("low", s["lo"]), ("high", s["hi"])):
+                out.append(_e(px, "imbalance", f"{n}d", "lvn", f"{n}d LVN {edge} (approx.)"))
     return out
 
 
@@ -126,9 +129,9 @@ def _finish(z: dict) -> dict:
 
 
 def cluster(els: list[dict], width: float) -> list[dict]:
-    """v2 G2: point levels by the existing map's rule (price_map.levels.zones); bands keep
-    their range, overlapping bands merge, and a point cluster within `width` of a band zone
-    joins the nearest one."""
+    """v2 G2 rev 1: point levels by the existing map's rule (price_map.levels.zones); bands
+    keep their range and never merge with each other; a point cluster within `width` of a
+    band joins the nearest one."""
     pts: list[dict] = []
     for e in sorted((x for x in els if not x.get("band")), key=lambda x: x["price"]):
         if pts and e["price"] - pts[-1]["members"][-1]["price"] <= width and e["price"] - pts[-1]["low"] <= CAP * width:
@@ -136,13 +139,8 @@ def cluster(els: list[dict], width: float) -> list[dict]:
             pts[-1]["high"] = e["price"]
         else:
             pts.append(dict(low=e["price"], high=e["price"], members=[e]))
-    bands: list[dict] = []
-    for e in sorted((x for x in els if x.get("band")), key=lambda x: (x["lo"], x["hi"])):
-        if bands and e["lo"] <= bands[-1]["high"]:
-            bands[-1]["members"].append(e)
-            bands[-1]["high"] = max(bands[-1]["high"], e["hi"])
-        else:
-            bands.append(dict(low=e["lo"], high=e["hi"], members=[e]))
+    bands = [dict(low=e["lo"], high=e["hi"], members=[e])
+             for e in sorted((x for x in els if x.get("band")), key=lambda x: (x["lo"], x["hi"]))]
     core = [(b["low"], b["high"]) for b in bands]
     out = []
     for z in pts:
