@@ -1,7 +1,9 @@
 """
 L1 structure: weekly and monthly bars, swing points, BOS / CHoCH, protected and weak
 levels, and M/W/D alignment (sprint plan S5, slice 2; docs/MARKET_MAP_DEFINITIONS.md
-v1, frozen 2026-11-05: §0, §1, §2, §7).
+v1, frozen 2026-11-05: §0, §1, §2, §7; amended by docs/MARKET_MAP_DEFINITIONS_V2.md,
+2026-11-11: G1 structure follows the latest swings, G3 equal highs and lows are swings
+and D EQH/EQL are shown, G4 sweeps and failed breaks are frozen).
 
 Everything is point in time. A read for day D uses daily bars dated before D, and only the
 weeks and months that closed before D's week and month. The swing zig-zag and the
@@ -17,6 +19,11 @@ Choices v1 leaves open, fixed here before any golden-set chart was seen:
   - "The most recent confirmed swing high not yet broken": the latest swing high the
     zig-zag holds; once a close goes above it, there is no target until a new one is
     confirmed. Lows mirror.
+  - v2 G1, a CHoCH reached both ways on one bar (a close below the latest swing low and
+    the protected low): the level reported is the higher (nearer) of the two, and the new
+    protected high is measured from that level's bar.
+  - v2 G4: a sweep's ATR(TF) is the sweeping bar's; swings replaced by a more extreme one
+    in the zig-zag stop being tracked.
   - From `none`, the first close above the latest swing high, or below the latest swing
     low, sets the state.
   - Age = completed bars since the bar of the event that started the state (0 = that
@@ -44,6 +51,8 @@ ATR_N = 14                               # §0
 SIZE_ATR = 1.0                           # §1 zig-zag
 TFS = ("M", "W", "D")
 UNTESTED = "untested"
+DEFS = "definitions v2"
+N_D_LIQ = 2                              # v2 G3: D EQH/EQL shown on each side of the price
 
 
 # ─── §0 bars ─────────────────────────────────────────────────────────────────
@@ -100,16 +109,18 @@ class Swing:
     confirm_i: int            # bar i + k: usable from here on
     label: str = ""           # HH / LH / HL / LL, or "" for the first of its kind
     broken: bool = False      # a close has gone beyond it
+    swept: bool = False       # v2 G4: swept once
 
 
 def candidates(h: np.ndarray, l: np.ndarray, k: int) -> dict[int, list[tuple[str, int, float]]]:
-    """Raw swing points keyed by their confirmation bar: bar i's high strictly above the
-    highs of the k bars on each side (lows mirror), confirmed on bar i + k."""
+    """Raw swing points keyed by their confirmation bar (v2 G3): bar i's high strictly above
+    the highs of the k bars before it and at least the highs of the k bars after it, so the
+    first of a run of equal highs is the swing (lows mirror); confirmed on bar i + k."""
     out: dict[int, list] = {}
     for i in range(k, len(h) - k):
-        if h[i] > h[i - k:i].max() and h[i] > h[i + 1:i + k + 1].max():
+        if h[i] > h[i - k:i].max() and h[i] >= h[i + 1:i + k + 1].max():
             out.setdefault(i + k, []).append(("H", i, float(h[i])))
-        if l[i] < l[i - k:i].min() and l[i] < l[i + 1:i + k + 1].min():
+        if l[i] < l[i - k:i].min() and l[i] <= l[i + 1:i + k + 1].min():
             out.setdefault(i + k, []).append(("L", i, float(l[i])))
     return out
 
@@ -155,11 +166,13 @@ class ZigZag:
         return s
 
 
-# ─── §2 structure ────────────────────────────────────────────────────────────
+# ─── §2 structure (v2 G1) and sweeps (v2 G4) ──────────────────────────────────
 
 N_EVENTS = 5                     # BOS / CHoCH shown per timeframe
-N_SWEEPS = 3
-SWEEP_NOTE = "definition not frozen"   # weak-level sweeps: design §4 table; S7 freezes the definition
+N_SWEEPS = 3                     # sweeps and failed breaks shown per timeframe
+SWEEP_ATR = 0.1                  # v2 G4: minimum overshoot, in ATR(TF)
+FAIL_BARS = 3                    # v2 G4: a break closed back inside within 3 bars failed
+SWEEP_NOTE = "frozen v2"
 
 
 @dataclass
@@ -176,7 +189,8 @@ class Structure:
     weak: Optional[Level] = None
     state_i: Optional[int] = None
     swings: list[Swing] = field(default_factory=list)
-    sweeps: list[dict] = field(default_factory=list)     # display only, see SWEEP_NOTE
+    sweeps: list[dict] = field(default_factory=list)
+    failed: list[dict] = field(default_factory=list)
     n: int = 0
 
 
@@ -187,13 +201,22 @@ def _ext(a: np.ndarray, i0: int, i1: int, hi: bool) -> Level:
 
 
 def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Structure:
-    """§1 + §2 over `bars`, one bar at a time."""
+    """§1 + §2 as amended by v2 (G1, G3, G4), one bar at a time.
+
+    Up break: a close above the most recent confirmed swing high not yet broken (BOS in
+    `up` or from `none`, CHoCH in `down`); a close below the protected low in `up` is also
+    a CHoCH. The protected low is set after every up break (lowest low from the broken
+    swing high's bar to the break bar) and moves to each newer swing low confirmed while
+    the state is `up`. Down breaks mirror. Sweeps and failed breaks are tracked on every
+    confirmed zig-zag swing not yet broken by a close."""
     h, l, c = (bars[x].to_numpy(float) for x in ("h", "l", "c"))
     a = atr(bars) if atr_arr is None else np.asarray(atr_arr, float)
     cand = candidates(h, l, k)
     zz = ZigZag()
     st = Structure(n=len(bars))
     brk_i = None                                         # bar of the last break in the state's direction
+    live: list[Swing] = []                               # confirmed swings not yet broken by a close
+    pending: list[tuple[Swing, int]] = []                # (swing, break bar) waiting for a failed break
 
     def event(t, typ, direction, level):
         st.events.append(dict(type=typ, direction=direction, i=t, level=level))
@@ -203,11 +226,6 @@ def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Str
 
     wk = None                                            # the running weak extreme since brk_i
     for t in range(len(bars)):
-        if wk is not None and t > brk_i:                 # a wick beyond the weak extreme that closes back inside
-            if st.state == "down" and l[t] < wk and c[t] >= wk:
-                st.sweeps.append(dict(side="low", i=t, level=wk, extreme=float(l[t])))
-            elif st.state == "up" and h[t] > wk and c[t] <= wk:
-                st.sweeps.append(dict(side="high", i=t, level=wk, extreme=float(h[t])))
         hi, lo = zz.last("H"), zz.last("L")
         up_ok = hi is not None and not hi.broken and c[t] > hi.price
         dn_ok = lo is not None and not lo.broken and c[t] < lo.price
@@ -224,29 +242,71 @@ def run(bars: pd.DataFrame, k: int, atr_arr: Optional[np.ndarray] = None) -> Str
             if up_ok:
                 st.protected, brk_i = _ext(l, hi.i, t, hi=False), t
                 event(t, "BOS", "up", hi.price); prot()
-            elif c[t] < st.protected.price:
-                event(t, "CHoCH", "down", st.protected.price)
-                st.protected = _ext(h, st.protected.i, t, hi=True); prot()
+            elif dn_ok or c[t] < st.protected.price:
+                by_swing = dn_ok and lo.price >= st.protected.price
+                lvl = Level(lo.price, lo.i) if by_swing else st.protected
+                event(t, "CHoCH", "down", lvl.price)
+                st.protected = _ext(h, lvl.i, t, hi=True); prot()
                 st.state, st.state_i, brk_i = "down", t, t
         else:
             if dn_ok:
                 st.protected, brk_i = _ext(h, lo.i, t, hi=True), t
                 event(t, "BOS", "down", lo.price); prot()
-            elif c[t] > st.protected.price:
-                event(t, "CHoCH", "up", st.protected.price)
-                st.protected = _ext(l, st.protected.i, t, hi=False); prot()
+            elif up_ok or c[t] > st.protected.price:
+                by_swing = up_ok and hi.price <= st.protected.price
+                lvl = Level(hi.price, hi.i) if by_swing else st.protected
+                event(t, "CHoCH", "up", lvl.price)
+                st.protected = _ext(l, lvl.i, t, hi=False); prot()
                 st.state, st.state_i, brk_i = "up", t, t
         if st.state != "none":
             x = float(h[t] if st.state == "up" else l[t])
             wk = x if brk_i == t or wk is None else (max(wk, x) if st.state == "up" else min(wk, x))
-        if hi is not None and c[t] > hi.price:
-            hi.broken = True
-        if lo is not None and c[t] < lo.price:
-            lo.broken = True
+
+        # G4: failed breaks, then sweeps and breaks of the live swings
+        wait = []
+        for sw, b in pending:
+            if t - b > FAIL_BARS:
+                continue
+            if (c[t] <= sw.price) if sw.kind == "H" else (c[t] >= sw.price):
+                st.failed.append(dict(side="high" if sw.kind == "H" else "low", level=sw.price, break_i=b, i=t,
+                                      close=float(c[t])))
+                continue
+            wait.append((sw, b))
+        pending = wait
+        tol = SWEEP_ATR * a[t] if not np.isnan(a[t]) else None
+        still = []
+        for sw in live:
+            beyond = (c[t] > sw.price) if sw.kind == "H" else (c[t] < sw.price)
+            if beyond:
+                sw.broken = True
+                pending.append((sw, t))
+                continue
+            still.append(sw)
+            over = (h[t] - sw.price) if sw.kind == "H" else (sw.price - l[t])
+            if tol is not None and not sw.swept and over >= tol:
+                sw.swept = True
+                st.sweeps.append(dict(side="high" if sw.kind == "H" else "low", i=t, level=sw.price,
+                                      extreme=float(h[t] if sw.kind == "H" else l[t]), swing_i=sw.i))
+        live = still
+
         if t in cand and not np.isnan(a[t]):
             kinds = sorted(cand[t], key=lambda x: x[0] == (zz.kept[-1].kind if zz.kept else "L"))
             for kind, i, p in kinds:                     # outside bar: opposite kind first
-                zz.offer(kind, i, p, t, float(a[t]))
+                before = zz.kept[-1] if zz.kept else None
+                kept = zz.offer(kind, i, p, t, float(a[t]))
+                if kept is None:
+                    continue
+                if before is not None and before is not kept and before.kind == kind:
+                    live = [x for x in live if x is not before]   # replaced by a more extreme swing
+                closes = c[i + 1:t + 1]
+                if (closes > p).any() if kind == "H" else (closes < p).any():
+                    kept.broken = True                   # already closed beyond before confirmation
+                else:
+                    live.append(kept)
+                # G1: a newer swing against the trend becomes the protected level
+                if st.protected is not None and i > st.protected.i and (
+                        (st.state == "up" and kind == "L") or (st.state == "down" and kind == "H")):
+                    st.protected = Level(p, i)
 
     if st.state != "none":
         st.weak = _ext(h if st.state == "up" else l, brk_i, len(bars) - 1, hi=st.state == "up")
@@ -280,8 +340,13 @@ def summary(bars: pd.DataFrame, st: Structure, tf: str, n_swings: int = 6) -> di
                      period=bars["period"].iat[e["i"]], date=bars["date"].iat[e["i"]].date().isoformat())
                 for e in st.events[-N_EVENTS:]],
         sweeps=[dict(side=w["side"], level=round(w["level"], 2), extreme=round(w["extreme"], 2),
+                     swing=bars["period"].iat[w["swing_i"]],
                      period=bars["period"].iat[w["i"]], date=bars["date"].iat[w["i"]].date().isoformat(),
                      status=SWEEP_NOTE) for w in st.sweeps[-N_SWEEPS:]],
+        failed_breaks=[dict(side=w["side"], level=round(w["level"], 2), close=round(w["close"], 2),
+                            broke=bars["period"].iat[w["break_i"]],
+                            period=bars["period"].iat[w["i"]], date=bars["date"].iat[w["i"]].date().isoformat(),
+                            status=SWEEP_NOTE) for w in st.failed[-N_SWEEPS:]],
         swings=[dict(kind=s.kind, label=s.label, price=round(s.price, 2), period=bars["period"].iat[s.i],
                      confirmed=bars["period"].iat[s.confirm_i]) for s in st.swings[-n_swings:]],
     )
@@ -317,7 +382,7 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     """The L1 structure read for day `as_of` from adjusted daily bars (date, o, h, l, c, vol;
     seg if present)."""
     seg = latest_segment(daily)
-    out = {"as_of": as_of.isoformat(), "status": UNTESTED,
+    out = {"as_of": as_of.isoformat(), "status": UNTESTED, "definitions": DEFS,
            "history_from": seg["date"].iat[0].date().isoformat() if len(seg) else None,
            "segment_break": bool(len(seg) < len(daily))}
     from core.market_map import zones as zn             # zones builds on this module
@@ -335,7 +400,14 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
         if tf in ("M", "W"):
             for v in zn.tf_zones(bars, r, tf).values():
                 zs += v
-            swings_all[tf] = [(w.kind, w.label, w.price, bars["period"].iat[w.i]) for w in r.swings]
+            swings_all[tf] = [(w.kind, w.label, w.price, bars["period"].iat[w.i]) for w in r.swings
+                              if not w.broken]                        # v2 G2: unbroken swings only
+        else:                                                         # v2 G3: D EQH/EQL, shown, never clustered
+            eq = [z for z in zn.equal_levels(bars, r.swings, atr(bars)) if z["status"] == "active"]
+            if price is not None:
+                tfs[tf]["liquidity"] = dict(
+                    above=sorted([z for z in eq if z["level"] > price], key=lambda z: z["level"])[:N_D_LIQ],
+                    below=sorted([z for z in eq if z["level"] < price], key=lambda z: -z["level"])[:N_D_LIQ])
     from core.market_map import pivots as pv
     out["pivots"] = pv.all_pivots({tf: completed(seg, tf, as_of) for tf in pv.PERIODS})
     from core.market_map import profiles as pf
@@ -353,7 +425,7 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     els = htf.elements(out, swings_all)
     allz = htf.htf_zones(els, atr_w)
     strong = [z for z in allz if z["strong"]]
-    out["htf"] = dict(status=UNTESTED, source=htf.SOURCE, atr_w=atr_w,
+    out["htf"] = dict(status=UNTESTED, source=htf.SOURCE, atr_w=atr_w, rule=htf.RULE,
                       width=round(htf.HTF_ATR * atr_w, 2) if atr_w else None,
                       n_elements=len(els), n_zones=len(allz),
                       zones=[htf.compact(z) for z in allz],
@@ -404,8 +476,17 @@ def lines(l1: dict) -> list[str]:
                       if s.get("premium_discount") else ""))
         if s.get("sweeps"):
             w = s["sweeps"][-1]
-            out.append(f"        last sweep: weak {w['side']} {w['level']:g} taken to {w['extreme']:g} on {w['date']}, "
-                       f"closed back inside ({w['status']})")
+            out.append(f"        last sweep: swing {w['side']} {w['level']:g} ({w['swing']}) taken to {w['extreme']:g} "
+                       f"on {w['date']}, closed back inside ({w['status']})")
+        if s.get("failed_breaks"):
+            w = s["failed_breaks"][-1]
+            out.append(f"        last failed break: swing {w['side']} {w['level']:g} closed beyond in {w['broke']}, "
+                       f"back inside on {w['date']} at {w['close']:g} ({w['status']})")
+        if s.get("liquidity"):
+            q = s["liquidity"]
+            f = (lambda zs: "; ".join(f"{z['kind']} {z['level']:g} ({', '.join(z['swings'])})" for z in zs) or "none")
+            out.append(f"        D equal highs/lows (shown, not in the HTF zones): above {f(q['above'])} | "
+                       f"below {f(q['below'])}")
     if "zones" in l1:
         inside, below, above = nearest_zones(l1)
         out.append(f"     zones (untested) below: {'; '.join(map(_zfmt, below)) or 'none'} | "
@@ -415,7 +496,8 @@ def lines(l1: dict) -> list[str]:
         from core.market_map import htf
         n = htf.nearest_strong(l1["htf"]["strong"], l1["price"])
         f = (lambda z: f"{z['low']:g}-{z['high']:g} [{'+'.join(z['families'])}] ({z['why']})" if z else "none")
-        out.append(f"     HTF strong zones (untested; >=2 families within {l1['htf']['width']}): "
+        out.append(f"     HTF strong zones (untested; 2+ families incl. structure, imbalance or liquidity; "
+                   f"{l1['htf'].get('rule', '')}, 0.3 ATR(W) = {l1['htf']['width']}): "
                    f"below {f(n['below'])} | above {f(n['above'])}" + (f" | inside {f(n['inside'])}" if n["inside"] else ""))
         hot = l1["htf"]["hot"]
         g = "; ".join(f"{x['tf']} {x['member']} {x['price']:g}" + (f" {x['direction']}" if x["direction"] else "")

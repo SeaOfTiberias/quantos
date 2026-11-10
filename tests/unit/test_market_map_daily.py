@@ -45,7 +45,7 @@ def test_session_levels_stay_virgin_until_a_later_daily_bar_spans_them():
     as_of = d["date"].iat[-1] + timedelta(days=1)
     rd = dl.read(d, as_of, float(d["c"].iat[-1]), _m5(d))
     assert rd["status"] == "untested" and rd["sessions"] > 0
-    assert rd["n_virgin"] == 6 * rd["sessions"]
+    assert rd["n_virgin"] == 6 * (rd["sessions"] - 1)           # v2 G5: the last session isn't virgin yet
     assert rd["last_session"]["session"] == d["date"].iat[-1].date().isoformat()
     assert all(x["price"] < d["c"].iat[-1] for x in rd["virgin_below"]) and len(rd["virgin_below"]) == dl.VIRGIN_SHOWN
     assert [x["price"] for x in rd["virgin_below"]] == sorted((x["price"] for x in rd["virgin_below"]), reverse=True)
@@ -53,8 +53,8 @@ def test_session_levels_stay_virgin_until_a_later_daily_bar_spans_them():
     d2 = _daily([(b + 1, b - 1, b) for b in base] + [(1000, 1, 500)])     # one bar spans every earlier level
     m5 = _m5(d2)
     rd2 = dl.read(d2, d2["date"].iat[-1] + timedelta(days=1), 500.0, m5)
-    assert rd2["n_virgin"] == 6                                # only the last session's own levels
-    assert {x["session"] for x in rd2["virgin_below"] + rd2["virgin_above"]} == {d2["date"].iat[-1].date().isoformat()}
+    assert rd2["n_virgin"] == 0                                # v1 listed the last session's own 6 levels
+    assert rd2["virgin_below"] == [] and rd2["virgin_above"] == []
 
 
 def test_the_read_uses_only_sessions_before_as_of_and_lines_name_the_layer():

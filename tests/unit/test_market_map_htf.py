@@ -16,11 +16,36 @@ def test_clustering_is_the_existing_rule_and_strong_needs_two_families():
         (110, 110.5, ["volume"], False)]                    # money zone + VPOC agreeing: one family, not strong
 
 
-def test_bands_enter_as_two_edges():
+def test_v2_g2_pivot_and_volume_alone_are_not_strong():
+    zs = htf.cluster([_e(100, "pivot"), _e(100.5, "volume")], 1.0)
+    assert zs[0]["families"] == ["volume", "pivot"] and not zs[0]["strong"]
+    zs = htf.cluster([_e(100, "liquidity"), _e(100.5, "volume")], 1.0)
+    assert zs[0]["strong"]
+
+
+def test_v2_g2_a_band_enters_whole_and_is_never_split():
     l1 = dict(tf={}, zones=[dict(kind="demand", tf="M", lo=90.0, hi=95.0, departed="2020-01")], pivots={},
               profiles=None)
     els = htf.elements(l1, {})
-    assert [(e["price"], e["family"]) for e in els] == [(90.0, "imbalance"), (95.0, "imbalance")]
+    assert [(e["lo"], e["hi"], e["family"], e["band"]) for e in els] == [(90.0, 95.0, "imbalance", True)]
+    # a pivot inside the band and a volume level 0.8 above it join it; a far level stays apart
+    zs = htf.cluster(els + [_e(92, "pivot"), _e(95.8, "volume"), _e(99, "structure")], 1.0)
+    assert [(z["low"], z["high"], z["families"], z["strong"]) for z in zs] == [
+        (90.0, 95.8, ["imbalance", "volume", "pivot"], True), (99, 99, ["structure"], False)]
+
+
+def test_v2_g2_overlapping_bands_merge_and_a_cluster_joins_the_nearest_band():
+    b = lambda lo, hi, fam="imbalance": dict(_e(lo, fam), lo=lo, hi=hi, band=True)
+    zs = htf.cluster([b(90, 95), b(94, 96), b(97.5, 98, "volume"), _e(96.8, "pivot")], 1.0)
+    assert [(z["low"], z["high"]) for z in zs] == [(90, 96), (96.8, 98)]    # 96.8: 0.8 from 96, 0.7 from 97.5
+
+
+def test_v2_g2_only_unbroken_swings_and_watched_virgin_levels_enter():
+    l1 = dict(tf={}, zones=[], pivots={}, profiles=dict(periods={}, long={}, virgin=[
+        dict(tf="W", period="2026-W40", kind="money zone", name="POC", price=100.0, watch=True),
+        dict(tf="W", period="2026-W40", kind="money zone", name="VAH", price=104.0, watch=False)]))
+    els = htf.elements(l1, {"W": [("H", "LH", 120.0, "2026-W30")]})
+    assert sorted(e["price"] for e in els) == [100.0, 120.0]
 
 
 def test_hot_zones_dpz_mtz_and_gpz():

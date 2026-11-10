@@ -20,7 +20,8 @@ All are family "pivot" (§6). The quarter is not Ochoa's (Ch. 9 has none): label
 Choices v1 leaves open, fixed here before any golden-set chart:
   - Percentile rank = (previous widths below + half of those equal) / their count, over
     the previous up to 20 periods; at least 8 needed.
-  - Camarilla width = (H3 - L3) / C x 100, so it compares across years like CPR width %.
+  - Camarilla width = (H3 - L3) / P x 100, P the period's floor pivot: CPR width's
+    denominator (v2 G6; v1's code divided by C).
   - A relationship none of the seven rules fits (an edge exactly equal to the previous
     one) is "unclassified".
   - CPR trend run: consecutive periods, ending with the last completed one, whose close
@@ -69,7 +70,7 @@ def camarilla(h, l, c) -> dict:
         out[f"H{n}"], out[f"L{n}"] = c + r * 1.1 / f, c - r * 1.1 / f
     out["H5"] = h / l * c
     out["L5"] = c - (out["H5"] - c)
-    out["width_pct"] = (out["H3"] - out["L3"]) / c * 100
+    out["width_pct"] = (out["H3"] - out["L3"]) / ((h + l + c) / 3) * 100     # v2 G6: over P, as CPR width
     return out
 
 

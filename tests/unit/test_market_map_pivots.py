@@ -93,3 +93,11 @@ def test_a_read_inside_a_month_uses_the_last_completed_month_quarter_and_year():
     assert (p["W"]["from_period"], p["M"]["from_period"], p["Q"]["from_period"], p["Y"]["from_period"]) == (
         "2026-W11", "2026-02", "2025-Q4", "2025")
     assert any(ln.startswith("     pivots (untested") for ln in s.lines(rd))
+
+
+def test_v2_g6_camarilla_width_is_over_the_pivot_like_cpr_width():
+    from core.market_map import pivots as pv_
+    cam, cp = pv_.camarilla(120.0, 80.0, 85.0), pv_.cpr(120.0, 80.0, 85.0)
+    p = (120.0 + 80.0 + 85.0) / 3
+    assert abs(cam["width_pct"] - (cam["H3"] - cam["L3"]) / p * 100) < 1e-12
+    assert abs(cp["width_pct"] - (cp["TC"] - cp["BC"]) / p * 100) < 1e-12

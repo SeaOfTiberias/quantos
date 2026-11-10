@@ -45,15 +45,16 @@ def _profs():
 
 
 def test_virgin_levels_retire_on_a_bar_that_spans_them_not_on_a_gap():
+    # January's last 5 sessions make the profile; February (complete by the March read) follows
     rows = [(99, 101, 1)] * 5 + [(104, 106, 1), (101.5, 102.5, 1), (92, 95, 1)]  # gap up, back to 102, gap down
-    d = _daily(rows)
-    v = pf.virgin_levels(d, _profs(), date(2026, 2, 1), price=104.0, atr_now=2.0)
+    d = _daily(rows, start="2026-01-26")
+    v = pf.virgin_levels(d, _profs(), date(2026, 3, 1), price=104.0, atr_now=2.0)
     mz = {x["name"]: x for x in v if x["kind"] == "money zone"}
     assert mz["POC"]["filled"] is None and mz["VAL"]["filled"] is None and mz["VAH"]["filled"] is None
     rows[6] = (102.5, 103.5, 1)                                                     # this bar trades through 103
-    v = pf.virgin_levels(_daily(rows), _profs(), date(2026, 2, 1), price=104.0, atr_now=2.0)
+    v = pf.virgin_levels(_daily(rows, start="2026-01-26"), _profs(), date(2026, 3, 1), price=104.0, atr_now=2.0)
     mz = {x["name"]: x for x in v if x["kind"] == "money zone"}
-    assert mz["VAH"]["filled"] == _daily(rows)["date"].iat[6].date().isoformat()
+    assert mz["VAH"]["filled"] == _daily(rows, start="2026-01-26")["date"].iat[6].date().isoformat()
     assert mz["POC"]["watch"] and mz["VAL"]["watch"] and not mz["VAH"]["watch"]  # VAH filled: VAL is the edge left
     assert mz["POC"]["distance_atr"] == 2.0 and mz["POC"]["age_periods"] == 1
 
@@ -120,3 +121,15 @@ def test_weekly_profile_needs_5_minute_bars_for_every_session():
     assert pf.weekly_profiles(daily, part, date(2026, 1, 14)) == []     # a session without 5-minute bars
     pr = pf.read(daily, date(2026, 1, 14), 106.0, full)
     assert pr["periods"]["W"]["from_period"] == "2026-W02" and "30-minute" in pr["periods"]["W"]["note"]
+
+
+def test_v2_g5_levels_of_the_last_completed_period_are_not_yet_virgin():
+    rows = [(99, 101, 1)] * 5 + [(104, 106, 1), (101.5, 102.5, 1), (92, 95, 1)]
+    d = _daily(rows, start="2026-01-26")
+    assert pf.virgin_levels(d, _profs(), date(2026, 2, 3), price=104.0, atr_now=2.0) == []   # February still open
+    assert len(pf.virgin_levels(d, _profs(), date(2026, 3, 1), price=104.0, atr_now=2.0)) == 6
+
+
+def test_v2_g6_vpoc_tie_goes_to_the_middle_of_the_range():
+    h = {100.0: 50.0, 102.0: 10.0, 104.0: 50.0}
+    assert pf.money_zone(h, mid=103.0, step=1)[0] == 104.0                 # v1's value_area took 100

@@ -66,8 +66,6 @@ def test_a_wick_through_the_swing_high_is_not_a_break():
 
 
 def test_swings_need_strictly_higher_highs_and_are_confirmed_k_bars_later():
-    h = np.array([1, 2, 2, 1.0])
-    assert s.candidates(h, -h, 1) == {}
     h = np.array([0, 1, 3, 2, 1.0])
     assert s.candidates(h, h + 10, 2) == {4: [("H", 2, 3.0)]}     # bar 2's high, usable from bar 4
 
@@ -191,3 +189,58 @@ def test_join_checks_flag_a_close_mismatch_and_a_recent_split():
     rd["close"] = 100.3
     assert mr.join_checks(rd)["close_check"]["ok"]
     assert mr.join_checks(dict(close=1, l1=dict(error="x")))["flags"] == []
+
+
+# ─── v2 (docs/MARKET_MAP_DEFINITIONS_V2.md) ──────────────────────────────────
+
+def test_v2_g3_the_first_of_equal_highs_is_a_swing():
+    h = np.array([1, 2, 2, 1.0])
+    assert s.candidates(h, h - 5, 1) == {2: [("H", 1, 2.0)]}          # v1 found no swing here
+    lo = np.array([3, 1, 1, 3.0])
+    assert s.candidates(lo + 5, lo, 1) == {2: [("L", 1, 1.0)]}
+
+
+# A down leg, then a lower high and a close above it: v2 flips up there, where v1 waited
+# for a close above the protected high it set at the BOS (14, bar 3).
+FLIP = [(15, 14, 14.5), (20, 15, 16), (16, 12, 12.5), (14, 11, 13),   # 1: H 20; 3: L 11
+        (13.5, 11.5, 12), (12, 10, 10.5),                               # 5: close < 11 -> BOS down
+        (11, 9, 10), (13, 10, 12.5), (13.5, 11, 12),                    # 6: L 9; 8: LH 13.5 (confirmed 9)
+        (13, 11.5, 12.5),
+        (14, 12, 13.8)]                                                 # 10: close > 13.5 -> CHoCH up (v2)
+
+
+def test_v2_g1_a_close_above_the_last_lower_high_is_a_choch():
+    b = _bars(FLIP)
+    st = s.run(b, 1, np.ones(len(b)))
+    assert [(e["type"], e["direction"], e["i"], e["level"]) for e in st.events] == [
+        ("BOS", "down", 5, 11), ("CHoCH", "up", 10, 13.5)]
+    assert st.state == "up"
+    assert (st.protected.price, st.protected.i) == (11, 8)             # lowest low from the broken high's bar
+
+
+def test_v2_g1_a_newer_swing_against_the_trend_becomes_the_protected_level():
+    b = _bars(FLIP[:10])
+    st = s.run(b, 1, np.ones(len(b)))
+    assert st.state == "down" and (st.protected.price, st.protected.i) == (13.5, 8)   # v1 kept (14, 3)
+
+
+def test_v2_g4_sweeps_need_a_tenth_of_an_atr_and_a_swing_is_swept_once():
+    rows = [(10, 9, 9.5), (12, 10, 11), (11, 8, 9), (11.05, 9, 10),    # 1: H 12; 2: L 8
+            (12.05, 10, 11.5),                                          # wick 0.05 above 12: too small
+            (12.3, 10, 11.6), (12.6, 10, 11.7)]                         # 0.3 above, closes back: one sweep
+    b = _bars(rows)
+    st = s.run(b, 1, np.ones(len(b)))
+    assert [(w["side"], w["i"], w["level"], w["extreme"]) for w in st.sweeps] == [("high", 5, 12, 12.3)]
+    assert s.summary(b, st, "D")["sweeps"][0]["status"] == s.SWEEP_NOTE
+
+
+def test_v2_g4_a_break_closed_back_inside_within_three_bars_failed():
+    rows = [(10, 9, 9.5), (12, 10, 11), (11, 8, 9), (11, 9, 10),
+            (13, 10, 12.5),                                             # 4: close > 12 -> BOS up
+            (12.8, 11, 12.2), (12.5, 11, 11.8)]                         # 6: back below 12 -> failed break
+    b = _bars(rows)
+    st = s.run(b, 1, np.ones(len(b)))
+    assert st.events[-1]["type"] == "BOS" and st.state == "up"          # the break still counts
+    assert [(f["side"], f["level"], f["break_i"], f["i"]) for f in st.failed] == [("high", 12, 4, 6)]
+    fb = s.summary(b, st, "D")["failed_breaks"][0]
+    assert fb["close"] == 11.8 and fb["status"] == s.SWEEP_NOTE

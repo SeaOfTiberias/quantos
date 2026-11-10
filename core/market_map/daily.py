@@ -15,8 +15,10 @@ HTF zones (§6) and never counted as a family: v1 is unchanged. The formulas are
   Session profiles (one per session that has 5-minute bars), as §4's weekly profile:
     money zone from 30-minute brackets from 09:15 (TPOs), volume profile from 5-minute
     volume; POC, VAL and VAH of each kind.
-  Virgin session levels (§4's rule): each session's POC, VAH and VAL of each kind is
-    virgin from the next session until a later daily bar's range spans it.
+  Virgin session levels (§4's rule, v2 G5): each session's POC, VAH and VAL of each kind is
+    virgin once a later session has closed without trading it, until a later daily bar's
+    range spans it. The last session's own levels are shown as its profile, not as virgin.
+  VPOC tie (v2 G6): nearest the middle of the session's range, then the lower.
 
 Choices v1 leaves open, fixed here before any golden-set chart:
   - Bucket size = step_for(ATR(D)) at the session (the weekly rule, per session).
@@ -38,7 +40,7 @@ from core.market_map import pivots as pv
 from core.market_map import structure as st
 from core.market_map.profiles import brackets, money_zone, spread
 from core.price_map.build import step_for
-from core.price_map.levels import bucket, value_area
+from core.price_map.levels import bucket
 
 UNTESTED = "untested"
 NARROW, WIDE = 0.25, 0.75            # Ochoa's daily CPR width markers, % of the pivot
@@ -97,7 +99,7 @@ def session_profiles(d: pd.DataFrame, m5: Optional[pd.DataFrame]) -> list[dict]:
         t = spread(bl[j0:j1], bh[j0:j1], (bucket(bh[j0:j1], step) - bucket(bl[j0:j1], step) + 1).astype(float),
                    step)
         mz = money_zone({k: round(v) for k, v in t.items()}, (hi + lo) / 2, step)
-        vp = value_area(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step))
+        vp = money_zone(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step), (hi + lo) / 2, step)   # v2 G6
         if not mz or not vp:
             continue
         out.append(dict(i=i, session=pd.Timestamp(day).date().isoformat(), step=step,
@@ -115,8 +117,8 @@ def virgin(d: pd.DataFrame, profs: list[dict], price: Optional[float], atr_now: 
         for kind, label in (("mz", "money zone"), ("vol", "volume")):
             for name in ("POC", "VAH", "VAL"):
                 x = p[kind][name]
-                if s < n and np.any((lo[s:] <= x) & (hi[s:] >= x)):
-                    continue
+                if s >= n or np.any((lo[s:] <= x) & (hi[s:] >= x)):
+                    continue                           # v2 G5: needs a later session that left it untouched
                 out.append(dict(session=p["session"], kind=label, name=name, price=x, age_sessions=n - p["i"] - 1,
                                 distance_atr=round(abs(x - price) / atr_now, 2) if price and atr_now else None))
     return out

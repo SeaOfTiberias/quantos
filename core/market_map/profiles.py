@@ -21,9 +21,14 @@ Width and the two-period relationship use the money-zone value area; the same tw
 are recorded for the volume value area. The VPOC relationship is recorded for the month
 (§4 names week and month; the week comes in 5b).
 
-Virgin levels (§4): a period's POC, VAH and VAL, of each kind, are virgin from the period's
-close until a later daily bar trades through them (its low-high range spans the level);
-that bar retires the level and its date is recorded. Every virgin level carries its age in
+Virgin levels (§4, v2 G5): a period's POC, VAH and VAL, of each kind, become virgin once at
+least one complete later period of the same kind has closed without trading through them,
+and stay virgin until a later daily bar trades through them (its low-high range spans the
+level); that bar retires the level and its date is recorded. The last completed period's
+own levels are not listed as virgin (the profiles line shows them).
+
+VPOC tie (v2 G6): the tied bucket nearest the middle of the period's range, then the lower,
+as for the money-zone POC. Every virgin level carries its age in
 periods and distance in ATR(D); the POC and whichever of VAH/VAL is nearest the price are
 flagged `watch` (the two Ochoa watches).
 
@@ -143,7 +148,7 @@ def period_profiles(daily: pd.DataFrame, tf: str, as_of) -> list[dict]:
         step = step_for(float(a))
         hi, lo = float(g["h"].max()), float(g["l"].min())
         mz = money_zone(tpo(g, step), (hi + lo) / 2, step)
-        vp = value_area(vol_profile(g, step))
+        vp = money_zone(vol_profile(g, step), (hi + lo) / 2, step)          # v2 G6: VPOC tie to the middle
         if not mz or not vp:
             continue
         out.append(dict(tf=tf, period=p, end_i=int(idx[-1]), step=step,
@@ -192,7 +197,7 @@ def weekly_profiles(daily: pd.DataFrame, m5: Optional[pd.DataFrame], as_of) -> l
         t = spread(bl[j0:j1], bh[j0:j1], (bucket(bh[j0:j1], step) - bucket(bl[j0:j1], step) + 1).astype(float),
                    step)
         mz = money_zone({k: round(v) for k, v in t.items()}, (hi + lo) / 2, step)
-        vp = value_area(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step))
+        vp = money_zone(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step), (hi + lo) / 2, step)   # v2 G6
         if not mz or not vp:
             continue
         out.append(dict(tf="W", period=p, end_i=int(idx[-1]), step=step,
@@ -239,7 +244,13 @@ def virgin_levels(daily: pd.DataFrame, profs: list[dict], as_of, price: Optional
     dates = d["date"]
     out = []
     n = len(profs)
+    if not n:
+        return out
+    labels = [x for x in dict.fromkeys(st._period(d["date"], profs[0]["tf"]).tolist()) if x != st.period_of(as_of, profs[0]["tf"])]
+    order = {x: j for j, x in enumerate(labels)}
     for k, p in enumerate(profs):
+        if order.get(p["period"], len(labels)) >= len(labels) - 1:
+            continue                                   # v2 G5: no complete later period yet
         s = p["end_i"] + 1
         for kind, label in (("mz", "money zone"), ("vol", "volume")):
             rows = []

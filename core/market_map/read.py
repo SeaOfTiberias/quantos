@@ -7,7 +7,7 @@ in, and, for a proposed trade, the first strong zone in its way (in R), whether
 the target lies beyond it, and whether the stop sits inside a zone.
 
 The map (sprint plan S5 slice 7, user 2026-11-08) is the L1 higher-timeframe map:
-definitions v1, built from the adjusted NSE bhavcopy in the L1 store (structure,
+definitions v2 (v1 as amended 2026-11-11), built from the adjusted NSE bhavcopy in the L1 store (structure,
 imbalance, liquidity, volume and pivot families; core/market_map/structure.py and
 htf.py). Its zones are UNTESTED: no fidelity (§9) or signal test (S8) has run.
 A symbol the L1 store doesn't hold falls back to the old 100-day price map below,
@@ -51,9 +51,9 @@ NOTE = ("Zones mark where price did business and turned. In the 2026-11-04 test 
         "reading a trade, never a signal or a filter.")
 # What the map is built from and what it lacks, for every screen that draws it (docs/MARKET_MAP_SCREENS.md rule 3).
 L1_ROOT = None                                         # the L1 store's root (None: its default); tests move it
-NOTE_L1 = ("Higher-timeframe zones (definitions v1): where two or more families (structure, imbalance, liquidity, "
-           "volume, pivot) agree. Untested: no fidelity or signal test has run. Markers for reading a trade, never "
-           "a signal or a filter. Under v1 most zones count as strong (median 73%), so 'strong' selects little.")
+NOTE_L1 = ("Higher-timeframe zones (definitions v2): strong where two or more families (structure, imbalance, "
+           "liquidity, volume, pivot) agree, at least one of them structure, imbalance or liquidity. Untested: no "
+           "fidelity or signal test has run. Markers for reading a trade, never a signal or a filter.")
 LAYERS_OLD = {"shown": ["daily swings (last year)", f"5-minute volume profile (last {INTRADAY_DAYS} days)",
                         "pivots (last day, week, month)"],
               "missing": ["the higher-timeframe (L1) map: this stock is not in the L1 store, so the old 100-day "
@@ -288,7 +288,7 @@ def l1_map(symbol: str, l1: dict) -> dict:
     return dict(symbol=symbol, built_for=l1.get("last_date"), close=l1["price"],
                 atr=(l1["tf"].get("D") or {}).get("atr"), atr_w=h.get("atr_w"), zone_width=h.get("width"),
                 zones=[dict(z) for z in h["zones"]], status=UNTESTED, note=NOTE_L1,
-                map="L1 higher-timeframe map (definitions v1)")
+                map="L1 higher-timeframe map (definitions v2)")
 
 
 def l1_for(symbol: str, as_of: date, store: Any = None) -> dict:

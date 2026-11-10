@@ -1,6 +1,11 @@
 """
 HTF zones: L1 elements clustered by family (sprint plan S5, slice 6; definitions v1 §6 and
-§6.1).
+§6.1, as amended by v2 G2, docs/MARKET_MAP_DEFINITIONS_V2.md).
+
+v2 G2 (2026-11-11): structure swings enter only while no close has gone beyond them;
+virgin profile levels only when flagged `watch`; bands (demand, supply, order blocks,
+HVN and LVN runs) keep their whole range and are never split; a strong zone needs 2+
+families, at least one of them structure, imbalance or liquidity.
 
 Elements (every one keeps its timeframe, family, kind and period, so the signal test can
 score each family on its own):
@@ -15,12 +20,15 @@ score each family on its own):
 Choices v1 leaves open, fixed here before any golden-set chart:
   - §6's "levels and bands from M and W" is read as all L1 periods: §4 puts yearly R3/S3
     and the quarterly and yearly pivots into clustering explicitly.
-  - A band (zone, order block, shelf, LVN) enters as its two edges. The clustering is then
-    the existing map's rule (core/price_map/levels.zones) at the weekly scale: a level
-    within 0.3 ATR(W) of the zone's last level joins it while the zone stays within 1.5x
-    that. A wide band would otherwise swallow every level inside it.
-  - A strong zone has members from at least 2 families. Price-based and volume-based
-    profile levels are one family, so their agreement alone never makes one.
+  - Point levels cluster by the existing map's rule (core/price_map/levels.zones) at the
+    weekly scale: a level within 0.3 ATR(W) of the cluster's last level joins it while the
+    cluster stays within 1.5x that. (v1 entered bands as their two edges; v2 G2 replaced it.)
+  - v2 G2 bands: overlapping bands merge into one zone (their union). A point cluster lying
+    within 0.3 ATR(W) of a band zone joins the nearest such band zone (the one whose range
+    is closest to the cluster's middle); band zones are never merged through a point
+    cluster. A zone's range is the union of its members.
+  - A strong zone has members from at least 2 families, one of them structure, imbalance
+    or liquidity (v2 G2). Price-based and volume-based profile levels are one family.
   - Hot zones (§6.1): the same clustering over the §4 levels only (pivots, money zones,
     VPOCs and their virgin levels). A DPZ is a cluster with two members of different
     formulas (floor incl. CPR, Camarilla, range, money zone, VPOC) or different periods;
@@ -37,6 +45,8 @@ from typing import Optional
 HTF_ATR = 0.3                 # §6 tolerance, in ATR(W)
 CAP = 1.5                     # the existing map's no-chaining cap
 FAMILIES = ("structure", "imbalance", "liquidity", "volume", "pivot")
+PRICE_ACTION = ("structure", "imbalance", "liquidity")         # v2 G2: a strong zone needs one of these
+RULE = "clustered at 0.3 ATR(W); point clusters at most 0.45 ATR(W); bands keep their full range"
 SOURCE = "L1: NSE bhavcopy daily (adjusted), Fyers 5-minute for the weekly profile"
 
 
@@ -45,9 +55,16 @@ def _e(price, family, tf, kind, label, period=None, formula=None):
                 period=period, formula=formula)
 
 
+def _band(lo, hi, family, tf, kind, label, period=None):
+    """A band element (v2 G2): its whole range, never split."""
+    e = _e(lo, family, tf, kind, label, period)
+    e.update(lo=round(float(lo), 2), hi=round(float(hi), 2), band=True)
+    return e
+
+
 def elements(l1: dict, swings: dict) -> list[dict]:
-    """Every L1 element as a point. `swings` = {tf: [(kind, label, price, period)]} (all
-    zig-zag swings of W and M; the summary keeps only the last few)."""
+    """Every L1 element, a point or a band. `swings` = {tf: [(kind, label, price, period)]}:
+    the zig-zag swings of W and M that no close has gone beyond (v2 G2)."""
     out = []
     for tf, sw in swings.items():
         for kind, label, price, period in sw:
@@ -65,11 +82,11 @@ def elements(l1: dict, swings: dict) -> list[dict]:
         elif z["kind"] in ("EQH", "EQL"):
             if z["status"] == "active":
                 out.append(_e(z["level"], "liquidity", tf, z["kind"], f"{tf} {z['kind']}", z["swings"][-1]))
-        else:                                           # demand / supply / order blocks: two edges
+        else:                                           # demand / supply / order blocks: one band (v2 G2)
             name = {"demand": "demand", "supply": "supply", "bull_ob": "bull OB", "bear_ob": "bear OB"}[z["kind"]]
             per = z.get("departed") or z.get("bar")
-            for edge, px in (("low", z["lo"]), ("high", z["hi"])):
-                out.append(_e(px, "imbalance", tf, z["kind"], f"{tf} {name} {edge} ({per})", per))
+            out.append(_band(z["lo"], z["hi"], "imbalance", tf, z["kind"],
+                             f"{tf} {name} {z['lo']:g}-{z['hi']:g} ({per})", per))
     for tf, p in (l1.get("pivots") or {}).items():
         if not p:
             continue
@@ -83,7 +100,7 @@ def elements(l1: dict, swings: dict) -> list[dict]:
             for n in ("POC", "VAL", "VAH"):
                 out.append(_e(p[kind][n], "volume", tf, kind, f"{tf} {tag} {n} {p['from_period']}", p["from_period"],
                               formula))
-    for v in pr.get("virgin") or []:
+    for v in [x for x in pr.get("virgin") or [] if x.get("watch")]:      # v2 G2: Ochoa's two watches only
         formula = "money zone" if v["kind"] == "money zone" else "VPOC"
         tag = "MZ" if formula == "money zone" else "vol"
         out.append(_e(v["price"], "volume", v["tf"], "virgin", f"{v['tf']} virgin {tag} {v['name']} {v['period']}",
@@ -94,28 +111,51 @@ def elements(l1: dict, swings: dict) -> list[dict]:
         for k in ("POC", "VAL", "VAH"):
             out.append(_e(lp[k], "volume", f"{n}d", "long", f"{n}d {k} (approx.)"))
         for s in lp["hvn"]:
-            for edge, px in (("low", s["lo"]), ("high", s["hi"])):
-                out.append(_e(px, "volume", f"{n}d", "hvn", f"{n}d HVN {edge} (approx.)"))
+            out.append(_band(s["lo"], s["hi"], "volume", f"{n}d", "hvn", f"{n}d HVN {s['lo']:g}-{s['hi']:g} (approx.)"))
         for s in lp["lvn"]:
-            for edge, px in (("low", s["lo"]), ("high", s["hi"])):
-                out.append(_e(px, "imbalance", f"{n}d", "lvn", f"{n}d LVN {edge} (approx.)"))
+            out.append(_band(s["lo"], s["hi"], "imbalance", f"{n}d", "lvn",
+                             f"{n}d LVN {s['lo']:g}-{s['hi']:g} (approx.)"))
     return out
+
+
+def _finish(z: dict) -> dict:
+    fams = sorted({m["family"] for m in z["members"]}, key=FAMILIES.index)
+    z.update(families=fams, strong=len(fams) >= 2 and any(f in PRICE_ACTION for f in fams),
+             mid=round((z["low"] + z["high"]) / 2, 2), tfs=sorted({m["tf"] for m in z["members"]}))
+    return z
 
 
 def cluster(els: list[dict], width: float) -> list[dict]:
-    """The existing map's clustering (price_map.levels.zones) on element dicts."""
-    out: list[dict] = []
-    for e in sorted(els, key=lambda x: x["price"]):
-        if out and e["price"] - out[-1]["members"][-1]["price"] <= width and e["price"] - out[-1]["low"] <= CAP * width:
-            out[-1]["members"].append(e)
-            out[-1]["high"] = e["price"]
+    """v2 G2: point levels by the existing map's rule (price_map.levels.zones); bands keep
+    their range, overlapping bands merge, and a point cluster within `width` of a band zone
+    joins the nearest one."""
+    pts: list[dict] = []
+    for e in sorted((x for x in els if not x.get("band")), key=lambda x: x["price"]):
+        if pts and e["price"] - pts[-1]["members"][-1]["price"] <= width and e["price"] - pts[-1]["low"] <= CAP * width:
+            pts[-1]["members"].append(e)
+            pts[-1]["high"] = e["price"]
         else:
-            out.append(dict(low=e["price"], high=e["price"], members=[e]))
-    for z in out:
-        fams = sorted({m["family"] for m in z["members"]}, key=FAMILIES.index)
-        z.update(families=fams, strong=len(fams) >= 2, mid=round((z["low"] + z["high"]) / 2, 2),
-                 tfs=sorted({m["tf"] for m in z["members"]}))
-    return out
+            pts.append(dict(low=e["price"], high=e["price"], members=[e]))
+    bands: list[dict] = []
+    for e in sorted((x for x in els if x.get("band")), key=lambda x: (x["lo"], x["hi"])):
+        if bands and e["lo"] <= bands[-1]["high"]:
+            bands[-1]["members"].append(e)
+            bands[-1]["high"] = max(bands[-1]["high"], e["hi"])
+        else:
+            bands.append(dict(low=e["lo"], high=e["hi"], members=[e]))
+    core = [(b["low"], b["high"]) for b in bands]
+    out = []
+    for z in pts:
+        mid = (z["low"] + z["high"]) / 2
+        near = [j for j, (lo, hi) in enumerate(core) if z["low"] <= hi + width and z["high"] >= lo - width]
+        if not near:
+            out.append(z)
+            continue
+        j = min(near, key=lambda j: max(core[j][0] - mid, 0, mid - core[j][1]))
+        bands[j]["members"] += z["members"]
+        bands[j]["low"], bands[j]["high"] = min(bands[j]["low"], z["low"]), max(bands[j]["high"], z["high"])
+    out += bands
+    return [_finish(z) for z in sorted(out, key=lambda z: (z["low"], z["high"]))]
 
 
 def htf_zones(els: list[dict], atr_w: Optional[float]) -> list[dict]:

@@ -11,6 +11,10 @@ Runs on the VM, against the L1 store and the 5-minute store. For each sample it 
 and sample.json (the draw, with every skip and its reason).
 
     PYTHONPATH=~/quantos ~/quantos/.venv/bin/python review_pack.py --out ~/review_round1
+
+--from-sample PATH regenerates the reads of an earlier draw (its sample.json: the same
+symbols and as-of dates, same ids) under the current code, e.g. after the v2 change
+(2026-11-11). Nothing is redrawn.
 """
 
 from __future__ import annotations
@@ -69,8 +73,17 @@ def items(rid: str, rd: dict) -> list[dict]:
                 f"{tf}: price in {q['side']} ({q['position_pct']:g}% of {q['lo']:g}-{q['hi']:g}, eq {q['eq']:g})")
         if t.get("sweeps"):
             x = t["sweeps"][-1]
-            add(f"{tf}.sweep", "sweep", f"{tf}: weak {x['side']} {x['level']:g} swept to {x['extreme']:g} on {x['date']}, "
-                                        f"closed back inside (definition not frozen)")
+            add(f"{tf}.sweep", "sweep", f"{tf}: swing {x['side']} {x['level']:g} ({x['swing']}) swept to {x['extreme']:g} "
+                                        f"on {x['date']}, closed back inside ({x['status']})")
+        if t.get("failed_breaks"):
+            x = t["failed_breaks"][-1]
+            add(f"{tf}.failed", "sweep", f"{tf}: swing {x['side']} {x['level']:g} closed beyond in {x['broke']}, back inside "
+                                         f"on {x['date']} at {x['close']:g} ({x['status']})")
+        if t.get("liquidity"):
+            q = t["liquidity"]
+            f = (lambda zs: "; ".join(f"{z['kind']} {z['level']:g} ({', '.join(z['swings'])})" for z in zs) or "none")
+            add(f"{tf}.liq", "liquidity", f"{tf} equal highs/lows (shown, not in the HTF zones): above {f(q['above'])} | "
+                                          f"below {f(q['below'])}")
     lad = rd.get("zones") or []
     zf = (lambda z: f"{z['range']} [{'+'.join(z['families'])}]{' STRONG' if z['strong'] else ''} "
                     f"{z['distance_atr']} ATR(D) away; {z['why']}")
@@ -114,6 +127,7 @@ def bars_out(df: pd.DataFrame, cols=("date", "period", "o", "h", "l", "c", "vol"
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--from-sample", type=Path, help="regenerate this sample.json's picks; no new draw")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     st = Store()
@@ -121,17 +135,21 @@ def main() -> int:
     uni = json.loads(st.universe_path.read_text(encoding="utf-8"))
     syms = [r["sym"] for r in uni["rows"] if r["sym"] not in EXCLUDE]
     rng = np.random.default_rng(SEED)
-    order = list(rng.permutation(syms))
+    fixed = json.loads(a.from_sample.read_text(encoding="utf-8"))["picked"] if a.from_sample else None
+    order = [x["sym"] for x in fixed] if fixed else list(rng.permutation(syms))
     picked, skipped = [], []
-    for sym in order:
+    for j, sym in enumerate(order):
         if len(picked) == N:
             break
-        raw = st.read_raw(sym)
-        days = raw["date"][(raw["date"] >= pd.Timestamp(WINDOW[0])) & (raw["date"] <= pd.Timestamp(WINDOW[1]))]
-        if days.empty:
-            skipped.append(dict(sym=sym, reason="no sessions in the window"))
-            continue
-        as_of = days.iat[int(rng.integers(len(days)))].date()
+        if fixed:
+            as_of = date.fromisoformat(fixed[j]["as_of"])
+        else:
+            raw = st.read_raw(sym)
+            days = raw["date"][(raw["date"] >= pd.Timestamp(WINDOW[0])) & (raw["date"] <= pd.Timestamp(WINDOW[1]))]
+            if days.empty:
+                skipped.append(dict(sym=sym, reason="no sessions in the window"))
+                continue
+            as_of = days.iat[int(rng.integers(len(days)))].date()
         adj, _ = st.adjusted(sym)
         seg = s.latest_segment(adj)
         nd = int((seg["date"] < pd.Timestamp(as_of)).sum())
@@ -148,7 +166,7 @@ def main() -> int:
         if "error" in rd or rd.get("source") != "l1":
             skipped.append(dict(sym=sym, as_of=as_of.isoformat(), reason=rd.get("error") or rd.get("fallback")))
             continue
-        rid = f"R{len(picked) + 1:02d}"
+        rid = fixed[j]["id"] if fixed else f"R{len(picked) + 1:02d}"
         txt = mr.lines(rd)                                    # includes the L1 and L2 lines
         doc = dict(id=rid, symbol=sym, as_of=as_of.isoformat(), last_bar=rd["l1"]["last_date"],
                    price=rd["price"], atr_d=rd["atr"], lines=txt, items=items(rid, rd), read=rd)
@@ -163,6 +181,7 @@ def main() -> int:
         print(rid, sym, as_of, len(doc["items"]), "items", flush=True)
     (a.out / "sample.json").write_text(json.dumps(dict(
         seed=SEED, n=N, window=[d.isoformat() for d in WINDOW], universe_as_of=uni["as_of"], exclude=sorted(EXCLUDE),
+        regenerated_from=str(a.from_sample) if a.from_sample else None,
         picked=picked, skipped=skipped), indent=1), encoding="utf-8")
     print(f"{len(picked)} picked, {len(skipped)} skipped")
     return 0 if len(picked) == N else 1
