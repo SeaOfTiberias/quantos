@@ -1,0 +1,220 @@
+{
+ "id": "R02",
+ "reviewer": "user (Gemini-written)",
+ "source": "user-submitted 2026-11-11 as 'my answers'; written with Gemini from screenshots of the review page (source/*.md, verbatim)",
+ "items": [
+  {
+   "id": "R02.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. 19 completed monthly bars elapsed from 2025-01 through 2026-07 (the August 2026 bar is active/unclosed). Structurally down from 5484.85, consolidating with an intermediate LH and HL."
+  },
+  {
+   "id": "R02.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Break below 3644.3 in December 2024 violated the last major monthly demand swing low preceding the 5484.85 ATH, confirming a structural Change of Character (`CHoCH ↓`). Accurately tagged."
+  },
+  {
+   "id": "R02.M.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. In SMC, the origin high of the CHoCH break is the protected/strong structural high. Plotted as solid blue horizontal line at 5485."
+  },
+  {
+   "id": "R02.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. The major external dealing range swing low and primary macro downside liquidity target. Marked with dashed magenta line."
+  },
+  {
+   "id": "R02.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Dealing Range = 2144.85 pts; Equilibrium (50%) = 4412.43. Spot (3847.4 - 3340) / 2144.85 = 23.66% (deep discount). Shorting directly into deep discount offers poor statistical expectancy without a premium retest."
+  },
+  {
+   "id": "R02.M.sweep",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Price undercut 3391 down to 3340 in March 2025, left a long lower rejection wick, and closed inside range. Correctly rendered with sweep marker (`▲`)."
+  },
+  {
+   "id": "R02.W.state",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Logic Discrepancy. The chart visually plots a Higher High (`HH` at ~4650) in mid-2026 following a multi-month expansion. Counting 36 consecutive bars \"down\" without state reset indicates the counter failed to acknowledge the intermediate bullish swing leg or treats it as an internal retrace of the 5485 leg. The state machine counter needs clarification on how it resets upon printing an `HH`."
+  },
+  {
+   "id": "R02.W.event",
+   "rule": "N",
+   "chart": "Y",
+   "note": "SMC Classification Bug. The chart plots `BOS ↓` at 3955. Because price had just established an `HH` at ~4650, the first structural break of the prior swing low at 3955 is canonically a **CHoCH ↓** (Change of Character), not a continuation BOS. Subsequent structural breaks below lower swing lows become BOS."
+  },
+  {
+   "id": "R02.W.protected",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "Refinement Needed. Plotted at 4429.4. The absolute dealing range peak was ~4650 (`HH`). 4429.4 is the immediate lower high preceding the breakdown candle. Standard SMC sets the protected high at the major swing high that initiated the entire reversal leg (4650), while minor structure uses 4429.4."
+  },
+  {
+   "id": "R02.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Impulse low of the active weekly wave; rendered as dashed pink line at 3755."
+  },
+  {
+   "id": "R02.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Dealing Range = 674.3 pts; Equilibrium = 4092.25. Spot (3847.4 - 3755.1) / 674.3 = 13.69% (extreme discount)."
+  },
+  {
+   "id": "R02.W.sweep",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. 3886.7 swing low was swept down to 3755.1 with lower wick rejection, closing inside. Rendered accurately."
+  },
+  {
+   "id": "R02.D.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Consistent series of lower highs and lower lows off the July high."
+  },
+  {
+   "id": "R02.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Clean close below the 3886.7 swing low, confirming continuation downtrend (`BOS ↓`)."
+  },
+  {
+   "id": "R02.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Swing high directly preceding the breakdown through 3886.7. Plotted at 4125."
+  },
+  {
+   "id": "R02.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Recent swing low formed on 2026-08-26 at 3737.2. Plotted with dashed pink line."
+  },
+  {
+   "id": "R02.D.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Range = 387.7 pts; Equilibrium = 3931.05. Spot (3847.4 - 3737.2) / 387.7 = 28.42% (discount)."
+  },
+  {
+   "id": "R02.D.sweep",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. High-quality liquidity sweep. 3755.1 low was undercut by 18 pts to 3737.2, followed by a strong hammer candle and close back inside range. Rendered with red sweep marker (`▲`)."
+  },
+  {
+   "id": "R02.Z.inside",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Spot 3847.4 is sitting directly inside this multi-factor confluence zone. Plotted as the active brown box."
+  },
+  {
+   "id": "R02.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. (3847.4 - 3794.02) / 91.44 = 0.58 ATR. Plotted accurately below current spot."
+  },
+  {
+   "id": "R02.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. (3847.4 - 3672.5) / 91.44 = 1.91 ATR. Plotted accurately."
+  },
+  {
+   "id": "R02.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. (3847.4 - 3580.22) / 91.44 = 2.92 ATR. Plotted accurately."
+  },
+  {
+   "id": "R02.Z.a1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. (3926.73 - 3847.4) / 91.44 = 0.87 ATR. Prime overhead resistance cluster."
+  },
+  {
+   "id": "R02.Z.a2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. (4030 - 3847.4) / 91.44 = 2.0 ATR. Plotted accurately."
+  },
+  {
+   "id": "R02.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. (4140 - 3847.4) / 91.44 = 3.2 ATR. Plotted accurately around the daily protected high."
+  },
+  {
+   "id": "R02.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Exceptional multi-timeframe confluence: Camarilla W H3 (3961.99), Weekly MZ VAL (3965), Monthly VPOC (3980), and Monthly MZ POC (3985) define a high-probability Golden Pivot Zone (GPZ) at 3961.99–3985. Visually encompassed by zone 3926.73–4028.53."
+  },
+  {
+   "id": "R02.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Weekly and Monthly CPRs exhibit descending/lower-value placement, with spot closed below both. Yearly CPR is inside/narrow, signaling macro compression and impending volatility expansion."
+  },
+  {
+   "id": "R02.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Spot 3847.4 is bounded tightly between Camarilla W L3 (3850) and W S1 (3824.9)."
+  },
+  {
+   "id": "R02.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Profiles show migration of value downward, with intermediate composite POC acceptance between 3980 and 3990."
+  },
+  {
+   "id": "R02.V.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Critical Confluence. The daily liquidity sweep low on 2026-08-26 bottomed at **3737.2**—reversing exactly 2.2 points above the virgin Weekly/Quarterly VAL of **3735**. This proves the sweep tapped institutional untraded profile liquidity."
+  },
+  {
+   "id": "R02.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. 3735 also marks the exact 250-day Value Area Low."
+  },
+  {
+   "id": "R02.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Extremely narrow CPR (0.021%) indicates volatility compression preceding directional expansion. Spot closed at 3847.4, right at the Central Pivot."
+  },
+  {
+   "id": "R02.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Value consolidation centered at 3855."
+  },
+  {
+   "id": "R02.L2.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Displayed cleanly on daily tab with green dot annotations."
+  },
+  {
+   "id": "R02.X.watch",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "Correct. Header badge shows `aligned down`. Buffers and distances are consistent."
+  }
+ ],
+ "missing": [],
+ "overall": null,
+ "overall_note": "No overall verdict given. The file adds a forward walk-through (Part 2) and trade-rule proposals (Part 3); both are filed as S8 notes, not round 1 scores."
+}

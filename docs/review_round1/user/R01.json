@@ -1,0 +1,239 @@
+{
+ "id": "R01",
+ "reviewer": "user (Gemini-written)",
+ "source": "user-submitted 2026-11-11 as 'my answers'; written with Gemini from screenshots of the review page (source/*.md, verbatim)",
+ "items": [
+  {
+   "id": "R01.M.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Monthly structure began its macro bullish expansion in 2021 (~48 completed monthly bars). Despite the deep pullback from 5040 down to 2424 in late 2024 / early 2025, the Monthly Protected Low at 2223 was never breached on a closing or wick basis. Monthly trend remains structurally bullish."
+  },
+  {
+   "id": "R01.M.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The clean Monthly Break of Structure to the upside occurred in late 2023 when price broke above 2815.15 on its way to the 5039.7 peak. Plotted accurately as `BOS ↑`."
+  },
+  {
+   "id": "R01.M.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The swing low that initiated the decisive breakout above 2815. Rendered as a solid blue horizontal line at 2223."
+  },
+  {
+   "id": "R01.M.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The all-time high / external range high. Plotted as a dashed pink line at 5040."
+  },
+  {
+   "id": "R01.M.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Total dealing range = 2816.7 pts; Equilibrium (50%) = 3631.35. At 3574.5, position is $(3574.5 - 2223) / 2816.7 = \\mathbf{47.98\\%}$ (Discount)."
+  },
+  {
+   "id": "R01.M.sweep",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** High of 4117 was run to 4350 before closing back inside the range. Plotted with red sweep marker (`▲`)."
+  },
+  {
+   "id": "R01.W.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** 11 completed weekly bars since the structural change in 2025-W14."
+  },
+  {
+   "id": "R01.W.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** After a multi-year uptrend, breaking below 2822.45 was the first structural break of a major weekly swing low, properly classified as a **CHoCH ↓** (Change of Character)."
+  },
+  {
+   "id": "R01.W.protected",
+   "rule": "unclear",
+   "chart": "Y",
+   "note": "**Engine Rule Nuance.** Plotted at 5040. In classical SMC, the high originating the breakdown at 2822.45 was the Lower High formed in early 2025 (~4700–4850), not the absolute ATH of 5040. If QuantOs defines protected high as the absolute cycle peak of the structural sequence, 5040 is acceptable; if defined as the swing high originating the break, it should be the LH at ~4700."
+  },
+  {
+   "id": "R01.W.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The impulse swing low formed right after the CHoCH breakdown. Rendered with dashed pink line."
+  },
+  {
+   "id": "R01.W.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Range = 2615.7 pts; Eq = 3731.85. Position: $(3574.5 - 2424) / 2615.7 = \\mathbf{43.98\\%}$ (Discount)."
+  },
+  {
+   "id": "R01.W.sweep",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** High 4043 was swept to 4117 on 2024-04-26, with a wick rejection closing back inside. Marked with red sweep triangle."
+  },
+  {
+   "id": "R01.D.state",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Daily structure transitioned to bullish following the V-bottom from 2424; 34 completed bars in the current bullish expansion sequence."
+  },
+  {
+   "id": "R01.D.event",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Clean continuation breakout above the 3522.7 swing high. Plotted as `BOS ↑`."
+  },
+  {
+   "id": "R01.D.protected",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The swing low that held and produced the breakout above 3522.7. Marked as solid blue line at 3411."
+  },
+  {
+   "id": "R01.D.weak",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The recent swing high of the current impulse. Plotted as dashed pink line at 3861."
+  },
+  {
+   "id": "R01.D.pd",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Range = 449.6 pts; Eq = 3636.2. Position: $(3574.5 - 3411.4) / 449.6 = \\mathbf{36.27\\%}$ (Discount)."
+  },
+  {
+   "id": "R01.D.sweep",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** The previous swing high at 3846.9 was taken out by ~14 points to 3861, rejected, and closed back inside range on 2025-06-11 (`sweep ▲`)."
+  },
+  {
+   "id": "R01.Z.inside",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Price at 3574.5 is resting right in the middle of this multi-confluence zone (W L4, M vol VAH, 250d LVN, W S1). Displayed as active brown zone."
+  },
+  {
+   "id": "R01.Z.b1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** $(3574.5 - 3445) / 95.9 \\approx \\mathbf{1.35\\text{ ATR}}$. Confluence of W virgin MZ VAH, M BC, and M swing HL. Plotted accurately."
+  },
+  {
+   "id": "R01.Z.b2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Distance: $(3574.5 - 3285) / 95.9 \\approx \\mathbf{3.02\\text{ ATR}}$."
+  },
+  {
+   "id": "R01.Z.b3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Distance: $(3574.5 - 3050) / 95.9 \\approx \\mathbf{5.47\\text{ ATR}}$."
+  },
+  {
+   "id": "R01.Z.a1",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Distance: $(3622.5 - 3574.5) / 95.9 \\approx \\mathbf{0.50\\text{ ATR}}$. Immediate overhead resistance containing W TC, W MZ VAH, and 250d LVN."
+  },
+  {
+   "id": "R01.Z.a2",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Distance: $(3760 - 3574.5) / 95.9 \\approx \\mathbf{1.93\\text{ ATR}}$."
+  },
+  {
+   "id": "R01.Z.a3",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Distance: $(3910 - 3574.5) / 95.9 \\approx \\mathbf{3.50\\text{ ATR}}$."
+  },
+  {
+   "id": "R01.H.hot",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Strong multi-timeframe GPZ confluence mapped around 3619.88 (W H3) and 3424–3445 (M L3 + M MZ POC + M VPOC)."
+  },
+  {
+   "id": "R01.P.cpr",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Weekly CPR is lower value with price below; Monthly CPR is higher value with price above. Represents structural conflict between Weekly downtrend and Daily/Monthly recovery."
+  },
+  {
+   "id": "R01.P.levels",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Price at 3574.5 is tightly framed between 3540 (support) and 3590.5–3620 (resistance)."
+  },
+  {
+   "id": "R01.V.periods",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Profile POCs accurately reflect value migration down from 4240 (Yearly) to 3910 (Quarterly) and consolidation around 3445–3590."
+  },
+  {
+   "id": "R01.V.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Extreme proximity: current price (3574.5) is sitting directly inside the virgin Weekly Value Area (3565–3585)."
+  },
+  {
+   "id": "R01.V.long",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Long-term high-volume node at 2870 anchors the base of the multi-year range."
+  },
+  {
+   "id": "R01.L2.pivots",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Ultra-compressed CPR directly on top of current spot price (3574.5), signaling imminent directional expansion."
+  },
+  {
+   "id": "R01.L2.session",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Consistent with the tight consolidation before the weekend."
+  },
+  {
+   "id": "R01.L2.virgin",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Levels mapped cleanly."
+  },
+  {
+   "id": "R01.X.watch",
+   "rule": "Y",
+   "chart": "Y",
+   "note": "**Correct.** Multi-timeframe conflict correctly identified."
+  }
+ ],
+ "missing": [
+  {
+   "type": "sweep (interpretation)",
+   "tf": "D",
+   "price": "3846.9-3861",
+   "note": "Buy-side liquidity above 3846.9 taken and rejected on 2025-06-11; 7-session pullback since."
+  },
+  {
+   "type": "supply / bearish OB",
+   "tf": "W",
+   "price": "3875.50-3964.85",
+   "note": "The D rally from 2424 retraced into the origin of the W CHoCH; the 3861 rejection is at this W supply."
+  },
+  {
+   "type": "structural invalidation",
+   "tf": "D",
+   "price": "3411.4",
+   "note": "A break below the D protected low would make D CHoCH down, aligning W and D down against M."
+  }
+ ],
+ "overall": "yes",
+ "overall_note": "Accurate on M (protected low 2223 held), W (CHoCH down 2822.45), D (BOS up 3522.7, protected 3411.4) and the tight daily CPR; one nuance on the W protected high."
+}
