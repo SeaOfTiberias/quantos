@@ -31,6 +31,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta, timezone
 from typing import Iterable, Optional
 
+import numpy as np
+
 IST = timezone(timedelta(hours=5, minutes=30))
 SWING_K = 5
 VALUE_SHARE = 0.70
@@ -148,11 +150,22 @@ def swing_levels(daily: list, k: int = SWING_K, atr: float = 0.0) -> list[Level]
 
 # ─── Volume profile ──────────────────────────────────────────────────────────
 
+BUCKET_DECIMALS = 9
+
+
+def bucket(x, step: float):
+    """Bucket index of price `x` (scalar or array) for bucket size `step`. x / step is
+    rounded to BUCKET_DECIMALS first: in binary floating point 132.2 / 0.2 is
+    660.9999..., so a price exactly on a bucket edge would otherwise land one bucket low."""
+    k = np.floor(np.round(np.asarray(x, dtype=float) / step, BUCKET_DECIMALS)).astype(np.int64)
+    return int(k) if k.ndim == 0 else k
+
+
 def profile(bars: Iterable, step: float) -> dict:
     """Volume at each price bucket (bucket floor -> volume)."""
     h: dict = defaultdict(float)
     for b in bars:
-        lo, hi = int(b.low // step), int(b.high // step)
+        lo, hi = bucket(b.low, step), bucket(b.high, step)
         n = hi - lo + 1
         for k in range(lo, hi + 1):
             h[round(k * step, 2)] += b.volume / n

@@ -55,7 +55,7 @@ import pandas as pd
 from core.market_map import pivots as pv
 from core.market_map import structure as st
 from core.price_map.build import step_for
-from core.price_map.levels import SHELF_X, VALUE_SHARE, profile, shelves, value_area
+from core.price_map.levels import SHELF_X, VALUE_SHARE, bucket, profile, shelves, value_area
 
 PERIODS = ("W", "M", "Q", "Y")
 BRACKET_MIN = 30
@@ -73,8 +73,8 @@ def spread(lo: np.ndarray, hi: np.ndarray, w: np.ndarray, step: float) -> dict:
     the same buckets and split as core.price_map.levels.profile, without the Python loop."""
     if len(lo) == 0:
         return {}
-    a = np.floor_divide(lo, step).astype(np.int64)
-    b = np.floor_divide(hi, step).astype(np.int64)
+    a = bucket(lo, step)
+    b = bucket(hi, step)
     k0 = int(a.min())
     per = w / (b - a + 1)
     acc = np.zeros(int(b.max()) - k0 + 2)
@@ -96,8 +96,8 @@ def vol_profile(d: pd.DataFrame, step: float) -> dict:
 def tpo(d: pd.DataFrame, step: float) -> dict:
     """One TPO per daily bar at every bucket it traded (bucket floor -> count)."""
     lo, hi = d["l"].to_numpy(float), d["h"].to_numpy(float)
-    a = np.floor_divide(lo, step)
-    b = np.floor_divide(hi, step)
+    a = bucket(lo, step)
+    b = bucket(hi, step)
     h = spread(lo, hi, (b - a + 1).astype(float), step)
     return dict(zip(h.keys(), np.rint(np.fromiter(h.values(), float, len(h))).tolist()))
 
@@ -189,7 +189,7 @@ def weekly_profiles(daily: pd.DataFrame, m5: Optional[pd.DataFrame], as_of) -> l
         i0, i1 = np.searchsorted(md, days[0], "left"), np.searchsorted(md, days[-1], "right")
         j0, j1 = np.searchsorted(bd, days[0], "left"), np.searchsorted(bd, days[-1], "right")
         lo, hi = float(ml[i0:i1].min()), float(mh[i0:i1].max())
-        t = spread(bl[j0:j1], bh[j0:j1], (np.floor_divide(bh[j0:j1], step) - np.floor_divide(bl[j0:j1], step) + 1),
+        t = spread(bl[j0:j1], bh[j0:j1], (bucket(bh[j0:j1], step) - bucket(bl[j0:j1], step) + 1).astype(float),
                    step)
         mz = money_zone({k: round(v) for k, v in t.items()}, (hi + lo) / 2, step)
         vp = value_area(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step))

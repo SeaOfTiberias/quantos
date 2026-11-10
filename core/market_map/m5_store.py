@@ -13,6 +13,11 @@ matching the store's adjusted closes). So on read only the actions with an ex-da
 the symbol's `basis` (its backfill day) are applied, to the bars dated before each
 ex-date: the same factors as the daily store, without adjusting twice. Symbols backfilled
 before `basis` was recorded use DEFAULT_BASIS (the first backfill ran on 2026-11-07 UTC).
+
+Bad bars are dropped on read (round 1 review, 2026-11-11): a row whose high is below its
+low, or with a missing or non-positive price, can't be a real bar (NEOGEN has 5 Fyers bars
+on 2019-12-06 with h < l, which put inf/NaN weights into that week's profiles). The files
+keep what Fyers sent; `bad_rows` counts what is dropped.
 """
 
 from __future__ import annotations
@@ -33,6 +38,13 @@ IST = ZoneInfo("Asia/Kolkata")
 COLS = ["ts", "o", "h", "l", "c", "vol"]
 DEFAULT_BASIS = "2026-11-07"
 IST_OFFSET = 5 * 3600 + 30 * 60
+
+
+def bad_mask(df: pd.DataFrame) -> np.ndarray:
+    """Rows that can't be a real bar: high below low, or a missing or non-positive price."""
+    px = df[["o", "h", "l", "c"]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    with np.errstate(invalid="ignore"):
+        return np.isnan(px).any(axis=1) | (px <= 0).any(axis=1) | (px[:, 1] < px[:, 2])
 
 
 class M5Store:
@@ -93,9 +105,19 @@ class M5Store:
         parts = [pd.read_csv(p) for p in sorted(d.glob("*.csv.gz")) if int(p.name[:4]) >= y0]
         if not parts:
             return pd.DataFrame(columns=COLS + ["dt"])
-        df = pd.concat(parts).drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True)
+        df = pd.concat(parts).drop_duplicates("ts", keep="last").sort_values("ts")
+        df = df[~bad_mask(df)].reset_index(drop=True)
         df["dt"] = pd.to_datetime(df["ts"].to_numpy(np.int64) + IST_OFFSET, unit="s")   # IST has no DST
         return df
+
+    def bad_rows(self, sym: str) -> int:
+        """How many stored rows read_raw drops as bad bars."""
+        d = self.root / sym
+        parts = [pd.read_csv(p) for p in sorted(d.glob("*.csv.gz"))] if d.exists() else []
+        if not parts:
+            return 0
+        df = pd.concat(parts).drop_duplicates("ts", keep="last")
+        return int(bad_mask(df).sum())
 
     def adjusted(self, sym: str, daily_adj: pd.DataFrame, actions: list[dict]) -> pd.DataFrame:
         """5-minute bars on the daily store's adjusted scale (see the module note): each

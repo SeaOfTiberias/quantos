@@ -38,7 +38,7 @@ from core.market_map import pivots as pv
 from core.market_map import structure as st
 from core.market_map.profiles import brackets, money_zone, spread
 from core.price_map.build import step_for
-from core.price_map.levels import value_area
+from core.price_map.levels import bucket, value_area
 
 UNTESTED = "untested"
 NARROW, WIDE = 0.25, 0.75            # Ochoa's daily CPR width markers, % of the pivot
@@ -94,7 +94,7 @@ def session_profiles(d: pd.DataFrame, m5: Optional[pd.DataFrame]) -> list[dict]:
         step = step_for(float(a))
         j0, j1 = np.searchsorted(bd, day, "left"), np.searchsorted(bd, day, "right")
         lo, hi = float(ml[i0:i1].min()), float(mh[i0:i1].max())
-        t = spread(bl[j0:j1], bh[j0:j1], np.floor_divide(bh[j0:j1], step) - np.floor_divide(bl[j0:j1], step) + 1,
+        t = spread(bl[j0:j1], bh[j0:j1], (bucket(bh[j0:j1], step) - bucket(bl[j0:j1], step) + 1).astype(float),
                    step)
         mz = money_zone({k: round(v) for k, v in t.items()}, (hi + lo) / 2, step)
         vp = value_area(spread(ml[i0:i1], mh[i0:i1], mv[i0:i1], step))

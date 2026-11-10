@@ -70,3 +70,17 @@ def test_a_no_data_window_before_the_listing_is_empty_not_a_failure():
     s = datetime(2017, 12, 1, tzinfo=timezone.utc)
     rows = job.fetch(B(), "NEWCO", s, s + timedelta(days=200), sleep=lambda x: None)
     assert len(rows) == 2
+
+
+def test_bad_bars_are_dropped_on_read_and_counted(tmp_path):
+    m = M5Store(tmp_path)
+    t = datetime(2019, 12, 6, 4, 0, tzinfo=timezone.utc)
+    good = bars_frame([_bar(t, 100.0), _bar(t + timedelta(minutes=10), 102.0)])
+    bad = pd.DataFrame([[int((t + timedelta(minutes=5)).timestamp()), 101.0, 99.0, 103.0, 101.0, 10],   # h < l
+                        [int((t + timedelta(minutes=15)).timestamp()), 0.0, 1.0, 0.0, 0.5, 10]],       # price 0
+                       columns=good.columns)
+    m.write("NEO", pd.concat([good, bad]))
+    raw = m.read_raw("NEO")
+    assert list(raw["c"]) == [100.0, 102.0]
+    assert (raw["h"] >= raw["l"]).all()
+    assert m.bad_rows("NEO") == 2

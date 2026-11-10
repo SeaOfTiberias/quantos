@@ -3,7 +3,10 @@
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
+import numpy as np
 from pytest import approx
+
+import core.price_map.levels as levels_mod
 
 from core.price_map.levels import (
     Level, camarilla, classical, first_obstacle, naked_pocs, periods, pivot_levels, profile,
@@ -141,3 +144,21 @@ def test_shift_moves_a_cash_map_onto_futures_prices():
     assert zone_at(f, 977) is not None and zone_at(m, 977) is None
     assert "futures = cash +4" in markers(f, 1000, 1000, -1, 50, None)[0]
     assert shift(m, 0) is m and shift({}, 4) == {}
+
+
+def test_a_price_on_a_bucket_edge_lands_in_its_own_bucket():
+    # 132.2 / 0.2 is 660.9999... in floating point; the review (IRFC, round 1) caught it a bucket low
+    from core.price_map.levels import bucket
+    assert bucket(132.2, 0.2) == 661
+    assert list(bucket(np.array([132.2, 0.3, 0.7, 132.19]), 0.1)) == [1322, 3, 7, 1321]
+    assert bucket(132.2, 5) == 26
+
+
+def test_profile_and_market_map_spread_agree_on_edge_prices():
+    from types import SimpleNamespace
+    from core.market_map.profiles import spread
+    bars = [SimpleNamespace(low=132.2, high=132.6, volume=3.0)]
+    h = levels_mod.profile(bars, 0.2)
+    assert sorted(h) == [132.2, 132.4, 132.6]
+    s = spread(np.array([132.2]), np.array([132.6]), np.array([3.0]), 0.2)
+    assert s == h
