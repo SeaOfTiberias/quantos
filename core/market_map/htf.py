@@ -253,7 +253,10 @@ def hot_zones(els: list[dict], atr_w: Optional[float], l1: dict, strong: list[di
 
 def compact(z: dict) -> dict:
     return dict(low=z["low"], high=z["high"], mid=z["mid"], strong=z["strong"], families=z["families"], tfs=z["tfs"],
-                n=len(z["members"]), why=why(z), confluence=z.get("confluence", [])[:4], n_confluence=len(z.get("confluence", [])))
+                n=len(z["members"]), why=why(z),
+                bands=[dict(kind=m["kind"], tf=m["tf"], lo=m["lo"], hi=m["hi"], at_break=bool(m.get("at_break")),
+                            fresh=bool(m.get("fresh", True)), period=m["period"]) for m in z["members"] if m.get("band")],
+                confluence=z.get("confluence", [])[:4], n_confluence=len(z.get("confluence", [])))
 
 
 def why(z: dict, n: int = 4) -> str:

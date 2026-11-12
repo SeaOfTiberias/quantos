@@ -423,6 +423,8 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     zs, gone = zn.mitigate(zs, dbars)                   # v3 H2, H5: daily mitigation
     out["zones"] = zs
     out["zones_removed"] = gone
+    out["swings"] = {tf: [dict(kind=k, label=lb, price=round(float(px), 2), period=per) for k, lb, px, per in sw]
+                     for tf, sw in swings_all.items()}                # unbroken W/M swings (playbook P2 liquidity)
     from core.market_map import htf
     atr_w = tfs.get("W", {}).get("atr")
     els = htf.elements(out, swings_all)
