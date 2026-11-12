@@ -1,0 +1,79 @@
+//@version=6
+// QuantOS market map v3 zones, frozen as of 2026-11-13 (daily bars to 2026-11-12), for a side-by-side with an SMC indicator.
+// Generated from core/market_map (code f7bfa2b, definitions docs/MARKET_MAP_DEFINITIONS_V3.md). Untested markers, not signals.
+// Covers KEI, DMART, HDFCBANK, KOTAKBANK only; other symbols draw nothing. Prices are split-adjusted, as TradingView's.
+indicator("QuantOS map v3 zones (2026-11-13)", overlay = true, max_boxes_count = 200)
+showOrdinary = input.bool(true, "Show ordinary (non-strong) zones")
+showLabels   = input.bool(true, "Show zone text")
+BULL = #2a78d6
+BEAR = #eb6834
+NEU  = #8a8984
+z(int t, float lo, float hi, color c, bool strong, bool fvg, string txt) =>
+    if strong or showOrdinary
+        box.new(t, hi, t + 86400000, lo, xloc = xloc.bar_time, extend = extend.right,
+                 bgcolor = color.new(c, strong ? 65 : fvg ? 88 : 85), border_color = color.new(c, strong ? 0 : 60),
+                 border_width = strong ? 2 : 1, border_style = fvg ? line.style_dashed : line.style_solid,
+                 text = showLabels ? txt : "", text_size = size.tiny, text_color = color.new(#52514e, 0),
+                 text_halign = text.align_right, text_valign = text.align_center)
+var bool done = false
+if barstate.islast and not done
+    done := true
+    if syminfo.ticker == "KEI"
+        z(timestamp("Asia/Kolkata", 2023, 8, 1, 9, 15), 2223.0, 2719.9, BULL, false, false, "2223-2719.9 M bull OB, W swing, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2023, 10, 23, 9, 15), 2356.6, 2629.2, BULL, false, false, "2356.6-2629.2 W bull OB, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2025, 4, 21, 9, 15), 2689.95, 2791.0, BULL, false, true, "2689.95-2791 W bull FVG")
+        z(timestamp("Asia/Kolkata", 2025, 3, 1, 9, 15), 2762.25, 3344.35, BULL, true, false, "STRONG 2762.25-3344.35 M bull OB")
+        z(timestamp("Asia/Kolkata", 2025, 4, 28, 9, 15), 2878.3, 2942.0, BULL, false, true, "2878.3-2942 W bull FVG")
+        z(timestamp("Asia/Kolkata", 2025, 6, 1, 9, 15), 3085.0, 3500.0, BULL, false, true, "3085-3500 M bull FVG")
+        z(timestamp("Asia/Kolkata", 2025, 5, 12, 9, 15), 3128.5, 3332.9, BULL, false, true, "3128.5-3332.9 W bull FVG")
+        z(timestamp("Asia/Kolkata", 2025, 8, 11, 9, 15), 3666.1, 3712.2, NEU, false, false, "3666.1-3712.2 W weak, W swing, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 3, 23, 9, 15), 3926.0, 3926.0, NEU, false, false, "3926-3926 W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 10, 26, 9, 15), 4214.0, 4480.0, BEAR, false, true, "4214-4480 W bear FVG")
+        z(timestamp("Asia/Kolkata", 2026, 10, 1, 9, 15), 4745.5, 4963.2, BEAR, false, true, "4745.5-4963.2 M bear FVG, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 9, 14, 9, 15), 4760.0, 4820.0, BEAR, false, true, "4760-4820 W bear FVG")
+        z(timestamp("Asia/Kolkata", 2026, 9, 7, 9, 15), 4871.0, 5448.4, BEAR, false, true, "4871-5448.4 W bear FVG")
+        z(timestamp("Asia/Kolkata", 2026, 9, 7, 9, 15), 5549.0, 5615.0, BEAR, true, false, "STRONG 5549-5615 W supply")
+        z(timestamp("Asia/Kolkata", 2026, 8, 10, 9, 15), 5566.2, 5899.0, BEAR, true, false, "STRONG 5566.2-5899 W bear OB, W swing, M swing")
+    if syminfo.ticker == "DMART"
+        z(timestamp("Asia/Kolkata", 2021, 8, 1, 9, 15), 2676.4, 3102.3, BULL, true, false, "STRONG 2676.4-3102.3 M demand, W swing, M weak")
+        z(timestamp("Asia/Kolkata", 2021, 6, 1, 9, 15), 2988.0, 3030.8, BULL, false, true, "2988-3030.8 M bull FVG")
+        z(timestamp("Asia/Kolkata", 2022, 5, 1, 9, 15), 3186.0, 3186.0, NEU, false, false, "3186-3186 M swing")
+        z(timestamp("Asia/Kolkata", 2025, 3, 3, 9, 15), 3331.1, 3331.1, NEU, false, false, "3331.1-3331.1 W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 10, 19, 9, 15), 3484.1, 3497.7, BEAR, false, true, "3484.1-3497.7 W bear FVG")
+        z(timestamp("Asia/Kolkata", 2026, 10, 12, 9, 15), 3484.1, 3746.2, BEAR, false, true, "3484.1-3746.2 W bear FVG, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 10, 19, 9, 15), 3688.0, 3900.0, BEAR, true, false, "STRONG 3688-3900 W supply")
+        z(timestamp("Asia/Kolkata", 2026, 9, 21, 9, 15), 3732.0, 3868.1, BEAR, true, false, "STRONG 3732-3868.1 W bear OB")
+        z(timestamp("Asia/Kolkata", 2026, 8, 10, 9, 15), 3871.05, 4098.9, BEAR, true, false, "STRONG 3871.05-4098.9 W bear OB, W multi-touch, W swing")
+        z(timestamp("Asia/Kolkata", 2026, 4, 1, 9, 15), 4066.1, 4644.0, BEAR, true, false, "STRONG 4066.1-4644 M bear OB, W multi-touch, W swing")
+        z(timestamp("Asia/Kolkata", 2026, 7, 6, 9, 15), 4124.9, 4285.0, BEAR, false, true, "4124.9-4285 W bear FVG, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 5, 11, 9, 15), 4431.8, 4460.3, BEAR, false, true, "4431.8-4460.3 W bear FVG")
+        z(timestamp("Asia/Kolkata", 2025, 9, 1, 9, 15), 4670.0, 4949.5, BEAR, true, false, "STRONG 4670-4949.5 W bear OB, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2024, 11, 1, 9, 15), 4927.45, 5164.0, BEAR, false, false, "4927.45-5164 M supply, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2024, 11, 1, 9, 15), 4949.5, 4951.0, BEAR, false, true, "4949.5-4951 M bear FVG, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2024, 10, 7, 9, 15), 4949.5, 5090.0, BEAR, false, true, "4949.5-5090 W bear FVG, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2024, 9, 1, 9, 15), 4951.0, 5484.85, BEAR, true, false, "STRONG 4951-5484.85 M bear OB, M swing, W swing")
+    if syminfo.ticker == "HDFCBANK"
+        z(timestamp("Asia/Kolkata", 2022, 6, 13, 9, 15), 635.8, 665.0, BULL, true, false, "STRONG 635.8-665 W bull OB, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2026, 11, 2, 9, 15), 669.2, 692.8, BULL, true, false, "STRONG 669.2-692.8 W demand, M weak, W protected")
+        z(timestamp("Asia/Kolkata", 2026, 10, 19, 9, 15), 686.85, 733.4, BULL, true, false, "STRONG 686.85-733.4 W bull OB, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2023, 3, 13, 9, 15), 768.25, 768.25, NEU, false, false, "768.25-768.25 W multi-touch")
+        z(timestamp("Asia/Kolkata", 2024, 4, 22, 9, 15), 780.0, 788.25, NEU, false, false, "780-788.25 W multi-touch, W weak")
+        z(timestamp("Asia/Kolkata", 2026, 7, 6, 9, 15), 805.0, 843.0, BEAR, false, false, "805-843 W bear OB, W multi-touch, M swing")
+        z(timestamp("Asia/Kolkata", 2026, 8, 3, 9, 15), 817.0, 823.7, BEAR, false, false, "817-823.7 W supply, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 4, 1, 9, 15), 843.0, 885.0, BEAR, false, true, "843-885 M bear FVG, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 3, 9, 9, 15), 856.8, 885.0, BEAR, false, true, "856.8-885 W bear FVG, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 3, 2, 9, 15), 887.75, 902.1, BEAR, false, true, "887.75-902.1 W bear FVG")
+        z(timestamp("Asia/Kolkata", 2026, 3, 1, 9, 15), 887.75, 905.0, BEAR, false, true, "887.75-905 M bear FVG")
+        z(timestamp("Asia/Kolkata", 2026, 3, 9, 9, 15), 903.9, 929.5, BEAR, false, false, "903.9-929.5 W supply")
+        z(timestamp("Asia/Kolkata", 2025, 10, 1, 9, 15), 946.0, 1020.5, BEAR, false, false, "946-1020.5 M bear OB, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2025, 10, 13, 9, 15), 967.0, 1009.0, BEAR, false, false, "967-1009 W bear OB")
+        z(timestamp("Asia/Kolkata", 2026, 3, 1, 9, 15), 985.0, 1017.5, BEAR, true, false, "STRONG 985-1017.5 M supply")
+        z(timestamp("Asia/Kolkata", 2026, 1, 19, 9, 15), 988.0, 1003.2, BEAR, false, false, "988-1003.2 W supply")
+    if syminfo.ticker == "KOTAKBANK"
+        z(timestamp("Asia/Kolkata", 2026, 3, 1, 9, 15), 345.5, 414.6, BULL, true, false, "STRONG 345.5-414.6 M bull OB, M swing, W swing")
+        z(timestamp("Asia/Kolkata", 2026, 7, 6, 9, 15), 368.4, 389.75, BULL, true, false, "STRONG 368.4-389.75 W bull OB, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 8, 24, 9, 15), 394.35, 394.7, BULL, false, true, "394.35-394.7 W bull FVG")
+        z(timestamp("Asia/Kolkata", 2026, 9, 21, 9, 15), 399.3, 420.6, BULL, true, false, "STRONG 399.3-420.6 W bull OB, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 11, 2, 9, 15), 447.15, 455.4, BULL, false, true, "447.15-455.4 W bull FVG, W multi-touch")
+        z(timestamp("Asia/Kolkata", 2026, 10, 1, 9, 15), 462.9, 462.9, NEU, false, false, "462.9-462.9 M weak")
+        z(timestamp("Asia/Kolkata", 2026, 11, 2, 9, 15), 480.0, 480.0, NEU, false, false, "480-480 W weak")
