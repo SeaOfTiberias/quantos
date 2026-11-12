@@ -113,3 +113,82 @@ def test_nearest_zones_split_inside_below_above():
     inside, below, above = st.nearest_zones(l1)
     assert [z["kind"] for z in inside] == ["bull_ob"]
     assert [z["lo"] for z in below] == [97, 90] and [z["kind"] for z in above] == ["supply"]
+
+
+# ─── v3 (docs/MARKET_MAP_DEFINITIONS_V3.md): FVGs, daily mitigation, at a break ─────────────
+
+def _daily(rows, start="2026-02-02"):
+    df = pd.DataFrame(rows, columns=["h", "l", "c"])
+    df["date"] = pd.bdate_range(start, periods=len(df))
+    return df
+
+
+def _z(kind, lo, hi, formed="2026-01-30", **kw):
+    return dict(kind=kind, lo=lo, hi=hi, formed=formed, tf="W", **kw)
+
+
+def test_v3_h5_fvg_three_bar_gap_both_ways_and_minimum_size():
+    rows = [(10, 10.5, 9.5, 10), (10.5, 12.5, 10.4, 12.3), (12.3, 13, 11, 12.8),       # bull: 11 > 10.5
+            (12, 12.2, 11.95, 12), (11.9, 12, 11.7, 11.8)]                              # 11.7 vs 11.95-0.1: no
+    z = zn.fvgs(_bars(rows), np.ones(5))
+    assert [(g["kind"], g["lo"], g["hi"], g["bar"]) for g in z] == [("bull_fvg", 10.5, 11.0, "P02")]
+    rows = [(10, 10.5, 9.5, 10), (9.5, 9.6, 8, 8.2), (8.2, 9.0, 7.5, 8.5)]                # bear: 9.0 < 9.5
+    z = zn.fvgs(_bars(rows), np.ones(3))
+    assert [(g["kind"], g["lo"], g["hi"]) for g in z] == [("bear_fvg", 9.0, 9.5)]
+    rows = [(10, 10.5, 9.5, 10), (10.5, 12, 10.4, 11.9), (11.9, 12, 10.55, 11.9)]       # 0.05 < 0.1 ATR
+    assert zn.fvgs(_bars(rows), np.ones(3)) == []
+
+
+def test_v3_h5_a_gap_is_trimmed_then_removed_when_filled():
+    g = _z("bull_fvg", 10.0, 11.0)
+    kept, gone = zn.mitigate([g], _daily([(12, 10.6, 11.5), (11.8, 10.4, 11.0)]))
+    assert gone == [] and kept[0]["hi"] == 10.4 and kept[0]["lo"] == 10.0              # top down to the lowest low
+    kept, gone = zn.mitigate([g], _daily([(12, 10.6, 11.5), (11, 9.9, 10.8)]))
+    assert kept == [] and gone[0]["removed"] == "filled" and gone[0]["removed_on"] == "2026-02-03"
+    b = _z("bear_fvg", 10.0, 11.0)
+    kept, gone = zn.mitigate([b], _daily([(10.3, 9, 9.5)]))
+    assert kept[0]["lo"] == 10.3 and kept[0]["hi"] == 11.0
+
+
+def test_v3_h2_touch_runs_tested_once_then_spent():
+    d = _z("demand", 10.0, 11.0)
+    out = [(13, 12, 12.5),                                   # away
+           (12, 10.8, 11.5), (11.5, 10.5, 11.2),             # touch 1: two days, one run
+           (13, 11.5, 12.8)]                                 # wholly outside: the run ends
+    kept, gone = zn.mitigate([d], _daily(out))
+    assert gone == [] and kept[0]["touches"] == 1 and kept[0]["tested_once"] and not kept[0]["fresh"]
+    assert kept[0]["last_touch"] == "2026-02-03"
+    kept, gone = zn.mitigate([d], _daily(out + [(12, 10.9, 11.4)]))                    # touch 2
+    assert kept == [] and gone[0]["removed"] == "spent" and gone[0]["removed_on"] == "2026-02-06"
+    kept, _ = zn.mitigate([d], _daily([(13, 12, 12.5)]))
+    assert kept[0]["fresh"] and kept[0]["touches"] == 0
+
+
+def test_v3_h2_a_daily_close_through_the_far_edge_breaks_it():
+    d = _z("demand", 10.0, 11.0)
+    kept, gone = zn.mitigate([d], _daily([(13, 12, 12.5), (12, 9.5, 9.8)]))
+    assert kept == [] and gone[0]["removed"] == "broken" and gone[0]["removed_on"] == "2026-02-03"
+    s = _z("bear_ob", 10.0, 11.0)
+    kept, gone = zn.mitigate([s], _daily([(9.5, 9, 9.2), (11.5, 9.5, 11.2)]))
+    assert gone[0]["removed"] == "broken"
+    kept, gone = zn.mitigate([d], _daily([(13, 12, 12.5), (12, 9.5, 10.2)]))            # wick only: a touch
+    assert gone == [] and kept[0]["tested_once"]
+
+
+def test_v3_h2_bars_up_to_the_formed_day_do_not_count_and_other_zones_pass():
+    d = _z("demand", 10.0, 11.0, formed="2026-02-03")
+    kept, gone = zn.mitigate([d], _daily([(12, 10.5, 11.5), (12, 10.5, 11.5), (13, 12, 12.5)]))
+    assert kept[0]["fresh"] and gone == []                  # the two touching days are on or before formed
+    m = dict(kind="multi_touch", level=10.5, lo=10, hi=11, tf="W")
+    assert zn.mitigate([m], _daily([(12, 9, 9.5)])) == ([m], [])
+
+
+def test_v3_h3_a_base_is_at_a_break_only_with_a_same_way_event_in_its_window():
+    rows = [(5, 9, 1, 5)] + [(10, 10.3, 9.8, 10.2), (10.1, 10.25, 9.7, 9.9)] + \
+           [(10.5, 12.0, 10.4, 11.0), (11, 13.5, 11, 13.0), (13, 14, 12.5, 12.6)]
+    b = _bars(rows)
+    up = [dict(type="BOS", direction="up", i=4, level=12)]
+    assert zn.bases(b, np.ones(len(b)), up)[0]["at_break"]
+    assert not zn.bases(b, np.ones(len(b)), [dict(type="BOS", direction="down", i=4, level=9)])[0]["at_break"]
+    assert not zn.bases(b, np.ones(len(b)), [dict(type="BOS", direction="up", i=0, level=9)])[0]["at_break"]
+    assert zn.bases(b, np.ones(len(b)))[0]["formed"] == "2026-01-09"       # departure bar P04's session

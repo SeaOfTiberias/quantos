@@ -3,7 +3,8 @@ L1 structure: weekly and monthly bars, swing points, BOS / CHoCH, protected and 
 levels, and M/W/D alignment (sprint plan S5, slice 2; docs/MARKET_MAP_DEFINITIONS.md
 v1, frozen 2026-11-05: §0, §1, §2, §7; amended by docs/MARKET_MAP_DEFINITIONS_V2.md,
 2026-11-11: G1 structure follows the latest swings, G3 equal highs and lows are swings
-and D EQH/EQL are shown, G4 sweeps and failed breaks are frozen).
+and D EQH/EQL are shown, G4 sweeps and failed breaks are frozen; v3 zones, 2026-11-13, are
+in zones.py and htf.py).
 
 Everything is point in time. A read for day D uses daily bars dated before D, and only the
 weeks and months that closed before D's week and month. The swing zig-zag and the
@@ -51,7 +52,7 @@ ATR_N = 14                               # §0
 SIZE_ATR = 1.0                           # §1 zig-zag
 TFS = ("M", "W", "D")
 UNTESTED = "untested"
-DEFS = "definitions v2"
+DEFS = "definitions v3"
 N_D_LIQ = 2                              # v2 G3: D EQH/EQL shown on each side of the price
 
 
@@ -419,7 +420,9 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     out["price"] = price
     out["tf"] = tfs
     out["alignment"] = alignment({t: tfs[t]["state"] for t in TFS})
+    zs, gone = zn.mitigate(zs, dbars)                   # v3 H2, H5: daily mitigation
     out["zones"] = zs
+    out["zones_removed"] = gone
     from core.market_map import htf
     atr_w = tfs.get("W", {}).get("atr")
     els = htf.elements(out, swings_all)
@@ -427,7 +430,8 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
     strong = [z for z in allz if z["strong"]]
     out["htf"] = dict(status=UNTESTED, source=htf.SOURCE, atr_w=atr_w, rule=htf.RULE,
                       width=round(htf.HTF_ATR * atr_w, 2) if atr_w else None,
-                      n_elements=len(els), n_zones=len(allz),
+                      strong_rule=htf.STRONG_RULE, n_elements=len(els), n_zones=len(allz),
+                      coverage=htf.coverage(allz, price, atr_w),
                       zones=[htf.compact(z) for z in allz],
                       strong=[htf.compact(z) for z in strong],
                       hot=htf.hot_zones(els, atr_w, out, strong))
@@ -435,6 +439,7 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
 
 
 ZONE_NAMES = {"demand": "demand", "supply": "supply", "bull_ob": "bull OB", "bear_ob": "bear OB",
+              "bull_fvg": "bull FVG", "bear_fvg": "bear FVG",
               "multi_touch": "multi-touch", "EQH": "EQH", "EQL": "EQL"}
 
 
@@ -453,7 +458,7 @@ def nearest_zones(l1: dict, n: int = 2) -> tuple[list[dict], list[dict], list[di
 
 def _zfmt(z: dict) -> str:
     rng = f"{z['lo']:.2f}-{z['hi']:.2f}" if z["hi"] - z["lo"] > 1e-9 else f"{z['lo']:.2f}"
-    return f"{ZONE_NAMES[z['kind']]} {z['tf']} {rng}"
+    return f"{ZONE_NAMES[z['kind']]} {z['tf']} {rng}" + (" (tested once)" if z.get("tested_once") else "")
 
 
 def lines(l1: dict) -> list[str]:
@@ -496,9 +501,13 @@ def lines(l1: dict) -> list[str]:
         from core.market_map import htf
         n = htf.nearest_strong(l1["htf"]["strong"], l1["price"])
         f = (lambda z: f"{z['low']:g}-{z['high']:g} [{'+'.join(z['families'])}] ({z['why']})" if z else "none")
-        out.append(f"     HTF strong zones (untested; 2+ families incl. structure, imbalance or liquidity; "
+        out.append(f"     HTF strong zones (untested; {l1['htf'].get('strong_rule', '')}; "
                    f"{l1['htf'].get('rule', '')}, 0.3 ATR(W) = {l1['htf']['width']}): "
                    f"below {f(n['below'])} | above {f(n['above'])}" + (f" | inside {f(n['inside'])}" if n["inside"] else ""))
+        cv = l1["htf"].get("coverage")
+        if cv:
+            out.append(f"     coverage (v3 H4, reported only): zones cover {cv['pct']:g}% of price +/- 3 ATR(W) "
+                       f"({cv['zones']} zones), strong zones {cv['strong_pct']:g}% ({cv['strong']})")
         hot = l1["htf"]["hot"]
         g = "; ".join(f"{x['tf']} {x['member']} {x['price']:g}" + (f" {x['direction']}" if x["direction"] else "")
                       for x in hot["gpz"])

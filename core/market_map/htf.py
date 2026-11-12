@@ -37,6 +37,21 @@ Choices v1 leaves open, fixed here before any golden-set chart:
     it is also an MTZ when its members come from two or more periods. A GPZ is a
     Camarilla H3/L3 or money-zone/VPOC level inside its own period's CPR.
 
+v3 (docs/MARKET_MAP_DEFINITIONS_V3.md, 2026-11-13) supersedes the v2 strong rule above:
+  H1  Only structure, imbalance and liquidity elements form zones. Pivot and volume
+      elements are the levels layer: they never create or widen a zone, and they serve the
+      confluence check. LVN edges move from imbalance to volume.
+  H2  Bands arrive here already mitigated on daily bars (zones.mitigate); a band touched
+      once is labelled "tested once".
+  H3  A zone is strong when one of its bands is at a break (an order block, or a §3.1
+      zone with a same-direction BOS/CHoCH in its departure window) AND fresh (no touch),
+      AND a levels-layer element lies inside it or within 0.3 ATR(W) of an edge. If several
+      bands qualify only one is needed.
+  H4  coverage(): the share of price +/- 3 ATR(W) inside at least one zone (and strong
+      zone); reported, never used to set a parameter.
+  H5  Fair-value gaps enter as imbalance bands (zones.fvgs, trimmed by zones.mitigate);
+      they are never "at a break".
+
 Untested: no fidelity test (§9) has run. Zones describe the chart; they are not signals.
 """
 
@@ -47,9 +62,14 @@ from typing import Optional
 HTF_ATR = 0.3                 # §6 tolerance, in ATR(W)
 CAP = 1.5                     # the existing map's no-chaining cap
 FAMILIES = ("structure", "imbalance", "liquidity", "volume", "pivot")
-PRICE_ACTION = ("structure", "imbalance", "liquidity")         # v2 G2: a strong zone needs one of these
-RULE = ("clustered at 0.3 ATR(W); point clusters at most 0.45 ATR(W); demand, supply and order-block bands "
-        "keep their full range")
+PRICE_ACTION = ("structure", "imbalance", "liquidity")         # v3 H1: only these form zones
+LEVELS = ("volume", "pivot")                                    # v3 H1: the levels layer
+COVER_ATR = 3.0                                                 # v3 H4: window, in ATR(W) each side
+RULE = ("price-action zones only (pivots and volume are levels); clustered at 0.3 ATR(W); point clusters at most "
+        "0.45 ATR(W); bands keep their full range; used bands removed (v3)")
+STRONG_RULE = "strong = a fresh order block or base at a BOS/CHoCH, with a pivot or volume level within 0.3 ATR(W)"
+BAND_NAMES = {"demand": "demand", "supply": "supply", "bull_ob": "bull OB", "bear_ob": "bear OB",
+              "bull_fvg": "bull FVG", "bear_fvg": "bear FVG"}
 SOURCE = "L1: NSE bhavcopy daily (adjusted), Fyers 5-minute for the weekly profile"
 
 
@@ -85,11 +105,13 @@ def elements(l1: dict, swings: dict) -> list[dict]:
         elif z["kind"] in ("EQH", "EQL"):
             if z["status"] == "active":
                 out.append(_e(z["level"], "liquidity", tf, z["kind"], f"{tf} {z['kind']}", z["swings"][-1]))
-        else:                                           # demand / supply / order blocks: one band (v2 G2)
-            name = {"demand": "demand", "supply": "supply", "bull_ob": "bull OB", "bear_ob": "bear OB"}[z["kind"]]
+        else:                                           # demand / supply / order blocks / FVGs: one band
             per = z.get("departed") or z.get("bar")
-            out.append(_band(z["lo"], z["hi"], "imbalance", tf, z["kind"],
-                             f"{tf} {name} {z['lo']:g}-{z['hi']:g} ({per})", per))
+            tag = " tested once" if z.get("tested_once") else ""
+            e = _band(z["lo"], z["hi"], "imbalance", tf, z["kind"],
+                      f"{tf} {BAND_NAMES[z['kind']]} {z['lo']:g}-{z['hi']:g} ({per}{tag})", per)
+            e.update(at_break=bool(z.get("at_break")), fresh=bool(z.get("fresh", True)))
+            out.append(e)
     for tf, p in (l1.get("pivots") or {}).items():
         if not p:
             continue
@@ -118,13 +140,13 @@ def elements(l1: dict, swings: dict) -> list[dict]:
                 out.append(_e(px, "volume", f"{n}d", "hvn", f"{n}d HVN {edge} (approx.)"))
         for s in lp["lvn"]:
             for edge, px in (("low", s["lo"]), ("high", s["hi"])):
-                out.append(_e(px, "imbalance", f"{n}d", "lvn", f"{n}d LVN {edge} (approx.)"))
+                out.append(_e(px, "volume", f"{n}d", "lvn", f"{n}d LVN {edge} (approx.)"))   # v3 H1
     return out
 
 
 def _finish(z: dict) -> dict:
     fams = sorted({m["family"] for m in z["members"]}, key=FAMILIES.index)
-    z.update(families=fams, strong=len(fams) >= 2 and any(f in PRICE_ACTION for f in fams),
+    z.update(families=fams, strong=False, confluence=[],
              mid=round((z["low"] + z["high"]) / 2, 2), tfs=sorted({m["tf"] for m in z["members"]}))
     return z
 
@@ -159,9 +181,43 @@ def cluster(els: list[dict], width: float) -> list[dict]:
 
 
 def htf_zones(els: list[dict], atr_w: Optional[float]) -> list[dict]:
+    """v3: zones from price-action elements only (H1), strong by H3."""
     if not atr_w:
         return []
-    return cluster(els, HTF_ATR * atr_w)
+    w = HTF_ATR * atr_w
+    zs = cluster([e for e in els if e["family"] in PRICE_ACTION], w)
+    lv = [e for e in els if e["family"] in LEVELS]
+    for z in zs:
+        z["confluence"] = [e["label"] for e in lv if z["low"] - w <= e["price"] <= z["high"] + w]
+        z["strong"] = bool(z["confluence"]) and any(m.get("band") and m.get("at_break") and m.get("fresh")
+                                                for m in z["members"])
+    return zs
+
+
+def coverage(zs: list[dict], price: Optional[float], atr_w: Optional[float]) -> Optional[dict]:
+    """v3 H4: the share of [price - 3 ATR(W), price + 3 ATR(W)] inside at least one zone,
+    and inside at least one strong zone. A description, never a target."""
+    if price is None or not atr_w:
+        return None
+    lo, hi = price - COVER_ATR * atr_w, price + COVER_ATR * atr_w
+
+    def share(sel):
+        iv = sorted((max(z["low"], lo), min(z["high"], hi)) for z in sel if z["high"] >= lo and z["low"] <= hi)
+        tot, cur = 0.0, None
+        for a, b in iv:
+            if cur and a <= cur[1]:
+                cur[1] = max(cur[1], b)
+            else:
+                if cur:
+                    tot += cur[1] - cur[0]
+                cur = [a, b]
+        if cur:
+            tot += cur[1] - cur[0]
+        return round(100 * tot / (hi - lo), 1)
+
+    near = [z for z in zs if z["high"] >= lo and z["low"] <= hi]
+    return dict(window=[round(lo, 2), round(hi, 2)], pct=share(zs), strong_pct=share([z for z in zs if z["strong"]]),
+                zones=len(near), strong=sum(z["strong"] for z in near))
 
 
 def hot_zones(els: list[dict], atr_w: Optional[float], l1: dict, strong: list[dict]) -> dict:
@@ -197,7 +253,7 @@ def hot_zones(els: list[dict], atr_w: Optional[float], l1: dict, strong: list[di
 
 def compact(z: dict) -> dict:
     return dict(low=z["low"], high=z["high"], mid=z["mid"], strong=z["strong"], families=z["families"], tfs=z["tfs"],
-                n=len(z["members"]), why=why(z))
+                n=len(z["members"]), why=why(z), confluence=z.get("confluence", [])[:4], n_confluence=len(z.get("confluence", [])))
 
 
 def why(z: dict, n: int = 4) -> str:

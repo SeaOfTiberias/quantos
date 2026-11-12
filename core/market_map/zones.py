@@ -2,7 +2,9 @@
 L1 zones and levels on weekly and monthly bars (sprint plan S5, slice 3;
 docs/MARKET_MAP_DEFINITIONS.md v1 §3): demand and supply bases (§3.1), multi-touch levels
 (§3.2), order blocks (§3.3), equal highs and lows with their sweeps (§3.4), premium and
-discount (§3.5).
+discount (§3.5); v3 (docs/MARKET_MAP_DEFINITIONS_V3.md, 2026-11-13): fair-value gaps (H5),
+daily mitigation of bands and gaps (H2, H5), and the "at a break" flag the strong rule
+uses (H3.1).
 
 Every function takes the bars a read may use (structure.completed), so a zone is what was
 known before the read's day. Choices v1 leaves open, fixed here before any golden-set chart:
@@ -25,6 +27,19 @@ known before the read's day. Choices v1 leaves open, fixed here before any golde
         or broken level is retired; a later match starts a new level.
   §3.5  Price = the last completed daily close.
 
+v3 choices this file fixes (definitions v3 leaves them open):
+  H2    A band's daily bars start the day after its "formed" bar: the departure bar for
+        §3.1 (its close is already 2 ATR(TF) beyond the base, so price has left the zone
+        by 2 ATR, v1's precondition for a test) and the break bar for an order block. A
+        touch is a run of daily bars whose range meets the band; the run ends at the first
+        daily bar wholly outside. When the daily close through the far edge and the start
+        of the second touch fall on the same day, the reason is `broken`.
+  H3.1  A §3.1 zone is "at a break" when a BOS or CHoCH on the same TF, in the departure's
+        direction, falls on a bar from the base's first bar to 3 bars after its last.
+        Order blocks are at a break by definition.
+  H5    A gap forms on bar i; its daily bars start the day after bar i. Its ATR(TF) is bar
+        i's. A daily bar that reaches the far edge fills it, whatever the close.
+
 Untested: no fidelity test (§9) has run. Zones describe the chart; they are not signals.
 """
 
@@ -41,6 +56,8 @@ BASE_ATR, DEPART_ATR, BASE_MAX, DEPART_BARS = 1.0, 2.0, 6, 3        # §3.1
 MT_ATR, MT_MIN, MT_SPAN_W = 0.3, 3, 26                              # §3.2
 OB_BACK = 3                                                         # §3.3
 EQ_ATR, EQ_GAP = 0.1, 5                                             # §3.4
+FVG_ATR = 0.1                                                       # v3 H5
+BULL = ("demand", "bull_ob", "bull_fvg")                            # bands that hold below the price
 
 
 def _arr(bars):
@@ -51,10 +68,17 @@ def _p(bars, i):
     return bars["period"].iat[i]
 
 
+def _d(bars, i):
+    """The last session of bar i (ISO date): a zone formed on bar i is checked on the daily
+    bars after it (v3 H2, H5)."""
+    return pd.Timestamp(bars["date"].iat[i]).date().isoformat()
+
+
 # ─── §3.1 demand and supply ──────────────────────────────────────────────────
 
-def bases(bars: pd.DataFrame, a: np.ndarray) -> list[dict]:
-    """Demand and supply zones still valid at the last bar."""
+def bases(bars: pd.DataFrame, a: np.ndarray, events: Optional[list[dict]] = None) -> list[dict]:
+    """Demand and supply zones still valid at the last bar (on TF closes; v3 H2 then
+    applies the daily rules)."""
     o, h, l, c = _arr(bars)
     n = len(bars)
     rng = h - l
@@ -92,7 +116,10 @@ def bases(bars: pd.DataFrame, a: np.ndarray) -> list[dict]:
         if bad.any():
             continue                                         # invalidated: dropped (§3.1)
         touch = (l[after] <= hi) if kind == "demand" else (h[after] >= lo)
+        want = "up" if kind == "demand" else "down"
+        at_break = any(ev["direction"] == want and s0 <= ev["i"] <= e + DEPART_BARS for ev in events or [])
         out.append(dict(kind=kind, lo=float(lo), hi=float(hi), base=f"{_p(bars, s0)}..{_p(bars, e)}",
+                        formed=_d(bars, dep), at_break=at_break,
                         base_bars=e - s0 + 1, departed=_p(bars, dep), strength_atr=round(float(strength), 2),
                         tests=int(touch.sum()),
                         last_test=_p(bars, dep + 1 + int(np.nonzero(touch)[0][-1])) if touch.any() else None))
@@ -149,8 +176,77 @@ def order_blocks(bars: pd.DataFrame, events: list[dict]) -> list[dict]:
             continue                                         # invalidated
         touch = (l[after] <= hi) if up else (h[after] >= lo)
         out.append(dict(kind="bull_ob" if up else "bear_ob", lo=float(lo), hi=float(hi), bar=_p(bars, b),
+                        formed=_d(bars, ev["i"]), at_break=True,
                         event=f"{ev['type']} {ev['direction']} {_p(bars, ev['i'])}", mitigated=bool(touch.any())))
     return out
+
+
+# ─── v3 H5 fair-value gaps ───────────────────────────────────────────────────
+
+def fvgs(bars: pd.DataFrame, a: np.ndarray) -> list[dict]:
+    """Three-bar gaps of at least 0.1 ATR(TF), every one found (v3 H5); `mitigate` then
+    drops the filled ones and trims the partly filled."""
+    o, h, l, c = _arr(bars)
+    out = []
+    for i in range(2, len(bars)):
+        if np.isnan(a[i]):
+            continue
+        for kind, lo, hi in (("bull_fvg", h[i - 2], l[i]), ("bear_fvg", h[i], l[i - 2])):
+            if hi - lo >= FVG_ATR * a[i] and hi > lo:
+                out.append(dict(kind=kind, lo=float(lo), hi=float(hi), bar=_p(bars, i), formed=_d(bars, i),
+                                at_break=False, size_atr=round(float((hi - lo) / a[i]), 2)))
+    return out
+
+
+# ─── v3 H2 / H5 daily mitigation ─────────────────────────────────────────────
+
+def mitigate(zones: list[dict], daily: pd.DataFrame) -> tuple[list[dict], list[dict]]:
+    """Apply v3's daily rules to bands (demand, supply, order blocks) and gaps; other zones
+    pass through unchanged. Returns (kept, removed); a removed zone carries `removed`
+    (broken, spent or filled) and `removed_on`."""
+    if not len(daily):
+        return list(zones), []
+    dates = pd.to_datetime(daily["date"]).to_numpy("datetime64[D]")
+    dh, dl, dc = (daily[x].to_numpy(float) for x in ("h", "l", "c"))
+    kept, removed = [], []
+    for z in zones:
+        if z["kind"] not in ("demand", "supply", "bull_ob", "bear_ob", "bull_fvg", "bear_fvg"):
+            kept.append(z)
+            continue
+        z = dict(z)
+        s = int(np.searchsorted(dates, np.datetime64(z["formed"], "D"), side="right"))
+        h, l, c = dh[s:], dl[s:], dc[s:]
+        bull = z["kind"] in BULL
+        if z["kind"].endswith("_fvg"):                                  # H5: filled, or trimmed
+            far = (l <= z["lo"]) if bull else (h >= z["hi"])
+            if far.any():
+                k = s + int(np.argmax(far))
+                removed.append(dict(z, removed="filled", removed_on=str(dates[k])))
+                continue
+            if len(h):
+                if bull:
+                    z["hi"] = float(min(z["hi"], l.min()))
+                else:
+                    z["lo"] = float(max(z["lo"], h.max()))
+            kept.append(z)
+            continue
+        brk = (c < z["lo"]) if bull else (c > z["hi"])                  # H2: a daily close through the far edge
+        ins = (l <= z["hi"]) & (h >= z["lo"])
+        starts = np.nonzero(ins & ~np.concatenate(([False], ins[:-1])))[0]
+        b = int(np.argmax(brk)) if brk.any() else None
+        sp = int(starts[1]) if len(starts) >= 2 else None
+        if b is not None and (sp is None or b <= sp):
+            removed.append(dict(z, removed="broken", removed_on=str(dates[s + b])))
+            continue
+        if sp is not None:
+            removed.append(dict(z, removed="spent", removed_on=str(dates[s + sp])))
+            continue
+        z["touches"] = int(len(starts))
+        z["tested_once"] = bool(len(starts) == 1)
+        z["fresh"] = not len(starts)
+        z["last_touch"] = str(dates[s + int(starts[0])]) if len(starts) else None
+        kept.append(z)
+    return kept, removed
 
 
 # ─── §3.4 equal highs / lows ─────────────────────────────────────────────────
@@ -228,8 +324,8 @@ def premium_discount(summary: dict, price: Optional[float]) -> Optional[dict]:
 
 def tf_zones(bars: pd.DataFrame, run: st.Structure, tf: str) -> dict:
     a = st.atr(bars)
-    out = dict(demand_supply=bases(bars, a), order_blocks=order_blocks(bars, run.events),
-               liquidity=equal_levels(bars, run.swings, a))
+    out = dict(demand_supply=bases(bars, a, run.events), order_blocks=order_blocks(bars, run.events),
+               fvg=fvgs(bars, a), liquidity=equal_levels(bars, run.swings, a))
     if tf == "W":
         out["multi_touch"] = multi_touch(bars, run.swings, float(a[-1]) if len(a) else None)
     for v in out.values():
