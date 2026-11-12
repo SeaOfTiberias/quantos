@@ -1,0 +1,107 @@
+{
+ "seed": 20261108,
+ "n": 15,
+ "window": [
+  "2024-11-08",
+  "2026-11-06"
+ ],
+ "universe_as_of": "2026-11-12",
+ "exclude": [
+  "HDFCBANK",
+  "SUPREMEIND"
+ ],
+ "regenerated_from": "/home/ubuntu/v3_run/sample_v2.json",
+ "picked": [
+  {
+   "id": "R01",
+   "sym": "KEI",
+   "as_of": "2025-06-23",
+   "n_items": 38
+  },
+  {
+   "id": "R02",
+   "sym": "DMART",
+   "as_of": "2026-08-28",
+   "n_items": 38
+  },
+  {
+   "id": "R03",
+   "sym": "JSL",
+   "as_of": "2026-03-04",
+   "n_items": 37
+  },
+  {
+   "id": "R04",
+   "sym": "LTM",
+   "as_of": "2026-10-13",
+   "n_items": 38
+  },
+  {
+   "id": "R05",
+   "sym": "HCLTECH",
+   "as_of": "2025-07-14",
+   "n_items": 38
+  },
+  {
+   "id": "R06",
+   "sym": "ANTELOPUS",
+   "as_of": "2026-08-24",
+   "n_items": 38
+  },
+  {
+   "id": "R07",
+   "sym": "NEOGEN",
+   "as_of": "2026-10-21",
+   "n_items": 37
+  },
+  {
+   "id": "R08",
+   "sym": "GRSE",
+   "as_of": "2026-08-07",
+   "n_items": 38
+  },
+  {
+   "id": "R09",
+   "sym": "IRFC",
+   "as_of": "2025-07-28",
+   "n_items": 38
+  },
+  {
+   "id": "R10",
+   "sym": "TEJASNET",
+   "as_of": "2025-04-21",
+   "n_items": 37
+  },
+  {
+   "id": "R11",
+   "sym": "BIOCON",
+   "as_of": "2026-05-13",
+   "n_items": 38
+  },
+  {
+   "id": "R12",
+   "sym": "SSWL",
+   "as_of": "2025-09-17",
+   "n_items": 38
+  },
+  {
+   "id": "R13",
+   "sym": "BLUESTARCO",
+   "as_of": "2025-08-07",
+   "n_items": 38
+  },
+  {
+   "id": "R14",
+   "sym": "NBCC",
+   "as_of": "2025-05-30",
+   "n_items": 37
+  },
+  {
+   "id": "R15",
+   "sym": "CHOLAFIN",
+   "as_of": "2024-12-19",
+   "n_items": 38
+  }
+ ],
+ "skipped": []
+}
