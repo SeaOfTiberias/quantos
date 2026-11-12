@@ -6,7 +6,8 @@ v3 is v2 (`docs/MARKET_MAP_DEFINITIONS_V2.md`) with the changes below. v2 is its
 1. two layers: zones from price action only; pivots and volume become a levels layer;
 2. mitigation: used zones leave the map;
 3. strong means fresh and at a break;
-4. coverage is reported, not targeted.
+4. coverage is reported, not targeted;
+5. fair-value gaps (H5), added by the user the same day, before any code.
 
 v3 follows the same rules as v1 and v2:
 - **Rules come from the concepts, not from marks or outcomes.** No parameter here was set from prices after an as-of date, from the golden set, or from the KEI 2026 chart discussed on 2026-11-13.
@@ -73,9 +74,24 @@ After each regeneration, the report gives, per read and as the median across rea
 
 These are descriptions. No parameter in v1, v2 or v3 is set or changed from them. If coverage stays high, that is reported, and any further change is a v4 written the same way as this file.
 
+## H5. Fair-value gaps (new; added by the user 2026-11-13, before any v3 code)
+
+**The concept.** In SMC, a fair-value gap is a three-bar imbalance: the middle bar moved so fast that the bars on either side of it don't overlap. Price that left a gap has unfilled orders there until it returns.
+
+**v3 rules, on W and M bars** (the HTF map; D gaps stay out, as D structure does under v1 §0):
+- **Bullish FVG** at bar *i*: the low of bar *i* is above the high of bar *i* − 2. The gap runs from the high of *i* − 2 to the low of *i*.
+- **Bearish FVG:** the mirror. The high of bar *i* is below the low of bar *i* − 2, and the gap runs from the high of *i* to the low of *i* − 2.
+- **Minimum size:** the gap is at least 0.1 ATR(TF), with the ATR at bar *i*. This is the same tolerance §3.4 uses for "equal", so a gap smaller than that counts as no gap.
+- **Family:** imbalance. It enters the zones as a band (v2 G2: never split, never merged with another band).
+- **Filled and removed:** a gap leaves the map once a daily bar trades to its far edge. That means a daily low at or below the bottom of a bullish gap, or a daily high at or above the top of a bearish one.
+- **Partly filled:** what is left of it stays. A bullish gap's top moves down to the lowest daily low since it formed, and a bearish gap's bottom moves up to the highest daily high.
+- H2's tested-once rule does not apply to gaps. Filling is their mitigation.
+- Filled gaps are kept in the element store with the date, as H2 does for removed bands.
+- **Strong:** a gap is not a break origin under H3.1. It can sit in a strong zone, but it does not make one strong.
+
 ## What is not in v3
 
-- No fair-value gaps. They are not in v1 or v2, and adding them would add zones.
+- FVGs on D bars.
 - No cap on the number of zones shown. The read already lists the nearest 3 above and below.
 - No change to swings (§1, v2 G3), structure (v2 G1), sweeps and failed breaks (v2 G4), §4's pivot and profile rules, §5, §7 alignment, or §8's out-of-scope list.
 - No weights between families.
