@@ -1,0 +1,1027 @@
+[
+ {
+  "id": "R01",
+  "sym": "KEI",
+  "as_of": "2025-06-23",
+  "case": "round 1 read",
+  "price": 3574.5,
+  "alignment": "not aligned: down on M, W, D up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-06-23",
+   "price": 3574.5,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 3964.85,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "short",
+    "band": "W supply 3875.5-3964.85 (2025-W09)",
+    "entry": 3875.5,
+    "stop": 3988.8,
+    "target": 2424.0,
+    "risk": 113.3,
+    "rr": 12.81
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2025-06-23 at 3574.5 (untested (playbook v1, paper only))",
+   "     P1 SETUP short: limit 3875.5, stop 3988.8, target 2424, risk 113.3, 12.81R; band W supply 3875.5-3964.85 (2025-W09); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "closed",
+    "fill": 3875.5,
+    "exit": 3875.5,
+    "reason": "break-even stop",
+    "r": -0.0,
+    "sessions": 14,
+    "mfe": 2.42,
+    "mae": -0.57,
+    "log": [
+     [
+      "2025-06-25",
+      "filled 3875.5"
+     ],
+     [
+      "2025-07-09",
+      "close 3694 at +1R: stop to break-even 3875.5"
+     ],
+     [
+      "2025-07-15",
+      "exit 3875.5: break-even stop"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "id": "R02",
+  "sym": "DMART",
+  "as_of": "2026-08-28",
+  "case": "round 1 read",
+  "price": 3847.4,
+  "alignment": "aligned down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-08-28",
+   "price": 3847.4,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 4949.5,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "short",
+    "band": "W bear_ob 4670-4949.5 (2025-W36)",
+    "entry": 4670.0,
+    "stop": 4972.4,
+    "target": 3755.1,
+    "risk": 302.4,
+    "rr": 3.03
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2026-08-28 at 3847.4 (untested (playbook v1, paper only))",
+   "     P1 SETUP short: limit 4670, stop 4972.4, target 3755.1, risk 302.4, 3.03R; band W bear_ob 4670-4949.5 (2025-W36); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "cancelled",
+    "reason": "C3 target traded on 2026-08-31 before a fill",
+    "log": []
+   }
+  }
+ },
+ {
+  "id": "R03",
+  "sym": "JSL",
+  "as_of": "2026-03-04",
+  "case": "round 1 read",
+  "price": 783.35,
+  "alignment": "aligned up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-03-04",
+   "price": 783.35,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 652.2,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "long",
+    "band": "W bull_ob 652.2-714.85 (2025-W25)",
+    "entry": 714.85,
+    "stop": 644.65,
+    "target": 884.0,
+    "risk": 70.2,
+    "rr": 2.41
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2026-03-04 at 783.35 (untested (playbook v1, paper only))",
+   "     P1 SETUP long: limit 714.85, stop 644.65, target 884, risk 70.2, 2.41R; band W bull_ob 652.2-714.85 (2025-W25); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "closed",
+    "fill": 714.85,
+    "exit": 706.9,
+    "reason": "E1 W turned down at the close of 2026-03-13",
+    "r": -0.11,
+    "sessions": 5,
+    "mfe": 0.58,
+    "mae": -0.21,
+    "log": [
+     [
+      "2026-03-09",
+      "filled 714.85"
+     ],
+     [
+      "2026-03-16",
+      "exit 706.9: E1 W turned down at the close of 2026-03-13"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "id": "R04",
+  "sym": "LTM",
+  "as_of": "2026-10-13",
+  "case": "round 1 read",
+  "price": 4018.9,
+  "alignment": "aligned down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-10-13",
+   "price": 4018.9,
+   "p1": {
+    "setup": "P1",
+    "status": "NO TRADE",
+    "reason": "zone too wide: risk 648.65 > 1.5 ATR(W) = 441.22",
+    "wait_for": null,
+    "side": "short",
+    "band": "M bear_ob 5508.5-6124 (2025-11)",
+    "entry": 5508.5,
+    "stop": 6157.15,
+    "target": 3528.0,
+    "risk": 648.65,
+    "rr": 3.05
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2026-10-13 at 4018.9 (untested (playbook v1, paper only))",
+   "     P1 NO TRADE: zone too wide: risk 648.65 > 1.5 ATR(W) = 441.22",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R05",
+  "sym": "HCLTECH",
+  "as_of": "2025-07-14",
+  "case": "round 1 read",
+  "price": 1638.3,
+  "alignment": "not aligned: up on M, W, D down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-07-14",
+   "price": 1638.3,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 1545.0,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "long",
+    "band": "W bull_ob 1545-1598 (2025-W19)",
+    "entry": 1598.0,
+    "stop": 1536.9,
+    "target": 1752.5,
+    "risk": 61.1,
+    "rr": 2.53
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no sweep of HTF liquidity before the shift",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2025-07-14 at 1638.3 (untested (playbook v1, paper only))",
+   "     P1 SETUP long: limit 1598, stop 1536.9, target 1752.5, risk 61.1, 2.53R; band W bull_ob 1545-1598 (2025-W19); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no sweep of HTF liquidity before the shift"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "closed",
+    "fill": 1590.0,
+    "exit": 1536.9,
+    "reason": "stop",
+    "r": -0.87,
+    "sessions": 3,
+    "mfe": 0.38,
+    "mae": -0.91,
+    "log": [
+     [
+      "2025-07-15",
+      "filled 1590"
+     ],
+     [
+      "2025-07-18",
+      "exit 1536.9: stop"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "id": "R06",
+  "sym": "ANTELOPUS",
+  "as_of": "2026-08-24",
+  "case": "round 1 read",
+  "price": 800.1,
+  "alignment": "not aligned: up on M, W, D down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-08-24",
+   "price": 800.1,
+   "p1": {
+    "setup": "P1",
+    "status": "NO TRADE",
+    "reason": "zone too wide: risk 204.35 > 1.5 ATR(W) = 134.41",
+    "wait_for": null,
+    "side": "long",
+    "band": "M bull_ob 388.35-581.95 (2025-11)",
+    "entry": 581.95,
+    "stop": 377.6,
+    "target": 933.65,
+    "risk": 204.35,
+    "rr": 1.72
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2026-08-24 at 800.1 (untested (playbook v1, paper only))",
+   "     P1 NO TRADE: zone too wide: risk 204.35 > 1.5 ATR(W) = 134.41",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R07",
+  "sym": "NEOGEN",
+  "as_of": "2026-10-21",
+  "case": "round 1 read",
+  "price": 2481.8,
+  "alignment": "aligned up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-10-21",
+   "price": 2481.8,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 2086.4,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "long",
+    "band": "W bull_ob 2086.4-2259 (2026-W35)",
+    "entry": 2259.0,
+    "stop": 2055.35,
+    "target": 2785.0,
+    "risk": 203.65,
+    "rr": 2.58
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2026-10-21 at 2481.8 (untested (playbook v1, paper only))",
+   "     P1 SETUP long: limit 2259, stop 2055.35, target 2785, risk 203.65, 2.58R; band W bull_ob 2086.4-2259 (2026-W35); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "closed",
+    "fill": 2259.0,
+    "exit": 2055.35,
+    "reason": "stop",
+    "r": -1.0,
+    "sessions": 7,
+    "mfe": 0.49,
+    "mae": -0.72,
+    "log": [
+     [
+      "2026-10-22",
+      "filled 2259"
+     ],
+     [
+      "2026-11-02",
+      "exit 2055.35: stop"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "id": "R08",
+  "sym": "GRSE",
+  "as_of": "2026-08-07",
+  "case": "round 1 read",
+  "price": 2599.4,
+  "alignment": "not aligned: up on M, W, D down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-08-07",
+   "price": 2599.4,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 2060.0,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "long",
+    "band": "W bull_ob 2060-2249 (2026-W13)",
+    "entry": 2249.0,
+    "stop": 2042.15,
+    "target": 3339.0,
+    "risk": 206.85,
+    "rr": 5.27
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2026-08-07 at 2599.4 (untested (playbook v1, paper only))",
+   "     P1 SETUP long: limit 2249, stop 2042.15, target 3339, risk 206.85, 5.27R; band W bull_ob 2060-2249 (2026-W13); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "expired",
+    "reason": "C4 no fill",
+    "log": []
+   }
+  }
+ },
+ {
+  "id": "R09",
+  "sym": "IRFC",
+  "as_of": "2025-07-28",
+  "case": "round 1 read",
+  "price": 132.03,
+  "alignment": "not aligned: down on M, D, W up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-07-28",
+   "price": 132.03,
+   "p1": {
+    "setup": "P1",
+    "status": "WAIT",
+    "reason": "timeframes disagree: W up, M down",
+    "wait_for": "a monthly close above the M protected high 166.9 (M CHoCH up)",
+    "side": "long"
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2025-07-28 at 132.03 (untested (playbook v1, paper only))",
+   "     P1 WAIT: timeframes disagree: W up, M down -- wait for a monthly close above the M protected high 166.9 (M CHoCH up)",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R10",
+  "sym": "TEJASNET",
+  "as_of": "2025-04-21",
+  "case": "round 1 read",
+  "price": 857.5,
+  "alignment": "not aligned: down on M, W, D up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-04-21",
+   "price": 857.5,
+   "p1": {
+    "setup": "P1",
+    "status": "NO TRADE",
+    "reason": "zone too wide: risk 334.25 > 1.5 ATR(W) = 169.88",
+    "wait_for": null,
+    "side": "short",
+    "band": "M bear_ob 1102.85-1425.2 (2024-10)",
+    "entry": 1102.85,
+    "stop": 1437.1,
+    "target": 646.55,
+    "risk": 334.25,
+    "rr": 1.37
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2025-04-21 at 857.5 (untested (playbook v1, paper only))",
+   "     P1 NO TRADE: zone too wide: risk 334.25 > 1.5 ATR(W) = 169.88",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R11",
+  "sym": "BIOCON",
+  "as_of": "2026-05-13",
+  "case": "round 1 read",
+  "price": 402.45,
+  "alignment": "aligned down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-05-13",
+   "price": 402.45,
+   "p1": {
+    "setup": "P1",
+    "status": "NO TRADE",
+    "reason": "zone too wide: risk 53.75 > 1.5 ATR(W) = 33.11",
+    "wait_for": null,
+    "side": "short",
+    "band": "W bear_ob 437-487.75 (2020-W52)",
+    "entry": 437.0,
+    "stop": 490.75,
+    "target": 337.7,
+    "risk": 53.75,
+    "rr": 1.85
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2026-05-13 at 402.45 (untested (playbook v1, paper only))",
+   "     P1 NO TRADE: zone too wide: risk 53.75 > 1.5 ATR(W) = 33.11",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R12",
+  "sym": "SSWL",
+  "as_of": "2025-09-17",
+  "case": "round 1 read",
+  "price": 244.65,
+  "alignment": "not aligned: up on M, W, D down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-09-17",
+   "price": 244.65,
+   "p1": {
+    "setup": "P1",
+    "status": "NO TRADE",
+    "reason": "zone too wide: risk 30.00 > 1.5 ATR(W) = 28.23",
+    "wait_for": null,
+    "side": "long",
+    "band": "M bull_ob 172.01-200.03 (2025-02)",
+    "entry": 200.0,
+    "stop": 170.0,
+    "target": 280.0,
+    "risk": 30.0,
+    "rr": 2.67
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2025-09-17 at 244.65 (untested (playbook v1, paper only))",
+   "     P1 NO TRADE: zone too wide: risk 30.00 > 1.5 ATR(W) = 28.23",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R13",
+  "sym": "BLUESTARCO",
+  "as_of": "2025-08-07",
+  "case": "round 1 read",
+  "price": 1770.4,
+  "alignment": "aligned down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-08-07",
+   "price": 1770.4,
+   "p1": {
+    "setup": "P1",
+    "status": "NO TRADE",
+    "reason": "zone too wide: risk 264.85 > 1.5 ATR(W) = 228.92",
+    "wait_for": null,
+    "side": "short",
+    "band": "W bear_ob 2002.45-2254.75 (2025-W12)",
+    "entry": 2002.45,
+    "stop": 2267.3,
+    "target": 1521.0,
+    "risk": 264.85,
+    "rr": 1.82
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2025-08-07 at 1770.4 (untested (playbook v1, paper only))",
+   "     P1 NO TRADE: zone too wide: risk 264.85 > 1.5 ATR(W) = 228.92",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R14",
+  "sym": "NBCC",
+  "as_of": "2025-05-30",
+  "case": "round 1 read",
+  "price": 116.2,
+  "alignment": "not aligned: up on W, D, M down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2025-05-30",
+   "price": 116.2,
+   "p1": {
+    "setup": "P1",
+    "status": "WAIT",
+    "reason": "timeframes disagree: W up, M down",
+    "wait_for": "a monthly close above the M protected high 121.13 (M CHoCH up)",
+    "side": "long"
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2025-05-30 at 116.2 (untested (playbook v1, paper only))",
+   "     P1 WAIT: timeframes disagree: W up, M down -- wait for a monthly close above the M protected high 121.13 (M CHoCH up)",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "R15",
+  "sym": "CHOLAFIN",
+  "as_of": "2024-12-19",
+  "case": "round 1 read",
+  "price": 1242.75,
+  "alignment": "not aligned: up on M, D, W down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2024-12-19",
+   "price": 1242.75,
+   "p1": {
+    "setup": "P1",
+    "status": "WAIT",
+    "reason": "timeframes disagree: W down, M up",
+    "wait_for": "a monthly close below the M protected low 1011.2 (M CHoCH down)",
+    "side": "short"
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no sweep of HTF liquidity before the shift",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2024-12-19 at 1242.75 (untested (playbook v1, paper only))",
+   "     P1 WAIT: timeframes disagree: W down, M up -- wait for a monthly close below the M protected low 1011.2 (M CHoCH down)",
+   "     P2 NO TRADE: no sweep of HTF liquidity before the shift"
+  ],
+  "results": {}
+ },
+ {
+  "id": "X-HDFCBANK-2026-10-28",
+  "sym": "HDFCBANK",
+  "as_of": "2026-10-28",
+  "case": "discussion case (not scored)",
+  "price": 680.2,
+  "alignment": "aligned down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-10-28",
+   "price": 680.2,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 843.0,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "short",
+    "band": "W bear_ob 805-843 (2026-W28)",
+    "entry": 805.0,
+    "stop": 846.65,
+    "target": 681.9,
+    "risk": 41.65,
+    "rr": 2.96
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2026-10-28 at 680.2 (untested (playbook v1, paper only))",
+   "     P1 SETUP short: limit 805, stop 846.65, target 681.9, risk 41.65, 2.96R; band W bear_ob 805-843 (2026-W28); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "cancelled",
+    "reason": "C3 target traded on 2026-10-28 before a fill",
+    "log": []
+   }
+  }
+ },
+ {
+  "id": "X-HDFCBANK-2026-11-05",
+  "sym": "HDFCBANK",
+  "as_of": "2026-11-05",
+  "case": "discussion case (not scored)",
+  "price": 736.7,
+  "alignment": "not aligned: down on M, W, D up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-11-05",
+   "price": 736.7,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 843.0,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "short",
+    "band": "W bear_ob 805-843 (2026-W28)",
+    "entry": 805.0,
+    "stop": 846.9,
+    "target": 669.2,
+    "risk": 41.9,
+    "rr": 3.24
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "SETUP",
+    "reason": "sweep then shift (reversal; not for use until its S8 test passes)",
+    "entry_at_open": false,
+    "far": 669.2,
+    "valid": 10,
+    "half_risk": true,
+    "cancel": [
+     "C2 daily close beyond the sweep extreme",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "long",
+    "band": "D bull_ob 678.65-690.25 (2026-10-27)",
+    "entry": 690.25,
+    "stop": 665.3,
+    "target": 749.3,
+    "risk": 24.95,
+    "swept": "W swing HL 2022-W39 682.5 swept to 669.2 on 2026-10-28",
+    "swept_level": 682.5,
+    "shift": "D CHoCH up at 734.9 on 2026-11-04",
+    "rr": 2.37
+   }
+  },
+  "lines": [
+   "PLAY 2026-11-05 at 736.7 (untested (playbook v1, paper only))",
+   "     P1 SETUP short: limit 805, stop 846.9, target 669.2, risk 41.9, 3.24R; band W bear_ob 805-843 (2026-W28); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 SETUP long: limit 690.25, stop 665.3, target 749.3, risk 24.95, 2.37R, half risk; band D bull_ob 678.65-690.25 (2026-10-27); W swing HL 2022-W39 682.5 swept to 669.2 on 2026-10-28; D CHoCH up at 734.9 on 2026-11-04; cancel: C2 daily close beyond the sweep extreme, C3 target trades first, C4 10 sessions without a fill"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "cancelled",
+    "reason": "C1 W turned up at the close of 2026-11-06",
+    "log": []
+   },
+   "p2": {
+    "outcome": "cancelled",
+    "reason": "C3 target traded on 2026-11-05 before a fill",
+    "log": []
+   }
+  }
+ },
+ {
+  "id": "X-KEI-2026-11-13",
+  "sym": "KEI",
+  "as_of": "2026-11-13",
+  "case": "discussion case (not scored)",
+  "price": 4135.7,
+  "alignment": "not aligned: down on W, D, M up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-11-13",
+   "price": 4135.7,
+   "p1": {
+    "setup": "P1",
+    "status": "WAIT",
+    "reason": "timeframes disagree: W down, M up",
+    "wait_for": "a monthly close below the M protected low 2424 (M CHoCH down)",
+    "side": "short"
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2026-11-13 at 4135.7 (untested (playbook v1, paper only))",
+   "     P1 WAIT: timeframes disagree: W down, M up -- wait for a monthly close below the M protected low 2424 (M CHoCH down)",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "X-DMART-2026-11-13",
+  "sym": "DMART",
+  "as_of": "2026-11-13",
+  "case": "discussion case (not scored)",
+  "price": 3454.0,
+  "alignment": "aligned down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-11-13",
+   "price": 3454.0,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 3900.0,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "short",
+    "band": "W supply 3688-3900 (2026-W43)",
+    "entry": 3688.0,
+    "stop": 3917.8,
+    "target": 3102.3,
+    "risk": 229.8,
+    "rr": 2.55
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH up (shift)",
+    "wait_for": null,
+    "side": "long"
+   }
+  },
+  "lines": [
+   "PLAY 2026-11-13 at 3454 (untested (playbook v1, paper only))",
+   "     P1 SETUP short: limit 3688, stop 3917.8, target 3102.3, risk 229.8, 2.55R; band W supply 3688-3900 (2026-W43); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH up (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "pending",
+    "reason": "no fill yet (data ends)",
+    "log": []
+   }
+  }
+ },
+ {
+  "id": "X-HDFCBANK-2026-11-13",
+  "sym": "HDFCBANK",
+  "as_of": "2026-11-13",
+  "case": "discussion case (not scored)",
+  "price": 812.3,
+  "alignment": "not aligned: up on W, D, M down",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-11-13",
+   "price": 812.3,
+   "p1": {
+    "setup": "P1",
+    "status": "WAIT",
+    "reason": "timeframes disagree: W up, M down",
+    "wait_for": "a monthly close above the M protected high 843 (M CHoCH up)",
+    "side": "long"
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2026-11-13 at 812.3 (untested (playbook v1, paper only))",
+   "     P1 WAIT: timeframes disagree: W up, M down -- wait for a monthly close above the M protected high 843 (M CHoCH up)",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {}
+ },
+ {
+  "id": "X-KOTAKBANK-2026-11-13",
+  "sym": "KOTAKBANK",
+  "as_of": "2026-11-13",
+  "case": "discussion case (not scored)",
+  "price": 490.4,
+  "alignment": "aligned up",
+  "plan": {
+   "status": "untested (playbook v1, paper only)",
+   "as_of": "2026-11-13",
+   "price": 490.4,
+   "p1": {
+    "setup": "P1",
+    "status": "SETUP",
+    "reason": "continuation with M and W",
+    "entry_at_open": false,
+    "far": 399.3,
+    "valid": 10,
+    "half_risk": false,
+    "cancel": [
+     "C1 W or M flips against",
+     "C2 daily close beyond the band's far edge",
+     "C3 target trades first",
+     "C4 10 sessions without a fill"
+    ],
+    "side": "long",
+    "band": "W bull_ob 399.3-420.6 (2026-W39)",
+    "entry": 420.6,
+    "stop": 396.65,
+    "target": 480.0,
+    "risk": 23.95,
+    "rr": 2.48
+   },
+   "p2": {
+    "setup": "P2",
+    "status": "NO TRADE",
+    "reason": "no recent D CHoCH down (shift)",
+    "wait_for": null,
+    "side": "short"
+   }
+  },
+  "lines": [
+   "PLAY 2026-11-13 at 490.4 (untested (playbook v1, paper only))",
+   "     P1 SETUP long: limit 420.6, stop 396.65, target 480, risk 23.95, 2.48R; band W bull_ob 399.3-420.6 (2026-W39); cancel: C1 W or M flips against, C2 daily close beyond the band's far edge, C3 target trades first, C4 10 sessions without a fill",
+   "     P2 NO TRADE: no recent D CHoCH down (shift)"
+  ],
+  "results": {
+   "p1": {
+    "outcome": "pending",
+    "reason": "no fill yet (data ends)",
+    "log": []
+   }
+  }
+ }
+]
