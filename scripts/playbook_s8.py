@@ -138,6 +138,7 @@ def work(task):
         cnt[f"p1_setup_{p['side']}"] += 1
         cnt["p1_setup_at_open"] += bool(p.get("entry_at_open"))
         cnt["p1_setup_with_placebo"] += bool(plc)
+        cnt[f"p1_setup_placebo_step{plc[0]['tier'] if plc else 0}"] += 1
         cnt["p1_placebos"] += len(plc)
         cnt["p1_setup_excluded"] += excl
         if mode != "full":
@@ -148,7 +149,8 @@ def work(task):
         alive = res.get("end") or alive
         rows.append(_row("P1", rid, None, sym, d, p, res, excl, dict(m_state=rd["m_state"])))
         for j, q in enumerate(plc):
-            rows.append(_row("P1-placebo", f"{rid}|{j}", rid, sym, d, q, pb.simulate(q, seg, d, opp, sb), excl))
+            rows.append(_row("P1-placebo", f"{rid}|{j}", rid, sym, d, q, pb.simulate(q, seg, d, opp, sb), excl,
+                             dict(tier=q["tier"])))
         mq = s8.market_setup(rd, p)
         rows.append(_row("P1-market", f"{rid}|m", rid, sym, d, mq, pb.simulate(mq, seg, d, opp, sb), excl))
     # ── P2 ────────────────────────────────────────────────────────────────

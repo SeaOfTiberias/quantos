@@ -207,3 +207,22 @@ None of these rescues a failed criterion. A strong cell in a failed test is a le
 - Nothing is re-tuned against this run.
 
 **P2:** the same rules, and it stays unused unless it passes.
+
+## Amendment 1 (2026-11-13, before any outcome)
+
+**Why.** A smoke run of the count pass on 6 stocks found zone-free room for a placebo in only 20 of 57 P1 setups. The v3 zones fill much of the W discount, so A5's 300 matched setups may be out of reach. As written, that shortfall would make P1 **fail**. That was a design flaw: too few controls means the test can't answer, not that the playbook is wrong. The S4 pre-registration already handles this with a fallback placebo and a "not testable" outcome; this document now does the same.
+
+**When.** Written after the smoke run's counts and before the full count pass finished. No fill, exit or R had been computed for any setup.
+
+**Changes:**
+1. **Two-step placebo (§4.1).**
+   - **Step 1** is the rule as written: the band overlaps no v3 zone of the read.
+   - **Step 2** applies only to a setup that gets no step 1 placebo after 200 draws. Its bands may overlap a zone that is **not strong**, but must not overlap any strong zone or the real entry band. Up to K = 3, with the same seed and draw rules.
+   - A2 uses step 1 and step 2 placebos together. Two comparisons are reported only: step 1 alone, and step 2 alone. A step 2 comparison means "strong zone vs weak or no zone".
+2. **Not testable instead of a fail (§6).**
+   - If fewer than 300 setups have a placebo (step 1 or 2), the zone comparison (A2, A4) is **not testable (placebo scarcity)**.
+   - A1 and the era test of A1 (A3's first half) are still judged on their own and reported as "P1 makes money / does not, net of costs".
+   - The playbook as a whole then reads "**not shown to come from the zones**". It is not a pass.
+3. **Reported (§7):** the share of setups with a step 1 placebo, with only a step 2 placebo, and with none. This measures how densely the map covers the discount and premium.
+
+**Unchanged:** every threshold, the read cadence, the costs, the bootstrap, Holm, and P2.

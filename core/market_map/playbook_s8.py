@@ -186,6 +186,7 @@ def compact_read(l1: dict) -> dict:
                 w_prot=(w.get("protected") or {}).get("price"), w_weak=(w.get("weak") or {}).get("price"),
                 atr_d=(tf.get("D") or {}).get("atr"), atr_w=(l1.get("htf") or {}).get("atr_w"),
                 zones=[(z["low"], z["high"]) for z in (l1.get("htf") or {}).get("zones", [])],
+                strong=[(z["low"], z["high"]) for z in (l1.get("htf") or {}).get("zones", []) if z.get("strong")],
                 opp_long=pb.opposing_strong(l1, True), opp_short=pb.opposing_strong(l1, False))
 
 
@@ -196,15 +197,27 @@ def rng_for(sym: str, d: date) -> random.Random:
 
 
 def placebo_setups(rd: dict, setup: dict, rng: random.Random, k: int = K_PLACEBO, draws: int = DRAWS) -> list[dict]:
-    """§4.1: up to k bands of the real band's width, inside the W dealing range on the
-    discount side (premium for shorts), entry beyond the price, overlapping no zone of the
-    read; same stop rule, target, checks. None for an at-open setup."""
+    """§4.1 with amendment 1: step 1 bands overlap no zone of the read; only when step 1
+    finds none, step 2 bands may overlap a zone that is not strong (never a strong zone or
+    the real band). Each placebo carries its step in `tier`."""
+    out = _placebos(rd, setup, rng, k, draws, tier=1)
+    if not out and setup.get("status") == "SETUP" and not setup.get("entry_at_open"):
+        out = _placebos(rd, setup, rng, k, draws, tier=2)
+    return out
+
+
+def _placebos(rd: dict, setup: dict, rng: random.Random, k: int, draws: int, tier: int) -> list[dict]:
+    """Up to k bands of the real band's width, inside the W dealing range on the discount
+    side (premium for shorts), entry beyond the price; same stop rule, target, checks. None
+    for an at-open setup."""
     if setup.get("status") != "SETUP" or setup.get("entry_at_open"):
         return []
     long = setup["side"] == "long"
     px, prot, weak, atr_d, atr_w = rd["price"], rd["w_prot"], rd["w_weak"], rd["atr_d"], rd["atr_w"]
     eq = (prot + weak) / 2
     width = (setup["entry"] - setup["far"]) if long else (setup["far"] - setup["entry"])
+    real = (setup["far"], setup["entry"]) if long else (setup["entry"], setup["far"])
+    avoid = rd["zones"] if tier == 1 else list(rd.get("strong", [])) + [real]
     if long:
         a, b = prot + width, min(px, eq)                   # range of the band's top
     else:
@@ -215,7 +228,7 @@ def placebo_setups(rd: dict, setup: dict, rng: random.Random, k: int = K_PLACEBO
             break
         t = rng.uniform(a, b)
         lo, hi = (t - width, t) if long else (t, t + width)
-        if any(lo <= zh and zl <= hi for zl, zh in rd["zones"]):
+        if any(lo <= zh and zl <= hi for zl, zh in avoid):
             continue
         entry = pb._down(hi) if long else pb._up(lo)
         if (entry >= px or entry >= eq) if long else (entry <= px or entry <= eq):
@@ -226,7 +239,7 @@ def placebo_setups(rd: dict, setup: dict, rng: random.Random, k: int = K_PLACEBO
         if risk <= 0 or reward <= 0 or reward / risk < pb.MIN_RR or risk > pb.RISK_CAP_ATR_W * atr_w:
             continue
         out.append(dict(setup, entry=entry, stop=stop, far=lo if long else hi, risk=round(risk, 2),
-                        rr=round(reward / risk, 2), band=f"placebo {lo:.2f}-{hi:.2f}", entry_at_open=False))
+                        rr=round(reward / risk, 2), band=f"placebo {lo:.2f}-{hi:.2f}", entry_at_open=False, tier=tier))
     return out
 
 
@@ -424,6 +437,10 @@ def verdict(rows: list[dict], n: int = BOOT_N) -> dict:
         A4=bool(judged) and all(pos(sides[s]["a2"]) for s in judged),
         A5=fills1 >= P1_MIN_FILLS and len(m) >= P1_MIN_MATCHED,
     )
+    zones_testable = len(m) >= P1_MIN_MATCHED                       # amendment 1
+    money = c["A1"] and all(pos(eras[e]["a1"]) for e in eras) and fills1 >= P1_MIN_FILLS
+    p1_result = ("PASS" if all(c.values()) else "FAIL") if zones_testable else         ("makes money; not shown to come from the zones (placebo scarcity)" if money else
+         "FAIL (no money net of costs; zone comparison not testable)")
     fills2 = sum(r["filled"] for r in p2)
     testable2 = fills2 >= P2_MIN_FILLS and len(p2c) >= P2_MIN_CONTROL
     c2 = dict(
@@ -434,7 +451,7 @@ def verdict(rows: list[dict], n: int = BOOT_N) -> dict:
     )
     one_sided = [s for s in sides if s not in judged]
     return dict(
-        p1=dict(criteria=c, passed=all(c.values()), a1=a1, a2=a2, eras=eras, sides=sides, fills=fills1,
+        p1=dict(criteria=c, passed=all(c.values()), result=p1_result, zones_testable=zones_testable, a1=a1, a2=a2, eras=eras, sides=sides, fills=fills1,
                 setups=len(p1), matched=len(m), untested_sides=one_sided),
         p2=dict(criteria=c2, passed=all(c2.values()), testable=testable2, b1=b1, b2=b2, fills=fills2,
                 setups=len(p2), control=len(p2c)),

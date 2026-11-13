@@ -211,3 +211,22 @@ def test_verdict_passes_and_fails_by_the_criteria():
     assert not v["p1"]["criteria"]["A4"]
     v = s8.verdict(_rows(300, 0.2) + _rows(50, -0.1, "short"), n=300)        # thin shorts: judged long-only
     assert v["p1"]["criteria"]["A4"] and v["p1"]["untested_sides"] == ["short"]
+
+
+def test_amendment1_step2_placebo_may_sit_on_a_weak_zone_never_a_strong_one():
+    weak = [_z(_band("demand", lo, lo + 2.0), strong=False) for lo in range(60, 88, 3)]   # no zone-free room
+    l1 = _l1(price=100.0, w=("up", 60.0, 120.0), zones=[_z(_band("bull_ob", 82.0, 85.0))] + weak)
+    p = pb.plan_p1(l1)
+    rd = s8.compact_read(l1)
+    pl = s8.placebo_setups(rd, p, s8.rng_for("X", date(2024, 1, 1)))
+    assert pl and all(q["tier"] == 2 for q in pl)
+    for q in pl:
+        assert not (q["far"] <= 85.0 and q["entry"] >= 82.0)                  # not on the real (strong) band
+    roomy = s8.compact_read(_l1(price=100.0, w=("up", 60.0, 120.0), zones=[_z(_band("bull_ob", 82.0, 85.0))]))
+    assert all(q["tier"] == 1 for q in s8.placebo_setups(roomy, p, s8.rng_for("X", date(2024, 1, 1))))
+
+
+def test_amendment1_scarce_placebos_are_not_testable_not_a_fail():
+    rows = [r for r in _rows(400, 0.2) if r["track"] == "P1" or int(r["match"].split("|")[0][1:]) < 100]
+    v = s8.verdict(rows, n=300)
+    assert not v["p1"]["zones_testable"] and v["p1"]["result"].startswith("makes money")
