@@ -63,3 +63,46 @@ def pairs(rows: list[dict], tol: float = 0.005) -> list[str]:
             if abs(p2["target"] - p1["entry"]) <= tol * p1["entry"]:
                 out.append(r["sym"])
     return out
+
+
+def lots_from_fo_bhavcopy(raw_csv: bytes | str) -> dict[str, int]:
+    """Stock-futures lot sizes from an F&O bhavcopy (new UDiFF format): FinInstrmTp STF,
+    TckrSymb -> NewBrdLotQty. The nearest expiry's lot wins when expiries differ."""
+    import csv
+    import io
+    text = raw_csv.decode("utf-8", "replace") if isinstance(raw_csv, bytes) else raw_csv
+    best: dict[str, tuple[str, int]] = {}
+    for r in csv.DictReader(io.StringIO(text)):
+        if (r.get("FinInstrmTp") or "").strip() != "STF":
+            continue
+        sym = (r.get("TckrSymb") or "").strip()
+        try:
+            lot = int(float(r.get("NewBrdLotQty") or 0))
+        except ValueError:
+            continue
+        exp = (r.get("XpryDt") or "").strip()
+        if sym and lot > 0 and (sym not in best or exp < best[sym][0]):
+            best[sym] = (exp, lot)
+    return {s: v[1] for s, v in best.items()}
+
+
+def latest_lots(today, back: int = 7, fetch_zip=None) -> tuple[dict[str, int], str | None]:
+    """Lots from the most recent F&O bhavcopy within `back` days of `today`: (lots, file date)."""
+    import io
+    import zipfile
+    from datetime import timedelta
+    from core.options.vrp import bhavcopy as fo
+    for k in range(back + 1):
+        d = today - timedelta(days=k)
+        if d.weekday() >= 5:
+            continue
+        try:
+            raw = fetch_zip(d) if fetch_zip else fo.fetch_raw(d)
+        except Exception:
+            continue
+        with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            body = z.read(z.namelist()[0])
+        lots = lots_from_fo_bhavcopy(body)
+        if lots:
+            return lots, d.isoformat()
+    return {}, None

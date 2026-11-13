@@ -25,7 +25,8 @@ from core.market_map.triage import pairs, triage  # noqa: E402
 
 
 def scan(st: Store, as_of: date, top: int) -> list[dict]:
-    uni = st.universe(as_of - timedelta(days=1))[:top]
+    last = st.last_session()
+    uni = st.universe(min(as_of - timedelta(days=1), last) if last else as_of - timedelta(days=1))[:top]
     rows, t = [], time.time()
     for i, u in enumerate(uni):
         sym = u["sym"]

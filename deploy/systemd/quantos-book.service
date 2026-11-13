@@ -1,0 +1,14 @@
+[Unit]
+Description=QuantOS daily paper book -- walks the open books, reads the index and the book's stocks from the L1 map, a model decides cancels/guards/new book (validated by code), Telegrams the summary (paper only, no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/book_daily.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=3h
+Nice=10

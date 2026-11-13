@@ -154,6 +154,15 @@ Exits are placed by code (the position manager), never decided by a model.
 - No P&L verdict from a handful of positions. The S8 test decides P1 and P2.
 - Log each idea with `scripts/trade_ideas.py` where its format fits. Today it only takes close triggers on option spreads, not limit or futures plans (gap noted 2026-11-13).
 
+**The daily routine** (`scripts/book_daily.py`, VM timer `quantos-book.timer`, 21:30 IST weekdays) does this every day without a session:
+- It walks every open book (`core/market_map/book.py`): fills, cancels, exits and R, against the book's baseline.
+- It reads NIFTY, BANKNIFTY and each book stock with the map. Index bars come from NSE's public index file, so no Fyers token is needed.
+- A model (`core/market_map/book_judge.py`, given this document as its instructions) decides cancels of unfilled positions and index guards. On the Friday run, which reads for Monday, it also builds a new book from the triaged top-500 setups.
+- Code validates every decision.
+- Books and the journal are saved under `~/.quantos/books/`, and a summary goes to Telegram.
+
+The model never exits a filled position and never sets a price.
+
 **Why:**
 - Pre-registration discipline: a failed test is reported as failed, not re-tuned in the same round.
 - Commit results before reporting (2026-07).

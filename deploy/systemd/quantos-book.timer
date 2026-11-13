@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily paper book after the L1 refresh, 21:30 IST weekdays
+
+[Timer]
+# 16:00 UTC = 21:30 IST. The VM runs in Etc/UTC. After the L1 refresh (19:30 IST); the job
+# warns when the store or the index bars are behind. The Friday run (reads for Monday) is the
+# book day: full top-500 scan and a new book.
+OnCalendar=Mon..Fri *-*-* 16:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
