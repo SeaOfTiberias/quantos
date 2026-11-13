@@ -169,7 +169,9 @@ def main(argv=None) -> int:
         ctx["scan"] = scan_summary
     journal = dict(run_ist=run_ist, bars_through=last.isoformat(), as_of=as_of.isoformat(), book_day=book_day,
                    index_refresh=got, scan=scan_summary, n_setups_shown=len(ctx["setups"]))
+    journal["context_chars"] = len(json.dumps(ctx, default=str))
     decided, errors, text = None, [], None
+    created = set()
     if not a.no_model:
         try:
             import anthropic
@@ -204,6 +206,7 @@ def main(argv=None) -> int:
                 errors.append(f"new_book: a book {new['id']} already exists; not overwritten")
             else:
                 books.append(new)
+                created.add(new["id"])
                 walked[new["id"]] = (bk.advance(new, daily_for, lambda s: idx.get(s)), None)
 
     # re-walk, close resolved books, save
@@ -213,7 +216,7 @@ def main(argv=None) -> int:
         b["state"] = dict(as_of=last.isoformat(), positions=[dict(id=r["id"], status=r["status"], reason=r.get("reason"),
                                                                    fill=r["fill"], end=r.get("end"),
                                                                    r=r["res"].get("r")) for r in rows], score=sc)
-        if sc["resolved"] and b["id"] != as_of.isoformat():
+        if sc["resolved"] and b["id"] not in created:
             b["closed"] = last.isoformat()
         save_book(a.books, b)
         walked[b["id"]] = (rows, sc)
@@ -227,7 +230,7 @@ def main(argv=None) -> int:
         msgs.append(f"Index: {decided['index_read']}")
     for b in books:
         rows, sc = walked[b["id"]]
-        head = f"\nBook {b['id']}" + (" (NEW)" if b["id"] == as_of.isoformat() else "") + (" CLOSED" if b.get("closed") else "")
+        head = f"\nBook {b['id']}" + (" (NEW)" if b["id"] in created else "") + (" CLOSED" if b.get("closed") else "")
         if sc:
             head += (f": book {sc['book']['net_r']:+.2f}R over {sc['book']['n']}, baseline "
                      f"{sc['baseline']['net_r_per_position'] if sc['baseline']['n'] else 'n/a'}R/position")
