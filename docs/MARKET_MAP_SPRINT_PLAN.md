@@ -260,7 +260,7 @@ This is the user's decision, made after S8, on the evidence. It is not automatic
 - [ ] S7 situations + verdict + pre-registrations
 - [ ] Playbook v1 (user, 2026-11-13): map read -> positions, with cancel, thesis-exit and salvage rules (`docs/MARKET_PLAYBOOK_V1.md`, written before code). P1 continuation, P2 sweep-then-shift reversal (not used until its S8 test passes), P3 management and salvage, P4 outputs. Paper only; next: code + unit tests, the 15 reads as a walk-through, then an S8 pre-registration with a placebo.
 - [ ] S8 tests run, filters promoted
-  - Playbook v1 S8 pre-registration drafted 2026-11-13 (`docs/MARKET_PLAYBOOK_S8_PREREG_2026-11-13.md`), awaiting the user's approval: P1 net R per setup vs a width-matched zone-free placebo, P2 vs shift-without-sweep, month bootstrap, Holm over two, 2013-2026 on a point-in-time top 500. No run yet.
+  - Playbook v1 S8 pre-registration drafted 2026-11-13 (`docs/MARKET_PLAYBOOK_S8_PREREG_2026-11-13.md`), APPROVED 2026-11-13: P1 net R per setup vs a width-matched zone-free placebo, P2 vs shift-without-sweep, month bootstrap, Holm over two, 2013-2026 on a point-in-time top 500. No run yet.
 - [ ] S9 in-trade map events
 - [ ] S10 re-look failed candidates with HTF conditioning (corrected for multiple tests)
 

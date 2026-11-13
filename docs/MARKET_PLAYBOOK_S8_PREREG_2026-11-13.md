@@ -1,7 +1,7 @@
 # Playbook v1: S8 test pre-registration
 
 **Written 2026-11-13, before any universe run and before any outcome beyond the walk-through.**
-Status: **DRAFT, for the user's approval.** Once approved it is frozen. Any later change is a dated amendment, written before the data it touches is seen.
+Status: **APPROVED by the user 2026-11-13 and frozen.** Any later change is a dated amendment, written before the data it touches is seen.
 
 **What is tested:** `docs/MARKET_PLAYBOOK_V1.md` (c00010e), exactly as coded in `core/market_map/playbook.py` (0746807), on the v3 map (`docs/MARKET_MAP_DEFINITIONS_V3.md`, code f7bfa2b).
 
