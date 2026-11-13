@@ -1,4 +1,5 @@
 """core/market_map/book.py, book_judge.validate and index_bars.parse_day on synthetic data."""
+import json
 from datetime import date
 
 import pandas as pd
@@ -146,3 +147,11 @@ def test_parse_index_day_new_and_old_names():
     assert set(got) == {"NIFTY"} and got["NIFTY"]["l"] == 25142.95 and got["NIFTY"]["val"] == 33608.35e7
     old = new.replace("Nifty 50,12-11-2026", "CNX Nifty,12/11/2026")
     assert parse_day(old, date(2026, 11, 12))["NIFTY"]["c"] == 25299.35
+
+
+def test_user_message_puts_cards_after_the_json():
+    msg = bj.user_message(dict(as_of="2026-11-16", cards="## NIFTY close 1\n## TCS close 2"))
+    head, tail = msg.split("\n\n# Context cards", 1)
+    assert json.loads(head) == {"as_of": "2026-11-16"}
+    assert tail.endswith("## NIFTY close 1\n## TCS close 2")
+    assert bj.user_message(dict(a=1)) == '{"a":1}'

@@ -55,6 +55,11 @@ that side's unfilled positions from the first session the index trades through t
    "passed_on": "the notable setups you did not take and why (1-3 sentences)"}
 At most 8 positions. Ids must come from `setups`. Positions in one group share a fill cap.
 
+After the JSON context come the context cards: one per index, per open position's stock and per
+setup's stock. Read each setup against its card (structure per timeframe, recent sweeps, zones
+above and below with their distances, liquidity, pivots, value areas) before choosing it. Every
+level and distance there is computed by code; quote them, don't recompute them.
+
 Empty lists are fine. Never invent prices; you cannot exit a filled position (exits are the
 playbook's rules, run by code)."""
 
@@ -223,10 +228,20 @@ def validate(answer: Optional[dict], ctx: dict, closes: dict) -> tuple[dict, lis
 
 # ─── the call ────────────────────────────────────────────────────────────────
 
+def user_message(context: dict) -> str:
+    """The context as compact JSON, with the context cards (plain text) after it."""
+    ctx = {k: v for k, v in context.items() if k != "cards"}
+    msg = json.dumps(ctx, separators=(",", ":"), default=str)
+    if context.get("cards"):
+        msg += ("\n\n# Context cards (code-computed; distances signed, + above the price; "
+                "ATR = ATR(D))\n\n" + context["cards"])
+    return msg
+
+
 def call_claude(client, context: dict) -> tuple[Optional[str], list[str]]:
     """One judgment: web search allowed (results dates, events), pause_turn resumed, refusal -> None."""
     model = model_for(FEATURE)
-    messages: list[dict] = [{"role": "user", "content": json.dumps(context, separators=(",", ":"), default=str)}]
+    messages: list[dict] = [{"role": "user", "content": user_message(context)}]
     response, searches = None, []
     for _ in range(MAX_CONTINUATIONS + 1):
         started, response = time.perf_counter(), None

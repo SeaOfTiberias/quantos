@@ -33,6 +33,7 @@ from core.market_map import book_judge as bj  # noqa: E402
 from core.market_map import read as mr  # noqa: E402
 from core.market_map import structure  # noqa: E402
 from core.market_map.index_bars import INDICES, IndexBars  # noqa: E402
+from core.market_map import card as cd  # noqa: E402
 from core.market_map.l1_store import Store  # noqa: E402
 from core.market_map.triage import latest_lots, pairs, triage  # noqa: E402
 
@@ -165,6 +166,11 @@ def main(argv=None) -> int:
                                                                          W_protected=p["now"]["tf"]["W"]["protected"]))
                           for p in v["positions"]]
     ctx = bj.build_context(as_of.isoformat(), index_reads, views, shown, book_day)
+    # context cards (core/market_map/card.py): the map near the price, distances worked out by code
+    card_syms = sorted(set(syms) | {s["id"].split(":")[0] for s in ctx["setups"]})
+    cards = [cd.text(cd.card(s, structure.l1_read(df, as_of), df)) for s, df in idx.items() if len(df) > 300]
+    cards += [cd.text(cd.card(s, mr.l1_for(s, as_of, store), daily_for(s))) for s in card_syms]
+    ctx["cards"] = "\n\n".join(cards)
     if scan_summary:
         ctx["scan"] = scan_summary
     journal = dict(run_ist=run_ist, bars_through=last.isoformat(), as_of=as_of.isoformat(), book_day=book_day,
