@@ -256,16 +256,21 @@ def anonymise(c: dict, label: str, factor: float) -> str:
     return t
 
 
-LEAK = re.compile(r"\d{4}-\d{2}|\d{4}-W\d|\d{4}-Q\d|value \d{4}:")
+# a period/date standing alone (2026-08, 2026-08-14, 2026-W44, 2026-Q3); a price range such as 4113-4250 is not one
+LEAK = re.compile(r"(?<![\d.])\d{4}-(?:\d{2}(?:-\d{2})?|W\d{1,2}|Q\d)(?![\d.])|value \d{4}:")
 
 
-def leaks(text: str, syms: set[str], c: dict) -> list[str]:
+def leaks(text: str, syms: set[str], c: dict, factor: float | None = None) -> list[str]:
     """Anything in an anonymised prompt that could identify the stock or the date."""
     out = [m.group(0) for m in LEAK.finditer(text)]
     out += [s for s in syms if len(s) >= 3 and re.search(rf"\b{re.escape(s)}\b", text)]
-    p = f"{c['price']:g}"
-    if len(p.replace(".", "")) >= 3 and re.search(rf"(?<![\d.]){re.escape(p)}(?![\d])", text):
-        out.append(f"raw price {p}")
+    # the header close must be the scaled close; a scaled level that happens to equal the raw close
+    # elsewhere in the card is a coincidence, not a leak (it carries no information without the factor)
+    p = float(c["price"])
+    m = re.search(r"close (\d+(?:\.\d+)?)", text.splitlines()[0] if text else "")
+    want = round(p * factor, 2) if factor else None
+    if not m or (want is not None and abs(float(m.group(1)) - want) > 0.011):
+        out.append(f"header close not scaled ({m.group(1) if m else 'missing'} vs {want})")
     return out
 
 
@@ -289,7 +294,7 @@ def stage_a2_build() -> None:
             f = random.Random(f"{r['symbol']}|{d}").uniform(0.5, 2.0)
             lab = f"S{i:02d}"
             body = anonymise(c, lab, f)
-            bad = leaks(body, all_syms, c)
+            bad = leaks(body, all_syms, c, f)
             if bad:
                 raise SystemExit(f"anonymisation leak for {r['symbol']} {d}: {bad[:5]}")
             parts.append(f"signal {lab}: {'long (CE)' if r['side'] == 'CE' else 'short (PE)'}\n" + body)
