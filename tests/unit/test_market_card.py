@@ -59,7 +59,10 @@ def test_card_structure_zones_liquidity_and_value():
 
 def test_recent_events_drop_old_sweeps():
     c = cd.card("TEST", _l1())
-    assert len(c["events"]) == 1 and "96.5" in c["events"][0] and "3 sessions ago" in c["events"][0]
+    assert len(c["events"]) == 1
+    e = c["events"][0]
+    assert (e["tf"], e["kind"], e["side"], e["level"], e["ago"]) == ("D", "sweep", "low", 96.5, 3)
+    assert "3 sessions ago" in cd.event_text(e)
 
 
 def test_action_uses_only_bars_before_as_of():
@@ -76,3 +79,29 @@ def test_text_is_compact_and_carries_status():
     assert "UNTESTED" in t and "STRONG 110-112" in t and "plan: P1 long" in t and "note: results" in t
     assert len(t) < 3500
     assert cd.text(cd.card("X", {"error": "not in store"})) == "## X: no read (not in store)"
+
+
+# ─── frozen context rules (core/market_map/context_rules.py) ─────────────────
+
+from core.market_map import context_rules as cr  # noqa: E402
+
+
+def test_rules_on_synthetic_card():
+    c = cd.card("TEST", _l1())
+    # long: nearest strong above is 110-112, edge +5 ATR -> room; a D low sweep 3 sessions ago is not opposing
+    assert cr.r1_room(c, "CE") and cr.r2_no_sweep(c, "CE")
+    # short: nearest strong below is 95-98, edge -1 ATR -> no room; the low sweep is opposing
+    assert not cr.r1_room(c, "PE") and not cr.r2_no_sweep(c, "PE")
+    # W is down: a long needs location -> strong zone below within 1 ATR (edge -1.0) -> passes
+    assert cr.r4_structure_or_location(c, "CE") and cr.r4_structure_or_location(c, "PE")
+    ev = cr.evaluate(c, c, "CE")
+    assert ev == dict(R1=True, R2=True, R3=True, R4=True, keep=True)
+    assert cr.evaluate(c, None, "PE")["keep"] is False
+    assert cr.evaluate({"error": "x"}, None, "CE") is None
+
+
+def test_r4_fails_against_w_without_location():
+    l1 = _l1()
+    l1["htf"]["zones"] = [z for z in l1["htf"]["zones"] if z["why"] != "W bull OB"]
+    c = cd.card("TEST", l1)
+    assert not cr.r4_structure_or_location(c, "CE")       # W down, no strong zone below within 1 ATR

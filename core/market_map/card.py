@@ -102,19 +102,25 @@ def _tf(t: dict, price: float, atr_d: Optional[float]) -> dict:
     return out
 
 
-def _recent(items: list[dict], last_date: Optional[str], tf: str, kind: str) -> list[str]:
+def _recent(items: list[dict], last_date: Optional[str], tf: str, kind: str) -> list[dict]:
+    """The last two sweeps (kind 'sweep') or failed breaks ('failed') within RECENT_SESSIONS[tf]."""
     out = []
     for it in items or []:
         ago = sessions_between(it.get("date"), last_date)
         if ago is None or ago > RECENT_SESSIONS.get(tf, 30):
             continue
-        if kind == "sweep":
-            out.append(f"{tf} swept {it.get('side')} {it.get('level')} (to {it.get('extreme')}) "
-                       f"on {it.get('date')}, {ago} sessions ago")
-        else:
-            out.append(f"{tf} failed break of {it.get('side')} {it.get('level')} (close {it.get('close')}) "
-                       f"on {it.get('date')}, {ago} sessions ago")
+        e = dict(tf=tf, kind=kind, side=it.get("side"), level=it.get("level"), date=it.get("date"), ago=ago)
+        e["extreme" if kind == "sweep" else "close"] = it.get("extreme" if kind == "sweep" else "close")
+        out.append(e)
     return out[-2:]
+
+
+def event_text(e: dict) -> str:
+    if e["kind"] == "sweep":
+        return (f"{e['tf']} swept {e['side']} {e['level']} (to {e.get('extreme')}) on {e['date']}, "
+                f"{e['ago']} sessions ago")
+    return (f"{e['tf']} failed break of {e['side']} {e['level']} (close {e.get('close')}) on {e['date']}, "
+            f"{e['ago']} sessions ago")
 
 
 def _liquidity(t: dict, price: float, atr: Optional[float], reach: float = REACH_ATR) -> dict:
@@ -262,7 +268,7 @@ def text(c: dict) -> str:
     if c.get("alignment"):
         ln.append(f"alignment: {c['alignment']}")
     for e in c["events"]:
-        ln.append(f"event: {e}")
+        ln.append(f"event: {event_text(e)}")
     z = c["zones"]
     for x in z["inside"]:
         ln.append(f"INSIDE zone: {_z(x)}")
