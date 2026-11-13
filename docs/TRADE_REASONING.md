@@ -8,7 +8,20 @@ Each step gives the rule, then **Why**: the result or mistake that taught it, wi
 
 ---
 
-## 0. What we know and what we don't (read this first, every time)
+## 0. Who decides what (read this first, every time)
+
+**The job is judgment, not strategy discovery** (user, 2026-11-13). Claude picks the stocks and the side, decides where *not* to trade, sets the backup plan, and adjusts as the market moves, acting as the trader's analyst. The map and the playbook are the inputs; the thinking is Claude's.
+
+- **The user's gates, and only these** (CLAUDE.md):
+  - the user releases every real order (`qorder.py --yes`);
+  - capital, size and `dry_run` change only with the user's go-ahead;
+  - the trading pause.
+
+  State them in one line. Don't re-argue them.
+- **Claude's decisions:** everything else. Book changes, cancels, drops, guards, priorities and adjustments are decided and recorded, not proposed for approval. Do not invent new gates ("needs pre-registration before use", "your call", "approve this first") for judgment calls.
+- **Pre-registration is for research claims** (does P1 beat a placebo?), not for trading judgment. Judgment is held to account by the forward record (step 8): every call is written down before its outcome and scored after.
+
+**The evidence below sets conviction and size, not permission.** Untested rules mean small size and tight salvage, not silence.
 
 | Claim | Status |
 |---|---|
@@ -20,7 +33,7 @@ Each step gives the rule, then **Why**: the result or mistake that taught it, wi
 | The salvage rules (C1–C4, E1–E3, break-even) limit damage | **Some evidence, 4 fills** (walk-through f5b8a23): E1 cut JSL to −0.11R, break-even saved KEI, C1 cancelled the HDFCBANK short. |
 | The user's discretionary exits | **Beat the plan once** (SUPREMEIND, 2026-10-30). Measure overrides; don't dismiss them. |
 
-So every position here is a **reasoned bet on untested rules**. Say so in one line. Then give the position anyway, with full numbers and its salvage plan. Hiding behind "untested" is the failure mode the user called out (2026-11-13). Overselling it as an edge is the other one (2026-10-30, Darvas pushed to real money on a thin edge).
+So size every position as a reasoned bet on untested rules. Hiding behind "untested" is the failure mode the user called out (2026-11-13: "for the past 5 months you have been dancing around that"). Overselling the rules as an edge is the other failure mode (2026-10-30, Darvas pushed to real money on a thin edge). The answer to both is the same: make the call, size it small, and carry a salvage plan.
 
 ---
 
@@ -132,7 +145,7 @@ Exits are placed by code (the position manager), never decided by a model.
 6. **The risk cap refuses wide HTF zones** (6 of 15 round 1 reads). "No trade: zone too wide" is common and correct. Don't loosen it in-session.
 7. **One day is not an outcome** (2026-11-13). The user read a red day as "longs broke, shorts worked". Nothing had filled. Always state fill status before judging a plan.
 
-Rule candidates from these lessons (sweep-week grouping, an intraday index guard, a shallower P2 entry at 50% of the shift leg) are **v2 candidates to pre-register and test**. They are not live rules and not a re-tune of anything already tested.
+**Use these lessons in judgment immediately.** Sweep-week grouping and an intraday index guard are book management, and they apply now (the 2026-11-13 book, amendment 1). Only a change to the playbook's own entry rules (for example a shallower P2 entry at 50% of the shift leg) goes through an S8-style test before it replaces a v1 rule, because that is a research claim about the rules.
 
 ## 8. Record before the outcome, score after
 

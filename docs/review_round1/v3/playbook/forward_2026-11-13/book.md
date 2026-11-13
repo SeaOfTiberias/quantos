@@ -63,6 +63,15 @@ All eight stocks fell 0.4–1.8% with NIFTY (−0.72%). Being resting limits, th
 3. **The index guard contradicts the deep longs.** These longs need falls of 4.8–10.9%. A ~5% NIFTY drop (to about 23,860) is below the 24,774 guard. So the most likely way they fill is the scenario where the index turn is failing. Candidate rule: cancel unfilled P2 longs when NIFTY *trades* below its turn level, not only on a weekly close.
 4. **P2 misses V-turns** (also seen in the walk-through). After a sharp V, the order block is 2–7 ATR(D) below the price and rarely retested. Candidate entry: the first daily pullback to 50% of the shift leg, with the stop below the shift low. This is a new rule to pre-register and test, not a re-tune of P2.
 
+## Amendment 1 (2026-11-13 evening, after the close, before any fill): decided, not proposed
+
+Applying lessons 1–3 to the book:
+
+1. **The four longs are one bet.** All come from the 23–27 Oct sweep week. At most **two** fill. When the second fills, the rest are cancelled. Priority by closeness: NTPC (4.8% away), then DABUR (5.3%), then JIOFIN (7.2%).
+2. **DELHIVERY is dropped.** Its limit is 10.9% below the price. It would fill only in a market break, which is the scenario that kills the thesis. Not worth the order.
+3. **Intraday index guard.** If NIFTY *trades* below 24,774 at any time, every unfilled long is cancelled the same day. A weekly close is no longer needed. A fill before that is managed by its own rules (stop, E3). Reason: the longs' likely fill path (a ~5% index fall, to about 23,860) runs through the guard level. Waiting for the weekly close would let them fill in exactly the failure case.
+4. **Shorts unchanged.** If NIFTY trades below 24,774, the shorts become the main book and stay, one lot each. SBILIFE's live risk is a W flip: a week closing above 1791.40 cancels it (C1). Next deciding close: Friday 2026-11-20.
+
 ## Scoring this book later
 
 Score each position with `core.market_map.playbook.simulate(setup, daily, as_of=date(2026, 11, 13))` on the stock's daily bars, using the `book` entries in `book.json`. The P1 shorts need the strong opposing zones and states from the read for E2/E1. Report filled or unfilled, the C-code if cancelled, and R. No P&L verdict from 8 positions: this is a walk-forward record, as with `walk.md`.
