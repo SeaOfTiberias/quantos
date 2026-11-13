@@ -300,12 +300,127 @@ def stage_a2_build() -> None:
     print(f"{len(out)} days, {sum(len(x['key']) for x in out)} signals -> {p}")
 
 
+A2_FEATURE = "step2_judge"
+A2_INSTRUCTIONS = """You are judging F&O screener signals for QuantOS, a household NSE trading terminal.
+Each day you get the index's context card and one card per signal. The screener has already
+picked the instrument and side (step 1). Your job is step 2: given the map context, would you
+take this trade, and how?
+
+The cards are anonymised. Stocks are relabelled, all prices of a symbol are scaled by one
+unknown factor, and calendar dates are removed. Distances in % and ATR are real. Do not try to
+identify a stock or a date; judge only from what the card shows. A trade is entered at the next
+session's open.
+
+Use the procedure below (index first; room to the opposing zone; sweeps; structure and
+location; what proves the trade wrong). Then answer with short reasoning, and ONE ```json block:
+
+{"index_read": "1-2 sentences",
+ "decisions": [{"label": "S01", "decision": "take|skip", "structure": "futures|option|spread|intraday|none",
+                "why": "one line"}]}
+
+Every signal label gets exactly one decision. "structure" is "none" when you skip.
+
+--- procedure (docs/TRADE_REASONING.md) ---
+"""
+
+
+def _a2_system() -> str:
+    doc = Path(__file__).resolve().parents[1] / "docs" / "TRADE_REASONING.md"
+    return A2_INSTRUCTIONS + (doc.read_text(encoding="utf-8") if doc.exists() else "")
+
+
+def stage_a2_run(limit: Optional[int] = None) -> None:
+    """One call per day (resumable). Runs where the API key lives (the VM)."""
+    import time
+    import anthropic
+    from core.llm.calllog import log_call
+    from core.llm.registry import model_for
+    from core.market_map.book_judge import parse_answer
+    prompts = [json.loads(line) for line in (OUT / "a2_prompts.jsonl").read_text().splitlines()]
+    ans_path = OUT / "a2_answers.jsonl"
+    done = {json.loads(line)["day"] for line in ans_path.read_text().splitlines()} if ans_path.exists() else set()
+    client, model, system = anthropic.Anthropic(timeout=900.0), model_for(A2_FEATURE), _a2_system()
+    todo = [p for p in prompts if p["day"] not in done][:limit]
+    for i, p in enumerate(todo, 1):
+        response, started = None, time.perf_counter()
+        try:
+            response = client.messages.create(model=model, max_tokens=32000, system=system,
+                                              output_config={"effort": "high"},
+                                              messages=[{"role": "user", "content": p["prompt"]}])
+        finally:
+            log_call(A2_FEATURE, model, response, started)
+        text = "\n".join(b.text for b in response.content if getattr(b, "type", "") == "text")
+        with ans_path.open("a") as f:
+            f.write(json.dumps(dict(day=p["day"], stop=response.stop_reason, text=text,
+                                    answer=parse_answer(text))) + "\n")
+        print(f"  {i}/{len(todo)} {p['day']} {response.stop_reason}", flush=True)
+
+
+def stage_a2() -> None:
+    """Score A2's take/skip split; A1 on the same signals for comparison."""
+    prompts = {p["day"]: p for p in map(json.loads, (OUT / "a2_prompts.jsonl").read_text().splitlines())}
+    answers = {a["day"]: a for a in map(json.loads, (OUT / "a2_answers.jsonl").read_text().splitlines())}
+    a1 = {(r["date"], r["sym"], r["side"]): r for r in map(json.loads, (OUT / "a1_rows.jsonl").read_text().splitlines())}
+    sig = {(r["date"], r["symbol"], r["side"]): r for r in signals() if r["date"] >= A2_FROM}
+    rows, missing_answer, missing_label = [], 0, 0
+    for day, p in sorted(prompts.items()):
+        ans = (answers.get(day) or {}).get("answer") or {}
+        if not ans:
+            missing_answer += 1
+        dec = {d.get("label"): d for d in ans.get("decisions") or [] if isinstance(d, dict)}
+        for k in p["key"]:
+            r = sig[(day, k["sym"], k["side"])]
+            d = dec.get(k["label"])
+            if d is None:
+                missing_label += 1
+            take = bool(d) and str(d.get("decision", "")).lower() == "take"
+            base = a1.get((day, k["sym"], k["side"]), {})
+            rows.append(dict(date=day, sym=k["sym"], side=k["side"], keep=take,
+                             structure=(d or {}).get("structure"), a1_keep=base.get("keep"),
+                             oc1=r.get("oc1"), oc5=r.get("oc5"), ex5=r.get("ex5"), **option_returns(r)))
+    res = dict(prereg="docs/STEP2_CONTEXT_TEST_PREREG_2026-11-13.md", days=len(prompts),
+               missing_answers=missing_answer, missing_labels=missing_label, scored=len(rows), tests={},
+               diagnostics={})
+    for side in ("CE", "PE"):
+        sr = [r for r in rows if r["side"] == side]
+        mid = median_date(sr) if sr else A2_FROM
+        for h, key in HORIZONS.items():
+            res["tests"][f"A2 {h} {side}"] = split_stats(sr, key, mid, "A2")
+        d = res["diagnostics"][side] = {}
+        d["take_rate"] = round(sum(r["keep"] for r in sr) / len(sr) * 100, 1) if sr else None
+        both = [r for r in sr if r["a1_keep"] is not None]
+        d["agree_with_a1"] = round(sum(r["keep"] == r["a1_keep"] for r in both) / len(both) * 100, 1) if both else None
+        d["a1_same_signals"] = {h: {k: v for k, v in split_stats([dict(r, keep=r["a1_keep"]) for r in both], key,
+                                                                 mid, "A2").items() if k != "checks"}
+                                for h, key in HORIZONS.items()}
+        by_struct = defaultdict(list)
+        for r in sr:
+            if r["keep"]:
+                by_struct[r["structure"]].append(r)
+        d["by_structure"] = {s: dict(n=len(xs),
+                                     oc1=round(mean(x["oc1"] for x in xs if x["oc1"] is not None), 3)
+                                     if any(x["oc1"] is not None for x in xs) else None,
+                                     oc5=round(mean(x["oc5"] for x in xs if x["oc5"] is not None), 3)
+                                     if any(x["oc5"] is not None for x in xs) else None,
+                                     single=round(mean(x["single"] for x in xs if x.get("single") is not None), 2)
+                                     if any(x.get("single") is not None for x in xs) else None)
+                             for s, xs in by_struct.items()}
+    (OUT / "a2_rows.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    (OUT / "a2_results.json").write_text(json.dumps(res, indent=1))
+    for k, v in res["tests"].items():
+        print(f"{k:22s} n {v['n']:5d} kept {v['kept']:5d} kept {v['kept_mean']} dropped {v['dropped_mean']} "
+              f"diff {v['diff_mean']} t {v['t']} halves {v['kept_net_h1']}/{v['kept_net_h2']} -> {v['verdict']}")
+    print(f"-> {OUT / 'a2_results.json'}")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stage", choices=["cards", "a1", "a2-build"], required=True)
+    ap.add_argument("--stage", choices=["cards", "a1", "a2-build", "a2-run", "a2"], required=True)
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--limit", type=int)
     a = ap.parse_args(argv)
-    {"cards": lambda: stage_cards(a.workers), "a1": stage_a1, "a2-build": stage_a2_build}[a.stage]()
+    {"cards": lambda: stage_cards(a.workers), "a1": stage_a1, "a2-build": stage_a2_build,
+     "a2-run": lambda: stage_a2_run(a.limit), "a2": stage_a2}[a.stage]()
     return 0
 
 
