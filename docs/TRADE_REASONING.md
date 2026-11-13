@@ -144,6 +144,14 @@ Exits are placed by code (the position manager), never decided by a model.
 5. **Break-even without a working trail gives back winners** (KEI walk-through: +2.42R best, closed at 0R).
 6. **The risk cap refuses wide HTF zones** (6 of 15 round 1 reads). "No trade: zone too wide" is common and correct. Don't loosen it in-session.
 7. **One day is not an outcome** (2026-11-13). The user read a red day as "longs broke, shorts worked". Nothing had filled. Always state fill status before judging a plan.
+8. **Check outside chart reads against the card, number by number** (SRF, 2026-11-13). A Gemini read of the user's TradingView and Kite screenshots took several numbers off the screen that are not levels:
+   - The LuxAlgo legend ("ø 2,535 2,429 2,475") is the bar's H/L/C, not an equilibrium.
+   - A crosshair readout of a 2021 candle became a "monthly CHoCH at 2,250–2,275".
+   - Kite's right-axis tags were read as pivots: the last price (2,473.20), a stepped channel line (2,537.54) and a long MA (2,614.35).
+   - The monthly red supply block was missed entirely. That block is our strong M bear OB, 2,610–2,784.
+   - LuxAlgo labels: "Strong/Weak High/Low" follow its 50-bar swing trend; Weak means not defended, not a target. Its small CHoCH labels are internal (5-bar) structure, so a daily "CHoCH ↑" there can coexist with our D still down until its protected high breaks (SRF: 2,535.8).
+   
+   Use outside reads for what they add (here: weekly MACD divergence, and the same 2,535–2,540 trigger), and take every level from the card.
 
 **Use these lessons in judgment immediately.** Sweep-week grouping and an intraday index guard are book management, and they apply now (the 2026-11-13 book, amendment 1). Only a change to the playbook's own entry rules (for example a shallower P2 entry at 50% of the shift leg) goes through an S8-style test before it replaces a v1 rule, because that is a research claim about the rules.
 
