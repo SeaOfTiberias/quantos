@@ -287,7 +287,7 @@ def simulate(setup: dict, daily: pd.DataFrame, as_of: date, opp_strong: Optional
         nxt = fwd["date"].iat[k + 1].date() if k + 1 < len(fwd) else day + timedelta(days=1)
         if fill is None:                                             # resting order
             if k >= setup["valid"]:
-                return dict(outcome="expired", reason="C4 no fill", log=log)
+                return dict(outcome="expired", reason="C4 no fill", end=day.isoformat(), log=log)
             if setup.get("entry_at_open") and k == 0:
                 fill = o
             elif (o <= entry) if long else (o >= entry):
@@ -302,14 +302,14 @@ def simulate(setup: dict, daily: pd.DataFrame, as_of: date, opp_strong: Optional
                     break
             else:
                 if (c < setup["far"]) if long else (c > setup["far"]):
-                    return dict(outcome="cancelled", reason=f"C2 close {c:g} beyond {setup['far']:g} on {day}", log=log)
+                    return dict(outcome="cancelled", reason=f"C2 close {c:g} beyond {setup['far']:g} on {day}", end=day.isoformat(), log=log)
                 if (h >= target) if long else (l <= target):
-                    return dict(outcome="cancelled", reason=f"C3 target traded on {day} before a fill", log=log)
+                    return dict(outcome="cancelled", reason=f"C3 target traded on {day} before a fill", end=day.isoformat(), log=log)
                 if p1:
                     s = states.at(nxt)
                     if s["W"]["state"] == against or s["M"]["state"] == against:
                         return dict(outcome="cancelled", reason=f"C1 {'W' if s['W']['state'] == against else 'M'} "
-                                                                f"turned {against} at the close of {day}", log=log)
+                                                                f"turned {against} at the close of {day}", end=day.isoformat(), log=log)
                 continue
         else:                                                        # open trade
             if pending_exit:
@@ -355,14 +355,19 @@ def simulate(setup: dict, daily: pd.DataFrame, as_of: date, opp_strong: Optional
         if not p1 and ((c < setup["swept_level"]) if long else (c > setup["swept_level"])):
             pending_exit = pending_exit or f"E3 close {c:g} back beyond the swept level {setup['swept_level']:g} ({day})"
     if fill is None:
-        return dict(outcome="pending", reason="no fill yet (data ends)", log=log)
+        return dict(outcome="pending", reason="no fill yet (data ends)", end=_last(fwd), log=log)
     if exit_px is None:
         last = float(fwd["c"].iat[-1])
         return dict(outcome="open", fill=fill, stop=stop, mark=last, r=round(sgn * (last - fill) / risk, 2),
-                    mfe=round(mfe, 2), mae=round(mae, 2), log=log)
+                    mfe=round(mfe, 2), mae=round(mae, 2), end=_last(fwd), log=log)
     log.append((fwd["date"].iat[min(k, len(fwd) - 1)].date().isoformat(), f"exit {exit_px:g}: {reason}"))
     return dict(outcome="closed", fill=fill, exit=exit_px, reason=reason, r=round(sgn * (exit_px - fill) / risk, 2),
-                sessions=k - fill_k, mfe=round(mfe, 2), mae=round(mae, 2), log=log)
+                sessions=k - fill_k, mfe=round(mfe, 2), mae=round(mae, 2),
+                end=fwd["date"].iat[min(k, len(fwd) - 1)].date().isoformat(), log=log)
+
+
+def _last(fwd: pd.DataFrame) -> Optional[str]:
+    return fwd["date"].iat[-1].date().isoformat() if len(fwd) else None
 
 
 def opposing_strong(l1: dict, long: bool) -> list[tuple[float, float]]:
