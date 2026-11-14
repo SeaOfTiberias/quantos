@@ -114,3 +114,11 @@ def test_breakout_plan_only_right_under_a_level():
     c = _card(structure=dict(D=dict(protected=dict(px=90.0), weak=dict(px=100.8)), W=dict(protected=dict(px=110.0))))
     v = cp.make_plan(c, b, "CE")
     assert v["breakout"]["level"] >= 100.8 and v["breakout"]["stop_ref"] == 100.0
+
+
+def test_no_entry_when_target_under_one_r_at_the_open():
+    v = _version(target=99.0)                                       # stop 94.3 after the sweep below
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, v, _bar("2026-11-02", 97, 98, 94.5, 97.0))        # swept and reclaimed: stop 94.3
+    t = cp.step(t, v, _bar("2026-11-03", 97.5, 98, 97, 97.5))        # entry 97.5: reward 1.5 < risk 3.2
+    assert t["state"] == "skipped" and "R:R under 1" in t["events"][-1]["what"]

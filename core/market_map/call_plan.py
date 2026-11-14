@@ -8,7 +8,8 @@ The screener picks the stock and the side. The map picks the entry and the exit:
     daily close back across it; enter at the next open, stop beyond the sweep's extreme;
   - BREAKOUT plan (only when the call sits right under an opposing level): a daily close
     beyond that level; enter at the next open, stop beyond the last 3 sessions' extreme;
-  - target: the nearest opposing level at least 1 ATR(D) away;
+  - target: the nearest opposing level at least 1 ATR(D) away; no entry if, at the next open,
+    the target is less than 1R away (added 2026-11-14 after the replay: ZYDUSLIFE 8 pts vs 32 risk);
   - lapse: no trigger within EXPIRY sessions, or the target reached first (ran without us);
   - broke: swept and not reclaimed within RECLAIM_SESSIONS (watch the other side).
 
@@ -36,6 +37,7 @@ SWING_LOOKBACK = 25      # sessions of daily bars searched for minor swing highs
 EXPIRY = 10              # sessions a plan waits for its trigger
 RECLAIM_SESSIONS = 3     # sessions after a sweep to close back across the level
 MAX_HOLD = 15            # sessions in the trade before a time exit at the close
+MIN_RR = 1.0             # at the entry open, the target must be at least this many R away
 
 
 def _sg(side: str) -> int:
@@ -239,6 +241,11 @@ def open_trade(t: dict, nxt: dict) -> dict:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened beyond the stop: no entry")); return t
     if t.get("target") is not None and sg * (e - t["target"]) >= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened at the target: no entry")); return t
+    if t.get("target") is not None and sg * (t["target"] - e) < MIN_RR * sg * (e - t["stop"]):
+        t["state"] = "skipped"
+        t["events"].append(dict(date=day, what=f"R:R under {MIN_RR:g} at the open: no entry", entry=e,
+                                stop=t["stop"], target=t["target"]))
+        return t
     t.update(state="triggered", entry=e, entry_date=day, held=0, risk=round(sg * (e - t["stop"]), 4))
     t["events"].append(dict(date=day, what="entered at the open", entry=e, stop=t["stop"], target=t.get("target")))
     return t
