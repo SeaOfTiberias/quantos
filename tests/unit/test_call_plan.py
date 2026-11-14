@@ -122,3 +122,29 @@ def test_no_entry_when_target_under_one_r_at_the_open():
     t = cp.step(t, v, _bar("2026-11-02", 97, 98, 94.5, 97.0))        # swept and reclaimed: stop 94.3
     t = cp.step(t, v, _bar("2026-11-03", 97.5, 98, 97, 97.5))        # entry 97.5: reward 1.5 < risk 3.2
     assert t["state"] == "skipped" and "R:R under 1" in t["events"][-1]["what"]
+
+
+def _dz(kind, lo, hi, price=100.0, atr=2.0):
+    from core.market_map.card import _dzone
+    return _dzone(dict(kind=kind, lo=lo, hi=hi, formed="2026-06-04", touches=0), price, atr)
+
+
+def test_daily_zone_near_edge_is_the_target_far_edge_never_a_sweep():
+    # RELIANCE 2026-11-13 shape: a daily bear OB just above the price caps the call before D weak
+    c = _card(zones_d=dict(above=[_dz("bear_ob", 102.5, 103.5)], below=[_dz("bull_fvg", 93.0, 98.5)], inside=[]))
+    assert cp.target(c, "CE", entry_ref=100.0) == dict(level=102.5, kind="D bear OB 102.5-103.5")
+    sw = cp.sweep_level(c, _bars([100, 99, 99.5, 99, 100, 101, 100]), "CE")
+    assert not any(k.startswith("far edge") for k in sw["kinds"])        # 93 is a target, never a sweep level
+    assert "D bull FVG 93-98.5" in sw["kinds"]
+
+
+def test_breakout_close_must_clear_the_daily_zone():
+    # SBIN 2026-11-13 shape: D weak just above, inside a daily bear OB that runs higher
+    c = _card(structure=dict(D=dict(protected=dict(px=90.0), weak=dict(px=100.8)), W=dict(protected=dict(px=110.0))),
+              zones_d=dict(above=[], below=[], inside=[_dz("bear_ob", 99.0, 103.0)]))
+    b = _bars([100, 99, 96.5, 99, 100, 101, 100])
+    bo = cp.breakout_level(c, b, "CE")
+    assert bo["level"] == 103.0 and bo["kinds"][0] == "top of D bear OB 99-103"
+    # a daily zone stretching beyond MAX_ATR: no breakout plan
+    c["zones_d"]["inside"] = [_dz("bear_ob", 99.0, 110.0)]
+    assert cp.breakout_level(c, b, "CE") is None

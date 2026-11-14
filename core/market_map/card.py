@@ -92,6 +92,32 @@ def zones_near(zs: list[dict], price: float, atr: Optional[float], n: int = N_ZO
                 inside=[_zone(z, price, atr) for z in inside])
 
 
+D_NAMES = {"demand": "demand", "supply": "supply", "bull_ob": "bull OB", "bear_ob": "bear OB",
+           "bull_fvg": "bull FVG", "bear_fvg": "bear FVG"}
+
+
+def _dzone(z: dict, price: float, atr: Optional[float]) -> dict:
+    lo, hi = round(float(z["lo"]), 2), round(float(z["hi"]), 2)
+    touches = z.get("touches")
+    return dict(kind=z["kind"], lo=lo, hi=hi, formed=str(z.get("formed"))[:10],
+                touched=("untouched" if touches == 0 else "tested once" if touches == 1 else None),
+                name=f"D {D_NAMES.get(z['kind'], z['kind'])} {lo:g}-{hi:g}",
+                lo_atr=round((lo - price) / atr, 2) if atr else None,
+                hi_atr=round((hi - price) / atr, 2) if atr else None)
+
+
+def d_zones_near(zs: list[dict], price: float, atr: Optional[float], n: int = N_ZONES,
+                 reach: float = REACH_ATR) -> dict:
+    """Daily zones (bands and unfilled gaps, after the daily mitigation): the nearest n wholly
+    above and below within reach, and those the price sits in (narrowest first)."""
+    ok = [z for z in zs if not atr or min(abs(z["lo"] - price), abs(z["hi"] - price)) / atr <= reach]
+    inside = sorted((z for z in ok if z["lo"] <= price <= z["hi"]), key=lambda z: z["hi"] - z["lo"])
+    above = sorted((z for z in ok if z["lo"] > price), key=lambda z: z["lo"])[:n]
+    below = sorted((z for z in ok if z["hi"] < price), key=lambda z: -z["hi"])[:n]
+    return dict(above=[_dzone(z, price, atr) for z in above], below=[_dzone(z, price, atr) for z in below],
+                inside=[_dzone(z, price, atr) for z in inside[:n]])
+
+
 def _tf(t: dict, price: float, atr_d: Optional[float]) -> dict:
     pd_ = t.get("premium_discount") or {}
     out = dict(state=t.get("state"), age_bars=t.get("age_bars"), last=_event(t.get("last_event")),
@@ -226,6 +252,7 @@ def card(sym: str, l1: dict, daily: Optional[pd.DataFrame] = None, plans: Option
                alignment=(l1.get("alignment") or {}).get("text"),
                events=events,
                zones=zones_near(htf.get("zones") or [], price, atr_d),
+               zones_d=d_zones_near(l1.get("d_zones") or [], price, atr_d),
                coverage=htf.get("coverage"),
                liquidity=_liquidity(tf.get("D") or {}, price, atr_d),
                pivots=_pivots(l1.get("pivots") or {}, price, atr_d),
@@ -276,6 +303,13 @@ def text(c: dict) -> str:
         ln.append(f"zone above: {_z(x)}")
     for x in z["below"]:
         ln.append(f"zone below: {_z(x)}")
+    zd = c.get("zones_d") or {}
+    for where in ("inside", "above", "below"):
+        for x in zd.get(where) or []:
+            t = f", {x['touched']}" if x.get("touched") else ""
+            ln.append(f"D zone {where}: {x['name']} [{x['lo_atr']:+.1f}..{x['hi_atr']:+.1f}ATR] "
+                      f"(formed {x['formed']}{t})" if x.get("lo_atr") is not None else
+                      f"D zone {where}: {x['name']} (formed {x['formed']}{t})")
     liq = c["liquidity"]
     for side in ("above", "below"):
         for x in liq.get(side) or []:

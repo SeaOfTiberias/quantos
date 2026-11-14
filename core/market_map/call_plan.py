@@ -10,6 +10,10 @@ The screener picks the stock and the side. The map picks the entry and the exit:
     beyond that level; enter at the next open, stop beyond the last 3 sessions' extreme;
   - target: the nearest opposing level at least 1 ATR(D) away; no entry if, at the next open,
     the target is less than 1R away (added 2026-11-14 after the replay: ZYDUSLIFE 8 pts vs 32 risk);
+  - daily zones (2026-11-14, user: RELIANCE ran into the daily bear OB 1357-1371, SBIN into
+    1075.7-1124.5, neither on the HTF card): their near edges are sweep levels and targets,
+    their far edges targets only, and a breakout close must clear every daily zone its level
+    sits in;
   - lapse: no trigger within EXPIRY sessions, or the target reached first (ran without us);
   - broke: swept and not reclaimed within RECLAIM_SESSIONS (watch the other side).
 
@@ -80,7 +84,23 @@ def _card_levels(c: dict, where: str) -> list[tuple[float, str]]:
         for k in ("BC", "P", "TC"):
             if cp.get(k) is not None:
                 out.append((float(cp[k]), f"{tf} CPR {k}"))
+    out += _d_zone_levels(c, where)
     return [(p, k) for p, k in out if (p < px if where == "below" else p > px)]
+
+
+def _d_zone_levels(c: dict, where: str) -> list[tuple[float, str]]:
+    """Daily zone edges (2026-11-14): a zone wholly on this side gives its near edge (the zone's
+    name) and its far edge ('far edge of ...', a target, never a sweep level); a zone the price
+    sits in gives the edge on this side."""
+    zd = c.get("zones_d") or {}
+    out: list[tuple[float, str]] = []
+    for z in zd.get(where) or []:
+        near, far = (z["lo"], z["hi"]) if where == "above" else (z["hi"], z["lo"])
+        out += [(float(near), z["name"]), (float(far), "far edge of " + z["name"])]
+    for z in zd.get("inside") or []:
+        out.append((float(z["hi"] if where == "above" else z["lo"]),
+                    ("top of " if where == "above" else "bottom of ") + z["name"]))
+    return out
 
 
 def sweep_level(c: dict, bars: pd.DataFrame, side: str) -> Optional[dict]:
@@ -90,7 +110,8 @@ def sweep_level(c: dict, bars: pd.DataFrame, side: str) -> Optional[dict]:
     if not atr:
         return None
     where = "below" if sg == 1 else "above"
-    cands = _card_levels(c, where) + [(p, k) for p, k in swing_points(bars, side) if (p < px) == (sg == 1)]
+    cands = [(p, k) for p, k in _card_levels(c, where) if not k.startswith("far edge")] \
+        + [(p, k) for p, k in swing_points(bars, side) if (p < px) == (sg == 1)]
     cands = sorted({(round(p, 2), k) for p, k in cands if MIN_ATR <= sg * (px - p) / atr <= MAX_ATR},
                    key=lambda x: sg * (px - x[0]))
     if not cands:
@@ -135,8 +156,22 @@ def breakout_level(c: dict, bars: pd.DataFrame, side: str) -> Optional[dict]:
                   or "OB" in k or "FVG" in k or "supply" in k or "demand" in k]
     if not structural:
         return None
-    lvl = near[-1][0]
-    return dict(level=lvl, kinds=sorted({k for _, k in near}))
+    lvl, kinds = near[-1][0], sorted({k for _, k in near})
+    # the close must clear every daily zone the level sits in (2026-11-14: a close above 1350.7
+    # put RELIANCE inside the daily bear OB 1357-1371.1; SBIN's 1090.7 is inside 1075.7-1124.5)
+    zd = c.get("zones_d") or {}
+    zs = (zd.get("inside") or []) + (zd.get(where) or [])
+    moved = True
+    while moved:
+        moved = False
+        for z in zs:
+            lo, hi = (z["lo"], z["hi"]) if sg == 1 else (-z["hi"], -z["lo"])
+            if lo <= sg * lvl < hi:
+                lvl, moved = (hi if sg == 1 else -hi), True
+                kinds.insert(0, ("top of " if sg == 1 else "bottom of ") + z["name"])
+    if sg * (lvl - px) / atr > MAX_ATR:
+        return None
+    return dict(level=round(lvl, 2), kinds=kinds)
 
 
 def make_plan(c: dict, bars: pd.DataFrame, side: str) -> dict:

@@ -105,3 +105,17 @@ def test_r4_fails_against_w_without_location():
     l1["htf"]["zones"] = [z for z in l1["htf"]["zones"] if z["why"] != "W bull OB"]
     c = cd.card("TEST", l1)
     assert not cr.r4_structure_or_location(c, "CE")       # W down, no strong zone below within 1 ATR
+
+
+def test_daily_zones_near_the_price():
+    from core.market_map.card import d_zones_near
+    zs = [dict(kind="bear_ob", lo=102.0, hi=104.0, formed="2026-06-04", touches=0),
+          dict(kind="bear_fvg", lo=120.0, hi=121.0, formed="2026-05-01"),        # 10 ATR: within reach
+          dict(kind="bear_fvg", lo=200.0, hi=201.0, formed="2026-01-01"),        # beyond reach
+          dict(kind="bear_ob", lo=98.0, hi=110.0, formed="2026-09-09", touches=1),
+          dict(kind="bull_fvg", lo=94.0, hi=97.0, formed="2026-11-11")]
+    d = d_zones_near(zs, 100.0, 2.0)
+    assert [z["name"] for z in d["above"]] == ["D bear OB 102-104", "D bear FVG 120-121"]
+    assert d["above"][0]["touched"] == "untouched" and d["above"][0]["lo_atr"] == 1.0
+    assert [z["name"] for z in d["inside"]] == ["D bear OB 98-110"] and d["inside"][0]["touched"] == "tested once"
+    assert [z["name"] for z in d["below"]] == ["D bull FVG 94-97"]

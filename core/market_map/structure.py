@@ -404,7 +404,15 @@ def l1_read(daily: pd.DataFrame, as_of: date, m5: Optional[pd.DataFrame] = None)
             swings_all[tf] = [(w.kind, w.label, w.price, bars["period"].iat[w.i]) for w in r.swings
                               if not w.broken]                        # v2 G2: unbroken swings only
         else:                                                         # v2 G3: D EQH/EQL, shown, never clustered
-            eq = [z for z in zn.equal_levels(bars, r.swings, atr(bars)) if z["status"] == "active"]
+            # 2026-11-14 (user, RELIANCE 1357-1371 and SBIN 1075.7-1124.5 missed): the same band and
+            # gap rules on daily bars, with the daily mitigation. Kept apart from the HTF clusters
+            # (definitions v1 strong rule untouched); the card and the call plans read them.
+            a_d = atr(bars)
+            dz = zn.bases(bars, a_d, r.events) + zn.order_blocks(bars, r.events) + zn.fvgs(bars, a_d)
+            for z in dz:
+                z["tf"] = "D"
+            out["d_zones"], _ = zn.mitigate(dz, bars)
+            eq = [z for z in zn.equal_levels(bars, r.swings, a_d) if z["status"] == "active"]
             if price is not None:
                 tfs[tf]["liquidity"] = dict(
                     above=sorted([z for z in eq if z["level"] > price], key=lambda z: z["level"])[:N_D_LIQ],
