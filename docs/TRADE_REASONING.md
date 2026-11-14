@@ -152,6 +152,17 @@ Exits are placed by code (the position manager), never decided by a model.
    - LuxAlgo labels: "Strong/Weak High/Low" follow its 50-bar swing trend; Weak means not defended, not a target. Its small CHoCH labels are internal (5-bar) structure, so a daily "CHoCH ↑" there can coexist with our D still down until its protected high breaks (SRF: 2,535.8).
    
    Use outside reads for what they add (here: weekly MACD divergence, and the same 2,535–2,540 trigger), and take every level from the card.
+9. **The screener picks the stock; the map picks the entry** (Darvas paper picks, user, 2026-11-14). Darvas bought every pick at the breakout: 92–98% of the 20-day range, just under the 52-week high. The entry-day card already showed the level below where liquidity sat. The entry should have been the **sweep of that level and a daily close back above it**, with the stop under the sweep low. On the actual bars:
+
+   | Pick | Darvas | Level on the entry-day card | Sweep, then reclaim | Map entry → today |
+   |---|---|---|---|---|
+   | ZYDUSLIFE | 1218.4, stopped ~1124 | EQL ~1100–1108, W protected 1092.6 | 26 Oct: low 1093.5, close 1160.4 | ~1155, stop <1093 → 1206 now (high 1266.6) |
+   | GLAND | 3162, stopped 2930 | D protected 2841.1; M bull FVG 2586–2792 | 23 Oct low 2769.8; 27 Oct close 2960 | ~2950, stop <2770 → 3309 (high 3374) |
+   | PERSISTENT | 5988, stopped 5806 | M protected 5612 (multi-touch x3) | 16 Oct: low 5492, close 5741 | ~5742, stop <5492 → 6030 (high 6240) |
+   | CYIENT | 1220.5, stopped 1126 | STRONG W bull OB 1030–1107 | in the OB (low 1085), no reclaim yet | no entry yet: no loss |
+   | DIVISLAB, PPLPHARMA, COFORGE | +16%, +2.5%, −1.5% | levels 5–10% below | never pulled back | missed |
+
+   The cost is the runners that never come back (DIVISLAB). Handle them deliberately, for example a starter at the breakout and the main size at the sweep-and-reclaim. Don't let the default be "all in at the breakout". Read with hindsight on 8 picks: this is how to read, not a tested rule.
 
 **Use these lessons in judgment immediately.** Sweep-week grouping and an intraday index guard are book management, and they apply now (the 2026-11-13 book, amendment 1). Only a change to the playbook's own entry rules (for example a shallower P2 entry at 50% of the shift leg) goes through an S8-style test before it replaces a v1 rule, because that is a research claim about the rules.
 
