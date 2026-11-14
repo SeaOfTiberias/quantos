@@ -7,7 +7,9 @@ Wants=network-online.target
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
-ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/book_daily.py
+# Code-only since 2026-11-14 (user): Anthropic API credit is 0. The books are still walked,
+# scored and Telegrammed; no model cancels/guards/new book. Remove --no-model to restore.
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/book_daily.py --no-model
 Environment=HOME=/home/ubuntu
 EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
 TimeoutStartSec=3h
