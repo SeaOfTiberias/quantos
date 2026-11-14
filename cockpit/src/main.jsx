@@ -8,9 +8,10 @@ const SpreadsPage = lazy(() => import("./trading/SpreadsPage.jsx"));
 const IdeasPage = lazy(() => import("./trading/IdeasPage.jsx"));
 const MapPage = lazy(() => import("./trading/MapPage.jsx"));
 const ScreenPage = lazy(() => import("./trading/ScreenPage.jsx"));
+const PlansPage = lazy(() => import("./trading/PlansPage.jsx"));
 
 // Hash routing, no router dependency: "#/reports" is the paper-strategy
-// reports page, "#/spreads", "#/picks", "#/ideas" and "#/map/SYMBOL" the trading pages (cockpit/src/trading/,
+// reports page, "#/spreads", "#/picks", "#/ideas", "#/map/SYMBOL" and "#/plans/KEY" the trading pages (cockpit/src/trading/,
 // the new clean-terminal look), anything else the dashboard. Hash (not path) so nginx's
 // SPA fallback and the API's path allowlist are untouched.
 function Root() {
@@ -22,7 +23,7 @@ function Root() {
   }, []);
   const route = hash.split("/").slice(0, 2).join("/");      // "#/map/HDFCBANK" -> "#/map"
   const Page = { "#/reports": ReportsPage, "#/picks": PicksPage, "#/spreads": SpreadsPage, "#/ideas": IdeasPage,
-                 "#/map": MapPage, "#/screen": ScreenPage }[route];
+                 "#/map": MapPage, "#/screen": ScreenPage, "#/plans": PlansPage }[route];
   if (!Page) return <QuantOSCockpit />;
   return (
     <Suspense fallback={<div style={{ background: "#0A0E1A", minHeight: "100vh" }} />}>

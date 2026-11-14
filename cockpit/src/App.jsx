@@ -1746,6 +1746,13 @@ function TopBar({ lastRefresh, jobs, obsError }) {
       <div style={{ width: 1, height: 18, background: C.border }} />
       <span style={{ fontSize: 11, color: C.muted }}>Bloomberg. But Smarter.</span>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+        {/* Map plans for every F&O / Darvas pick (cockpit/src/trading/PlansPage.jsx), hash-routed in main.jsx */}
+        <a href="#/plans" style={{
+          fontSize: 11, color: C.accent, textDecoration: "none", fontWeight: 700,
+          border: `1px solid ${C.border}`, borderRadius: 4, padding: "3px 8px",
+        }}>
+          Plans →
+        </a>
         {/* Trading pages (cockpit/src/trading/: Spreads, Options picks), hash-routed in main.jsx */}
         <a href="#/spreads" style={{
           fontSize: 11, color: C.accent, textDecoration: "none", fontWeight: 700,

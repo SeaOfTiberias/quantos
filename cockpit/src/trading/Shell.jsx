@@ -165,6 +165,7 @@ export default function Shell({ active, children }) {
         <a className="q-brand" href="#/">QUANT<b>OS</b></a>
         <nav className="q-nav">
           <a href="#/spreads" className={active === "spreads" ? "on" : ""}>Spreads</a>
+          <a href="#/plans" className={active === "plans" ? "on" : ""}>Plans</a>
           <a href="#/picks" className={active === "picks" ? "on" : ""}>Options picks</a>
           <a href="#/ideas" className={active === "ideas" ? "on" : ""}>Ideas</a>
           <a href="#/map" className={active === "map" ? "on" : ""}>Map</a>

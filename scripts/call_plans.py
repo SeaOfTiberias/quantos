@@ -119,6 +119,38 @@ def _version_for(plan: dict, day: str) -> dict:
     return vs[-1] if vs else {}
 
 
+PAGE_BARS = 120          # daily bars kept for each pick's page chart
+
+
+def page_file(root: Path, key: str) -> Path:
+    """The page snapshot of one plan (cockpit #/plans/<key>, cloud/api/plans_routes.py)."""
+    return root / "pages" / (key.replace("|", "_") + ".json")
+
+
+def write_page(root: Path, key: str, p: dict, bars: "Bars", last: str, card: dict | None = None,
+               card_as_of: str | None = None) -> None:
+    """The card and the last PAGE_BARS daily bars through `last` for one plan, so the page never
+    rebuilds a map. Without a new card the previous snapshot's card is kept."""
+    f = page_file(root, key)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    old = {}
+    if f.exists():
+        try:
+            old = json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            old = {}
+    a = bars.adj(p["call"]["sym"])[0]
+    rows = [] if a is None or a.empty else [
+        [r["date"].date().isoformat(), round(float(r["o"]), 2), round(float(r["h"]), 2), round(float(r["l"]), 2),
+         round(float(r["c"]), 2)] for _, r in a[a["date"] <= last].tail(PAGE_BARS).iterrows()]
+    page = dict(key=key, updated=datetime.now(IST).isoformat(timespec="seconds"), through=last, bars=rows,
+                card=card if card is not None else old.get("card"),
+                card_as_of=card_as_of if card is not None else old.get("card_as_of"))
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(page, default=str), encoding="utf-8")
+    tmp.replace(f)
+
+
 def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         last: str | None = None, darvas_path: Path | None = DARVAS) -> tuple[list[str], list[str]]:
     """One evening (`last`: the session it runs after; default the store's last session).
@@ -130,6 +162,8 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
     stamp = datetime.now(IST).isoformat(timespec="seconds")
     bars = Bars(store)
     journal, new_lines, ev_lines = [], [], []
+    cards: dict[str, tuple[dict, str]] = {}                                # key -> (card, as of) made tonight
+    touched: set[str] = set()                                              # plans whose page changes tonight
 
     # 1. new calls
     calls = load_calls(calls_path) + (load_darvas(darvas_path) if darvas_path else [])
@@ -143,6 +177,8 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         v["as_of"] = c["date"]
         tracks = [cp.new_track(k, c["side"]) for k in ("sweep", "breakout") if v.get(k)]
         state[c["key"]] = dict(call=c, versions=[v], tracks=tracks, through=c["date"])
+        cards[c["key"]] = (card, c["date"])
+        touched.add(c["key"])
         journal.append(dict(at=stamp, key=c["key"], what="plan", version=v))
         expires = next_weekday(date.fromisoformat(c["date"]), cp.EXPIRY).isoformat()
         new_lines += cp.plan_lines(c["sym"], c["side"], c["spot"], v, expires, c.get("src", "F&O")) + [""]
@@ -167,6 +203,7 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
                     ev_lines.append(cp.event_line(p["call"]["sym"], p["call"]["side"], t["kind"], e,
                                                   p["call"].get("src", "F&O")))
             p["through"] = b["date"]
+            touched.add(key)
         if p["through"] == last and any(t["state"] == "waiting" for t in p["tracks"]) \
                 and p["versions"][-1]["as_of"] < last:
             card, upto = bars.card(p["call"]["sym"], last)
@@ -174,13 +211,35 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
                 v = cp.make_plan(card, upto, p["call"]["side"])
                 v["as_of"] = last
                 p["versions"].append(v)
+                cards[key] = (card, last)
                 journal.append(dict(at=stamp, key=key, what="replan", version=v))
 
     with journal_p.open("a", encoding="utf-8") as f:                       # journal first, then state
         for j in journal:
             f.write(json.dumps(j, default=str) + "\n")
     state_p.write_text(json.dumps(state, indent=1, default=str), encoding="utf-8")
+    for key in sorted(touched):                                            # pages last: a failure here
+        p = state[key]                                                     # never loses the journal
+        try:
+            card, as_of = cards.get(key) or (None, None)
+            if card is None and any(t["state"] in cp.OPEN_STATES for t in p["tracks"]):
+                card, as_of = bars.card(p["call"]["sym"], last)[0], last   # open trades: tonight's map
+            write_page(root, key, p, bars, p["through"], card, as_of)
+        except Exception:                                                  # noqa: BLE001
+            traceback.print_exc()
     return new_lines, ev_lines
+
+
+def write_all_pages(store: Store, root: Path = ROOT) -> int:
+    """(Re)write every plan's page from its current state: tonight's card for open plans, the card
+    of the plan's last version day for closed ones."""
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    bars = Bars(store)
+    for key, p in state.items():
+        open_ = any(t["state"] in cp.OPEN_STATES for t in p["tracks"])
+        day = p["through"] if open_ else p["versions"][-1]["as_of"]
+        write_page(root, key, p, bars, p["through"], bars.card(p["call"]["sym"], day)[0], day)
+    return len(state)
 
 
 def report(store: Store, root: Path = ROOT) -> str:
@@ -213,6 +272,7 @@ def main(argv=None) -> int:
     ap.add_argument("--start", default=None, help="plan calls from this date on (default: the store's last session)")
     ap.add_argument("--no-telegram", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--pages", action="store_true", help="(re)write every plan's page snapshot and exit")
     ap.add_argument("--root", type=Path, default=ROOT, help="state + journal folder (default ~/.quantos/call_plans)")
     ap.add_argument("--calls", type=Path, default=CALLS)
     ap.add_argument("--darvas", type=Path, default=DARVAS, help="the Darvas scan's plan file")
@@ -222,6 +282,9 @@ def main(argv=None) -> int:
     store = Store(a.store or default_root())
     if a.report:
         print(report(store, a.root))
+        return 0
+    if a.pages:
+        print(f"{write_all_pages(store, a.root)} pages written to {a.root / 'pages'}")
         return 0
     start_p = a.root / "start.txt"
     start = a.start or (start_p.read_text().strip() if start_p.exists() else store.last_session().isoformat())
