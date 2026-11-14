@@ -323,13 +323,14 @@ def _p(x: Optional[float]) -> str:
     return "?" if x is None else (f"{x:,.2f}".rstrip("0").rstrip(".") if x < 1000 else f"{x:,.1f}".rstrip("0").rstrip("."))
 
 
-def plan_lines(sym: str, side: str, called_at: float, version: dict, expires: str) -> list[str]:
-    """The lines under one call."""
+def plan_lines(sym: str, side: str, called_at: float, version: dict, expires: str, src: str = "F&O") -> list[str]:
+    """The lines under one call (`src`: who picked it, F&O screener or Darvas)."""
+    tag = "" if src == "F&O" else f" [{src}]"
     if version.get("error"):
-        return [f"🗺 {sym} {side}: no map read ({version['error']})"]
+        return [f"🗺 {sym} {side}{tag}: no map read ({version['error']})"]
     across = "above" if side == "CE" else "below"
     beyond = "under" if side == "CE" else "over"
-    lines = [f"🗺 {sym} {side} (called {_p(called_at)}): don't chase the close."]
+    lines = [f"🗺 {sym} {side}{tag} (called {_p(called_at)}): don't chase the close."]
     sw, bo = version.get("sweep"), version.get("breakout")
     if sw:
         t = sw.get("target") or {}
@@ -346,7 +347,8 @@ def plan_lines(sym: str, side: str, called_at: float, version: dict, expires: st
     return lines
 
 
-def event_line(sym: str, side: str, kind: str, e: dict) -> str:
+def event_line(sym: str, side: str, kind: str, e: dict, src: str = "F&O") -> str:
     extra = ", ".join(f"{k} {_p(v) if isinstance(v, (int, float)) else v}" for k, v in e.items()
                       if k not in ("date", "what") and v is not None)
-    return f"   {sym} {side} [{kind}] {e['date'][5:]}: {e['what']}" + (f" ({extra})" if extra else "")
+    tag = "" if src == "F&O" else f" {src}"
+    return f"   {sym} {side}{tag} [{kind}] {e['date'][5:]}: {e['what']}" + (f" ({extra})" if extra else "")

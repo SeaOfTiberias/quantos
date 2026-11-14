@@ -1,4 +1,4 @@
-"""Map plans for the F&O screener's Telegram calls (core/market_map/call_plan.py), every weekday
+"""Map plans for the F&O screener's Telegram calls and the Darvas scan's breakouts (core/market_map/call_plan.py), every weekday
 after the L1 refresh (20:00 IST).
 
   1. New calls (the screener's picks in ~/.quantos/fno_screener_outcomes.json not yet planned,
@@ -40,6 +40,7 @@ from core.market_map.m5_store import M5Store  # noqa: E402
 IST = ZoneInfo("Asia/Kolkata")
 QUANTOS = Path.home() / ".quantos"
 CALLS = QUANTOS / "fno_screener_outcomes.json"
+DARVAS = QUANTOS / "darvas_atr_stop_plan.json"     # the 18:00 IST scan's plan, rewritten nightly
 ROOT = QUANTOS / "call_plans"
 
 
@@ -59,6 +60,22 @@ def load_calls(path: Path = CALLS) -> list[dict]:
         out.append(dict(key=p["key"], date=p["trade_date"], sym=p["symbol"], side=p["side"],
                         spot=float(p["entry_spot"])))
     return sorted(out, key=lambda p: (p["date"], p["sym"], p["side"]))
+
+
+def load_darvas(path: Path = DARVAS) -> list[dict]:
+    """Tonight's Darvas breakouts (2026-11-14, user: the map picks the entry for Darvas too).
+    The scan rewrites its plan file every evening, so each run picks up that evening's entries;
+    the Darvas paper executor still enters them at the open, unchanged, for the comparison."""
+    if not path.exists():
+        return []
+    try:
+        plan = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    d = plan.get("bars_as_of") or plan.get("through")
+    return [dict(key=f"{d}|DARVAS|{e['symbol']}", date=d, sym=e["symbol"], side="CE",
+                 spot=float(e["last_close"]), src="Darvas") for e in plan.get("entries") or []
+            if d and e.get("symbol") and e.get("last_close")]
 
 
 class Bars:
@@ -103,7 +120,7 @@ def _version_for(plan: dict, day: str) -> dict:
 
 
 def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
-        last: str | None = None) -> tuple[list[str], list[str]]:
+        last: str | None = None, darvas_path: Path | None = DARVAS) -> tuple[list[str], list[str]]:
     """One evening (`last`: the session it runs after; default the store's last session).
     Returns (new-plan lines, event lines)."""
     root.mkdir(parents=True, exist_ok=True)
@@ -115,7 +132,8 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
     journal, new_lines, ev_lines = [], [], []
 
     # 1. new calls
-    for c in load_calls(calls_path):
+    calls = load_calls(calls_path) + (load_darvas(darvas_path) if darvas_path else [])
+    for c in calls:
         if c["key"] in state or c["date"] < start or c["date"] > last:
             continue
         card, _ = bars.card(c["sym"], c["date"])
@@ -127,7 +145,7 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         state[c["key"]] = dict(call=c, versions=[v], tracks=tracks, through=c["date"])
         journal.append(dict(at=stamp, key=c["key"], what="plan", version=v))
         expires = next_weekday(date.fromisoformat(c["date"]), cp.EXPIRY).isoformat()
-        new_lines += cp.plan_lines(c["sym"], c["side"], c["spot"], v, expires) + [""]
+        new_lines += cp.plan_lines(c["sym"], c["side"], c["spot"], v, expires, c.get("src", "F&O")) + [""]
 
     # 2. walk open plans over the new bars, 3. re-plan the ones still waiting
     for key, p in state.items():
@@ -146,7 +164,8 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
                 p["tracks"][i] = t = cp.step(t, _version_for(p, b["date"]), b)
                 for e in t["events"][n0:]:
                     journal.append(dict(at=stamp, key=key, kind=t["kind"], what="event", event=e))
-                    ev_lines.append(cp.event_line(p["call"]["sym"], p["call"]["side"], t["kind"], e))
+                    ev_lines.append(cp.event_line(p["call"]["sym"], p["call"]["side"], t["kind"], e,
+                                                  p["call"].get("src", "F&O")))
             p["through"] = b["date"]
         if p["through"] == last and any(t["state"] == "waiting" for t in p["tracks"]) \
                 and p["versions"][-1]["as_of"] < last:
@@ -175,14 +194,16 @@ def report(store: Store, root: Path = ROOT) -> str:
         as_sent = round(sg * (lc / c["spot"] - 1) * 100, 2)
         for t in p["tracks"] or [dict(kind="-", state="no plan")]:
             m = cp.mark(t, lc) if t.get("state") == "triggered" else {}
-            rows.append(dict(key=key, kind=t["kind"], state=t["state"], r=t.get("r", m.get("r")),
+            rows.append(dict(key=key, src=c.get("src", "F&O"), kind=t["kind"], state=t["state"], r=t.get("r", m.get("r")),
                              pct=t.get("pct", m.get("pct")), as_sent=as_sent))
     lines = [f"{r['key']:32s} {r['kind']:9s} {r['state']:16s} R {r['r']!s:>6} plan% {r['pct']!s:>6}  as-sent% {r['as_sent']}"
              for r in rows]
-    done = [r for r in rows if r["r"] is not None]
-    if done:
-        lines.append(f"\n{len(done)} entered: mean R {mean(r['r'] for r in done):.2f}, mean plan% "
-                     f"{mean(r['pct'] for r in done):.2f}; as sent on the same calls {mean(r['as_sent'] for r in done):.2f}%")
+    for src in sorted({r["src"] for r in rows}):
+        done = [r for r in rows if r["r"] is not None and r["src"] == src]
+        if done:
+            lines.append(f"\n{src}: {len(done)} entered: mean R {mean(r['r'] for r in done):.2f}, mean plan% "
+                         f"{mean(r['pct'] for r in done):.2f}; as sent on the same calls "
+                         f"{mean(r['as_sent'] for r in done):.2f}%")
     return "\n".join(lines)
 
 
@@ -194,6 +215,7 @@ def main(argv=None) -> int:
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--root", type=Path, default=ROOT, help="state + journal folder (default ~/.quantos/call_plans)")
     ap.add_argument("--calls", type=Path, default=CALLS)
+    ap.add_argument("--darvas", type=Path, default=DARVAS, help="the Darvas scan's plan file")
     ap.add_argument("--replay-from", default=None,
                     help="replay every evening from this session to the store's last (testing; use a scratch --root)")
     a = ap.parse_args(argv)
@@ -210,17 +232,17 @@ def main(argv=None) -> int:
         a2 = store.adjusted("NIFTYBEES" if "NIFTYBEES" in store.symbols() else store.symbols()[0])[0]
         days = [d.date().isoformat() for d in a2["date"] if a.replay_from <= d.date().isoformat() <= store.last_session().isoformat()]
         for d in days:
-            n, e = run(store, start, a.root, a.calls, last=d)
+            n, e = run(store, start, a.root, a.calls, last=d, darvas_path=a.darvas)
             print(f"== {d}: {sum(1 for x in n if x.startswith('🗺'))} new, {len(e)} events")
         print(report(store, a.root))
         return 0
     try:
-        new_lines, ev_lines = run(store, start, a.root, a.calls)
+        new_lines, ev_lines = run(store, start, a.root, a.calls, darvas_path=a.darvas)
     except Exception:                                                      # noqa: BLE001
         traceback.print_exc()
         return 1
     last = store.last_session()
-    msg = [f"🗺 Map plans for the F&O calls · close of {last:%a %d %b}",
+    msg = [f"🗺 Map plans for the F&O calls and Darvas breakouts · close of {last:%a %d %b}",
            "Wait for the level; enter on the reclaim; stop beyond the sweep; bank at the target. "
            "Paper plans (UNTESTED rule, scored vs the calls as sent), not orders.", ""]
     msg += new_lines or ["No new calls tonight.", ""]
