@@ -1,0 +1,11 @@
+[Unit]
+Description=Map plans for the F&O calls, 20:00 IST weekdays
+
+[Timer]
+# 14:30 UTC = 20:00 IST. The VM runs in Etc/UTC. After the F&O screener (18:15 IST) and the
+# L1 refresh (19:30 IST, ~12 min), before the book (21:30 IST).
+OnCalendar=Mon..Fri *-*-* 14:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

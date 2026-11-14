@@ -1,0 +1,15 @@
+[Unit]
+Description=QuantOS map plans for the F&O screener's calls -- plans new calls from the L1 card (sweep/breakout, stop, target, expiry), walks open plans one bar at a time, journals every version before the outcome, Telegrams the plans and events (paper only, no orders, no API calls)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/call_plans.py
+Environment=HOME=/home/ubuntu
+# Telegram credentials (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID).
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=1h
+Nice=10
