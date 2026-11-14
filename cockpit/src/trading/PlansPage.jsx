@@ -202,7 +202,8 @@ function PlanChart({ plan, page }) {
   const card = page?.card || {};
   if (!bars.length) return <div className="q-empty">No bars yet for this pick's chart. The page fills in after the next 20:00 IST run.</div>;
 
-  const H = 440, padL = 8, padR = 168, padT = 14, padB = 26;
+  const narrow = W < 640;                                   // phones: price-only rail, no band names
+  const H = narrow ? 340 : 440, padL = 4, padR = narrow ? 82 : 168, padT = 14, padB = 26;
   const lo0 = Math.min(...bars.map(b => b[3])), hi0 = Math.max(...bars.map(b => b[2]));
   const span0 = hi0 - lo0 || hi0 * 0.05;
   const inView = p => p >= lo0 - span0 * 0.35 && p <= hi0 + span0 * 0.35;     // keep the scale readable
@@ -235,6 +236,7 @@ function PlanChart({ plan, page }) {
   const ci = idx(call.date);
   const ticks = Array.from({ length: 6 }, (_, k) => lo + ((hi - lo) * (k + 0.5)) / 6);
   const months = bars.map((b, i) => [b[0], i]).filter(([d], i) => i === 0 || d.slice(5, 7) !== bars[i - 1][0].slice(5, 7));
+  for (let k = months.length - 1; k > 0; k--) if (x(months[k][1]) - x(months[k - 1][1]) < 48) months.splice(k - 1, 1);   // no collisions
 
   // label placement: avoid overlaps on the right rail
   const labels = [...shown.map(l => ({ ...l, y: y(l.p) })),
@@ -258,15 +260,25 @@ function PlanChart({ plan, page }) {
           <rect key={`h${k}`} x={padL} width={W - padR - padL} y={clampY(z.hi)} height={Math.max(2, clampY(z.lo) - clampY(z.hi))}
                 fill="none" stroke={T.faint} strokeDasharray="4 4" strokeWidth="1"><title>{`HTF zone ${px(z.lo)}–${px(z.hi)}: ${z.why}`}</title></rect>
         ))}
-        {dz.map((z, k) => (
-          <rect key={`d${k}`} x={padL} width={W - padR - padL} y={clampY(z.hi)} height={Math.max(2, clampY(z.lo) - clampY(z.hi))}
-                fill={SUPPLY.has(z.kind) ? "rgba(240,82,82,.10)" : "rgba(34,197,94,.09)"}
-                stroke={SUPPLY.has(z.kind) ? "rgba(240,82,82,.35)" : "rgba(34,197,94,.32)"} strokeWidth="1">
-            <title>{`${z.name} (formed ${z.formed}${z.touched ? `, ${z.touched}` : ""})`}</title></rect>
-        ))}
+        {dz.map((z, k) => {
+          const top = clampY(z.hi), h = Math.max(2, clampY(z.lo) - top), sup = SUPPLY.has(z.kind);
+          return (
+            <g key={`d${k}`}>
+              <rect x={padL} width={W - padR - padL} y={top} height={h}
+                    fill={sup ? "rgba(240,82,82,.08)" : "rgba(34,197,94,.07)"}
+                    stroke={sup ? "rgba(240,82,82,.35)" : "rgba(34,197,94,.32)"} strokeWidth="1">
+                <title>{`${z.name} (formed ${z.formed}${z.touched ? `, ${z.touched}` : ""})`}</title></rect>
+              {/* the zone's name inside its band, at the left, when the band is tall enough to hold it */}
+              {!narrow && h >= 13 && <text x={padL + 6} y={top + Math.min(h / 2, 12) + 4} fontSize="10.5"
+                                fill={sup ? "rgba(252,165,165,.85)" : "rgba(134,239,172,.8)"}>
+                {z.name.replace(/^D /, "D ")}{z.touched ? ` · ${z.touched}` : ""}</text>}
+            </g>
+          );
+        })}
         {ci >= 0 && <g>
           <line x1={x(ci)} x2={x(ci)} y1={padT} y2={H - padB} stroke={T.muted} strokeDasharray="2 4" />
-          <text x={x(ci) + 4} y={padT + 10} fill={T.muted} fontSize="11">called @ {px(call.spot)}</text>
+          <text x={x(ci) + (ci > bars.length * 0.7 ? -4 : 4)} y={H - padB - 6} fill={T.muted} fontSize="11"
+                textAnchor={ci > bars.length * 0.7 ? "end" : "start"}>{narrow ? "called" : `called ${shortDate(call.date)} @ ${px(call.spot)}`}</text>
         </g>}
         {bars.map((b, i) => {
           const up = b[4] >= b[1];
@@ -284,9 +296,9 @@ function PlanChart({ plan, page }) {
         {labels.map(l => (
           <g key={`lab-${l.label}`}>
             <line x1={W - padR + 6} x2={W - padR + 12} y1={y(l.p)} y2={l.y} stroke={l.color} strokeWidth="1" />
-            <text x={W - padR + 14} y={l.y + 4} fontSize="11.5" fill={T.text}>
+            <text x={W - padR + 14} y={l.y + 4} fontSize={narrow ? 10.5 : 11.5} fill={T.text}>
               <tspan fill={l.color}>■ </tspan><tspan fontFamily={T.mono}>{px(l.p)}</tspan>
-              <tspan fill={T.muted}> {l.label}</tspan></text>
+              {!narrow && <tspan fill={T.muted}> {l.label}</tspan>}</text>
           </g>
         ))}
         {marks.map((m, k) => (
@@ -352,7 +364,9 @@ function TrackStory({ t, v, side }) {
     body = `Stop ${px(t.stop)}, target ${px(tgt)}, ${t.held ?? 0} of 15 sessions held. Exits are rule-driven: stop, target or time.`;
   } else {
     head = stateLabel(t.state) + (t.exit != null ? ` at ${px(t.exit)}` : "");
-    body = ev ? `${shortDate(ev.date)}: ${ev.what}.` : "";
+    body = t.entry != null
+      ? `Entered ${px(t.entry)} on ${shortDate(t.entry_date)} with the stop at ${px(t.stop)} and the target at ${px(tgt)}; out on ${shortDate(t.exit_date)}. The chart keeps running after the exit.`
+      : ev ? `${shortDate(ev.date)}: ${ev.what}.` : "";
   }
   return (
     <div style={{ display: "grid", gap: 4 }}>
@@ -492,7 +506,7 @@ function PlanOne({ k }) {
             <SidePill side={s.side} /><SrcPill src={s.src} /><StatePill s={s.status} />
           </div>
           <div className="q-sub">Called {shortDate(s.date)} at {px(s.called)} · plan {s.open ? `expires ${shortDate(s.expires)} if nothing triggers` : "closed"}
-            {s.replans ? ` · re-planned ${s.replans}×` : ""} · data to {shortDate(s.through)}</div>
+            {s.replans ? ` · re-planned ${s.replans}×` : ""} · chart to {shortDate(page?.through || s.through)}</div>
         </div>
         <a className="q-btn ghost" href={`#/map/${s.sym}`} style={{ textDecoration: "none" }}>Open the stock map →</a>
       </div>

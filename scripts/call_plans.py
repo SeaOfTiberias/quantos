@@ -120,6 +120,7 @@ def _version_for(plan: dict, day: str) -> dict:
 
 
 PAGE_BARS = 120          # daily bars kept for each pick's page chart
+PAGE_DAYS = 45           # calendar days after the call a closed plan's chart keeps updating
 
 
 def page_file(root: Path, key: str) -> Path:
@@ -139,7 +140,8 @@ def write_page(root: Path, key: str, p: dict, bars: "Bars", last: str, card: dic
             old = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             old = {}
-    a = bars.adj(p["call"]["sym"])[0]
+    sym = p["call"]["sym"]
+    a = bars.cache[sym][0] if sym in bars.cache else bars.st.adjusted(sym)[0]   # daily bars only
     rows = [] if a is None or a.empty else [
         [r["date"].date().isoformat(), round(float(r["o"]), 2), round(float(r["h"]), 2), round(float(r["l"]), 2),
          round(float(r["c"]), 2)] for _, r in a[a["date"] <= last].tail(PAGE_BARS).iterrows()]
@@ -224,9 +226,18 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
             card, as_of = cards.get(key) or (None, None)
             if card is None and any(t["state"] in cp.OPEN_STATES for t in p["tracks"]):
                 card, as_of = bars.card(p["call"]["sym"], last)[0], last   # open trades: tonight's map
-            write_page(root, key, p, bars, p["through"], card, as_of)
+            write_page(root, key, p, bars, last, card, as_of)
         except Exception:                                                  # noqa: BLE001
             traceback.print_exc()
+    # closed plans keep their chart running for PAGE_DAYS after the call, so the page shows what
+    # price did after the exit (GLAND: the deeper sweep came after the stop)
+    since = (date.fromisoformat(last) - timedelta(days=PAGE_DAYS)).isoformat()
+    for key, p in state.items():
+        if key not in touched and p["call"]["date"] >= since:
+            try:
+                write_page(root, key, p, bars, last)
+            except Exception:                                              # noqa: BLE001
+                traceback.print_exc()
     return new_lines, ev_lines
 
 
@@ -234,11 +245,11 @@ def write_all_pages(store: Store, root: Path = ROOT) -> int:
     """(Re)write every plan's page from its current state: tonight's card for open plans, the card
     of the plan's last version day for closed ones."""
     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-    bars = Bars(store)
+    bars, last = Bars(store), store.last_session().isoformat()
     for key, p in state.items():
         open_ = any(t["state"] in cp.OPEN_STATES for t in p["tracks"])
         day = p["through"] if open_ else p["versions"][-1]["as_of"]
-        write_page(root, key, p, bars, p["through"], bars.card(p["call"]["sym"], day)[0], day)
+        write_page(root, key, p, bars, last, bars.card(p["call"]["sym"], day)[0], day)
     return len(state)
 
 
