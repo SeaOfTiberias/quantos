@@ -28,13 +28,30 @@ def test_swing_points_need_two_bars_each_side():
     assert cp.swing_points(b, "CE") == [(96.0, "D swing low 05 Oct")]
 
 
-def test_sweep_level_pools_nearby_liquidity():
-    # W CPR 97-98 and a swing low at 96.5 are within 0.5 ATR of each other: the pool's far edge is 96.5
+def test_sweep_level_is_structural_only():
+    # 2026-11-15 (lesson 9): a single minor swing low, the W CPR 97-98 and a non-strong W FVG are
+    # not structural; D protected 90 is 5 ATR away (beyond MAX_ATR): no sweep plan
     b = _bars([100, 99, 96.5, 99, 100, 101, 100])
+    assert cp.sweep_level(_card(), b, "CE") is None
+    # two swing lows within 0.25 ATR are equal lows: structural; the level is the lower one
+    b = _bars([100, 99, 96.6, 99, 100, 99, 96.5, 99, 100, 101])
     sw = cp.sweep_level(_card(), b, "CE")
-    assert sw["level"] == 96.5 and "W CPR BC" in sw["kinds"] and any("swing low" in k for k in sw["kinds"])
-    # a put looks above: D weak 104 (2 ATR) is the nearest; W bear OB edge 106 is 1 ATR beyond it -> separate
-    assert cp.sweep_level(_card(), b, "PE")["level"] == 104.0
+    assert sw["level"] == 96.5 and sw["kinds"] == ["D equal lows"]
+    # D protected 96 with the equal lows 0.25 ATR above it: one pool, swept below 96
+    sw = cp.sweep_level(_card(structure=dict(D=dict(protected=dict(px=96.0)))), b, "CE")
+    assert sw["level"] == 96.0 and "D protected" in sw["kinds"] and "D equal lows" in sw["kinds"]
+    # a put looks above: W protected 110 is 5 ATR away, the strong W bear OB's near edge 106 is 3 ATR
+    assert cp.sweep_level(_card(), _bars([100, 99, 98, 99, 100, 101, 100]), "PE")["level"] == 106.0
+
+
+def test_strong_or_protected_zone_edges_count_others_do_not():
+    b = _bars([100, 99, 98, 99, 100, 101, 100])
+    c = _card(zones=dict(above=[], inside=[], below=[dict(lo=90.0, hi=95.0, strong=True, why="W bull OB 90-95"),
+                                                     dict(lo=97.0, hi=98.0, strong=False, why="D bull FVG")]))
+    sw = cp.sweep_level(c, b, "CE")
+    assert sw["level"] == 95.0 and sw["kinds"] == ["STRONG W bull OB 90-95"]
+    c["zones"]["below"].append(dict(lo=97.2, hi=97.2, strong=False, why="W multi-touch x4"))
+    assert cp.sweep_level(c, b, "CE")["level"] == 97.2                # multi-touch is structural and nearer
 
 
 def test_target_is_nearest_opposing_level_at_least_one_atr_away():
@@ -71,8 +88,8 @@ def test_put_mirror_stops_out():
     v = dict(atr=2.0, sweep=dict(level=104.0, kinds=["x"], atr_away=2.0, target=dict(level=96.0, kind="y")))
     t = cp.new_track("sweep", "PE")
     t = cp.step(t, v, _bar("2026-11-02", 102, 105.0, 101, 103.0))   # swept 104 and closed back below: trigger
-    assert t["state"] == "trigger_pending" and t["stop"] == 105.2
-    t = cp.step(t, v, _bar("2026-11-03", 102.5, 106, 102, 105.5))   # enter 102.5, stop 105.2 hit
+    assert t["state"] == "trigger_pending" and t["stop"] == 105.2   # 105 + 0.1 ATR
+    t = cp.step(t, v, _bar("2026-11-03", 102.5, 106, 102, 105.5))   # enter 102.5; the stop 105.2 is hit on this bar
     assert t["state"] == "stopped" and t["exit"] == 105.2 and t["r"] == -1.0 and t["pct"] < 0
 
 
@@ -99,21 +116,29 @@ def test_waiting_plan_expires():
 
 
 def test_make_plan_and_lines():
-    b = _bars([100, 99, 96.5, 99, 100, 101, 100])
-    v = cp.make_plan(_card(), b, "CE")
-    assert v["sweep"]["level"] == 96.5 and v["sweep"]["target"]["level"] == 104.0
-    assert "breakout" not in v                                       # D weak 104 is 2 ATR away: no breakout plan
+    b = _bars([100, 99, 98, 99, 100, 101, 100])
+    c = _card(structure=dict(D=dict(protected=dict(px=96.0), weak=dict(px=100.8)), W=dict(weak=dict(px=104.0))))
+    v = cp.make_plan(c, b, "CE")
+    # the target is measured from the call's price: D weak 100.8 (the call day's high, 0.4 ATR) is too close
+    assert v["sweep"]["level"] == 96.0 and v["sweep"]["target"]["level"] == 104.0
+    assert "breakout" not in v                                       # no breakout track since 2026-11-15
     lines = cp.plan_lines("TEST", "CE", 100.0, v, "2026-11-13")
-    assert "don't chase" in lines[0] and "sweep: 96.5" in lines[1] and "target 104" in lines[1]
+    assert "don't chase" in lines[0] and "sweep: 96" in lines[1] and "target 104" in lines[1]
     assert "Paper plan, not an order." in lines[-1]
     assert cp.make_plan({"error": "x"}, b, "CE")["error"] == "x"
 
 
-def test_breakout_plan_only_right_under_a_level():
+def test_breakout_level_helper_only_right_under_a_level():
     b = _bars([100, 99, 96.5, 99, 100, 101, 100])
     c = _card(structure=dict(D=dict(protected=dict(px=90.0), weak=dict(px=100.8)), W=dict(protected=dict(px=110.0))))
-    v = cp.make_plan(c, b, "CE")
-    assert v["breakout"]["level"] >= 100.8 and v["breakout"]["stop_ref"] == 100.0
+    assert cp.breakout_level(c, b, "CE")["level"] >= 100.8
+
+
+def test_no_target_no_entry():
+    v = dict(atr=2.0, sweep=dict(level=96.5, kinds=["x"], atr_away=1.75, target=None))
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, v, _bar("2026-11-02", 97, 98, 95.0, 97.0), nxt=_bar("2026-11-03", 97.5, 98, 97, 97.5))
+    assert t["state"] == "skipped" and t["events"][-1]["what"] == "no target: no entry"
 
 
 def test_no_entry_when_target_under_one_r_at_the_open():
@@ -133,9 +158,8 @@ def test_daily_zone_near_edge_is_the_target_far_edge_never_a_sweep():
     # RELIANCE 2026-11-13 shape: a daily bear OB just above the price caps the call before D weak
     c = _card(zones_d=dict(above=[_dz("bear_ob", 102.5, 103.5)], below=[_dz("bull_fvg", 93.0, 98.5)], inside=[]))
     assert cp.target(c, "CE", entry_ref=100.0) == dict(level=102.5, kind="D bear OB 102.5-103.5")
-    sw = cp.sweep_level(c, _bars([100, 99, 99.5, 99, 100, 101, 100]), "CE")
-    assert not any(k.startswith("far edge") for k in sw["kinds"])        # 93 is a target, never a sweep level
-    assert "D bull FVG 93-98.5" in sw["kinds"]
+    # a daily FVG is not structural liquidity (2026-11-15): no sweep level from it
+    assert cp.sweep_level(c, _bars([100, 99, 99.5, 99, 100, 101, 100]), "CE") is None
 
 
 def test_breakout_close_must_clear_the_daily_zone():

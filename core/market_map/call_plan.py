@@ -3,13 +3,20 @@
 The screener picks the stock and the side. The map picks the entry and the exit:
 
   - no chase at the call's close;
-  - SWEEP plan: wait for price to trade through the nearest liquidity on the trade's side
-    (equal or minor swing lows, a CPR edge, the D/W protected level, a zone edge), then a
-    daily close back across it; enter at the next open, stop beyond the sweep's extreme;
-  - BREAKOUT plan (only when the call sits right under an opposing level): a daily close
-    beyond that level; enter at the next open, stop beyond the last 3 sessions' extreme;
-  - target: the nearest opposing level at least 1 ATR(D) away; no entry if, at the next open,
-    the target is less than 1R away (added 2026-11-14 after the replay: ZYDUSLIFE 8 pts vs 32 risk);
+  - SWEEP plan: wait for price to trade through the nearest STRUCTURAL liquidity on the
+    trade's side (a D/W/M protected level, the card's liquidity pools, equal minor swing
+    lows/highs, the edge of a strong or protected HTF zone), then a daily close back across
+    it; enter at the next open, stop just beyond the sweep's extreme (0.1 ATR);
+  - target: the nearest opposing level at least 1 ATR(D) from the CALL's price; no target,
+    no entry; no entry if, at the next open, the target is less than 1R away;
+  - 2026-11-15 (user: the code must follow lesson 9; replay of the 8 Darvas paper picks): the
+    nearest-pool rule swept small daily FVGs, CPR lines and W weak highs (GLAND 3019 instead
+    of D protected 2841.1); those no longer count on their own. A sweep can come in
+    stages (GLAND poked 2841.1 by 1.5 points on 21 Oct before the 2769.8 flush) and the stop
+    under the first poke is then hit; a 1 ATR stop was tried and every entry failed R:R >= 1,
+    so the stop stays just under the sweep low, as lesson 9 says. Targets measured from the sweep level made the call day's own high the
+    target on 6 of 8 picks. The BREAKOUT plan is gone: a breakout entry is the Darvas entry
+    (breakout_level stays as a helper). Plans wait 20 sessions: HTF levels take weeks;
   - daily zones (2026-11-14, user: RELIANCE ran into the daily bear OB 1357-1371, SBIN into
     1075.7-1124.5, neither on the HTF card): their near edges are sweep levels and targets,
     their far edges targets only, and a breakout close must clear every daily zone its level
@@ -36,9 +43,10 @@ MAX_ATR = 4.0            # beyond this the plan would wait for a different trade
 CLUSTER_ATR = 0.5        # levels this close together are one pool; the sweep must clear all of them
 BREAKOUT_ATR = 0.6       # a call this close under an opposing level gets a breakout plan too
 TARGET_MIN_ATR = 1.0     # a target nearer than this is not worth the trade
-STOP_BUFFER_ATR = 0.1
+STOP_BUFFER_ATR = 0.1    # just under the sweep low (lesson 9); 1 ATR was tried 2026-11-15: every entry failed R:R >= 1
+EQL_ATR = 0.25           # two minor swing lows (highs) this close together are equal lows (highs)
 SWING_LOOKBACK = 25      # sessions of daily bars searched for minor swing highs/lows
-EXPIRY = 10              # sessions a plan waits for its trigger
+EXPIRY = 20              # sessions a plan waits for its trigger (2026-11-15: was 10)
 RECLAIM_SESSIONS = 3     # sessions after a sweep to close back across the level
 MAX_HOLD = 15            # sessions in the trade before a time exit at the close
 MIN_RR = 1.0             # at the entry open, the target must be at least this many R away
@@ -103,15 +111,49 @@ def _d_zone_levels(c: dict, where: str) -> list[tuple[float, str]]:
     return out
 
 
+_STRUCTURAL = ("protected", "multi-touch", "EQ", "equal")
+
+
+def structural_levels(c: dict, bars: pd.DataFrame, side: str) -> list[tuple[float, str]]:
+    """Structural liquidity on the trade's side of the price (lesson 9): D/W/M protected
+    levels, the card's liquidity pools, the near edge of a strong or protected HTF zone, the
+    far edge of a strong zone the price sits in, and equal minor swing lows (highs)."""
+    px, atr, sg = c["price"], c.get("atr_d") or 0.0, _sg(side)
+    where = "below" if sg == 1 else "above"
+    out: list[tuple[float, str]] = []
+    for tf in ("D", "W", "M"):
+        v = ((c.get("structure") or {}).get(tf) or {}).get("protected") or {}
+        if v.get("px") is not None:
+            out.append((float(v["px"]), f"{tf} protected"))
+    for x in (c.get("liquidity") or {}).get(where, []):
+        out.append((float(x["px"]), x.get("kind") or "liquidity"))
+    zs = c.get("zones") or {}
+    for z in zs.get(where, []):
+        why = str(z.get("why", ""))
+        # the zone's own type only: "W bull FVG ...; W multi-touch x4" is an FVG with a multi-touch
+        # level inside it (COFORGE 2026-11-06); the multi-touch level is its own point zone
+        if z.get("strong") or any(k in why.split(";")[0] for k in _STRUCTURAL):
+            out.append((float(z["hi"] if sg == 1 else z["lo"]),
+                        ("STRONG " if z.get("strong") else "") + why.split(";")[0][:40]))
+    for z in zs.get("inside", []):
+        if z.get("strong"):
+            out.append((float(z["lo"] if sg == 1 else z["hi"]),
+                        "edge of STRONG " + str(z.get("why", "")).split(";")[0][:34]))
+    sw = sorted(p for p, _ in swing_points(bars, side))
+    for a, b in zip(sw, sw[1:]):
+        if atr and b - a <= EQL_ATR * atr:
+            out.append((a if sg == 1 else b, "D equal " + ("lows" if sg == 1 else "highs")))
+    return [(p, k) for p, k in out if (p < px if sg == 1 else p > px)]
+
+
 def sweep_level(c: dict, bars: pd.DataFrame, side: str) -> Optional[dict]:
-    """The pool of liquidity on the trade's side: the nearest level 0.2-4 ATR away, extended
-    through every level within 0.5 ATR of the pool's far edge (the sweep must clear the pool)."""
+    """The structural liquidity on the trade's side: the nearest level 0.2-4 ATR away, extended
+    through every structural level within 0.5 ATR of the pool's far edge (the sweep must clear
+    the pool)."""
     px, atr, sg = c["price"], c.get("atr_d"), _sg(side)
     if not atr:
         return None
-    where = "below" if sg == 1 else "above"
-    cands = [(p, k) for p, k in _card_levels(c, where) if not k.startswith("far edge")] \
-        + [(p, k) for p, k in swing_points(bars, side) if (p < px) == (sg == 1)]
+    cands = structural_levels(c, bars, side)
     cands = sorted({(round(p, 2), k) for p, k in cands if MIN_ATR <= sg * (px - p) / atr <= MAX_ATR},
                    key=lambda x: sg * (px - x[0]))
     if not cands:
@@ -182,13 +224,8 @@ def make_plan(c: dict, bars: pd.DataFrame, side: str) -> dict:
         return out
     sw = sweep_level(c, bars, side)
     if sw:
-        out["sweep"] = dict(sw, target=target(c, side, sw["level"]))
-    bo = breakout_level(c, bars, side)
-    if bo:
-        last3 = bars.tail(3)
-        ref = float(last3["l"].min() if side == "CE" else last3["h"].max())
-        out["breakout"] = dict(bo, target=target(c, side, bo["level"]), stop_ref=ref)
-    return out
+        out["sweep"] = dict(sw, target=target(c, side))                  # >= 1 ATR from the call's price
+    return out                                                           # no breakout track (2026-11-15)
 
 
 # ─── walking a plan forward, one daily bar at a time ──────────────────────────
@@ -274,9 +311,11 @@ def open_trade(t: dict, nxt: dict) -> dict:
     day = str(nxt["date"])[:10]
     if sg * (e - t["stop"]) <= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened beyond the stop: no entry")); return t
-    if t.get("target") is not None and sg * (e - t["target"]) >= 0:
+    if t.get("target") is None:
+        t["state"] = "skipped"; t["events"].append(dict(date=day, what="no target: no entry")); return t
+    if sg * (e - t["target"]) >= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened at the target: no entry")); return t
-    if t.get("target") is not None and sg * (t["target"] - e) < MIN_RR * sg * (e - t["stop"]):
+    if sg * (t["target"] - e) < MIN_RR * sg * (e - t["stop"]):
         t["state"] = "skipped"
         t["events"].append(dict(date=day, what=f"R:R under {MIN_RR:g} at the open: no entry", entry=e,
                                 stop=t["stop"], target=t["target"]))
@@ -342,7 +381,7 @@ def plan_lines(sym: str, side: str, called_at: float, version: dict, expires: st
         lines.append(f"   breakout: daily close {across} {_p(bo['level'])} ({', '.join(bo['kinds'][:2])})"
                      + (f"; target {_p(t.get('level'))}" if t else ""))
     if not sw and not bo:
-        lines.append("   no level within 0.2-4 ATR: no map plan, the call stands alone")
+        lines.append("   no structural level within 0.2-4 ATR: no map plan, no entry")
     lines.append(f"   expires {expires} if nothing triggers. Paper plan, not an order.")
     return lines
 
