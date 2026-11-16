@@ -254,7 +254,9 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         v = cp.make_plan(card, upto, c["side"]) if upto is not None and len(upto) else dict(error=card.get("error"))
         v["as_of"] = c["date"]
         tracks = [cp.new_track("sweep", c["side"])] if v.get("sweep") else []
-        if upto is not None and len(upto):   # starter on a follow-through close (F&O too: 2026-11-16, user)
+        # starter on a follow-through close: Darvas only. Switched on for F&O 2026-11-16 and back off the
+        # same day: 2021-26, 79 F&O stocks, calls +0.06R (n 1403; 2024-26 -0.04R), puts -0.15R (n 327)
+        if c.get("src") == "Darvas" and upto is not None and len(upto):
             tracks.append(cp.confirm_track(c["side"], _bar(upto.iloc[-1])))
         state[c["key"]] = dict(call=c, versions=[v], tracks=tracks, through=c["date"])
         cards[c["key"]] = (card, c["date"])

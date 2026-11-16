@@ -52,9 +52,11 @@ A single minor swing low, a daily FVG, CPR lines and weak highs do **not** count
 
 Puts are the mirror image: a sweep above a high and a close back below it.
 
-## 4. Continuation starter (Darvas and F&O picks)
+## 4. Continuation starter (Darvas picks only, unproven)
 
-A breakout that never pulls back is the cost of this plan (DIVISLAB +16% in the Darvas sample). On the 194 F&O calls, 27 of the 39 picks the plan missed but a plain trade won were breakouts that never came back. So the starter, first built for Darvas picks, runs on F&O picks too (2026-11-16). On those 194 calls it made +0.46R on calls and −0.74R on puts, in a month when NIFTY rallied, so it sits under the NIFTY guard like the main entry. To keep a foot in:
+A breakout that never pulls back is the cost of this plan (DIVISLAB +16% in the Darvas sample). On the 194 F&O calls, 27 of the 39 picks the plan missed but a plain trade won were breakouts that never came back.
+
+The starter was switched on for F&O picks on 2026-11-16 and switched off the same day. On those 194 calls it made +0.46R on calls, but October was a rally. Over 2021–2026 on the same 79 F&O stocks it made +0.06R on calls (1,403 cases, −0.04R in 2024–26) and −0.15R on puts (327 cases). That is no edge before option costs. It stays on Darvas picks as a paper starter, scored separately, and counts as unproven. To keep a foot in:
 
 - **Trigger:** the session after the breakout closes **green and above the breakout day's close**.
 - **Entry:** a small starter at the next open.
