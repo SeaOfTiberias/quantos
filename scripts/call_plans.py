@@ -261,27 +261,75 @@ def write_all_pages(store: Store, root: Path = ROOT) -> int:
     return len(state)
 
 
+SPAN = cp.EXPIRY + cp.MAX_HOLD   # sessions after the call over which plan and as-sent are paired
+
+
+def _main(t: dict) -> bool:
+    return t["kind"] in cp.SWEEP_KINDS
+
+
+def pair(p: dict, a) -> dict:
+    """One pick, plan vs as sent over the same span: the call's close to the close SPAN sessions
+    later (or the last close, marked incomplete). Plan = the main (sweep) trades' % at their exit,
+    or marked at the span's end close if still open, 0 with no entry; starters reported apart."""
+    c = p["call"]
+    sg = 1 if c["side"] == "CE" else -1
+    after = a[a["date"] > c["date"]]
+    complete = len(after) >= SPAN
+    end = after.iloc[SPAN - 1] if complete else (after.iloc[-1] if len(after) else None)
+    if end is None:
+        return dict(complete=False, as_sent=0.0, plan=0.0, starter=None, entered=False)
+    end_c, end_d = float(end["c"]), end["date"].date().isoformat()
+
+    def pct(t):
+        if t.get("entry") is None or t.get("entry_date", "9") > end_d:
+            return None
+        if t.get("exit") is not None and t.get("exit_date", "9") <= end_d:
+            return t["pct"]
+        return round(sg * (end_c / t["entry"] - 1) * 100, 2)
+    mains = [x for x in (pct(t) for t in p["tracks"] if _main(t)) if x is not None]
+    st = [x for x in (pct(t) for t in p["tracks"] if t["kind"] == "confirm") if x is not None]
+    return dict(complete=complete, as_sent=round(sg * (end_c / c["spot"] - 1) * 100, 2),
+                plan=round(sum(mains), 2), starter=(round(sum(st), 2) if st else None), entered=bool(mains))
+
+
 def report(store: Store, root: Path = ROOT) -> str:
     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-    bars, rows = Bars(store), []
+    bars, rows, pairs = Bars(store), [], []
     for key, p in sorted(state.items()):
         c = p["call"]
         a = bars.adj(c["sym"])[0]
         lc = float(a["c"].iat[-1])
-        sg = 1 if c["side"] == "CE" else -1
-        as_sent = round(sg * (lc / c["spot"] - 1) * 100, 2)
+        pairs.append(dict(pair(p, a), src=c.get("src", "F&O")))
         for t in p["tracks"] or [dict(kind="-", state="no plan")]:
             m = cp.mark(t, lc) if t.get("state") == "triggered" else {}
-            rows.append(dict(key=key, src=c.get("src", "F&O"), kind=t["kind"], state=t["state"], r=t.get("r", m.get("r")),
-                             pct=t.get("pct", m.get("pct")), as_sent=as_sent))
-    lines = [f"{r['key']:32s} {r['kind']:9s} {r['state']:16s} R {r['r']!s:>6} plan% {r['pct']!s:>6}  as-sent% {r['as_sent']}"
-             for r in rows]
+            rows.append(dict(key=key, src=c.get("src", "F&O"), kind=t["kind"], state=t["state"],
+                             closed=t.get("r") is not None, r=t.get("r", m.get("r")), pct=t.get("pct", m.get("pct")),
+                             level=((t.get("kinds") or ["?"])[0].split(" ")[0] + " " + " ".join((t.get("kinds") or ["?"])[0].split(" ")[1:2])).strip()))
+    lines = [f"{r['key']:32s} {r['kind']:9s} {r['state']:16s} R {r['r']!s:>6} plan% {r['pct']!s:>6}" for r in rows]
     for src in sorted({r["src"] for r in rows}):
-        done = [r for r in rows if r["r"] is not None and r["src"] == src]
-        if done:
-            lines.append(f"\n{src}: {len(done)} entered: mean R {mean(r['r'] for r in done):.2f}, mean plan% "
-                         f"{mean(r['pct'] for r in done):.2f}; as sent on the same calls "
-                         f"{mean(r['as_sent'] for r in done):.2f}%")
+        lines.append(f"\n== {src}")
+        for name, kinds in (("main (sweep + re-sweep)", cp.SWEEP_KINDS), ("starter (confirm)", ("confirm",))):
+            closed = [r for r in rows if r["src"] == src and r["kind"] in kinds and r["closed"]]
+            open_ = [r for r in rows if r["src"] == src and r["kind"] in kinds and r["state"] == "triggered"]
+            if not closed and not open_:
+                continue
+            ex = {k: sum(r["state"] == k for r in closed) for k in ("target", "stopped", "time")}
+            lines.append(f"{name}: {len(closed)} closed, mean R {mean(r['r'] for r in closed):.2f} "
+                         f"(target {ex['target']}, stopped {ex['stopped']}, time {ex['time']})" if closed
+                         else f"{name}: 0 closed")
+            if open_:
+                lines.append(f"   {len(open_)} open, marked mean R {mean(r['r'] for r in open_):.2f}")
+            if kinds == cp.SWEEP_KINDS and closed:
+                for lv in sorted({r["level"] for r in closed}):
+                    g = [r["r"] for r in closed if r["level"] == lv]
+                    lines.append(f"   level {lv:18s} {len(g):3d} closed, mean R {mean(g):.2f}")
+        for done, label in ((True, f"complete {SPAN}-session span"), (False, "span not complete yet")):
+            g = [x for x in pairs if x["src"] == src and x["complete"] == done]
+            if g:
+                lines.append(f"paired, every pick ({label}): {len(g)} picks, {sum(x['entered'] for x in g)} entered; "
+                             f"plan mean {mean(x['plan'] for x in g):.2f}% vs as sent {mean(x['as_sent'] for x in g):.2f}%; "
+                             f"plan beat as-sent on {sum(x['plan'] > x['as_sent'] for x in g)}")
     return "\n".join(lines)
 
 

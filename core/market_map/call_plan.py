@@ -186,7 +186,8 @@ def sweep_level(c: dict, bars: pd.DataFrame, side: str) -> Optional[dict]:
         else:
             break
     lvl = pool[-1][0]
-    return dict(level=lvl, kinds=sorted({k for _, k in pool}), atr_away=round(sg * (px - lvl) / atr, 2))
+    return dict(level=lvl, kinds=sorted({k for _, k in pool}), atr_away=round(sg * (px - lvl) / atr, 2),
+                level_kinds=sorted({k for p, k in pool if p == lvl}))
 
 
 def target(c: dict, side: str, entry_ref: Optional[float] = None) -> Optional[dict]:
@@ -269,14 +270,15 @@ def re_sweep(t: dict) -> Optional[dict]:
     if t.get("kind") != "sweep" or t.get("level") is None:
         return None
     last = (t["events"] or [{}])[-1].get("what", "")
+    tgt = None if t.get("target_2r") else t.get("target")              # a 2R target belongs to its entry
     if t["state"] == "stopped":
         # the stop-out took out the sweep low: that bar is the new sweep; wait for a reclaim
-        return new_track("re-sweep", t["side"], state="swept", level=t["level"], target=t.get("target"),
-                         extreme=float(t["exit"]), since_sweep=0)
+        return new_track("re-sweep", t["side"], state="swept", level=t["level"], target=tgt, kinds=t.get("kinds"),
+                         atr=t.get("atr"), extreme=float(t["exit"]), since_sweep=-1)
     if t["state"] == "skipped" and ("R:R" in last or "beyond the stop" in last):
         # a fresh sweep must trade beyond the first sweep's extreme
-        return new_track("re-sweep", t["side"], level=t["level"], target=t.get("target"),
-                         beyond=t.get("extreme"))
+        return new_track("re-sweep", t["side"], level=t["level"], target=tgt, kinds=t.get("kinds"),
+                         atr=t.get("atr"), beyond=t.get("extreme"))
     return None
 
 
@@ -290,7 +292,9 @@ def step(tr: dict, version: dict, bar: dict, nxt: Optional[dict] = None) -> dict
     before `bar`. States: waiting -> swept -> trigger_pending -> triggered -> stopped | target |
     time; or lapsed / broke / skipped. Returns a new dict."""
     t = dict(tr, events=list(tr["events"]))
-    sg, atr = _sg(t["side"]), version.get("atr") or 0.0
+    if version.get("atr"):
+        t["atr"] = version["atr"]
+    sg, atr = _sg(t["side"]), t.get("atr") or 0.0          # an errored evening keeps the last ATR
     day = str(bar["date"])[:10]
 
     def ev(what: str, **kw):
@@ -323,10 +327,11 @@ def step(tr: dict, version: dict, bar: dict, nxt: Optional[dict] = None) -> dict
             if t["waited"] >= EXPIRY:
                 t["state"] = "lapsed"; ev("expired: no plan level")
             return t
-        t.update(level=plan["level"], target=(plan.get("target") or {}).get("level"))
+        t.update(level=plan["level"], target=(plan.get("target") or {}).get("level"), kinds=plan.get("kinds"))
     elif t["kind"] == "sweep" and t["state"] == "waiting" and t.get("beyond") is None:
         plan = version.get("sweep") or {}                               # structure trails: a newer
-        if plan.get("level") is not None and sg * (plan["level"] - t["level"]) > 0                 and any("protected" in k for k in plan.get("kinds", [])):
+        if plan.get("level") is not None and sg * (plan["level"] - t["level"]) > 0 \
+                and any(k.split()[0] in ("D", "W", "M") and "protected" in k for k in plan.get("level_kinds", [])):
             t["level"] = plan["level"]                                  # protected, toward price only
     t["waited"] += 1
     if t["kind"] in SWEEP_KINDS:
@@ -378,7 +383,7 @@ def open_trade(t: dict, nxt: dict) -> dict:
     if sg * (e - t["stop"]) <= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened beyond the stop: no entry")); return t
     if t.get("target") is None:                                         # nothing overhead: 2R
-        t["target"] = round(e + sg * NO_LEVEL_TARGET_R * sg * (e - t["stop"]), 2)
+        t["target"], t["target_2r"] = round(e + sg * NO_LEVEL_TARGET_R * sg * (e - t["stop"]), 2), True
         t["events"].append(dict(date=day, what=f"no opposing level: target {NO_LEVEL_TARGET_R:g}R", target=t["target"]))
     if sg * (e - t["target"]) >= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened at the target: no entry")); return t

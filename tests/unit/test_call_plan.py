@@ -200,13 +200,13 @@ def test_sweep_needs_a_quarter_atr_through_the_level():
 def test_a_newer_protected_level_moves_the_plan_a_zone_edge_does_not():
     t = cp.new_track("sweep", "CE")
     t = cp.step(t, _version(level=96.5), _bar("2026-11-02", 100, 101, 99, 100))
-    zone = dict(_version(level=99.0), sweep=dict(level=99.0, kinds=["STRONG W bull OB 97-99"]))
+    zone = dict(_version(level=99.0), sweep=dict(level=99.0, kinds=["STRONG W bull OB 97-99"], level_kinds=["STRONG W bull OB 97-99"]))
     t = cp.step(t, zone, _bar("2026-11-03", 100, 101, 99.5, 100))
     assert t["level"] == 96.5                                                       # GLAND: not the OB
-    prot = dict(_version(level=98.0), sweep=dict(level=98.0, kinds=["D protected"]))
+    prot = dict(_version(level=98.0), sweep=dict(level=98.0, kinds=["D protected"], level_kinds=["D protected"]))
     t = cp.step(t, prot, _bar("2026-11-04", 100, 101, 99.5, 100))
     assert t["level"] == 98.0                                                       # ZYDUSLIFE: the new D protected
-    lower = dict(_version(level=95.0), sweep=dict(level=95.0, kinds=["D protected"]))
+    lower = dict(_version(level=95.0), sweep=dict(level=95.0, kinds=["D protected"], level_kinds=["D protected"]))
     t = cp.step(t, lower, _bar("2026-11-05", 100, 101, 99.5, 100))
     assert t["level"] == 98.0                                                       # never away from price
 
@@ -240,3 +240,37 @@ def test_darvas_confirm_starter():
     assert weak["state"] == "unconfirmed"
     ok = cp.step(t, v, _bar("2026-10-08", 102, 104, 101, 103.5), nxt=_bar("2026-10-09", 103.6, 104, 103, 104))
     assert ok["state"] == "triggered" and ok["stop"] == 99.3 and ok["target"] == 108.0
+
+
+# ─── 2026-11-16: Fable's review fixes ──────────────────────────────────────────────────────────
+
+
+def test_trail_needs_the_level_itself_protected():
+    # bug 3: a pool of D protected 99 and a STRONG OB edge 98.2 has its far edge on the OB: no move
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, _version(level=96.5), _bar("2026-11-02", 100, 101, 99.5, 100))
+    pool = dict(_version(level=98.2), sweep=dict(level=98.2, kinds=["D protected", "edge of STRONG W bull OB"],
+                                                level_kinds=["edge of STRONG W bull OB"]))
+    t = cp.step(t, pool, _bar("2026-11-03", 100, 101, 99.5, 100))
+    assert t["level"] == 96.5
+
+
+def test_an_errored_evening_keeps_the_last_atr():
+    # bug 2: a version with no ATR must not turn a 0.1-point poke into a sweep
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, _version(), _bar("2026-11-02", 100, 101, 99.5, 100))
+    t = cp.step(t, dict(error="card failed"), _bar("2026-11-03", 97, 98, 96.4, 97))
+    assert t["state"] == "waiting" and t["atr"] == 2.0
+
+
+def test_re_sweep_recomputes_a_2r_target_and_gets_the_full_window():
+    v = dict(atr=2.0, sweep=dict(level=96.5, kinds=["x"], atr_away=1.75, target=None))
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, v, _bar("2026-11-02", 97, 98, 95.0, 97.0), nxt=_bar("2026-11-03", 97.5, 98, 97, 97.5))
+    assert t["target_2r"] and t["target"] == 102.9
+    t = cp.step(t, v, _bar("2026-11-04", 97, 97.5, 94.0, 95.0))                     # stopped at 94.8
+    r = cp.re_sweep(t)
+    assert t["state"] == "stopped" and r["target"] is None                          # bug 1
+    for d in ("2026-11-04", "2026-11-05", "2026-11-06", "2026-11-09"):              # stop bar + 3 sessions
+        r = cp.step(r, v, _bar(d, 95, 96, 94.5, 95.5))
+    assert r["state"] == "broke" and r["since_sweep"] == 3                          # bug 4

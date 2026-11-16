@@ -36,13 +36,17 @@ A single minor swing low, a daily FVG, CPR lines and weak highs do **not** count
 4. **Entry** at the next session's open.
 5. **Stop** 0.1 ATR below the lowest low since the sweep.
 6. **Target**:
-   - the nearest opposing level (supply, protected high, strong zone) at least **1 ATR** above the pick-day price;
+   - the nearest level of any kind on the card at least **1 ATR** above the price on the evening the level locked (usually the pick day). Any kind means: a supply zone edge, a protected or weak high, a W/M CPR line, or a daily zone edge. Weak highs and CPR lines don't count as sweep levels but do count as targets;
    - if there is none overhead (a breakout at highs), **2R** from the entry.
 7. **No trade if:**
    - at the entry open the target is less than **1R** away;
    - the open is already beyond the stop or at the target;
    - the target was reached before any sweep (the move ran without us).
-8. **One re-try.** After a stop, or a skip at the open, the same level gets one more sweep-and-reclaim.
+8. **One re-try.** After a stop, or a skip at the open (R:R, or opened beyond the stop), the same level gets one more go, with a fresh 20-session wait:
+   - **after a stop**, the stop-out bar counts as the new sweep, and the 3-session reclaim window starts there;
+   - **after a skip**, the new sweep must trade beyond the first sweep's low.
+
+   A 2R target is recomputed for the new entry.
 9. **Waiting and holding.** The plan waits up to **20 sessions** for a sweep. After entry it holds at most **15 sessions**, then exits at the close.
 
 Puts are the mirror image: a sweep above a high and a close back below it.
@@ -65,12 +69,25 @@ If there is no follow-through, there is no starter. The main size comes only fro
   - No entry: CYIENT (the level broke) and PTCIL (never swept). The other three are still waiting.
   - Starters: −1R, −1R, +3.07R, and two still open.
   - **The rules in section 3 were adjusted on these same 8 picks** to match a human chart read. This shows the code reads charts the way the human does. It is not evidence of an edge.
-- **194 F&O calls, 9 Oct–13 Nov**, which these rules were never adjusted on: *replay running, result to be added here.* The previous version of the rules entered 47 of them, at a mean of −0.29R.
+- **194 F&O calls, 9 Oct–13 Nov**, which these rules were never adjusted on: *replay running, result to be added here.* The previous version of the rules entered 47 of them (46 in commit c0e2213's note; the replay log says 47), at a mean of −0.29R.
 - **Project history:** about 20 strategy candidates tested since July 2026, most failed. The map's older 100-day zones failed a placebo test. The current higher-timeframe map is untested as a predictor.
 
 ## 6. How it will be judged
 
-Paper only. Every plan and event is journalled before the outcome. The plan gets no real capital before at least 20 closed sweep trades, scored in R against the picks as sent (entered at the pick-day close). Starters are scored separately.
+**The constants are frozen at commit d06b88d, plus the review fixes, until the forward sample closes.** These are the 0.25 ATR sweep depth, the 3-session reclaim, the 0.1 ATR stop, the 1 ATR minimum target, 1R minimum, 2R with nothing overhead, a 20-session wait and a 15-session hold.
+
+
+Paper only. Every plan and event is journalled before the outcome.
+
+The report scores four things:
+- main sweep trades and starters separately;
+- closed trades separately from open ones;
+- exits by type (target, stop, time) and entries by level type;
+- **every pick, paired**: the plan's result (0 if it never entered) against the pick as sent, from the pick-day close over the same 35 sessions (20-session wait plus 15-session hold).
+
+The paired number decides. If the plan's entries average at or below 0R, and the plan's total doesn't beat the picks as sent, the plan stays a reading aid and we stop tuning it.
+
+Twenty closed trades only catches a disaster: at about ±0.4R on the mean, it can't show an edge.
 
 ## Questions for reviewers
 
