@@ -127,6 +127,7 @@ export const CSS = `
 .q-banner { border-radius: 12px; padding: 12px 16px; font-size: 13px; border: 1px solid; }
 .q-banner.amber { color: #F8C471; border-color: rgba(245,165,36,.35); background: rgba(245,165,36,.07); }
 .q-banner.red { color: #FCA5A5; border-color: rgba(240,82,82,.45); background: rgba(240,82,82,.09); }
+.q-banner.blue { color: #A5C8FF; border-color: rgba(110,168,254,.35); background: rgba(110,168,254,.07); }
 .q-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: ${T.surface}; border: 1px solid ${T.border}; }
 .q-tabs button { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 8px; border: none;
   background: transparent; color: ${T.muted}; cursor: pointer; }

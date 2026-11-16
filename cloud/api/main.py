@@ -62,6 +62,7 @@ from cloud.api.ideas_routes import router as ideas_router
 from cloud.api.fyers_auth_routes import router as fyers_auth_router
 from cloud.api.map_routes import router as map_router
 from cloud.api.plans_routes import router as plans_router
+from cloud.api.release_routes import router as release_router
 from cloud.api.screen_snapshot_routes import router as screen_snapshot_router
 from cloud.api import metrics
 from core import prompts
@@ -109,6 +110,7 @@ app.include_router(ideas_router)
 app.include_router(fyers_auth_router)
 app.include_router(map_router)
 app.include_router(plans_router)
+app.include_router(release_router)
 app.include_router(screen_snapshot_router)
 
 app.add_middleware(
