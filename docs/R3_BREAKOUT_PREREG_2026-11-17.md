@@ -62,3 +62,28 @@ Longs only:
 ### E. If a side passes
 
 It still goes through the call-plan replay (the signal is the pick, and the map gives the entry) before it becomes a pick source.
+
+## Result (run 2026-11-17, `scripts/research/r3_breakout_test.py`): FAIL, both sides
+
+| Side | n | Mean R | 2021–23 | 2024–26 | 10-session excess after costs (2021–23 / 2024–26) |
+|---|---|---|---|---|---|
+| Long (close > R3) | 5719 | +0.11 | +0.18 | +0.02 | +0.14% / −0.07% |
+| Short (close < S3) | 4056 | −0.09 | −0.15 | −0.05 | −0.10% / −0.37% |
+
+The long side misses the +0.20R bar overall and fails the second half on both measures. The short side loses throughout.
+
+### Context (reported, not scored)
+
+- **Longs with NIFTY above its 50-day mean:** +0.14R, +0.18% excess. With NIFTY below it: +0.01R, −0.36%.
+- **Entered at the signal close instead of the next open:**
+
+  | Period | Mean R |
+  |---|---|
+  | Overall | +0.20 |
+  | 2021–23 | +0.28 |
+  | 2024–26 | +0.10 |
+
+  This entry fades in the second half too.
+- **Earlier than Darvas:** 44% of long signals are already a 55-day closing high. Of the other 3,176, 47% make one within 20 sessions: a median of 6 sessions later, at a median of 4.9% above the signal close. So the screen is earlier when a breakout follows, but half the time none follows.
+
+Not re-tuned. Close-entry and the NIFTY-up subset are recorded as leads only. Neither clears the bar in 2024–26.
