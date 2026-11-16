@@ -254,7 +254,7 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         v = cp.make_plan(card, upto, c["side"]) if upto is not None and len(upto) else dict(error=card.get("error"))
         v["as_of"] = c["date"]
         tracks = [cp.new_track("sweep", c["side"])] if v.get("sweep") else []
-        if c.get("src") == "Darvas" and upto is not None and len(upto):   # starter on a follow-through close
+        if upto is not None and len(upto):   # starter on a follow-through close (F&O too: 2026-11-16, user)
             tracks.append(cp.confirm_track(c["side"], _bar(upto.iloc[-1])))
         state[c["key"]] = dict(call=c, versions=[v], tracks=tracks, through=c["date"])
         cards[c["key"]] = (card, c["date"])

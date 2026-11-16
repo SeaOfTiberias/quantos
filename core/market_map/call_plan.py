@@ -42,7 +42,9 @@ The screener picks the stock and the side. The map picks the entry and the exit:
       it, so the rule only acts live);
     * one RE-SWEEP: after a stop, or an entry skipped at the open, the same level gets one more
       try (ZYDUSLIFE: the 22 Oct sweep failed R:R, the deeper 26 Oct sweep was the trade);
-    * CONFIRM (Darvas breakouts only): the session after the breakout must close green and
+    * CONFIRM (Darvas breakouts; F&O calls too since 2026-11-16: 27 of 39 missed winners ran
+      without a pullback; on the 194 calls the starter made +0.46R on calls, -0.74R on puts in a
+      rising month, so it sits under the NIFTY guard): the session after the breakout must close green and
       beyond the breakout close (GLAND 8 Oct closed red and below 7 Oct; value moved down on
       the 15-min profile); then a STARTER enters at the next open, stop beyond the two
       sessions' extreme. No confirmation, no starter: the sweep plan is the entry.
@@ -275,7 +277,7 @@ def new_track(kind: str, side: str, **kw) -> dict:
 
 
 def confirm_track(side: str, call_bar: dict) -> dict:
-    """The Darvas starter: waits one session for a green close beyond the breakout's close."""
+    """The starter (Darvas and F&O picks): waits one session for a close beyond the pick's close."""
     return new_track("confirm", side, ref_close=float(call_bar["c"]),
                      ref_ext=float(call_bar["l"] if _sg(side) == 1 else call_bar["h"]))
 
