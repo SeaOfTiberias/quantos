@@ -35,6 +35,11 @@ The screener picks the stock and the side. The map picks the entry and the exit:
       the same day: it entered GLAND on the 1.5-point poke and was stopped;
     * no opposing level at least 1 ATR away (a breakout at highs): the target is
       NO_LEVEL_TARGET_R from the entry, not "no entry";
+    * results (2026-11-16, review by a second model): no entry when the company's results are
+      due within RESULTS_BLACKOUT sessions of the entry day, and an open trade exits at the close
+      of the session before results (a results gap jumps any stop). The date comes from NSE's
+      board-meetings feed (t["next_results"], set by the nightly job; replays have no history of
+      it, so the rule only acts live);
     * one RE-SWEEP: after a stop, or an entry skipped at the open, the same level gets one more
       try (ZYDUSLIFE: the 22 Oct sweep failed R:R, the deeper 26 Oct sweep was the trade);
     * CONFIRM (Darvas breakouts only): the session after the breakout must close green and
@@ -69,6 +74,17 @@ RECLAIM_SESSIONS = 3     # sessions after a sweep to close back across the level
 RECLAIM_ATR = 0.0        # the reclaim close only has to be back across the level
 SWEEP_DEPTH_ATR = 0.25   # a sweep trades at least this far through the level (2026-11-16)
 NO_LEVEL_TARGET_R = 2.0  # target when no opposing level is >= 1 ATR away (2026-11-16)
+RESULTS_BLACKOUT = 5     # no entry with results due within this many sessions (2026-11-16)
+
+
+def _sessions_until(day: str, d: str) -> int:
+    """Weekdays after `day` up to and including `d` (holidays ignored)."""
+    from datetime import date, timedelta
+    x, end, n = date.fromisoformat(day[:10]), date.fromisoformat(d[:10]), 0
+    while x < end:
+        x += timedelta(days=1)
+        n += x.weekday() < 5
+    return n
 MAX_HOLD = 15            # sessions in the trade before a time exit at the close
 MIN_RR = 1.0             # at the entry open, the target must be at least this many R away
 
@@ -380,6 +396,9 @@ def open_trade(t: dict, nxt: dict) -> dict:
     sg = _sg(t["side"])
     e = float(nxt["o"])
     day = str(nxt["date"])[:10]
+    res = t.get("next_results")
+    if res and res >= day and _sessions_until(day, res) <= RESULTS_BLACKOUT:
+        t["state"] = "skipped"; t["events"].append(dict(date=day, what=f"results on {res}: no entry")); return t
     if sg * (e - t["stop"]) <= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened beyond the stop: no entry")); return t
     if t.get("target") is None:                                         # nothing overhead: 2R
@@ -407,6 +426,9 @@ def _manage(t: dict, bar: dict, day: str) -> dict:
         return _exit(t, "target", max(bar["o"], tgt) if sg == 1 else min(bar["o"], tgt), day)
     if t["held"] >= MAX_HOLD:
         return _exit(t, "time", bar["c"], day)
+    res = t.get("next_results")
+    if res and res > day and _sessions_until(day, res) <= 1:
+        return _exit(t, "results", bar["c"], day)
     return t
 
 

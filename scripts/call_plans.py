@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from core.ideas import events as results_cal  # noqa: E402
 from core.market_map import call_plan as cp  # noqa: E402
 from core.market_map import card as cd  # noqa: E402
 from core.market_map import structure  # noqa: E402
@@ -154,10 +155,13 @@ def write_page(root: Path, key: str, p: dict, bars: "Bars", last: str, card: dic
 
 
 def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
-        last: str | None = None, darvas_path: Path | None = DARVAS) -> tuple[list[str], list[str]]:
+        last: str | None = None, darvas_path: Path | None = DARVAS,
+        results_path: Path | None = results_cal.DEFAULT_PATH) -> tuple[list[str], list[str]]:
     """One evening (`last`: the session it runs after; default the store's last session).
+    `results_path`: NSE's upcoming-results calendar (None in replays: there is no history of it).
     Returns (new-plan lines, event lines)."""
     root.mkdir(parents=True, exist_ok=True)
+    cal = results_cal.load(results_path) if results_path and results_path.exists() else {}
     state_p, journal_p = root / "state.json", root / "journal.jsonl"
     state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {}
     last = last or store.last_session().isoformat()
@@ -195,6 +199,10 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         if a is None or a.empty:
             continue
         new = a[(a["date"] > p["through"]) & (a["date"] <= last)]
+        if cal.get("results"):                                             # tonight's results date
+            nr = results_cal.next_results(cal, p["call"]["sym"], date.fromisoformat(p["through"]))
+            for t in p["tracks"]:
+                t["next_results"] = nr.isoformat() if nr else None
         for _, row in new.iterrows():
             b = _bar(row)
             for i, t in enumerate(p["tracks"]):
@@ -362,7 +370,7 @@ def main(argv=None) -> int:
         a2 = store.adjusted("NIFTYBEES" if "NIFTYBEES" in store.symbols() else store.symbols()[0])[0]
         days = [d.date().isoformat() for d in a2["date"] if a.replay_from <= d.date().isoformat() <= store.last_session().isoformat()]
         for d in days:
-            n, e = run(store, start, a.root, a.calls, last=d, darvas_path=a.darvas)
+            n, e = run(store, start, a.root, a.calls, last=d, darvas_path=a.darvas, results_path=None)
             print(f"== {d}: {sum(1 for x in n if x.startswith('🗺'))} new, {len(e)} events")
         print(report(store, a.root))
         return 0

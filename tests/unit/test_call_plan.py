@@ -274,3 +274,16 @@ def test_re_sweep_recomputes_a_2r_target_and_gets_the_full_window():
     for d in ("2026-11-04", "2026-11-05", "2026-11-06", "2026-11-09"):              # stop bar + 3 sessions
         r = cp.step(r, v, _bar(d, 95, 96, 94.5, 95.5))
     assert r["state"] == "broke" and r["since_sweep"] == 3                          # bug 4
+
+
+def test_results_blackout_and_exit_before_results():
+    t = cp.new_track("sweep", "CE", state="trigger_pending", level=96.5, target=104.0, stop=94.3,
+                     next_results="2026-11-09")
+    t = cp.open_trade(t, _bar("2026-11-03", 97.5, 98, 97, 97.5))                  # 4 sessions to results
+    assert t["state"] == "skipped" and "results on 2026-11-09" in t["events"][-1]["what"]
+    t = cp.new_track("sweep", "CE", state="trigger_pending", level=96.5, target=104.0, stop=94.3,
+                     next_results="2026-11-17")
+    t = cp.open_trade(t, _bar("2026-11-03", 97.5, 98, 97, 97.5))                  # 10 sessions away: enter
+    assert t["state"] == "triggered"
+    t = cp.step(t, _version(), _bar("2026-11-16", 98, 99, 97.8, 98.6))            # results tomorrow
+    assert t["state"] == "results" and t["exit"] == 98.6
