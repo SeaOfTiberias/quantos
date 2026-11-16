@@ -27,6 +27,7 @@ import traceback
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from statistics import mean
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -156,7 +157,7 @@ def write_page(root: Path, key: str, p: dict, bars: "Bars", last: str, card: dic
 
 def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         last: str | None = None, darvas_path: Path | None = DARVAS,
-        results_path: Path | None = results_cal.DEFAULT_PATH) -> tuple[list[str], list[str]]:
+        results_path: Path | None = results_cal.DEFAULT_PATH, pages: bool = True) -> tuple[list[str], list[str]]:
     """One evening (`last`: the session it runs after; default the store's last session).
     `results_path`: NSE's upcoming-results calendar (None in replays: there is no history of it).
     Returns (new-plan lines, event lines)."""
@@ -236,6 +237,8 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         for j in journal:
             f.write(json.dumps(j, default=str) + "\n")
     state_p.write_text(json.dumps(state, indent=1, default=str), encoding="utf-8")
+    if not pages:                                                          # replays: pages on the last night only
+        return new_lines, ev_lines
     for key in sorted(touched):                                            # pages last: a failure here
         p = state[key]                                                     # never loses the journal
         try:
@@ -301,6 +304,17 @@ def pair(p: dict, a) -> dict:
                 plan=round(sum(mains), 2), starter=(round(sum(st), 2) if st else None), entered=bool(mains))
 
 
+def _later_target(t: dict, a, side: str, sessions: int = cp.MAX_HOLD) -> Optional[bool]:
+    """A stopped trade: did price reach its target within `sessions` after the stop (the stop was
+    too tight) or not (the stop did its job)? None for anything else."""
+    if t.get("state") != "stopped" or t.get("target") is None:
+        return None
+    after = a[a["date"] > t["exit_date"]].head(sessions)
+    if after.empty:
+        return None
+    return bool(after["h"].max() >= t["target"]) if side == "CE" else bool(after["l"].min() <= t["target"])
+
+
 def report(store: Store, root: Path = ROOT) -> str:
     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
     bars, rows, pairs = Bars(store), [], []
@@ -313,6 +327,7 @@ def report(store: Store, root: Path = ROOT) -> str:
             m = cp.mark(t, lc) if t.get("state") == "triggered" else {}
             rows.append(dict(key=key, src=c.get("src", "F&O"), kind=t["kind"], state=t["state"],
                              closed=t.get("r") is not None, r=t.get("r", m.get("r")), pct=t.get("pct", m.get("pct")),
+                             later_target=_later_target(t, a, c["side"]),
                              level=((t.get("kinds") or ["?"])[0].split(" ")[0] + " " + " ".join((t.get("kinds") or ["?"])[0].split(" ")[1:2])).strip()))
     lines = [f"{r['key']:32s} {r['kind']:9s} {r['state']:16s} R {r['r']!s:>6} plan% {r['pct']!s:>6}" for r in rows]
     for src in sorted({r["src"] for r in rows}):
@@ -328,6 +343,10 @@ def report(store: Store, root: Path = ROOT) -> str:
                          else f"{name}: 0 closed")
             if open_:
                 lines.append(f"   {len(open_)} open, marked mean R {mean(r['r'] for r in open_):.2f}")
+            lt = [r["later_target"] for r in closed if r["later_target"] is not None]
+            if lt:
+                lines.append(f"   stopped, then the target within {cp.MAX_HOLD} sessions: {sum(lt)} of {len(lt)} "
+                             "(high = the stop is too tight)")
             if kinds == cp.SWEEP_KINDS and closed:
                 for lv in sorted({r["level"] for r in closed}):
                     g = [r["r"] for r in closed if r["level"] == lv]
@@ -370,7 +389,8 @@ def main(argv=None) -> int:
         a2 = store.adjusted("NIFTYBEES" if "NIFTYBEES" in store.symbols() else store.symbols()[0])[0]
         days = [d.date().isoformat() for d in a2["date"] if a.replay_from <= d.date().isoformat() <= store.last_session().isoformat()]
         for d in days:
-            n, e = run(store, start, a.root, a.calls, last=d, darvas_path=a.darvas, results_path=None)
+            n, e = run(store, start, a.root, a.calls, last=d, darvas_path=a.darvas, results_path=None,
+                       pages=(d == days[-1]))
             print(f"== {d}: {sum(1 for x in n if x.startswith('🗺'))} new, {len(e)} events")
         print(report(store, a.root))
         return 0

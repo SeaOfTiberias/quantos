@@ -61,7 +61,7 @@ A breakout that never pulls back is the cost of this plan (DIVISLAB +16% in our 
 - **Stop:** 0.1 ATR under the lower of the two sessions' lows.
 - **Target:** same rule as the main entry.
 
-If there is no follow-through, there is no starter. The main size comes only from the sweep entry. Starter size against main size is not yet set.
+If there is no follow-through, there is no starter. **The starter risks 25% of the main entry's risk** (if it is stopped, that costs 0.25 of a main-trade R). The main size comes only from the sweep entry. Starters are scored apart from main entries, so they don't muddy the test of the sweep entry.
 
 ## 5. Evidence so far (be skeptical of it)
 
