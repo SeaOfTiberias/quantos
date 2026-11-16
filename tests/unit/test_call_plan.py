@@ -134,11 +134,11 @@ def test_breakout_level_helper_only_right_under_a_level():
     assert cp.breakout_level(c, b, "CE")["level"] >= 100.8
 
 
-def test_no_target_no_entry():
+def test_no_opposing_level_target_is_2r():
     v = dict(atr=2.0, sweep=dict(level=96.5, kinds=["x"], atr_away=1.75, target=None))
     t = cp.new_track("sweep", "CE")
     t = cp.step(t, v, _bar("2026-11-02", 97, 98, 95.0, 97.0), nxt=_bar("2026-11-03", 97.5, 98, 97, 97.5))
-    assert t["state"] == "skipped" and t["events"][-1]["what"] == "no target: no entry"
+    assert t["state"] == "triggered" and t["stop"] == 94.8 and t["target"] == 97.5 + 2 * 2.7
 
 
 def test_no_entry_when_target_under_one_r_at_the_open():
@@ -172,3 +172,71 @@ def test_breakout_close_must_clear_the_daily_zone():
     # a daily zone stretching beyond MAX_ATR: no breakout plan
     c["zones_d"]["inside"] = [_dz("bear_ob", 99.0, 110.0)]
     assert cp.breakout_level(c, b, "CE") is None
+
+
+# ─── 2026-11-16: locked level, reclaim margin, one re-sweep, the Darvas confirm starter ───────
+
+
+def test_level_is_locked_at_the_first_plan():
+    # GLAND: a newer, nearer level in a later version never replaces the plan's level
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, _version(level=96.5), _bar("2026-11-02", 100, 101, 99, 100))
+    assert t["level"] == 96.5 and t["state"] == "waiting"
+    t = cp.step(t, _version(level=99.0), _bar("2026-11-03", 100, 101, 98.5, 100))   # trades below 99, not 96.5
+    assert t["state"] == "waiting" and t["level"] == 96.5
+
+
+def test_sweep_needs_a_quarter_atr_through_the_level():
+    # GLAND 21 Oct / CYIENT 6 Nov: a poke under the level is not a sweep (0.25 ATR = 0.5 here)
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, _version(), _bar("2026-11-02", 97, 98, 96.1, 97.0))             # 0.4 under: no
+    assert t["state"] == "waiting"
+    t = cp.step(t, _version(), _bar("2026-11-03", 97, 98, 95.9, 96.4))             # 0.6 under, closed below
+    assert t["state"] == "swept"
+    t = cp.step(t, _version(), _bar("2026-11-04", 96.4, 97.5, 96, 96.6))           # any close back above
+    assert t["state"] == "trigger_pending" and t["stop"] == 95.7
+
+
+def test_a_newer_protected_level_moves_the_plan_a_zone_edge_does_not():
+    t = cp.new_track("sweep", "CE")
+    t = cp.step(t, _version(level=96.5), _bar("2026-11-02", 100, 101, 99, 100))
+    zone = dict(_version(level=99.0), sweep=dict(level=99.0, kinds=["STRONG W bull OB 97-99"]))
+    t = cp.step(t, zone, _bar("2026-11-03", 100, 101, 99.5, 100))
+    assert t["level"] == 96.5                                                       # GLAND: not the OB
+    prot = dict(_version(level=98.0), sweep=dict(level=98.0, kinds=["D protected"]))
+    t = cp.step(t, prot, _bar("2026-11-04", 100, 101, 99.5, 100))
+    assert t["level"] == 98.0                                                       # ZYDUSLIFE: the new D protected
+    lower = dict(_version(level=95.0), sweep=dict(level=95.0, kinds=["D protected"]))
+    t = cp.step(t, lower, _bar("2026-11-05", 100, 101, 99.5, 100))
+    assert t["level"] == 98.0                                                       # never away from price
+
+
+def test_one_re_sweep_after_a_stop_or_an_rr_skip():
+    t = cp.new_track("sweep", "CE", state="triggered", level=96.5, target=104.0, entry=97.5, stop=94.3,
+                     risk=3.2, held=0)
+    t = cp.step(t, _version(), _bar("2026-11-04", 97, 97.5, 93.0, 96.0))
+    assert t["state"] == "stopped"
+    r = cp.re_sweep(t)
+    assert r["kind"] == "re-sweep" and r["state"] == "swept" and r["level"] == 96.5
+    r = cp.step(r, _version(), _bar("2026-11-04", 97, 97.5, 93.0, 96.0))           # the stop-out bar is its sweep
+    assert r["extreme"] == 93.0 and r["state"] == "swept"
+    r = cp.step(r, _version(), _bar("2026-11-05", 96, 98, 95.5, 97.5), nxt=_bar("2026-11-06", 97.6, 99, 97, 98))
+    assert r["state"] == "triggered" and r["stop"] == 92.8 and r["entry"] == 97.6
+    assert cp.re_sweep(r) is None                                                   # a re-sweep never re-arms
+    s = dict(t, state="skipped", extreme=95.0, events=[dict(what="R:R under 1 at the open: no entry")])
+    r = cp.re_sweep(s)
+    assert r["state"] == "waiting" and r["beyond"] == 95.0
+    r = cp.step(r, _version(), _bar("2026-11-07", 97, 98, 95.5, 97))               # 95.5 is not beyond 95
+    assert r["state"] == "waiting"
+    assert cp.re_sweep(dict(t, state="broke")) is None
+
+
+def test_darvas_confirm_starter():
+    v = dict(_version(), target=dict(level=108.0, kind="W bear OB"))
+    t = cp.confirm_track("CE", _bar("2026-10-07", 100, 103, 99.5, 102.5))
+    red = cp.step(t, v, _bar("2026-10-08", 103, 103.5, 100, 101))                  # GLAND 8 Oct: red, below
+    assert red["state"] == "unconfirmed"
+    weak = cp.step(t, v, _bar("2026-10-08", 101, 102.8, 100.5, 102.4))             # green but under 102.5
+    assert weak["state"] == "unconfirmed"
+    ok = cp.step(t, v, _bar("2026-10-08", 102, 104, 101, 103.5), nxt=_bar("2026-10-09", 103.6, 104, 103, 104))
+    assert ok["state"] == "triggered" and ok["stop"] == 99.3 and ok["target"] == 108.0

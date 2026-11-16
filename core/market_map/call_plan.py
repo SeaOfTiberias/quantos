@@ -23,6 +23,24 @@ The screener picks the stock and the side. The map picks the entry and the exit:
     sits in;
   - lapse: no trigger within EXPIRY sessions, or the target reached first (ran without us);
   - broke: swept and not reclaimed within RECLAIM_SESSIONS (watch the other side).
+  - 2026-11-16 (user, GLAND chart; replay of the 8 Darvas picks against the lesson-9 hand reads):
+    * the level is LOCKED at the first plan that has one; a later plan may move it only to a
+      newer PROTECTED level nearer the price (structure trails), never to a zone edge or
+      further away (GLAND's later D protected 2792.4 would have missed the 2769.8 sweep) (GLAND moved up to a newer
+      W OB at 3042 and was stopped there; the hand read held D protected 2841.1; ZYDUSLIFE's
+      new D protected 1105.4 is the level the hand read used);
+    * a sweep must trade at least SWEEP_DEPTH_ATR through the level (GLAND poked 2841.1 by 1.5
+      points on 21 Oct, the real sweep was 2769.8 on 23 Oct, entry 27 Oct open 2858.9; CYIENT's
+      8-point poke of 1107.2 was stopped the same day). A 0.25 ATR reclaim margin was tried first
+      the same day: it entered GLAND on the 1.5-point poke and was stopped;
+    * no opposing level at least 1 ATR away (a breakout at highs): the target is
+      NO_LEVEL_TARGET_R from the entry, not "no entry";
+    * one RE-SWEEP: after a stop, or an entry skipped at the open, the same level gets one more
+      try (ZYDUSLIFE: the 22 Oct sweep failed R:R, the deeper 26 Oct sweep was the trade);
+    * CONFIRM (Darvas breakouts only): the session after the breakout must close green and
+      beyond the breakout close (GLAND 8 Oct closed red and below 7 Oct; value moved down on
+      the 15-min profile); then a STARTER enters at the next open, stop beyond the two
+      sessions' extreme. No confirmation, no starter: the sweep plan is the entry.
 
 While a plan waits, it is re-planned every evening from the new card, so liquidity that forms
 after the call counts (KOTAKBANK, 2026-10-23). Each evening's version only applies to the bars
@@ -48,6 +66,9 @@ EQL_ATR = 0.25           # two minor swing lows (highs) this close together are 
 SWING_LOOKBACK = 25      # sessions of daily bars searched for minor swing highs/lows
 EXPIRY = 20              # sessions a plan waits for its trigger (2026-11-15: was 10)
 RECLAIM_SESSIONS = 3     # sessions after a sweep to close back across the level
+RECLAIM_ATR = 0.0        # the reclaim close only has to be back across the level
+SWEEP_DEPTH_ATR = 0.25   # a sweep trades at least this far through the level (2026-11-16)
+NO_LEVEL_TARGET_R = 2.0  # target when no opposing level is >= 1 ATR away (2026-11-16)
 MAX_HOLD = 15            # sessions in the trade before a time exit at the close
 MIN_RR = 1.0             # at the entry open, the target must be at least this many R away
 
@@ -222,20 +243,45 @@ def make_plan(c: dict, bars: pd.DataFrame, side: str) -> dict:
     if not c or c.get("error") or not c.get("atr_d"):
         out["error"] = (c or {}).get("error") or "no ATR"
         return out
+    out["target"] = target(c, side)                                      # >= 1 ATR from the call's price
     sw = sweep_level(c, bars, side)
     if sw:
-        out["sweep"] = dict(sw, target=target(c, side))                  # >= 1 ATR from the call's price
+        out["sweep"] = dict(sw, target=out["target"])
     return out                                                           # no breakout track (2026-11-15)
 
 
 # ─── walking a plan forward, one daily bar at a time ──────────────────────────
 
 
-def new_track(kind: str, side: str) -> dict:
-    return dict(kind=kind, side=side, state="waiting", waited=0, events=[])
+def new_track(kind: str, side: str, **kw) -> dict:
+    return dict(dict(kind=kind, side=side, state="waiting", waited=0, events=[]), **kw)
+
+
+def confirm_track(side: str, call_bar: dict) -> dict:
+    """The Darvas starter: waits one session for a green close beyond the breakout's close."""
+    return new_track("confirm", side, ref_close=float(call_bar["c"]),
+                     ref_ext=float(call_bar["l"] if _sg(side) == 1 else call_bar["h"]))
+
+
+def re_sweep(t: dict) -> Optional[dict]:
+    """One more try at the same level after the first sweep track was stopped, or skipped at
+    the open (R:R, or opened beyond the stop). None if it does not qualify."""
+    if t.get("kind") != "sweep" or t.get("level") is None:
+        return None
+    last = (t["events"] or [{}])[-1].get("what", "")
+    if t["state"] == "stopped":
+        # the stop-out took out the sweep low: that bar is the new sweep; wait for a reclaim
+        return new_track("re-sweep", t["side"], state="swept", level=t["level"], target=t.get("target"),
+                         extreme=float(t["exit"]), since_sweep=0)
+    if t["state"] == "skipped" and ("R:R" in last or "beyond the stop" in last):
+        # a fresh sweep must trade beyond the first sweep's extreme
+        return new_track("re-sweep", t["side"], level=t["level"], target=t.get("target"),
+                         beyond=t.get("extreme"))
+    return None
 
 
 OPEN_STATES = ("waiting", "swept", "trigger_pending", "triggered")
+SWEEP_KINDS = ("sweep", "re-sweep")
 
 
 def step(tr: dict, version: dict, bar: dict, nxt: Optional[dict] = None) -> dict:
@@ -260,20 +306,37 @@ def step(tr: dict, version: dict, bar: dict, nxt: Optional[dict] = None) -> dict
     if t["state"] not in ("waiting", "swept"):
         return t
 
-    plan = version.get(t["kind"]) if t["state"] == "waiting" else None
-    if t["state"] == "waiting" and not plan:
-        t["waited"] += 1
-        if t["waited"] >= EXPIRY:
-            t["state"] = "lapsed"; ev("expired: no plan level")
-        return t
+    if t["kind"] == "confirm":
+        tgt = (version.get("target") or {}).get("level")
+        green = sg * (bar["c"] - bar["o"]) > 0 and sg * (bar["c"] - t["ref_close"]) > 0
+        if not green:
+            t["state"] = "unconfirmed"; ev("no follow-through the session after the breakout: no starter"); return t
+        ext = float(min(t["ref_ext"], bar["l"]) if sg == 1 else max(t["ref_ext"], bar["h"]))
+        t.update(target=tgt, stop=round(ext - sg * STOP_BUFFER_ATR * atr, 2), state="trigger_pending")
+        ev("trigger: follow-through close after the breakout (starter)", stop=t["stop"])
+        return open_trade(t, nxt) if nxt is not None else t
+
+    if t["kind"] in SWEEP_KINDS and t["state"] == "waiting" and t.get("level") is None:   # lock the level
+        plan = version.get("sweep")
+        if not plan:
+            t["waited"] += 1
+            if t["waited"] >= EXPIRY:
+                t["state"] = "lapsed"; ev("expired: no plan level")
+            return t
+        t.update(level=plan["level"], target=(plan.get("target") or {}).get("level"))
+    elif t["kind"] == "sweep" and t["state"] == "waiting" and t.get("beyond") is None:
+        plan = version.get("sweep") or {}                               # structure trails: a newer
+        if plan.get("level") is not None and sg * (plan["level"] - t["level"]) > 0                 and any("protected" in k for k in plan.get("kinds", [])):
+            t["level"] = plan["level"]                                  # protected, toward price only
     t["waited"] += 1
-    if t["kind"] == "sweep":
+    if t["kind"] in SWEEP_KINDS:
         if t["state"] == "waiting":
-            L, tgt = plan["level"], (plan.get("target") or {}).get("level")
-            if tgt is not None and sg * (bar["h" if sg == 1 else "l"] - tgt) >= 0 and sg * (L - bar["l" if sg == 1 else "h"]) <= 0:
+            L, tgt = t["level"], t.get("target")
+            trig = t["beyond"] if t.get("beyond") is not None else L - sg * SWEEP_DEPTH_ATR * atr
+            if tgt is not None and sg * (bar["h" if sg == 1 else "l"] - tgt) >= 0 and sg * (trig - bar["l" if sg == 1 else "h"]) <= 0:
                 t["state"] = "lapsed"; ev("target reached before any sweep: ran without us"); return t
-            if sg * (L - bar["l" if sg == 1 else "h"]) > 0:
-                t.update(state="swept", level=L, target=tgt, extreme=float(bar["l" if sg == 1 else "h"]), since_sweep=0)
+            if sg * (trig - bar["l" if sg == 1 else "h"]) > 0:
+                t.update(state="swept", extreme=float(bar["l" if sg == 1 else "h"]), since_sweep=0)
                 ev("swept", level=L, extreme=t["extreme"])
             elif t["waited"] >= EXPIRY:
                 t["state"] = "lapsed"; ev("expired: no sweep"); return t
@@ -281,7 +344,7 @@ def step(tr: dict, version: dict, bar: dict, nxt: Optional[dict] = None) -> dict
             t["since_sweep"] += 1
             t["extreme"] = float(min(t["extreme"], bar["l"]) if sg == 1 else max(t["extreme"], bar["h"]))
         if t["state"] == "swept":
-            if sg * (bar["c"] - t["level"]) > 0:
+            if sg * (bar["c"] - t["level"]) > RECLAIM_ATR * atr:
                 t["stop"] = round(t["extreme"] - sg * STOP_BUFFER_ATR * atr, 2)
                 ev("trigger: daily close back across the level", level=t["level"], stop=t["stop"])
                 t["state"] = "trigger_pending"
@@ -289,7 +352,10 @@ def step(tr: dict, version: dict, bar: dict, nxt: Optional[dict] = None) -> dict
             if t["since_sweep"] >= RECLAIM_SESSIONS:
                 t["state"] = "broke"; ev("swept, no reclaim: the level broke (watch the other side)")
         return t
-    # breakout
+    # breakout (helper track; make_plan no longer writes one)
+    plan = version.get("breakout") or {}
+    if not plan:
+        return t
     L, tgt = plan["level"], (plan.get("target") or {}).get("level")
     if sg * (bar["c"] - L) > 0:
         ref = plan.get("stop_ref")
@@ -311,8 +377,9 @@ def open_trade(t: dict, nxt: dict) -> dict:
     day = str(nxt["date"])[:10]
     if sg * (e - t["stop"]) <= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened beyond the stop: no entry")); return t
-    if t.get("target") is None:
-        t["state"] = "skipped"; t["events"].append(dict(date=day, what="no target: no entry")); return t
+    if t.get("target") is None:                                         # nothing overhead: 2R
+        t["target"] = round(e + sg * NO_LEVEL_TARGET_R * sg * (e - t["stop"]), 2)
+        t["events"].append(dict(date=day, what=f"no opposing level: target {NO_LEVEL_TARGET_R:g}R", target=t["target"]))
     if sg * (e - t["target"]) >= 0:
         t["state"] = "skipped"; t["events"].append(dict(date=day, what="opened at the target: no entry")); return t
     if sg * (t["target"] - e) < MIN_RR * sg * (e - t["stop"]):

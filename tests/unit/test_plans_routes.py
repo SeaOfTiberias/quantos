@@ -30,7 +30,7 @@ def test_list_open_first_with_marks(tmp_path):
     assert d["n_open"] == 1 and a["sym"] == "TESTA" and a["open"] and b["src"] == "Darvas"
     assert a["status"] == "triggered" and a["last_close"] == 101.7 and a["as_sent_pct"] == 1.7
     assert a["tracks"][0]["r"] == round(3.7 / 3.7, 2) and a["tracks"][0]["open"]          # marked at 101.7
-    assert a["sweep"] == dict(level=96.5, target=104.0) and a["expires"] == "2026-11-27"
+    assert a["sweep"] == dict(level=96.5, target=104.0) and a["expires"] == "2026-12-11"   # EXPIRY 20 sessions
     assert b["status"] == "stopped" and b["tracks"][0]["r"] == -1.0 and b["last_close"] is None
 
 

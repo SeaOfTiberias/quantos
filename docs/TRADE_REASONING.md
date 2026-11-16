@@ -164,6 +164,20 @@ Exits are placed by code (the position manager), never decided by a model.
 
    The cost is the runners that never come back (DIVISLAB). Handle them deliberately, for example a starter at the breakout and the main size at the sweep-and-reclaim. Don't let the default be "all in at the breakout". Read with hindsight on 8 picks: this is how to read, not a tested rule.
 
+   **2026-11-16: the call-plan code now follows this read** (`core/market_map/call_plan.py`, user's GLAND chart). Five rules turn it into code:
+   - **Locked level.** The level stays the one on the entry-day card. A later plan can move it only to a newer *protected* level nearer the price (ZYDUSLIFE 1105.4), never to a zone edge (GLAND's 3042 W OB) and never further away (GLAND 2792.4).
+   - **Sweep depth.** A sweep trades at least 0.25 ATR through the level; a poke is not a sweep (GLAND −1.5 pts on 21 Oct, CYIENT −8 on 6 Nov). Any daily close back above it is the reclaim.
+   - **Re-sweep.** After a stop, or a skip at the open, the same level gets one more try.
+   - **Starter.** The Darvas starter needs a green close beyond the breakout's close the next session. GLAND 8 Oct failed this, and value moved down on the 15-min profile.
+   - **Target.** With no level overhead, the target is 2R.
+
+   Replay of the 8 picks, bar by bar:
+   - Sweep entries: ZYDUSLIFE 1155 → 1258 (+1.6R), GLAND 2858.9 → 3248.8 (+3.94R), PERSISTENT 5742 → 6190 (+1.68R).
+   - No entry: CYIENT (the level broke) and PTCIL.
+   - Starters: ZYDUSLIFE −1R, CYIENT −1R, DIVISLAB +3.07R; COFORGE and PPLPHARMA are open.
+
+   These rules were fitted to these same 8 picks, so the replay shows the code reads like the hand read, not that it makes money. New calls score it.
+
 **Use these lessons in judgment immediately.** Sweep-week grouping and an intraday index guard are book management, and they apply now (the 2026-11-13 book, amendment 1). Only a change to the playbook's own entry rules (for example a shallower P2 entry at 50% of the shift leg) goes through an S8-style test before it replaces a v1 rule, because that is a research claim about the rules.
 
 ## 8. Record before the outcome, score after

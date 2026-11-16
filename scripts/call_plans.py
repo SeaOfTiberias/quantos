@@ -58,7 +58,7 @@ def load_calls(path: Path = CALLS) -> list[dict]:
     for v in raw.values():
         p = v if isinstance(v, dict) else ast.literal_eval(v)
         out.append(dict(key=p["key"], date=p["trade_date"], sym=p["symbol"], side=p["side"],
-                        spot=float(p["entry_spot"])))
+                        spot=float(p["entry_spot"]), src=p.get("src", "F&O")))
     return sorted(out, key=lambda p: (p["date"], p["sym"], p["side"]))
 
 
@@ -177,7 +177,9 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         upto = upto[upto["date"] <= c["date"]] if upto is not None and len(upto) else upto
         v = cp.make_plan(card, upto, c["side"]) if upto is not None and len(upto) else dict(error=card.get("error"))
         v["as_of"] = c["date"]
-        tracks = [cp.new_track(k, c["side"]) for k in ("sweep", "breakout") if v.get(k)]
+        tracks = [cp.new_track("sweep", c["side"])] if v.get("sweep") else []
+        if c.get("src") == "Darvas" and upto is not None and len(upto):   # starter on a follow-through close
+            tracks.append(cp.confirm_track(c["side"], _bar(upto.iloc[-1])))
         state[c["key"]] = dict(call=c, versions=[v], tracks=tracks, through=c["date"])
         cards[c["key"]] = (card, c["date"])
         touched.add(c["key"])
@@ -204,6 +206,12 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
                     journal.append(dict(at=stamp, key=key, kind=t["kind"], what="event", event=e))
                     ev_lines.append(cp.event_line(p["call"]["sym"], p["call"]["side"], t["kind"], e,
                                                   p["call"].get("src", "F&O")))
+                if t["state"] not in cp.OPEN_STATES and not any(x["kind"] == "re-sweep" for x in p["tracks"]):
+                    r = cp.re_sweep(t)                     # one more try at the same level; the loop
+                    if r is not None:                      # steps it on this same bar (the stop-out bar
+                        p["tracks"].append(r)              # is its sweep)
+                        journal.append(dict(at=stamp, key=key, kind="re-sweep", what="event",
+                                            event=dict(date=b["date"], what="re-armed: one more sweep of the same level")))
             p["through"] = b["date"]
             touched.add(key)
         if p["through"] == last and any(t["state"] == "waiting" for t in p["tracks"]) \
