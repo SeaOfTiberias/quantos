@@ -47,8 +47,8 @@ A single minor swing low, a daily FVG, CPR lines and weak highs do **not** count
    - **after a skip**, the new sweep must trade beyond the first sweep's low.
 
    A 2R target is recomputed for the new entry.
-10. **Results.** No entry if the company's results are due within 5 sessions of the entry day. An open trade exits at the close of the session before results, because a results gap jumps any stop. Dates come from NSE's board-meetings feed. Replays have no history of that feed, so this rule acts only on live picks.
 9. **Waiting and holding.** The plan waits up to **20 sessions** for a sweep. After entry it holds at most **15 sessions**, then exits at the close.
+10. **Results.** No entry if the company's results are due within 5 sessions of the entry day. An open trade exits at the close of the session before results, because a results gap jumps any stop. Dates come from NSE's board-meetings feed. Replays have no history of that feed, so this rule acts only on live picks.
 
 Puts are the mirror image: a sweep above a high and a close back below it.
 
