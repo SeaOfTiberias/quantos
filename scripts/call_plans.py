@@ -28,11 +28,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from statistics import mean
 from typing import Optional
+
+import pandas as pd
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.ideas import events as results_cal  # noqa: E402
+from core.market_map.index_bars import IndexBars  # noqa: E402
 from core.market_map import call_plan as cp  # noqa: E402
 from core.market_map import card as cd  # noqa: E402
 from core.market_map import structure  # noqa: E402
@@ -121,6 +124,72 @@ def _version_for(plan: dict, day: str) -> dict:
     return vs[-1] if vs else {}
 
 
+MAX_ENTRIES_PER_WEEK = 3  # main (sweep) entries per side per ISO week across every plan: the
+                          # stocks' sweeps are mostly the market's (GLAND, ZYDUSLIFE, PERSISTENT all
+                          # swept 16-26 Oct with the index), so one swing is one bet (the book job's
+                          # max_fills groups, docs/TRADE_REASONING.md sweep-week grouping)
+
+
+def week_entries(state: dict, side: str, day: str) -> int:
+    """Main entries already made on `side` in `day`'s ISO week, across every plan."""
+    wk = date.fromisoformat(day).isocalendar()[:2]
+    return sum(1 for p in state.values() for t in p["tracks"]
+               if t["kind"] in cp.SWEEP_KINDS and t["side"] == side and t.get("entry_date")
+               and date.fromisoformat(t["entry_date"]).isocalendar()[:2] == wk)
+
+
+class IndexState:
+    """NIFTY's daily structure from its own card (core/market_map/index_bars.py + the stock map
+    engine, as scripts/step2_context_test.py builds it). The guard (2026-11-16, user: use what is
+    built; the book job's index guards): unfilled longs are cancelled when NIFTY CLOSES below its
+    last daily low (the protected low in a D uptrend, the weak low in a downtrend: a close there
+    extends the fall), shorts mirror. A close, not a low: NIFTY's own sweep that reclaims is the
+    moment longs want (late Oct 2026: D down, held 22179.9, the stock sweeps paid)."""
+
+    def __init__(self, df: Optional[pd.DataFrame] = None):
+        if df is None:
+            try:
+                df = IndexBars().load("NIFTY")
+            except Exception:                                              # noqa: BLE001
+                df = None
+        self.df = df if df is not None and len(df) else None
+        self.cache: dict[str, Optional[dict]] = {}
+
+    def summary(self, evening: str) -> Optional[dict]:
+        if self.df is None:
+            return None
+        if evening not in self.cache:
+            try:
+                c = cd.card("NIFTY", structure.l1_read(self.df, next_weekday(date.fromisoformat(evening))), self.df)
+                d, w = c["structure"].get("D") or {}, c["structure"].get("W") or {}
+                px = lambda x: (x or {}).get("px")                                    # noqa: E731
+                up = d.get("state") == "up"
+                self.cache[evening] = dict(as_of=evening, D=d.get("state"), W=w.get("state"),
+                                           low=px(d.get("protected") if up else d.get("weak")),
+                                           high=px(d.get("weak") if up else d.get("protected")))
+            except Exception:                                              # noqa: BLE001
+                self.cache[evening] = None
+        return self.cache[evening]
+
+    def close(self, day: str) -> Optional[float]:
+        if self.df is None:
+            return None
+        r = self.df[self.df["date"] == pd.Timestamp(day)]
+        return float(r["c"].iat[0]) if len(r) else None
+
+    def guard(self, ix: Optional[dict], day: str) -> dict:
+        """{side: why} for the sides NIFTY's close on `day` cancels; {} if none or no data."""
+        c = self.close(day)
+        if not ix or c is None:
+            return {}
+        out = {}
+        if ix.get("low") is not None and c < ix["low"]:
+            out["CE"] = f"index guard: NIFTY closed {c:g} below its last D low {ix['low']:g}"
+        if ix.get("high") is not None and c > ix["high"]:
+            out["PE"] = f"index guard: NIFTY closed {c:g} above its last D high {ix['high']:g}"
+        return out
+
+
 PAGE_BARS = 120          # daily bars kept for each pick's page chart
 PAGE_DAYS = 45           # calendar days after the call a closed plan's chart keeps updating
 
@@ -157,12 +226,14 @@ def write_page(root: Path, key: str, p: dict, bars: "Bars", last: str, card: dic
 
 def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
         last: str | None = None, darvas_path: Path | None = DARVAS,
-        results_path: Path | None = results_cal.DEFAULT_PATH, pages: bool = True) -> tuple[list[str], list[str]]:
+        results_path: Path | None = results_cal.DEFAULT_PATH, pages: bool = True,
+        index: Optional["IndexState"] = None) -> tuple[list[str], list[str]]:
     """One evening (`last`: the session it runs after; default the store's last session).
     `results_path`: NSE's upcoming-results calendar (None in replays: there is no history of it).
     Returns (new-plan lines, event lines)."""
     root.mkdir(parents=True, exist_ok=True)
     cal = results_cal.load(results_path) if results_path and results_path.exists() else {}
+    idx = index if index is not None else IndexState()
     state_p, journal_p = root / "state.json", root / "journal.jsonl"
     state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {}
     last = last or store.last_session().isoformat()
@@ -206,11 +277,19 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
                 t["next_results"] = nr.isoformat() if nr else None
         for _, row in new.iterrows():
             b = _bar(row)
+            ix = idx.summary(p["through"])                                 # NIFTY as of the evening before b
             for i, t in enumerate(p["tracks"]):
                 if t["state"] not in cp.OPEN_STATES:
                     continue
                 n0 = len(t["events"])
-                p["tracks"][i] = t = cp.step(t, _version_for(p, b["date"]), b)
+                if t["state"] == "trigger_pending" and t["kind"] in cp.SWEEP_KINDS \
+                        and week_entries(state, t["side"], b["date"]) >= MAX_ENTRIES_PER_WEEK:
+                    p["tracks"][i] = t = dict(t, state="skipped", events=t["events"] + [dict(
+                        date=b["date"], what=f"week full: {MAX_ENTRIES_PER_WEEK} entries this week (one market swing, one bet)")])
+                else:
+                    p["tracks"][i] = t = cp.step(t, _version_for(p, b["date"]), b)
+                if t["state"] == "triggered" and "index_at_entry" not in t:
+                    t["index_at_entry"] = ix
                 for e in t["events"][n0:]:
                     journal.append(dict(at=stamp, key=key, kind=t["kind"], what="event", event=e))
                     ev_lines.append(cp.event_line(p["call"]["sym"], p["call"]["side"], t["kind"], e,
@@ -221,6 +300,13 @@ def run(store: Store, start: str, root: Path = ROOT, calls_path: Path = CALLS,
                         p["tracks"].append(r)              # is its sweep)
                         journal.append(dict(at=stamp, key=key, kind="re-sweep", what="event",
                                             event=dict(date=b["date"], what="re-armed: one more sweep of the same level")))
+            why = idx.guard(ix, b["date"])                                 # NIFTY closed through its last D low/high
+            for i, t in enumerate(p["tracks"]):
+                if t["state"] in ("waiting", "swept", "trigger_pending") and why.get(t["side"]):
+                    p["tracks"][i] = t = dict(t, state="cancelled", events=t["events"] + [dict(date=b["date"], what=why[t["side"]])])
+                    journal.append(dict(at=stamp, key=key, kind=t["kind"], what="event", event=t["events"][-1]))
+                    ev_lines.append(cp.event_line(p["call"]["sym"], p["call"]["side"], t["kind"], t["events"][-1],
+                                                  p["call"].get("src", "F&O")))
             p["through"] = b["date"]
             touched.add(key)
         if p["through"] == last and any(t["state"] == "waiting" for t in p["tracks"]) \
@@ -327,7 +413,8 @@ def report(store: Store, root: Path = ROOT) -> str:
             m = cp.mark(t, lc) if t.get("state") == "triggered" else {}
             rows.append(dict(key=key, src=c.get("src", "F&O"), kind=t["kind"], state=t["state"],
                              closed=t.get("r") is not None, r=t.get("r", m.get("r")), pct=t.get("pct", m.get("pct")),
-                             later_target=_later_target(t, a, c["side"]),
+                             later_target=_later_target(t, a, c["side"]), side=t.get("side"),
+                             index_d=(t.get("index_at_entry") or {}).get("D") or "?",
                              level=((t.get("kinds") or ["?"])[0].split(" ")[0] + " " + " ".join((t.get("kinds") or ["?"])[0].split(" ")[1:2])).strip()))
     lines = [f"{r['key']:32s} {r['kind']:9s} {r['state']:16s} R {r['r']!s:>6} plan% {r['pct']!s:>6}" for r in rows]
     for src in sorted({r["src"] for r in rows}):
@@ -351,6 +438,14 @@ def report(store: Store, root: Path = ROOT) -> str:
                 for lv in sorted({r["level"] for r in closed}):
                     g = [r["r"] for r in closed if r["level"] == lv]
                     lines.append(f"   level {lv:18s} {len(g):3d} closed, mean R {mean(g):.2f}")
+                for sd in ("CE", "PE"):
+                    for st in sorted({r["index_d"] for r in closed if r["side"] == sd}):
+                        g = [r["r"] for r in closed if r["side"] == sd and r["index_d"] == st]
+                        lines.append(f"   {sd} with NIFTY D {st:5s} at entry {len(g):3d} closed, mean R {mean(g):.2f}")
+            gone = [r for r in rows if r["src"] == src and r["kind"] in kinds and r["state"] in ("cancelled", "skipped")]
+            if gone and kinds == cp.SWEEP_KINDS:
+                lines.append(f"   not entered: {sum(r['state'] == 'cancelled' for r in gone)} cancelled by the NIFTY guard, "
+                             f"{sum(r['state'] == 'skipped' for r in gone)} skipped (R:R, week full, results, gap)")
         for done, label in ((True, f"complete {SPAN}-session span"), (False, "span not complete yet")):
             g = [x for x in pairs if x["src"] == src and x["complete"] == done]
             if g:
