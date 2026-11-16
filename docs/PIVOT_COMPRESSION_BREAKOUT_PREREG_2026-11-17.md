@@ -67,3 +67,18 @@ The same measures with one condition removed at a time: no volume, no 40-SMA, no
 ### E. If it passes
 
 It still runs through the call-plan replay (the pick is the signal, and the map gives the entry) before it becomes a pick source. A pass here is not a deploy.
+
+## Result (run 2026-11-17, `scripts/research/pivot_compression_test.py`): FAIL
+
+| Version | n | Mean R | 2021–23 | 2024–26 | 10-session excess after costs (2021–23 / 2024–26) |
+|---|---|---|---|---|---|
+| **Rule as written** | 1066 | +0.14 | +0.26 | **0.00** | +0.27% / **−0.04%** |
+| No volume condition (context) | 1794 | +0.12 | +0.23 | +0.02 | +0.41% / +0.08% |
+| No 40-SMA condition (context) | 1401 | +0.12 | +0.24 | −0.01 | +0.25% / −0.31% |
+| No tight-pivot condition (context) | 1834 | +0.11 | +0.24 | −0.03 | +0.42% / −0.18% |
+
+The rule misses the +0.20R bar overall. It makes nothing in 2024–26 and is below the universe in that half. No single condition carries it: every drop-one version also fails 2024–26.
+
+**Earlier than Darvas: yes.** 35% of signals are already a 55-day closing high. Of the other 692, 72% make one within 20 sessions: a median of 4 sessions later, at a median of 3.4% above the signal close. That beats the close above R3, which gets there 47% of the time. The rule spots breakouts early, but trading from the signal has not paid since 2024.
+
+Not re-tuned. Same shape as the continuation starter (2026-11-16) and the R3 close: positive in 2021–23, flat in 2024–26.
