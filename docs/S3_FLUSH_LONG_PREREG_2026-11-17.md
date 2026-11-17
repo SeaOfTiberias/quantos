@@ -66,3 +66,29 @@ HDFCBANK on 2026-09-09 closed at its low and opened there the next day. The regi
 The other worked cases (TATACONSUM 12 flushes, 8 MAP; HDFCBANK 17, 6 MAP; COALINDIA 2026-01-20, 04-10 and 07-28) classified as the definitions say:
 - TATACONSUM 2026-09-28: close 960, inside D bull OB 953–969.3 and W demand 930.1–963.7;
 - COALINDIA 2026-04-10: inside W bull OB 408.1–434.8; target the W CPR BC 450.46; hit, +1.6R.
+
+## Result (run 2026-11-17, `scripts/research/s3_flush_test.py`): FAIL, H1 and H2
+
+| Group | n | Net R, 2021–23 | Net R, 2024–26 | 10-session excess (2021–23 / 2024–26) |
+|---|---|---|---|---|
+| H1, MAP | 1497 | −0.21 | −0.02 | −0.78% / −0.34% |
+| NO MAP | 2483 | −0.11 | −0.17 | −0.06% / −0.29% |
+| H2, every S3 | 3980 | −0.15 | −0.11 | −0.32% / −0.31% |
+
+Bought at the next open, the flush loses in both halves, at map demand or not. The map group does beat the rest in 2024–26 (−0.02 vs −0.17), but it is still below 0.
+
+**Why the descriptive study looked positive.** That study measured from the signal close; this test enters at the next open. The whole bounce is the overnight gap.
+
+| Measure | Overall | 2021–23 | 2024–26 |
+|---|---|---|---|
+| Entry at the signal close (reported) | +0.21R | +0.24R | +0.18R |
+| Entry at the next open (scored) | −0.13R | −0.15R | −0.11R |
+
+**Reported lead, the strongest of the day.** Market flushes: S3 closes on days NIFTY itself fell more than 1%, entered at the signal close.
+
+| Period | n | Close-entry R |
+|---|---|---|
+| 2021–23 | 871 | +0.44 |
+| 2024–26 | 1027 | +0.43 |
+
+Stock-specific flushes made +0.05R and −0.04R. The effect is a market-wide overnight rebound after sell-offs, not a stock signal. It is a candidate for its own pre-registration, testable on NIFTY/BANKNIFTY futures, where costs are smallest. It is not a result.
