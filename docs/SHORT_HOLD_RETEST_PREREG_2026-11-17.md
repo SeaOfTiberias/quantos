@@ -63,7 +63,6 @@ E12 and E13 have no discovery period, because the screener only exists from Sep 
 
   | Hold | Gross excess | Net | t |
   |---|---|---|---|
-
   | 15 min | +0.14% | +0.04% | 2.2 |
   | 30 min | +0.19% | +0.09% | 3.9 |
   | 60 min | +0.23% | +0.13% | 5.1 |
