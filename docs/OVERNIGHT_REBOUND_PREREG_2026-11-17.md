@@ -46,3 +46,20 @@ All six must hold. Anything else is a FAIL, reported as failed and not re-tuned 
 ## If it passes
 
 It becomes a pre-registered **paper** test with real 15:25 and next-morning futures quotes. That shows whether the cash-index gap survives futures fills and the basis. Nothing goes to real money without the forward record and the user's release. Trading stays paused.
+
+## Result (run 2026-11-17, `scripts/research/overnight_rebound_test.py`, plan at e22940b): FAIL, both instruments at discovery
+
+| Instrument, period | Signal nights | Gross | Net of 0.07% | t | Other nights |
+|---|---|---|---|---|---|
+| NIFTY, 2012–20 | 238 | +0.116% | +0.046% | 0.79 | +0.123% |
+| NIFTY, 2012–20 without 2020 | 197 | +0.062% | −0.008% | −0.20 | +0.119% |
+| NIFTY, 2021–26 | 147 | +0.015% | −0.055% | −0.74 | +0.092% |
+| BANKNIFTY, 2012–20 | 238 | +0.097% | +0.027% | 0.37 | +0.133% |
+| BANKNIFTY, 2012–20 without 2020 | 197 | +0.018% | −0.052% | −1.03 | +0.130% |
+| BANKNIFTY, 2021–26 | 147 | −0.033% | −0.103% | −1.23 | +0.071% |
+
+After a NIFTY fall of 1% or more, the index's next overnight move is **smaller** than an ordinary night's, not larger. The small positive mean in 2012–20 comes from 2020. In 2024–26 the signal nights lost money in every year for NIFTY. Holding to the next close instead of the open changes nothing (t 0.48 and −0.04 for NIFTY).
+
+**Reported, not scored.** At a −2.0% threshold, 2021–26 shows +0.40% net on 25 nights (t 2.1). In 2012–20 the same cut gave +0.11% on 62 nights (t 0.6), so the independent period does not support it. It is a 25-night result, found after the fact, and is not re-tested this round.
+
+**Why the stock-level lead didn't carry over.** The S3 flush lead measured the most beaten-down stocks on market sell-off days, in R units with tight stops. A small move in % reads as a large R. The index as a whole doesn't rebound overnight. Whatever the lead was, it isn't a market-wide overnight edge you can trade with index futures.
