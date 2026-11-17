@@ -72,7 +72,32 @@ If there is no follow-through, there is no starter. **The starter risks 25% of t
   - No entry: CYIENT (the level broke) and PTCIL (never swept). The other three are still waiting.
   - Starters: −1R, −1R, +3.07R, and two still open.
   - **The rules in section 3 were adjusted on these same 8 picks** to match a human chart read. This shows the code reads charts the way the human does. It is not evidence of an edge.
-- **194 F&O calls, 9 Oct–13 Nov**, which these rules were never adjusted on: *replay running, result to be added here.* The previous version of the rules entered 47 of them (46 in commit c0e2213's note; the replay log says 47), at a mean of −0.29R.
+- **194 F&O calls, 9 Oct–13 Nov**, which these rules were never adjusted on. The previous version of the rules entered 47 of them (46 in commit c0e2213's note; the replay log says 47), at a mean of −0.29R.
+  - With the NIFTY guard and the weekly cap (fno_l12) it entered 9, and 8 closed at −0.28R. The guard cancelled 55. Without them it was 17 closed at −0.01R.
+- **History replays (2026-11-17), the 20:00 job's code run day by day:**
+
+  **F&O screener picks, Sep 2025 – Nov 2026 (870 picks).**
+
+  | Half | Main entries closed | Mean R |
+  |---|---|---|
+  | First | 56 | −0.19 |
+  | Second | 64 | −0.32 |
+
+  - Paired over every pick: the plan made −0.06% vs +1.03% for the picks as sent in the first half, and −0.11% vs −1.12% in the second.
+  - Starters: −0.02R and −0.13R.
+  - **The F&O call plan FAILS section 6.** Its entries average below 0R in both halves. The picks' side selection is the problem; the entry can't fix it.
+
+  **Darvas Bucket B, 2016–2023 (922 picks, against the real ATR-stop trades).**
+
+  | Period | Main entries | Mean R | Picks entered |
+  |---|---|---|---|
+  | 2016–19 | 45 | +0.16 | 39 of 347 |
+  | 2020–23 | 90 | +0.30 | 72 of 575 |
+
+  - On the picks it entered, the map turned losers into winners: +1.13% vs −4.14% as traded (2016–19), and +0.82% vs −3.07% (2020–23).
+  - But it enters only about 12% of the picks. Per pick, the plan made +0.13% / +0.10%. The Darvas trades as actually taken made +0.74% / +3.74%.
+  - **The map entry must not replace the Darvas trade.** It works as a second chance on picks that pull back, which is a lead for its own test.
+  - NIFTY guard: in the Darvas history, CE entries with NIFTY's D up made +0.42R (n 68); with D down, +1.06R (n 7). The guard cancelled 114 Darvas and 164 F&O pending entries. There was no no-guard history run, so the guard is kept but unproven.
 - **Project history:** about 20 strategy candidates tested since July 2026, most failed. The map's older 100-day zones failed a placebo test. The current higher-timeframe map is untested as a predictor.
 
 ## 6. How it will be judged
