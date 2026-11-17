@@ -104,7 +104,7 @@ import argparse
 import json
 import sys
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -769,6 +769,48 @@ def run_execute(broker, plan: dict, positions: dict[str, DarvasOpenPosition],
         time.sleep(0.3)
 
 
+# A token refreshed a minute after the 09:02 IST pre-open fire (2026-11-17,
+# refreshed 09:03) used to fail the whole day's entries on one connect. Each
+# connect() re-reads ~/.quantos/fyers_token, so retrying picks up a refresh.
+# Pre-open order entry closes at 09:08 IST: past that a MARKET buy would fill at
+# the LTP, not the auction open the backtest assumes, so pre-open retries stop
+# at 09:07:30. The execute phase (stops for pre-open fills, exits, trails)
+# retries until 09:45.
+PREOPEN_CONNECT_DEADLINE = dtime(9, 7, 30)
+EXECUTE_CONNECT_DEADLINE = dtime(9, 45)
+CONNECT_RETRY_SECONDS = 20
+
+
+def connect_deadline(phase: str, today: date) -> Optional[datetime]:
+    """The IST time after which a failed connect is final, or None (no retry)."""
+    t = {"preopen": PREOPEN_CONNECT_DEADLINE, "execute": EXECUTE_CONNECT_DEADLINE}.get(phase)
+    return datetime.combine(today, t, tzinfo=IST) if t else None
+
+
+def connect_with_retry(broker, deadline: Optional[datetime], now=None, sleep=time.sleep,
+                       retry_seconds: int = CONNECT_RETRY_SECONDS) -> bool:
+    """broker.connect(), retried every retry_seconds while the next try would
+    still start before the deadline. A raised error counts as a failure."""
+    now = now or (lambda: datetime.now(IST))
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            if broker.connect():
+                if attempt > 1:
+                    print(f"  broker connected on attempt {attempt}.")
+                return True
+            err = "connect() returned False"
+        except Exception as e:
+            err = str(e)
+        if deadline is None or now() + timedelta(seconds=retry_seconds) > deadline:
+            print(f"ERROR: broker connect failed after {attempt} attempt(s) ({err}) -- check the Fyers token.")
+            return False
+        print(f"  connect attempt {attempt} failed ({err}); retrying in {retry_seconds}s "
+              f"until {deadline:%H:%M:%S} IST.")
+        sleep(retry_seconds)
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="agent/config.yaml")
@@ -800,8 +842,7 @@ def main(argv: Optional[list] = None) -> int:
             return 0
 
     broker = get_broker(config)
-    if not broker.connect():
-        print("ERROR: broker connect() failed -- check the Fyers token.")
+    if not connect_with_retry(broker, connect_deadline(args.phase, today)):
         return 1
 
     positions = load_open_positions()

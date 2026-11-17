@@ -974,3 +974,85 @@ class TestScanExistingWalksMissedBars:
                                    positions=positions, trade_history=TradeHistoryService())
         assert positions["TEST"].last_bar_checked == "2024-01-02"
         assert positions["TEST"].current_stop == 150.0
+
+
+# ─── Connect retry (2026-11-17: token refreshed at 09:03, pre-open fired 09:02) ──
+
+class _FlakyBroker:
+    """Fails (raises) the first `fails` connects, then succeeds."""
+
+    def __init__(self, fails: int):
+        self.fails = fails
+        self.calls = 0
+
+    def connect(self) -> bool:
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise RuntimeError("Token is Invalid or Expired")
+        return True
+
+
+class _Clock:
+    def __init__(self, start: datetime):
+        self.t = start
+        self.slept = []
+
+    def now(self) -> datetime:
+        return self.t
+
+    def sleep(self, s: float) -> None:
+        self.slept.append(s)
+        self.t += timedelta(seconds=s)
+
+
+def _ist(h: int, m: int, s: int = 0) -> datetime:
+    return datetime(2026, 11, 17, h, m, s, tzinfo=mod.IST)
+
+
+def test_connect_deadline_by_phase():
+    d = date(2026, 11, 17)
+    assert mod.connect_deadline("preopen", d) == _ist(9, 7, 30)
+    assert mod.connect_deadline("execute", d) == _ist(9, 45)
+    assert mod.connect_deadline("scan", d) is None
+
+
+def test_preopen_retry_picks_up_a_token_refreshed_a_minute_later():
+    clock = _Clock(_ist(9, 2, 0))
+    broker = _FlakyBroker(fails=3)       # fixed at the 4th try, 09:03:00
+    ok = mod.connect_with_retry(broker, mod.connect_deadline("preopen", date(2026, 11, 17)),
+                                now=clock.now, sleep=clock.sleep)
+    assert ok and broker.calls == 4
+    assert clock.t == _ist(9, 3, 0)
+
+
+def test_preopen_retry_gives_up_before_the_auction_closes():
+    clock = _Clock(_ist(9, 2, 0))
+    broker = _FlakyBroker(fails=10_000)
+    ok = mod.connect_with_retry(broker, mod.connect_deadline("preopen", date(2026, 11, 17)),
+                                now=clock.now, sleep=clock.sleep)
+    assert not ok
+    # the last attempt starts no later than 09:07:30, so any order is in before 09:08
+    assert clock.t <= _ist(9, 7, 30)
+    assert broker.calls == 1 + len(clock.slept)
+
+
+def test_no_deadline_means_a_single_attempt():
+    clock = _Clock(_ist(20, 0))
+    broker = _FlakyBroker(fails=1)
+    assert not mod.connect_with_retry(broker, None, now=clock.now, sleep=clock.sleep)
+    assert broker.calls == 1 and clock.slept == []
+
+
+def test_connect_returning_false_is_retried_too():
+    clock = _Clock(_ist(9, 16, 30))
+
+    class B:
+        calls = 0
+
+        def connect(self):
+            B.calls += 1
+            return B.calls > 2
+
+    assert mod.connect_with_retry(B(), mod.connect_deadline("execute", date(2026, 11, 17)),
+                                  now=clock.now, sleep=clock.sleep)
+    assert B.calls == 3
