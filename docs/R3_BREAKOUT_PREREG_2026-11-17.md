@@ -87,3 +87,22 @@ The long side misses the +0.20R bar overall and fails the second half on both me
 - **Earlier than Darvas:** 44% of long signals are already a 55-day closing high. Of the other 3,176, 47% make one within 20 sessions: a median of 6 sessions later, at a median of 4.9% above the signal close. So the screen is earlier when a breakout follows, but half the time none follows.
 
 Not re-tuned. Close-entry and the NIFTY-up subset are recorded as leads only. Neither clears the bar in 2024–26.
+
+## Addendum (2026-11-17, user: "invert it for sells"): next-day study, descriptive (`scripts/research/pivot_shorts_nextday.py`)
+
+The signals are a close below S2 (P − (H − L)), a close below S3, and the user's Pivot Compression rule mirrored for shorts. The universe is F&O stocks, 2021–26. For a short, a fall is the gain.
+
+| Signal | Period | Next day close-to-close | 5 days | 10 days |
+|---|---|---|---|---|
+| Every stock-day (baseline) | 2021–23 | +0.13% | +0.66% | +1.30% |
+| Every stock-day (baseline) | 2024–26 | +0.06% | +0.29% | +0.60% |
+| Below S2 | 2021–23 | +0.04% | +0.51% | +1.32% |
+| Below S2 | 2024–26 | +0.07% | +0.45% | +0.92% |
+| Below S3 | 2021–23 | +0.26% | +0.42% | +1.47% |
+| Below S3 | 2024–26 | +0.26% | +0.68% | +1.23% |
+| Pivot Compression mirrored | 2021–23 | +0.27% | +0.89% | +1.49% |
+| Pivot Compression mirrored | 2024–26 | +0.25% | +0.98% | +1.17% |
+
+None of the three works as a short, in either half and whether or not the stock is in a downtrend (below a falling 200-SMA). The stocks bounce: after a close below S3 they beat the baseline over 10 days in both halves (+0.17% and +0.63%).
+
+**Lead for a new pre-registration, not a result:** buy the S3 flush, a long after a close below S3. That's preferably where the close is back into a map demand zone or a swept level. It is the only pivot-screen pattern in this round that holds in 2024–26.
