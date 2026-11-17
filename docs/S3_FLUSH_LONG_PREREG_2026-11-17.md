@@ -56,3 +56,13 @@ Before the full run, five worked cases are printed and checked by hand.
 ## If it passes
 
 It goes into the call plans as a long pick source, on paper, next to Darvas. The 20:00 job would flag new S3 flushes that sit at map demand. It would not go to real money: that still needs the forward paper record and the user's release.
+
+## Amendment before the full run (2026-11-17, from the worked cases, no results seen)
+
+HDFCBANK on 2026-09-09 closed at its low and opened there the next day. The registered stop (the low − 0.1 ATR) sat 0.19% below the entry, so the 0.25% cost alone was −2.3R. A stop that close is an artefact of the rule, not a trade anyone would take.
+
+**Amended stop:** the lower of (the signal low − 0.1 × ATR) and (the entry − 0.5 × ATR). Everything else is unchanged.
+
+The other worked cases (TATACONSUM 12 flushes, 8 MAP; HDFCBANK 17, 6 MAP; COALINDIA 2026-01-20, 04-10 and 07-28) classified as the definitions say:
+- TATACONSUM 2026-09-28: close 960, inside D bull OB 953–969.3 and W demand 930.1–963.7;
+- COALINDIA 2026-04-10: inside W bull OB 408.1–434.8; target the W CPR BC 450.46; hit, +1.6R.
