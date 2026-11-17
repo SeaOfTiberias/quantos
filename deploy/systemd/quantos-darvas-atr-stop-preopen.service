@@ -4,6 +4,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+# A run blocked on a Fyers socket with no read timeout held quantos-orb-scalping-live,
+# -filtered-live and -stopout-probe in 'activating' from 2026-10-07 14:26 IST to 11-17 (41 days):
+# a oneshot's default start timeout is infinity, and a timer can't start a unit that is still starting.
+TimeoutStartSec=10min
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
