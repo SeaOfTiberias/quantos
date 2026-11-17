@@ -56,3 +56,28 @@ E12 and E13 have no discovery period, because the screener only exists from Sep 
 - The same table with entry at 09:15.
 - The time-of-day split for E3/E4 (before and after 11:00).
 - The share of trades whose gross move beats 0.10%.
+
+## Result (run 2026-11-17, `scripts/research/short_hold_retest.py`): FAIL, 0 of 39 cells
+
+- **Discovery, 2017–23.** Only E4 went forward from the discovery sets: buy after the first 5-minute close below the day's S3. It went forward at all three holds:
+
+  | Hold | Gross excess | Net | t |
+  |---|---|---|---|
+
+  | 15 min | +0.14% | +0.04% | 2.2 |
+  | 30 min | +0.19% | +0.09% | 3.9 |
+  | 60 min | +0.23% | +0.13% | 5.1 |
+
+  E12 and E13 went forward by design. Every other set, in its better direction, was below the 0.10% cost in 2017–23 already. Their gross excess was 0.00–0.09%.
+- **Confirmation, 2024–26.** Every cell failed:
+
+  | Cell | Net per trade | n |
+  |---|---|---|
+  | E4, 15 / 30 / 60 min | −0.08% / −0.07% / −0.08% | ~3,100 |
+  | F&O screener CE (E12) | about −0.09% (gross +0.02–0.03%) | 9,560 |
+  | F&O screener PE (E13) | about −0.09% (gross −0.02%) | 10,817 |
+
+  The intraday S3 bounce that was there in 2017–23 is gone in 2024–26, the same decay as the daily breakout signals.
+- **Darvas, 2017–23 only:** n 266, short side gross +0.12–0.17%, t ≤ 1. Nothing.
+
+**What this says about scalping stocks:** across 13 signal families, 15 to 60 minutes after the signal a stock moves 0.00–0.05% more than the F&O average. A round trip costs about 0.10%. None of these signals buys a short-hold edge in stock futures. For options, the spread makes the hurdle higher still.
