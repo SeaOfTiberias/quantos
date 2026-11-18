@@ -2,6 +2,12 @@
 """
 QuantOS — price_map: build a stock's price map from Fyers bars (on the VM)
 ──────────────────────────────────────────────────────────────────────────
+RETIRED 2026-11-18 (user: one map, v3). This old 100-day map FAILED its zone test
+(2026-11-04) and nothing reads its files any more: map_read, the levels tool, the
+cockpit and the position manager all use the L1 map (definitions v3,
+core/market_map/read.py). Its nightly timer is removed. Kept only so the 11-04 test
+can be reproduced (scripts/fetch_zone_test_bars.py imports fno_symbols).
+
 Swing levels, volume profile (composite, recent sessions, naked POCs), classical
 and Camarilla pivots, and the zones where they agree (core/price_map/). Writes
 ~/.quantos/price_maps/<SYMBOL>.json (read by the position manager) and

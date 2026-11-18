@@ -90,10 +90,12 @@ def test_old_state_without_trail_fields_loads():
 
 def test_zone_alert_and_map_lines_read_the_map_on_futures_prices(tmp_path, monkeypatch):
     import scripts.run_position_manager as rpm
-    zone = {"low": 960, "high": 975, "mid": 967.5, "strong": True, "score": 5, "families": ["swing", "volume"],
-            "levels": [{"price": 960, "family": "swing", "label": "swing low"}]}
-    (tmp_path / "XYZ.json").write_text(json.dumps({"built_for": "2026-10-29", "zones": [zone]}))
-    monkeypatch.setattr(rpm, "MAPS_DIR", tmp_path)
+    import core.market_map.read as mr
+    zone = {"low": 960, "high": 975, "mid": 967.5, "strong": True, "families": ["structure"], "why": "W demand base"}
+    seen = []
+    monkeypatch.setattr(mr, "current_map", lambda sym: seen.append(sym) or
+                        {"symbol": sym, "built_for": "2026-10-29", "close": 1000.0, "zones": [zone]})
+    monkeypatch.setattr(rpm, "_MAPS", {})
     p = Plan(code="XYZ", symbol="XYZ", expiry=date(2026, 11, 24), side=-1, qty=-100, entry=1000.0, atr=40.0,
              stop=1030.0, emergency=1070.0, target=970.0, entry_date=date(2026, 10, 29))
     assert "(cash prices)" in rpm.map_lines(p, 1000)[0]
@@ -102,6 +104,7 @@ def test_zone_alert_and_map_lines_read_the_map_on_futures_prices(tmp_path, monke
     m = rpm.Manager.__new__(rpm.Manager)
     m.notify = type("N", (), {"send": staticmethod(sent.append)})()
     m.zone_alert("k", p, 978, date(2026, 10, 30), basis=5)            # 978 is in 965-980 on futures, not in cash 960-975
-    assert len(sent) == 1 and "965–980" in sent[0]
+    assert len(sent) == 1 and "965–980" in sent[0] and "W demand base" in sent[0] and "v3, untested" in sent[0]
+    assert seen == ["XYZ"]                                            # one read per stock per day
     m.zone_alert("k", p, 978, date(2026, 10, 30), basis=0)
     assert len(sent) == 1

@@ -83,9 +83,9 @@ def idea_trade(idea: dict) -> Optional[dict]:
 
 
 def read_map(symbol: str, trade: Optional[dict]) -> dict:
-    """The live map read: a map file under 7 days old, else one built from Fyers bars."""
-    from core.market_map.read import live_market, map_read
-    return map_read(symbol, trade, market_factory=live_market)
+    """The map read (L1 map, definitions v3) at the latest bhavcopy close."""
+    from core.market_map.read import map_read
+    return map_read(symbol, trade)
 
 
 def with_map(idea: dict, reader=None) -> dict:
@@ -94,7 +94,7 @@ def with_map(idea: dict, reader=None) -> dict:
     rd = (reader or read_map)(idea["symbol"], idea_trade(idea))
     if not rd or "error" in rd:
         raise IdeaError(f"no map read for {idea['symbol']} ({(rd or {}).get('error', 'none')}) -- "
-                        "an idea is not logged without one; build it with scripts/price_map.py")
+                        "an idea is not logged without one")
     idea["map_read"] = frozen(rd)
     return idea
 

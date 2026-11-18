@@ -66,8 +66,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 QUANTOS_DIR = Path.home() / ".quantos"
 STATE_PATH = QUANTOS_DIR / "position_manager_state.json"
 LEVELS_PATH = QUANTOS_DIR / "position_manager_levels.json"
-MAPS_DIR = QUANTOS_DIR / "price_maps"            # scripts/price_map.py
-MAP_MAX_AGE_DAYS = 7
+_MAPS: dict = {}             # (symbol, IST day) -> the v3 map: one ~5 s read per stock per day
 BASIS_EVERY_S = 600          # futures - cash, re-measured this often (maps are in cash prices)
 NL = "\n"
 CONFIG_PATH = Path("agent/config.yaml")
@@ -205,25 +204,27 @@ def name(p: Plan) -> str:
 
 
 def load_map(symbol: str) -> dict:
-    """The stock's price map, if built in the last MAP_MAX_AGE_DAYS; {} otherwise."""
-    path = MAPS_DIR / f"{symbol}.json"
-    try:
-        if time.time() - path.stat().st_mtime > MAP_MAX_AGE_DAYS * 86400:
-            return {}
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
+    """The stock's L1 map (definitions v3, untested), read once per stock per IST day; {"error"} when
+    there is none."""
+    key = (symbol, datetime.now(IST).date())
+    if key not in _MAPS:
+        from core.market_map.read import current_map
+        try:
+            _MAPS[key] = current_map(symbol)
+        except Exception as e:                       # a map never breaks the position manager
+            _MAPS[key] = {"error": f"{type(e).__name__}"}
+    return _MAPS[key]
 
 
 def futures_map(p: Plan, basis: Optional[float]) -> dict:
     """The stock's map on the futures' prices (the map is cash; basis = futures - cash).
     Unknown basis: the cash map, which reads a zone off by the basis (~0.6% a month out)."""
-    from core.price_map.build import shift
+    from core.market_map.read import shift
     return shift(load_map(p.symbol), basis or 0.0)
 
 
 def map_lines(p: Plan, price: Optional[float] = None, basis: Optional[float] = None) -> list[str]:
-    from core.price_map.build import markers
+    from core.market_map.read import markers
     lines = markers(futures_map(p, basis), price if price is not None else p.entry, p.entry, p.side, p.r, p.target)
     return lines if basis is not None or len(lines) < 2 else [lines[0] + " (cash prices)"] + lines[1:]
 
@@ -384,16 +385,15 @@ class Manager:
     def zone_alert(self, key: str, plan: Plan, price: float, today: date, basis: float = 0.0) -> None:
         """Once a day per zone: price walked into a strong zone of the stock's map (on futures prices).
         Information only."""
-        from core.price_map.build import rng, why, zone_at
+        from core.price_map.build import rng, zone_at
         z = zone_at(futures_map(plan, basis), price)
         tag = f"zone-{z['low']:g}-{today}" if z else None
         if z is None or tag in plan.sent:
             return
         plan.sent.append(tag)
         way = "toward the target" if (z["mid"] - plan.entry) * plan.side > 0 else "against you"
-        self.notify.send(f"📍 {name(plan)}: price {price:g} is in the strong zone {rng(z)} ({why(z)}), {way}. "
-                         "Price did business here before; such zones turned price no more often than random levels in the "
-                         "2026-11-04 test. Information only; the plan's exits stand.")
+        self.notify.send(f"📍 {name(plan)}: price {price:g} is in the strong zone {rng(z)} ({z.get('why', '')}), {way}. "
+                         "Higher-timeframe map v3, untested: a marker, not a signal. Information only; the plan's exits stand.")
 
     def run(self, once: bool) -> int:
         last_pos = -1e9

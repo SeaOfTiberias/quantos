@@ -8,8 +8,8 @@ POST /map/{symbol}/check  map_read(symbol, trade) for {side, entry, stop, target
 
 Read-only and advisory: every number comes from core/market_map/read.py, no
 model feeds these routes, and nothing here places, sizes or moves an order.
-The map is the saved file when it is younger than 7 days, else built from
-Fyers bars on demand. Same protection as every cockpit route (nginx Basic auth);
+The map is the L1 map (definitions v3) from the L1 store or, for NIFTY and
+BANKNIFTY, the index bars; Fyers only supplies the live price. Same protection as every cockpit route (nginx Basic auth);
 the /map prefix must be in the VM's nginx allowlist (deploy doesn't sync it).
 """
 
@@ -25,6 +25,15 @@ from pydantic import BaseModel, Field
 from core.market_map import read as mr
 
 router = APIRouter(prefix="/map", tags=["map"])
+FYERS_INDEX = {"NIFTY": "NSE:NIFTY50-INDEX", "BANKNIFTY": "NSE:NIFTYBANK-INDEX"}
+
+
+def live_market():
+    """The VM's live market (Fyers), for the live price only."""
+    from pathlib import Path
+    from core.mcp_tools.live import LiveMarket
+    root = Path(__file__).resolve().parent.parent.parent
+    return LiveMarket(str(root / "agent" / "config.yaml"))
 
 
 def _symbol(symbol: str) -> str:
@@ -37,8 +46,8 @@ def _symbol(symbol: str) -> str:
 def _live(sym: str) -> tuple:
     """(Fyers market, last traded price), or (None, None) when Fyers is down: the page then reads at the map's close."""
     try:
-        m = mr.live_market()
-        q = m.quotes([f"NSE:{sym}-EQ"])
+        m = live_market()
+        q = m.quotes([FYERS_INDEX.get(sym, f"NSE:{sym}-EQ")])
         lp = next(iter(q.values()), {}).get("lp")
         return m, (float(lp) if lp else None)
     except Exception:
@@ -46,8 +55,8 @@ def _live(sym: str) -> tuple:
 
 
 def _read(sym: str, trade: Optional[dict] = None) -> dict:
-    m, lp = (None, None) if trade else _live(sym)          # a trade check reads at its entry
-    rd = mr.map_read(sym, trade, market=m, market_factory=mr.live_market, price=lp, zones=True)
+    _, lp = (None, None) if trade else _live(sym)          # a trade check reads at its entry
+    rd = mr.map_read(sym, trade, price=lp, zones=True)
     if "error" in rd:
         raise HTTPException(status_code=502, detail=f"no map for {sym}: {rd['error']}")
     rd["price_source"] = "entry" if trade else "live" if lp else "map close"

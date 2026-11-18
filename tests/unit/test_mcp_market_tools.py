@@ -58,16 +58,16 @@ def test_levels_uses_completed_sessions():
     assert lv["as_of"] < TODAY.isoformat() and len(lv["recent"]) == 10
     assert lv["high_52w"] >= lv["close"] >= lv["low_52w"]
     assert list(lv)[:2] == ["symbol", "map"]                         # leads with the map read
-    assert lv["map"]["status"] == "failed its test" and lv["map"]["source"] == "built"
-    assert lv["map"]["price"] == lv["close"]                          # read at the latest close, not the map's
+    assert "not in the L1 store" in lv["map"]["error"]                 # no old-map fallback any more
 
 
-def test_levels_reads_an_older_map_file_at_the_latest_close(tmp_path, monkeypatch):
+def test_levels_reads_the_v3_map_at_the_latest_close(monkeypatch):
     import core.market_map.read as mr
-    (tmp_path / "ABC.json").write_text(json.dumps({"symbol": "ABC", "built_for": "2020-01-01", "close": 1.0,
-                                                   "atr": 1.0, "zones": []}))
-    lv = mt.levels(FakeMarket(), "abc", maps_dir=tmp_path)
-    assert lv["map"]["source"] == "file" and lv["map"]["close"] == 1.0 and lv["map"]["price"] == lv["close"]
+    m = {"symbol": "ABC", "built_for": "2020-01-01", "close": 1.0, "atr": 1.0, "zones": [], "status": "untested"}
+    monkeypatch.setattr(mr, "current_map", lambda sym, as_of=None, **kw: (m, {"error": "x"}) if kw.get("with_l1") else m)
+    lv = mt.levels(FakeMarket(), "abc")
+    assert lv["map"]["source"] == "l1" and lv["map"]["status"] == "untested"
+    assert lv["map"]["close"] == 1.0 and lv["map"]["price"] == lv["close"]    # read at the latest close
 
 
 def test_option_chain_rows_iv_and_bhav_oi():
@@ -85,7 +85,10 @@ def test_price_spread_fills_at_ask_and_bid():
     assert "error" in mt.price_spread(FakeMarket(), "ABC", EXP.isoformat(), "CE", 1040, 1000)
 
 
-def test_pick_structure_returns_families():
+def test_pick_structure_returns_families(monkeypatch):
+    import core.market_map.read as mr
+    m = {"symbol": "ABC", "built_for": "2020-01-01", "close": 1000.0, "atr": 20.0, "zones": [], "status": "untested"}
+    monkeypatch.setattr(mr, "current_map", lambda sym, as_of=None, **kw: (m, {"error": "x"}) if kw.get("with_l1") else m)
     ps = mt.pick_structure(FakeMarket(), "ABC", "bull", target=1060, stop=980, days=3, iv_history=None, events_path=None)
     fams = {r["structure"].split()[0] for r in ps["best_by_family"]}
     assert ps["best_by_family"] and ("long" in fams or "bull" in fams) and ps["view"]["gap_pct"] == 3.5

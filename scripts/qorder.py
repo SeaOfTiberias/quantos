@@ -72,8 +72,8 @@ def ticket(i: Intent) -> str:
 
 
 def map_reader(symbol: str, price):
-    from core.market_map.read import live_market, map_read
-    return map_read(symbol, price=price, market_factory=live_market)
+    from core.market_map.read import map_read
+    return map_read(symbol, price=price)
 
 
 def show_map(g: Gateway, i: Intent) -> None:

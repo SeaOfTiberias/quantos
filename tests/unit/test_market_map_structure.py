@@ -158,10 +158,7 @@ def test_map_read_leads_with_the_l1_map_when_the_store_holds_the_stock(tmp_path)
                                    columns=["sym", "series", "o", "h", "l", "c", "vol", "val"]), dt.date())
     day = date(2026, 6, 1)
 
-    class NoMarket:                                      # the old map is never built for an L1 stock
-        def daily(self, *a):
-            raise AssertionError("old map built")
-    rd = mr.map_read("ABC", as_of=day, l1_store=st, market=NoMarket(), zones=True)
+    rd = mr.map_read("ABC", as_of=day, l1_store=st, zones=True)
     assert rd["source"] == "l1" and rd["map"].startswith("L1") and rd["status"] == "untested"
     assert rd["price"] == rd["l1"]["price"] and rd["atr"] == rd["l1"]["tf"]["D"]["atr"] and "join" not in rd
     assert len(rd["zones"]) == rd["l1"]["htf"]["n_zones"] and {z["test"] for z in rd["zones"]} == {"untested"}
@@ -179,16 +176,6 @@ def test_map_read_leads_with_the_l1_map_when_the_store_holds_the_stock(tmp_path)
         assert (lo + hi) / 2 < px and tr["trade"]["target_beyond_obstacle"]
     txt = mr.lines(tr)
     assert "higher-timeframe map" in txt[0] and "untested" in txt[0]
-
-
-def test_join_checks_flag_a_close_mismatch_and_a_recent_split():
-    rd = dict(close=101.0, l1=dict(price=100.0, last_date="2026-11-06",
-                                   actions_l2_window=[dict(ex="2026-06-01", purpose="BONUS 1:1")]))
-    j = mr.join_checks(rd)
-    assert not j["close_check"]["ok"] and len(j["flags"]) == 2 and "BONUS 1:1 ex 2026-06-01" in j["flags"][1]
-    rd["close"] = 100.3
-    assert mr.join_checks(rd)["close_check"]["ok"]
-    assert mr.join_checks(dict(close=1, l1=dict(error="x")))["flags"] == []
 
 
 # ─── v2 (docs/MARKET_MAP_DEFINITIONS_V2.md) ──────────────────────────────────

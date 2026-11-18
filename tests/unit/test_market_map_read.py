@@ -1,34 +1,32 @@
-"""core/market_map/read.py -- map_read over the price map; synthetic maps and bars only."""
+"""core/market_map/read.py -- map_read over the L1 map (definitions v3); synthetic maps and bars only."""
 
-import json
-import os
-import time
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from core.market_map import read as mr
-from core.price_map.levels import Level, Zone
 
 
-def zone(low, high, *fams):
-    lv = [Level(low, f, f"{f} {low:g}") for f in fams] + ([Level(high, fams[0], f"{fams[0]} {high:g}")] if high != low else [])
-    return Zone(low, high, lv).to_dict()
+def zone(low, high, why, strong=True):
+    return {"low": low, "high": high, "mid": round((low + high) / 2, 2), "strong": strong,
+            "families": ["structure"], "tfs": ["W"], "n": 1, "why": why}
 
 
-# HDFCBANK-like: strong 664-666 below the 678 short, a weak pivot at 672, strong 700-702 above.
-MAP = {"symbol": "HDFC", "built_for": "2026-10-23", "close": 680.0, "atr": 10.0,
-       "zones": [zone(664, 666, "swing", "volume"), zone(672, 672, "pivot"), zone(700, 702, "swing", "pivot", "volume")]}
+# HDFCBANK-like: strong 664-666 below the 678 short, a weak one at 672, strong 700-702 above.
+MAP = {"symbol": "HDFC", "built_for": "2026-10-23", "close": 680.0, "atr": 10.0, "status": "untested",
+       "zones": [zone(664, 666, "W demand base"), zone(672, 672, "W EQL", strong=False),
+                 zone(700, 702, "W bear OB")]}
 
 
 def test_location_only_read():
     rd = mr.read(MAP)
-    assert rd["price"] == 680.0 and rd["status"] == "failed its test" and "trade" not in rd
+    assert rd["price"] == 680.0 and rd["status"] == "untested" and "trade" not in rd
     assert rd["below"]["range"] == "664–666" and rd["below"]["distance"] == 14 and rd["below"]["distance_atr"] == 1.4
     assert rd["above"]["range"] == "700–702" and rd["above"]["distance_pct"] == pytest.approx(2.94)
-    assert rd["below"]["test"] == rd["above"]["test"] == "failed its test"
-    assert rd["inside"] is None                                        # the single pivot at 672 is not strong
+    assert rd["below"]["test"] == rd["above"]["test"] == "untested"
+    assert rd["inside"] is None                                        # the weak zone at 672 is not strong
     assert mr.read(MAP, price=665)["inside"]["range"] == "664–666"
 
 
@@ -62,85 +60,61 @@ def test_side_words():
 
 def test_lines_carry_the_zone_test_status():
     out = mr.lines(mr.read(MAP, {"side": "short", "entry": 678, "stop": 690, "target": 660}))
-    assert "failed its test" in out[0] and "664–666" in out[1] and out[-1].strip().startswith("! target 660")
+    assert "untested" in out[0] and "map v3" in out[0] and "664–666" in out[1] and out[-1].strip().startswith("! target 660")
     assert mr.lines({"symbol": "X", "error": "no map"}) == ["MAP  X: none (no map)"]
 
 
-# ─── loading, building on demand, as_of ──────────────────────────────────────
+# ─── the map from the store, the index bars, and for futures ─────────────────
 
-IST = timezone(timedelta(hours=5, minutes=30))
-
-
-@dataclass
-class Bar:
-    timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
+def _store(tmp_path, sym="ABC", n=900):
+    from core.market_map.l1_store import Store
+    st = Store(tmp_path / "store")
+    c = 100 * np.exp(np.cumsum(np.random.default_rng(7).normal(0, 0.015, n)))
+    for dt, x in zip(pd.bdate_range("2023-01-02", periods=n), c):
+        st.append_day(pd.DataFrame([(sym, "EQ", x, x * 1.01, x * 0.99, x, 1, 1)],
+                                   columns=["sym", "series", "o", "h", "l", "c", "vol", "val"]), dt.date())
+    return st
 
 
-def bars(start: date, n: int):
-    """A zig-zag: up 10 sessions, down 10, so there are swing highs and lows."""
-    out, px = [], 100.0
-    for i in range(n):
-        px += 1.0 if (i // 10) % 2 == 0 else -1.0
-        t = datetime.combine(start + timedelta(days=i), datetime.min.time(), tzinfo=IST)
-        out.append(Bar(t, px, px + 0.8, px - 0.8, px, 1000))
-    return out
+def test_a_symbol_outside_the_store_has_no_map_and_never_a_fallback(tmp_path):
+    rd = mr.map_read("TCS", l1_store=_store(tmp_path))
+    assert rd == {"symbol": "TCS", "error": rd["error"]} and "not in the L1 store" in rd["error"]
+    assert "error" in mr.current_map("TCS", l1_store=_store(tmp_path))
 
 
-class Market:
-    def __init__(self, n=120):
-        self.today = datetime.now(IST).date()
-        self.bars = bars(self.today - timedelta(days=n), n)
-        self.calls = 0
-
-    def daily(self, symbol, days):
-        self.calls += 1
-        return self.bars
-
-
-def test_builds_on_demand_saves_then_reads_the_file(tmp_path):
-    m = Market()
-    rd = mr.map_read("abc", market=m, maps_dir=tmp_path)
-    assert rd["symbol"] == "ABC" and rd["source"] == "built" and m.calls == 1
-    assert (tmp_path / "ABC.json").exists() and (tmp_path / "ABC.md").exists()
-    rd2 = mr.map_read("ABC", market=m, maps_dir=tmp_path)
-    assert rd2["source"] == "file" and m.calls == 1                   # fresh file: no second fetch
-
-
-def test_a_stale_file_is_rebuilt(tmp_path):
-    (tmp_path / "ABC.json").write_text(json.dumps({**MAP, "symbol": "ABC"}))
-    old = time.time() - 8 * 86400
-    os.utime(tmp_path / "ABC.json", (old, old))
-    m = Market()
-    assert mr.map_read("ABC", market=m, maps_dir=tmp_path)["source"] == "built" and m.calls == 1
-
-
-def test_the_market_is_only_made_when_a_build_is_needed(tmp_path):
-    (tmp_path / "ABC.json").write_text(json.dumps({**MAP, "symbol": "ABC"}))
-    made = []
-    rd = mr.map_read("ABC", market_factory=lambda: made.append(1), maps_dir=tmp_path)
-    assert rd["source"] == "file" and made == []
-
-
-def test_as_of_uses_only_earlier_bars_and_saves_nothing(tmp_path):
-    m = Market()
-    d = m.today - timedelta(days=30)
-    rd = mr.map_read("ABC", as_of=d, market=m, maps_dir=tmp_path)
-    assert rd["built_for"] == d.isoformat() and not (tmp_path / "ABC.json").exists()
-    last = [b for b in m.bars if b.timestamp.date() < d][-1]
-    assert rd["close"] == last.close                                  # nothing from day D or later
-
-
-def test_failures_come_back_as_errors_never_raise(tmp_path):
-    assert "error" in mr.map_read("ABC", maps_dir=tmp_path)            # no file, no market
-    assert "error" in mr.map_read("ABC", market=Market(n=5), maps_dir=tmp_path)    # too few bars
-
+def test_failures_come_back_as_errors_never_raise():
     class Broken:
-        def daily(self, symbol, days):
-            raise RuntimeError("Fyers down")
-    rd = mr.map_read("ABC", market=Broken(), maps_dir=tmp_path)
-    assert rd["error"].startswith("RuntimeError")
+        root = "x"
+
+        def adjusted(self, sym):
+            raise RuntimeError("disk gone")
+    assert mr.map_read("ABC", l1_store=Broken())["error"].startswith("RuntimeError")
+
+
+def test_as_of_uses_only_earlier_bars(tmp_path):
+    st = _store(tmp_path)
+    rd = mr.map_read("ABC", as_of=date(2026, 6, 1), l1_store=st)
+    assert rd["source"] == "l1" and rd["built_for"] < "2026-06-01" and rd["status"] == "untested"
+
+
+def test_nifty_reads_from_the_index_bars_with_the_same_engine(tmp_path):
+    from core.market_map.index_bars import COLS
+    root = tmp_path / "idx"
+    root.mkdir()
+    c = 20000 * np.exp(np.cumsum(np.random.default_rng(3).normal(0, 0.01, 900)))
+    days = pd.bdate_range("2023-01-02", periods=900)
+    pd.DataFrame({"date": days.date, "o": c, "h": c * 1.01, "l": c * 0.99, "c": c, "vol": 1, "val": 1})[COLS]         .to_csv(root / "NIFTY.csv", index=False)
+    rd = mr.map_read("nifty", as_of=date(2026, 6, 1), index_root=root)
+    assert "error" not in rd, rd.get("error")
+    assert rd["symbol"] == "NIFTY" and rd["source"] == "index" and rd["map"] == mr.MAP_NAME
+    assert "no index bars" in mr.map_read("BANKNIFTY", index_root=root)["error"]
+
+
+def test_shift_moves_zones_onto_futures_and_markers_name_v3():
+    f = mr.shift(MAP, 5)
+    assert f["zones"][0]["low"] == 669 and f["zones"][0]["mid"] == 670 and f["shifted_by"] == 5
+    assert mr.shift(MAP, 0) is MAP and mr.shift({"error": "x"}, 5) == {"error": "x"}
+    out = mr.markers(f, 690, 690, -1, 10, 660)
+    assert "v3, untested" in out[0] and "futures = cash +5" in out[0] and "669–671 (W demand base)" in out[0]
+    assert out[1].startswith("• First obstacle 669–671 at 1.9R") and "beyond" in out[1]
+    assert mr.markers({"error": "not in the L1 store"}, 1, 1, 1, 1, None) == ["• Map: none (not in the L1 store)"]

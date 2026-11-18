@@ -85,7 +85,7 @@ def _atr(bars: list[OHLCV], n: int = 14) -> Optional[float]:
     return sum(tr) / n
 
 
-def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
+def levels(m: Market, symbol: str) -> dict:
     """The map read first (core/market_map/read.py: higher-timeframe strong zones either side, untested), then
     daily trend, volatility and Darvas box state, plus the screener's tested retest plan for
     each side. Uses completed sessions only (today's forming bar is reported separately)."""
@@ -97,9 +97,8 @@ def levels(m: Market, symbol: str, maps_dir: Optional[Path] = None) -> dict:
     today = datetime.now(IST).date()
     allbars = m.daily(sym, 365)
     done = [b for b in allbars if b.timestamp.astimezone(IST).date() < today] if allbars else []
-    # Read from the latest completed close: a reused map file (< 7 days) stores an older one.
-    rd = map_read(sym, market=m, daily=allbars, maps_dir=maps_dir,
-                  price=done[-1].close if done else None)
+    # Read at the latest completed close (Fyers), on the L1 map (bhavcopy, definitions v3).
+    rd = map_read(sym, price=done[-1].close if done else None)
     if len(done) < 30:
         return {"symbol": sym, "map": rd, "error": f"only {len(done)} daily bars"}
     closes = [b.close for b in done]
@@ -237,7 +236,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                    budget: float = 0, p: float = 0.5, intraday: bool = False, gap_pct: Optional[float] = None,
                    thesis: str = "move", atr: Optional[float] = None, iv_history: Optional[Path] = IV_HISTORY,
                    bhav_dir: Optional[Path] = QUANTOS_DIR / "nse_fo_bhavcopy",
-                   events_path: Optional[Path] = EVENTS, maps_dir: Optional[Path] = None) -> dict:
+                   events_path: Optional[Path] = EVENTS) -> dict:
     from core.ideas import events, regime
     from core.market_map.read import map_read
     sym = symbol.strip().upper()
@@ -264,8 +263,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
     vw = {"direction": direction, "target": target, "stop": stop, "days": days, "budget": budget or None,
           "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis}
     top = [row(c) for c in ranked[:8]]
-    rd = map_read(sym, {"side": view.direction, "entry": ch.spot, "stop": stop, "target": target},
-                  market=m, maps_dir=maps_dir)
+    rd = map_read(sym, {"side": view.direction, "entry": ch.spot, "stop": stop, "target": target})
     return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw, "map": rd,
             "location_flags": (rd.get("trade") or {}).get("flags", []),
             "regime": {"velocity": velocity, "iv": iv}, "event": ev,

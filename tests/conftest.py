@@ -12,7 +12,7 @@ import pytest  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _maps_in_tmp(tmp_path, monkeypatch):
-    """map_read builds and saves price maps on demand: keep every test's maps out of ~/.quantos."""
+    """map_read reads the L1 store and the index bars: never the machine's real ones in a test."""
     import core.market_map.read as mr
-    monkeypatch.setattr(mr, "MAPS_DIR", tmp_path / "price_maps")
-    monkeypatch.setattr(mr, "L1_ROOT", tmp_path / "l1_store")      # never the machine's real L1 store
+    monkeypatch.setattr(mr, "L1_ROOT", tmp_path / "l1_store")
+    monkeypatch.setattr(mr, "INDEX_ROOT", tmp_path / "index_bars")

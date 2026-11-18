@@ -1,29 +1,29 @@
-"""cloud/api/map_routes.py -- GET /map/{symbol}, POST /map/{symbol}/check; a synthetic map file, no Fyers."""
-
-import json
+"""cloud/api/map_routes.py -- GET /map/{symbol}, POST /map/{symbol}/check; a synthetic v3 map, no Fyers."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 import core.market_map.read as mr
-from core.price_map.levels import Level, Zone
 
 
-def zone(low, high, *fams):
-    lv = [Level(low, f, f"{f} {low:g}") for f in fams] + ([Level(high, fams[0], f"{fams[0]} {high:g}")] if high != low else [])
-    return Zone(low, high, lv).to_dict()
+def zone(low, high, why, strong=True):
+    return {"low": low, "high": high, "mid": round((low + high) / 2, 2), "strong": strong,
+            "families": ["structure"], "tfs": ["W"], "n": 1, "why": why}
 
 
-# The 11-02 HDFCBANK shape: a strong 688.77-693 zone above the 10-23 short at 678, a weak pivot at 672.
+# The 11-02 HDFCBANK shape: a strong 688.77-693 zone above the 10-23 short at 678, a weak one at 672.
 MAP = {"symbol": "HDFCBANK", "built_for": "2026-11-02", "close": 692.8, "atr": 13.96, "zone_width": 4.19,
-       "zones": [zone(672, 672, "pivot"), zone(688.77, 693, "pivot", "swing", "volume"),
-                 zone(712.13, 718.25, "pivot", "swing", "volume")]}
+       "status": "untested", "map": mr.MAP_NAME,
+       "zones": [zone(672, 672, "W EQL", strong=False), zone(688.77, 693, "W bear OB"),
+                 zone(712.13, 718.25, "M supply base")]}
 
 
 @pytest.fixture
 def client(monkeypatch):
-    mr.MAPS_DIR.mkdir(parents=True, exist_ok=True)
-    (mr.MAPS_DIR / "HDFCBANK.json").write_text(json.dumps(MAP))
+    def fake(sym, as_of=None, **kw):
+        m = dict(MAP) if sym == "HDFCBANK" else {"symbol": sym, "error": f"{sym} is not in the L1 store"}
+        return (m, {"error": "synthetic"}) if kw.get("with_l1") else m
+    monkeypatch.setattr(mr, "current_map", fake)
     import cloud.api.map_routes as routes
     monkeypatch.setattr(routes, "_live", lambda sym: (None, None))            # Fyers down: read at the map's close
     from cloud.api.main import app
@@ -35,12 +35,12 @@ def test_get_map_draws_the_whole_ladder_with_its_status(client):
     assert out["symbol"] == "HDFCBANK" and out["price"] == 692.8 and out["price_source"] == "map close"
     assert [z["range"] for z in out["zones"]] == ["712.13–718.25", "688.77–693", "672"]     # high to low
     assert [z["strong"] for z in out["zones"]] == [True, True, False]
-    assert {z["test"] for z in out["zones"]} == {"failed its test"} and out["status"] == "failed its test"
+    assert {z["test"] for z in out["zones"]} == {"untested"} and out["status"] == "untested"
     assert out["inside"]["range"] == "688.77–693"
     assert [(z["where"], z["distance"]) for z in out["zones"]] == [("above", 19.33), ("inside", 0), ("below", 20.8)]
     assert out["zones"][0]["distance_atr"] == 1.38 and out["zones"][2]["distance_pct"] == 3.0
-    assert any("not in the L1 store" in m for m in out["layers"]["missing"]) and out["zone_width"] == 4.19
-    assert out["fallback"].startswith("not in the L1 store")
+    assert out["layers"] is not None and out["zone_width"] == 4.19 and out["source"] == "l1"
+    assert "fallback" not in out
 
 
 def test_get_map_reads_at_the_live_price_when_fyers_answers(client, monkeypatch):
@@ -56,7 +56,7 @@ def test_the_10_23_short_has_its_stop_inside_the_688_77_693_zone(client):
     assert out["price"] == 678 and out["price_source"] == "entry"
     assert t["r"] == 12 and t["target_r"] == 1.5 and t["stop_in_zone"]["range"] == "688.77–693"
     assert t["flags"] == ["stop 690 is inside the strong zone 688.77–693"]
-    assert t["first_obstacle"] is None                                           # nothing strong below on the 100-day map
+    assert t["first_obstacle"] is None                                           # nothing strong below
 
 
 def test_check_validates_the_trade(client):
@@ -69,7 +69,6 @@ def test_check_validates_the_trade(client):
     assert ok["trade"]["target"] is None and ok["trade"]["target_r"] is None
 
 
-def test_no_map_is_a_502_not_a_crash(client, monkeypatch):
-    monkeypatch.setattr(mr, "live_market", lambda: (_ for _ in ()).throw(RuntimeError("Fyers connect failed")))
+def test_no_map_is_a_502_not_a_crash(client):
     r = client.get("/map/TCS")
     assert r.status_code == 502 and "TCS" in r.json()["detail"]

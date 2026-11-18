@@ -211,31 +211,24 @@ function StockMap({ sym }) {
       {sym && !rd && !err && <div className="q-empty">Loading the map…</div>}
       {rd && (
         <>
-          {rd.source === "l1" ? (
-            <div className="q-banner amber" style={{ marginTop: 16 }}>
-              <b>Higher-timeframe map, untested.</b> Built from {rd.layers.shown.join("; ")}. Not built yet: {rd.layers.missing.join("; ")}.
-              Most zones count as strong under v1, so "strong" selects little until the tests run.
-            </div>
-          ) : (
-            <div className="q-banner amber" style={{ marginTop: 16 }}>
-              <b>Old 100-day map ({rd.fallback}).</b> Built from {rd.layers.shown.join(", ")}. Not built yet: {rd.layers.missing.join("; ")}.
-              A multi-year base can sit where this map shows "no strong zone".
-            </div>
-          )}
+          <div className="q-banner amber" style={{ marginTop: 16 }}>
+            <b>Higher-timeframe map (definitions v3), untested.</b> Built from {rd.layers.shown.join("; ")}. Not built yet: {rd.layers.missing.join("; ")}.
+            Strong = a fresh zone where a BOS/CHoCH started, with a pivot or volume level beside it. Markers, never signals.
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, marginTop: 16 }}>
             <div className="q-card">
               <div className="q-between">
                 <div>
                   <div className="q-label">Price ladder</div>
                   <div className="q-sub">
-                    {rd.source === "l1" ? `Bhavcopy to ${rd.built_for}` : `Map built for ${rd.built_for} (${rd.source === "file" ? "saved map" : "built now"})`} · price {px(rd.price)}
+                    {rd.source === "index" ? "Index closes" : "Bhavcopy"} to {rd.built_for} · price {px(rd.price)}
                     {rd.price_source === "live" ? " live" : " (the map's close; live price unavailable)"}
                   </div>
                 </div>
                 <div className="q-row">
                   <TestBadge test={rd.status} />
                   <label className="q-row" style={{ gap: 6, fontSize: 13 }}>
-                    <input type="checkbox" checked={weak} onChange={e => setWeak(e.target.checked)} /> {rd.source === "l1" ? "single-family zones" : "weak zones"}</label>
+                    <input type="checkbox" checked={weak} onChange={e => setWeak(e.target.checked)} /> non-strong zones</label>
                 </div>
               </div>
               <div style={{ marginTop: 16 }}><Ladder rd={rd} weak={weak} trade={check?.trade} /></div>

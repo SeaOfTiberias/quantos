@@ -46,15 +46,14 @@ def regime_lines(chain: Chain, view: View, top) -> list[str]:
     return [" · ".join(out)] + [f"! {w}" for w in regime.warnings(vw, vel, iv, top_row, ev)]
 
 
-def map_lines(chain: Chain, view: View, market_factory=None) -> list[str]:
+def map_lines(chain: Chain, view: View) -> list[str]:
     """The location flags next to R1-R6: advisory, they don't change the ranking."""
     from core.market_map.read import lines, map_read
-    rd = map_read(chain.symbol, {"side": view.direction, "entry": chain.spot, "stop": view.stop, "target": view.target},
-                  market_factory=market_factory)
+    rd = map_read(chain.symbol, {"side": view.direction, "entry": chain.spot, "stop": view.stop, "target": view.target})
     return lines(rd)
 
 
-def report(chain: Chain, view: View, p: float, market_factory=None) -> str:
+def report(chain: Chain, view: View, p: float) -> str:
     ranked = candidates(chain, view, p=p)
     lines = [f"{chain.symbol} spot {chain.spot:g} · lot {chain.lot} · ATR {view.atr or 0:.2f} · "
              f"view {'BULL' if view.direction > 0 else 'BEAR'} ({view.thesis}) "
@@ -62,7 +61,7 @@ def report(chain: Chain, view: View, p: float, market_factory=None) -> str:
              f"{'budget ₹{:,.0f}'.format(view.risk_budget) if view.risk_budget else 'research mode (no budget)'} · p={p}",
              f"{'structure':<30}{'expiry':<12}{'entry':>8}{'if target':>11}{'if stop':>10}{'if flat':>9}{'worst':>9}"
              f"{'needs p':>9}{'EV/worst':>10}{'lots':>6}  {'deltas':<14}rules (if_event: R7)"]
-    lines[1:1] = regime_lines(chain, view, ranked[0] if ranked else None) + map_lines(chain, view, market_factory)
+    lines[1:1] = regime_lines(chain, view, ranked[0] if ranked else None) + map_lines(chain, view)
 
     def row(c):
         rules = "ok" if not c.flags else " | ".join(c.flags)
@@ -132,8 +131,7 @@ def main(argv=None) -> int:
     if ev.get("inside_horizon"):
         view.event_date = _date.fromisoformat(ev["results_date"])
     view._event_ctx = ev
-    from core.market_map.read import live_market
-    print(report(chain, view, args.p, market_factory=live_market))
+    print(report(chain, view, args.p))
     return 0
 
 
