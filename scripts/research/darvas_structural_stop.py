@@ -133,12 +133,16 @@ def _job(args):
 # ─── scoring ─────────────────────────────────────────────────────────────────
 
 def reproduced(r: dict, ds_tol: int = 1) -> bool:
+    """Amendment 3 (2026-11-20): compare returns (exit / entry), not absolute prices -- the L1 store and the
+    original runs sit on different split/bonus adjustment bases."""
     if r.get("status") != "ok":
         return False
     a = r["atr"]
     d1, d2 = date.fromisoformat(a["exit_date"]), date.fromisoformat(r["cached_exit_date"])
     near = abs(((d1 - d2).days)) <= 3 if ds_tol else d1 == d2                       # one session ~ up to 3 days
-    return near and abs(a["exit_price"] / r["cached_exit_price"] - 1) <= 0.01
+    ret_sim = a["exit_price"] / r["entry_price"]
+    ret_cached = r["cached_exit_price"] / r["cached_entry_price"]
+    return near and abs(ret_sim / ret_cached - 1) <= 0.01
 
 
 def week_ci(rows: list[dict], diffs: list[float]) -> tuple[float, float]:
@@ -164,7 +168,7 @@ def dd(xs: list[float]) -> float:
 def score() -> str:
     lines = ["# Darvas Bucket B: structural stop vs ATR stop -- results (2026-11-19)", "",
              "Pre-registered in `docs/DARVAS_STRUCTURAL_STOP_PREREG_2026-11-19.md` (29fe6aa, amendment 1 347ab6a) before "
-             "any code or run. Runner `scripts/research/darvas_structural_stop.py`.", ""]
+             "any code or run. Reproduction gate on returns per amendment 3 (user, 2026-11-20). Runner `scripts/research/darvas_structural_stop.py`.", ""]
     verdict, gate_ok = {}, True
     for period in PERIODS:
         p = OUT / f"{period}.jsonl"

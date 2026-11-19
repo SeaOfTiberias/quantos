@@ -74,3 +74,15 @@ Worked cases (first five discovery trades, entry order):
 - COROMANDEL: structural stop tighter (212.97, W protected), same exit.
 
 4 of 5 reproduce.
+
+## Amendment 3 (2026-11-20, user-approved; after the discovery reproduction gate failed, before any discovery comparison was computed)
+
+**What happened:** the discovery gate failed (84.5% < 90%) because it compared **absolute** exit prices. The L1 store is adjusted for splits and bonuses up to 2026, but the OOS run was adjusted only to its 2023 data end, so one trade sits at two price scales. Of the 140 non-reproducing trades, 129 have an entry price more than 0.5% off and 138 have the same exit reason. The confirmation gate passed (98.1%), and its comparison was already reported.
+
+**Change (gate definition only; the arms, measure, pass criteria and 90% threshold are unchanged):** a re-simulated ATR-arm trade reproduces the cached trade when
+- its exit date is within 3 calendar days of the cached exit date (as before), and
+- its return, exit ÷ entry, is within 1% (relative) of the cached exit ÷ entry.
+
+This applies to both periods. Confirmation is re-scored under the same rule. No re-simulation; the stored per-trade rows are scored again.
+
+**Known before approval:** under this rule the ATR arm reproduces about 98% of discovery trades (measured while diagnosing the failure). The structural-minus-ATR comparison for discovery had **not** been computed when the user approved it.
