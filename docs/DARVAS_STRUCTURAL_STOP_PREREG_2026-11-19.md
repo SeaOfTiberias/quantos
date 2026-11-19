@@ -54,3 +54,10 @@ Five worked cases, drawn by hand from discovery trades and shown to the user: th
 ## If it passes
 
 A structural-stop variant may run as a separate paper variant beside the Darvas executor, unchanged and scored on its own (as the sprint notes of 2026-11-06 require for any map-filtered Darvas variant). Real money still needs `docs/DARVAS_GO_NO_GO_2026-11.md`'s review and the user's go-ahead. Trading stays paused.
+
+## Amendment 1 (2026-11-19, before any code ran or any case was drawn)
+
+Two mechanics the frozen simulator leaves open, fixed for both arms alike:
+- **Data end:** each period is re-simulated only on bars up to its original run's last exit date (discovery: the OOS run's data end, 2023-12-29; confirmation: the latest exit date in `darvas_atr_stop_results.json`). A trade still open there is marked at that close, as the original runs did.
+- **Initial stop at or above the entry open** (the entry gapped below the level): the trade exits at the entry open on the entry day, net of costs. The frozen simulator would otherwise fill at a stop above the entry, a gain that can't happen.
+- `analyse_symbol` sees the trailing 756 sessions, as in both original runs (the OOS run's `LOOKBACK`).
