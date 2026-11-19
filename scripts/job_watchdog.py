@@ -92,9 +92,17 @@ def gather(now: datetime) -> list[wd.Unit]:
     return units
 
 
-def send(msg: str) -> None:
+def send(msg: str) -> bool:
+    """True when Telegram took the message; a failure is printed to the journal."""
     from cloud.api.notifier import send_telegram
-    asyncio.run(send_telegram(msg))
+    try:
+        ok = bool(asyncio.run(send_telegram(msg)))
+    except Exception as e:                                # noqa: BLE001 -- never lose the run
+        print(f"telegram error ({type(e).__name__}): {msg[:120]}")
+        return False
+    if not ok:
+        print(f"telegram not sent: {msg[:120]}")
+    return ok
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -121,8 +129,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"  {u.name:48} {u.type:8} {u.active:11} {u.result:15} last {u.last_trigger} expected {u.expected_last}")
         print("\n".join(msgs) or "(nothing to send)")
         return 0
-    for m in msgs:
-        send(m)
+    sent = sum(send(m) for m in msgs)
+    print(f"{len(units)} units, {len(faults)} faults, {sent}/{len(msgs)} messages sent")
+    if sent < len(msgs):
+        return 1                                          # state not saved: the next run sends them again
     STATE.write_text(json.dumps(new_state, indent=1))
     return 0
 
