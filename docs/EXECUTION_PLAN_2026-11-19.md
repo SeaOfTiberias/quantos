@@ -167,7 +167,10 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
   - **Finding:** 40% of the backtest's own 20-trade runs lose money (p10 −4.73%), and a zero-edge copy fails the p10 check only ~20% of the time at any length up to 60 trades. So the paper P&L is a broken-system tripwire, not edge evidence.
   - The rule rests on mechanics: H1–H5, with H5 a replay of the frozen rules over the paper window.
   - The review falls at the 20th closed trade (~April 2027).
-- [ ] E3 Darvas second chance run + stop-placement test
+- [ ] E3 Darvas second chance run + stop-placement test. **2026-11-19:**
+  - Second chance **FAIL** (`docs/DARVAS_REENTRY_RESULTS_2026-11-19.md`): discovery n 54, +0.29R, t 0.94, 2020-23 −0.09R; confirmation −0.39R.
+  - Structural stop **NO VERDICT** (`docs/DARVAS_STRUCTURAL_STOP_RESULTS_2026-11-19.md`): the discovery reproduction gate failed as written (absolute prices across adjustment bases; return-based 98.2%). Confirmation +0.42%/trade, CI −0.12 .. +0.98.
+  - **Tick when:** the user decides on amendment 3 (return-based gate) and the discovery comparison is run, or the test is closed as no verdict.
 - [ ] E4 Momentum benchmark indices + monthly report
 - [ ] E5 One call ledger
 - [ ] E6 Evening routine
