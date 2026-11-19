@@ -162,7 +162,11 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
   - Gap report (`docs/ORB_GAP_REPORT_2026-11-19.md`): 27 sessions lost.
   - 18b amendment approved by the user, coded with 5 tests (244424e): 40 recorded sessions, equity figure as of the 40th (~2026-12-30). It also closes a peek: the date-only equity gate would have printed the rupee total on 11-19.
   - Telegram send-failure handling 80a5bd2. 80a5bd2 and 244424e deploy after 15:30 IST.
-- [ ] E2 Darvas go/no-go rule (before the next look at paper P&L)
+- [x] E2 Darvas go/no-go rule: **FROZEN 2026-11-19** (`docs/DARVAS_GO_NO_GO_2026-11.md`, bands `docs/DARVAS_GO_NO_GO_BANDS.json` from `scripts/research/darvas_go_no_go_bands.py`).
+  - The rebuild reproduces the OOS run exactly (991 trades, +2.16%). Written with 5 closed paper trades counted and no return read.
+  - **Finding:** 40% of the backtest's own 20-trade runs lose money (p10 −4.73%), and a zero-edge copy fails the p10 check only ~20% of the time at any length up to 60 trades. So the paper P&L is a broken-system tripwire, not edge evidence.
+  - The rule rests on mechanics: H1–H5, with H5 a replay of the frozen rules over the paper window.
+  - The review falls at the 20th closed trade (~April 2027).
 - [ ] E3 Darvas second chance run + stop-placement test
 - [ ] E4 Momentum benchmark indices + monthly report
 - [ ] E5 One call ledger
@@ -173,4 +177,5 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
 
 _Dated notes on anything a session changed for later sessions._
 
+- **2026-11-19 (E2):** the calendar re-derivation wasn't needed for E2 (sessions come from the bhavcopy dates; the rule counts trades). It stays a small open task (watchdog CALENDAR fault), run on the VM with a fresh Fyers token.
 - **2026-11-19 (E1):** the derived NSE calendar ends 2026-08-18. Anything that needs trading days after that date falls back to weekdays. Re-deriving it (`scripts/derive_nse_calendar.py`) is a small task to do before E2, which counts sessions.
