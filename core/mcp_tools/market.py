@@ -85,6 +85,20 @@ def _atr(bars: list[OHLCV], n: int = 14) -> Optional[float]:
     return sum(tr) / n
 
 
+def _carded(sym: str, rd: dict) -> dict:
+    """The map read with its raw L1 read (~200 KB: every zone, profile and virgin level since 2010)
+    swapped for the context card (core/market_map/card.py, a few KB: what is near the price, with
+    signed distances worked out by code)."""
+    l1 = rd.pop("l1", None)
+    if l1 is not None and "error" not in rd:
+        from core.market_map import card as cd
+        try:
+            rd["card"] = cd.card(sym, l1)
+        except Exception as e:                               # a card never breaks the tool
+            rd["card"] = {"sym": sym, "error": f"{type(e).__name__}"}
+    return rd
+
+
 def levels(m: Market, symbol: str) -> dict:
     """The map read first (core/market_map/read.py: higher-timeframe strong zones either side, untested), then
     daily trend, volatility and Darvas box state, plus the screener's tested retest plan for
@@ -98,7 +112,7 @@ def levels(m: Market, symbol: str) -> dict:
     allbars = m.daily(sym, 365)
     done = [b for b in allbars if b.timestamp.astimezone(IST).date() < today] if allbars else []
     # Read at the latest completed close (Fyers), on the L1 map (bhavcopy, definitions v3).
-    rd = map_read(sym, price=done[-1].close if done else None)
+    rd = _carded(sym, map_read(sym, price=done[-1].close if done else None))
     if len(done) < 30:
         return {"symbol": sym, "map": rd, "error": f"only {len(done)} daily bars"}
     closes = [b.close for b in done]
@@ -263,7 +277,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
     vw = {"direction": direction, "target": target, "stop": stop, "days": days, "budget": budget or None,
           "p": p, "gap_pct": view.gap_pct, "thesis": view.thesis}
     top = [row(c) for c in ranked[:8]]
-    rd = map_read(sym, {"side": view.direction, "entry": ch.spot, "stop": stop, "target": target})
+    rd = _carded(sym, map_read(sym, {"side": view.direction, "entry": ch.spot, "stop": stop, "target": target}))
     return {"symbol": sym, "spot": ch.spot, "lot": ch.lot, "atr14": _r(atr), "view": vw, "map": rd,
             "location_flags": (rd.get("trade") or {}).get("flags", []),
             "regime": {"velocity": velocity, "iv": iv}, "event": ev,
@@ -280,7 +294,7 @@ def pick_structure(m: Market, symbol: str, direction: str, target: float, stop: 
                     "meetings; when inside the horizon, if_event = the session after results with a 1.5 ATR gap against "
                     "the view and IV down to its 1y median, and R7 flags a structure whose worst case that is. "
                     "map / location_flags: the strong zones around spot, the first one in the view's way (in R), "
-                    "a target beyond it, a stop inside one -- the higher-timeframe zones are untested (the old 100-day map, used only for stocks outside the L1 store, failed its test), so markers only; they don't change the ranking."}
+                    "a target beyond it, a stop inside one -- the higher-timeframe zones (definitions v3) are untested, so markers only; they don't change the ranking. map.card = the context card near spot."}
 
 
 # ─── OI build-up ─────────────────────────────────────────────────────────────

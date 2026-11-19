@@ -68,6 +68,7 @@ def test_levels_reads_the_v3_map_at_the_latest_close(monkeypatch):
     lv = mt.levels(FakeMarket(), "abc")
     assert lv["map"]["source"] == "l1" and lv["map"]["status"] == "untested"
     assert lv["map"]["close"] == 1.0 and lv["map"]["price"] == lv["close"]    # read at the latest close
+    assert "l1" not in lv["map"] and "card" in lv["map"]          # the card, never the ~200 KB raw L1 read
 
 
 def test_option_chain_rows_iv_and_bhav_oi():
