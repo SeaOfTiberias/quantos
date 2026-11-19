@@ -180,5 +180,6 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
 
 _Dated notes on anything a session changed for later sessions._
 
+- **2026-11-19 (user, after E3 ran):** research files that results rest on now go to the VM under `~/.quantos/research/` with sha256 in `docs/RESEARCH_DATA.md`. The two Darvas caches, the E3 outputs and the L1 snapshot are copied and verified. No off-machine backup is known yet.
 - **2026-11-19 (E2):** the calendar re-derivation wasn't needed for E2 (sessions come from the bhavcopy dates; the rule counts trades). It stays a small open task (watchdog CALENDAR fault), run on the VM with a fresh Fyers token.
 - **2026-11-19 (E1):** the derived NSE calendar ends 2026-08-18. Anything that needs trading days after that date falls back to weekdays. Re-deriving it (`scripts/derive_nse_calendar.py`) is a small task to do before E2, which counts sessions.
