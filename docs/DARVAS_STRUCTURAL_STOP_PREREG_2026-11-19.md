@@ -61,3 +61,16 @@ Two mechanics the frozen simulator leaves open, fixed for both arms alike:
 - **Data end:** each period is re-simulated only on bars up to its original run's last exit date (discovery: the OOS run's data end, 2023-12-29; confirmation: the latest exit date in `darvas_atr_stop_results.json`). A trade still open there is marked at that close, as the original runs did.
 - **Initial stop at or above the entry open** (the entry gapped below the level): the trade exits at the entry open on the entry day, net of costs. The frozen simulator would otherwise fill at a stop above the entry, a gain that can't happen.
 - `analyse_symbol` sees the trailing 756 sessions, as in both original runs (the OOS run's `LOOKBACK`).
+
+## Amendment 2 (2026-11-19, after the five worked cases, before the full run; reported measure only)
+
+The worked cases showed the GLAND-pattern measure counts trailing stops that exit **above** the entry (RCF, COROMANDEL 2016-07), which are trivially "back above entry". It now counts **losing stops only** (exit below entry): the share whose high comes back above the entry within 15 sessions. It is a reported measure; the pass criteria are unchanged.
+
+Worked cases (first five discovery trades, entry order):
+- RCF 07-01: no level within 4 ATR, ATR stop kept.
+- DCBBANK: structural stop 101.5 under the M protected low at the box ceiling, stopped in 3 days, −3.67%, against the ATR arm's +25.45%. The ATR arm doesn't reproduce the cached trade (target hit on 10-30 on L1 bars vs a stop on 11-22 cached); the reproduction gate covers this.
+- CASTEXTECH: no level, both +20.69%.
+- RCF 07-05: structural stop wider (45.73 under a W bull OB), same exit.
+- COROMANDEL: structural stop tighter (212.97, W protected), same exit.
+
+4 of 5 reproduce.
