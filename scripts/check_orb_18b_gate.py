@@ -5,14 +5,16 @@ QuantOS — Candidate 18b: Pre-Registered Gate + Equity Check
 Reports docs/ORB_ENTRY_FILTER_METHODOLOGY.md's two prospective checks:
 
 1. Per-index PF/Sharpe pass/fail — N>=20 new (closed) 18b trades AND
-   >=8 weeks elapsed since 2026-09-22, BOTH required. ONLY reveals
+   >=40 RECORDED sessions since 2026-09-22 (amendment 2026-11-19: "8 weeks"
+   read as 40 recorded sessions after the 10-08..11-17 outage), BOTH required. ONLY reveals
    PF/Sharpe once both clear for that index, same "no peeking"
    discipline as scripts/check_orb_stopout_probe_gate.py. Compared
    against unfiltered candidate 18's own closed trades over the
    identical forward window (same index, same period) — the methodology
    doc's own verdict method.
 2. The ₹50,000 combined-account equity narrative (the methodology doc's
-   2026-09-22 addendum) — gated on DATE ONLY (>=2026-11-17), not N, and
+   2026-09-22 addendum) — gated on TIME ONLY (40 recorded sessions; was the
+   date 2026-11-17 before the 2026-11-19 amendment), not N, and
    reported as a descriptive figure alongside (never instead of) #1.
 
 Cost model note: both use Stressed (core/orb_scalping/costs.py's
@@ -62,9 +64,14 @@ from core.orb_scalping.paper_adjustments import (  # noqa: E402
 )
 
 MIN_SAMPLE_N = 20              # reuses core/risk/trade_history.py's Kelly-sizing minimum
-MIN_WEEKS = 8.0
+MIN_WEEKS = 8.0                # the original clause, shown for reference only
 DEPLOYED_AT = date(2026, 9, 22)     # orb_scalping_filtered.enabled flipped true
-EQUITY_DATE = date(2026, 11, 17)    # DEPLOYED_AT + 8 weeks, exactly
+# Amendment 2026-11-19 (user-approved; docs/ORB_ENTRY_FILTER_METHODOLOGY.md, docs/ORB_GAP_REPORT_2026-11-19.md),
+# written before any 18b P&L was read: the units hung from 2026-10-07 ~14:35 IST to 2026-11-17 23:53 IST, so
+# "8 calendar weeks" counts as 40 RECORDED sessions, for the PF/Sharpe gate and the equity report alike.
+MIN_SESSIONS = 40
+OUTAGES = ((date(2026, 10, 8), date(2026, 11, 17)),)      # inclusive; sessions the 18b job never ran
+SESSIONS_FILE = Path.home() / ".quantos" / "l1_store" / "bars" / "HDFCBANK.csv"   # bhavcopy dates = NSE sessions
 BASE_CAPITAL = 50_000.0
 UNDERLYINGS = ("NIFTY", "BANKNIFTY")
 # Set by fix 2's outcome (docs/ORB_ENTRY_FILTER_METHODOLOGY.md, 2026-09-30
@@ -78,11 +85,26 @@ def elapsed_weeks(today: date, deployed_at: date = DEPLOYED_AT) -> float:
     return (today - deployed_at).days / 7.0
 
 
-def gate_status(n: int, weeks: float, min_n: int = MIN_SAMPLE_N, min_weeks: float = MIN_WEEKS) -> dict:
-    """Pure, unit-testable — both gates from docs/ORB_ENTRY_FILTER_METHODOLOGY.md."""
+def load_sessions(path: Path = SESSIONS_FILE) -> list[date]:
+    """NSE sessions from the L1 store's bhavcopy dates; [] when unreadable (the gate then stays shut)."""
+    try:
+        import csv
+        with open(path) as f:
+            return sorted({date.fromisoformat(r["date"][:10]) for r in csv.DictReader(f)})
+    except (OSError, KeyError, ValueError):
+        return []
+
+
+def recorded_sessions(today: date, sessions: list[date], start: date = DEPLOYED_AT, outages=OUTAGES) -> int:
+    """Completed sessions from `start` up to (not including) `today`, outside every outage. Pure."""
+    return sum(1 for s in sessions if start <= s < today and not any(a <= s <= b for a, b in outages))
+
+
+def gate_status(n: int, recorded: int, min_n: int = MIN_SAMPLE_N, min_sessions: int = MIN_SESSIONS) -> dict:
+    """Pure, unit-testable — both gates from docs/ORB_ENTRY_FILTER_METHODOLOGY.md (as amended 2026-11-19)."""
     n_met = n >= min_n
-    time_met = weeks >= min_weeks
-    return {"n": n, "n_met": n_met, "elapsed_weeks": round(weeks, 1),
+    time_met = recorded >= min_sessions
+    return {"n": n, "n_met": n_met, "recorded_sessions": recorded,
             "time_met": time_met, "both_met": n_met and time_met}
 
 
@@ -156,15 +178,16 @@ def disagreements(a: dict, b: dict) -> list[str]:
 
 
 def format_pf_sharpe_report(underlying: str, filtered: list[DryRunTrade],
-                             unfiltered: list[DryRunTrade], today: date) -> str:
+                             unfiltered: list[DryRunTrade], today: date,
+                             sessions: Optional[list[date]] = None) -> str:
     if BANKNIFTY_EXPIRY_POLICY == "skip":
         filtered = exclude_banknifty_expiry_days(filtered)
         unfiltered = exclude_banknifty_expiry_days(unfiltered)
-    status = gate_status(len(filtered), elapsed_weeks(today))
+    status = gate_status(len(filtered), recorded_sessions(today, load_sessions() if sessions is None else sessions))
     lines = [
         f"=== {underlying}: PF/Sharpe gate ===",
         f"  N={status['n']} (need >= {MIN_SAMPLE_N}): {'MET' if status['n_met'] else 'WAITING'}",
-        f"  elapsed={status['elapsed_weeks']} weeks (need >= {MIN_WEEKS}): "
+        f"  recorded sessions={status['recorded_sessions']} (need >= {MIN_SESSIONS}; 2026-11-19 amendment): "
         f"{'MET' if status['time_met'] else 'WAITING'}",
     ]
     if not status["both_met"]:
@@ -200,18 +223,29 @@ def format_pf_sharpe_report(underlying: str, filtered: list[DryRunTrade],
     return "\n".join(lines)
 
 
-def format_equity_report(filtered_by_underlying: dict[str, list[DryRunTrade]], today: date) -> str:
-    if today < EQUITY_DATE:
+def due_session(sessions: list[date], start: date = DEPLOYED_AT, outages=OUTAGES,
+                n: int = MIN_SESSIONS) -> Optional[date]:
+    """The n-th recorded session (the equity figure's as-of day), or None before it exists. Pure."""
+    rec = [s for s in sessions if s >= start and not any(a <= s <= b for a, b in outages)]
+    return rec[n - 1] if len(rec) >= n else None
+
+
+def format_equity_report(filtered_by_underlying: dict[str, list[DryRunTrade]], today: date,
+                         sessions: Optional[list[date]] = None) -> str:
+    sessions = load_sessions() if sessions is None else sessions
+    rec = recorded_sessions(today, sessions)
+    due = due_session(sessions)
+    if rec < MIN_SESSIONS or due is None:
         return (f"=== Rs{BASE_CAPITAL:,.0f} equity narrative ===\n"
-               f"  Not due until {EQUITY_DATE} -- per docs/ORB_ENTRY_FILTER_METHODOLOGY.md's "
-               f"addendum, no running total is reported before then.")
-    logged = _format_equity(filtered_by_underlying, "as logged")
+                f"  Not due until {MIN_SESSIONS} recorded sessions ({rec} so far; 2026-11-19 amendment) -- per "
+                f"docs/ORB_ENTRY_FILTER_METHODOLOGY.md, no running total is reported before then.")
+    logged = _format_equity(filtered_by_underlying, "as logged", due)
     enforced = _format_equity(
-        {u: enforce_premium_stop_all(v) for u, v in filtered_by_underlying.items()}, "stop enforced")
+        {u: enforce_premium_stop_all(v) for u, v in filtered_by_underlying.items()}, "stop enforced", due)
     return logged + "\n" + enforced
 
 
-def _format_equity(filtered_by_underlying: dict[str, list[DryRunTrade]], view: str) -> str:
+def _format_equity(filtered_by_underlying: dict[str, list[DryRunTrade]], view: str, as_of: date) -> str:
     rows: list[tuple[datetime, str, float]] = []
     excluded_unknown = 0
     for underlying, trades in filtered_by_underlying.items():
@@ -219,7 +253,10 @@ def _format_equity(filtered_by_underlying: dict[str, list[DryRunTrade]], view: s
             if t.exit_premium is None:
                 excluded_unknown += 1
                 continue
-            rows.append((datetime.fromisoformat(t.exit_timestamp), underlying, net_pnl(t)))
+            ts = datetime.fromisoformat(t.exit_timestamp)
+            if ts.date() > as_of:                       # strictly as of the 40th recorded session
+                continue
+            rows.append((ts, underlying, net_pnl(t)))
     rows.sort(key=lambda r: r[0])
 
     equity = BASE_CAPITAL
@@ -230,7 +267,7 @@ def _format_equity(filtered_by_underlying: dict[str, list[DryRunTrade]], view: s
 
     total_return_pct = (equity - BASE_CAPITAL) / BASE_CAPITAL * 100
     lines = [
-        f"=== Rs{BASE_CAPITAL:,.0f} equity narrative (as of {EQUITY_DATE}) [{view}] ===",
+        f"=== Rs{BASE_CAPITAL:,.0f} equity narrative (as of {as_of}, the {MIN_SESSIONS}th recorded session) [{view}] ===",
         f"  Trades counted: {len(rows)} (excluded {excluded_unknown} with no captured exit quote)",
         f"  Final equity: Rs{equity:,.2f} ({total_return_pct:+.1f}%)",
     ]

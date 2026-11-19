@@ -35,7 +35,7 @@ The pre-registered rule (`docs/ORB_ENTRY_FILTER_METHODOLOGY.md`): **N ≥ 20 new
 - The **N ≥ 20 per index clause** is unaffected in kind, since it counts entries. At the rate seen so far (2 NIFTY entries in 11 sessions) NIFTY needs on the order of 100 more sessions. That's a rough figure from a small count, not a forecast.
 - The **11-17 equity figure** would describe 11 sessions, not 8 weeks.
 
-**Proposed amendment (needs the user's OK, because it changes a pre-registered rule):**
+**Amendment, APPROVED by the user 2026-11-19** (now in `docs/ORB_ENTRY_FILTER_METHODOLOGY.md` and coded in `scripts/check_orb_18b_gate.py`):
 - Read "8 calendar weeks" as **40 recorded sessions**. That is about the number of NSE sessions in 8 weeks, and today it means about **2026-12-30**, assuming 11-24 and 12-25 are holidays (the calendar is stale).
 - Move the descriptive equity figure to the same point.
 - N ≥ 20 per index stays as written and will bind later.

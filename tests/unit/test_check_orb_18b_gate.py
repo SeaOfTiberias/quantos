@@ -1,13 +1,15 @@
 """
 Tests for scripts/check_orb_18b_gate.py -- docs/ORB_ENTRY_FILTER_
 METHODOLOGY.md's prospective PF/Sharpe gate (no peeking before N>=20 AND
->=8 weeks) and the Rs50,000 equity narrative (no peeking before
-2026-11-17). No network/broker.
+40 recorded sessions, the 2026-11-19 amendment of ">=8 weeks") and the
+Rs50,000 equity narrative (no peeking before 40 recorded sessions). No network/broker.
 """
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -15,17 +17,30 @@ from core.orb_scalping.dry_run_log import DryRunTrade  # noqa: E402
 from scripts.check_orb_18b_gate import (  # noqa: E402
     BASE_CAPITAL,
     DEPLOYED_AT,
-    EQUITY_DATE,
     MIN_SAMPLE_N,
-    MIN_WEEKS,
+    MIN_SESSIONS,
     closed_only,
+    due_session,
     elapsed_weeks,
     format_equity_report,
     format_pf_sharpe_report,
     gate_status,
     net_pnl,
+    recorded_sessions,
     to_backtest_trade,
 )
+
+# Synthetic NSE sessions: every weekday, Sep 2026 to Jun 2027 (no real calendar, no files).
+WEEKDAYS = [date(2026, 9, 1) + timedelta(days=i) for i in range(300)
+            if (date(2026, 9, 1) + timedelta(days=i)).weekday() < 5]
+GATE_MET = date(2027, 2, 1)          # well past 40 recorded sessions after the outage
+BEFORE = date(2026, 11, 20)          # 8 calendar weeks gone, but only ~14 recorded sessions
+
+
+@pytest.fixture(autouse=True)
+def _sessions(monkeypatch):
+    import scripts.check_orb_18b_gate as gate
+    monkeypatch.setattr(gate, "load_sessions", lambda path=None: WEEKDAYS)
 
 
 def trade(underlying="NIFTY", entry_premium=100.0, exit_premium=110.0, quantity=65,
@@ -43,13 +58,29 @@ def test_elapsed_weeks_from_deployment():
 
 
 def test_gate_status_requires_both_n_and_time():
-    assert gate_status(n=25, weeks=9.0)["both_met"] is True
-    assert gate_status(n=25, weeks=3.0)["both_met"] is False   # enough trades, not enough time
-    assert gate_status(n=5, weeks=9.0)["both_met"] is False    # enough time, not enough trades
+    assert gate_status(n=25, recorded=45)["both_met"] is True
+    assert gate_status(n=25, recorded=15)["both_met"] is False   # enough trades, not enough sessions
+    assert gate_status(n=5, recorded=45)["both_met"] is False    # enough sessions, not enough trades
 
 
 def test_gate_status_boundary_is_inclusive():
-    assert gate_status(n=MIN_SAMPLE_N, weeks=MIN_WEEKS)["both_met"] is True
+    assert gate_status(n=MIN_SAMPLE_N, recorded=MIN_SESSIONS)["both_met"] is True
+
+
+def test_recorded_sessions_skip_the_2026_10_08_to_11_17_outage():
+    """The 2026-11-19 amendment: 8 calendar weeks passed on 11-17, but 18b ran on 11 of them."""
+    real = [date(2026, 9, d) for d in (22, 23, 24, 25, 28, 29, 30)] +            [date(2026, 10, d) for d in (1, 5, 6, 7, 8, 9)] + [date(2026, 11, d) for d in (17, 18, 19)]
+    assert recorded_sessions(date(2026, 11, 19), real) == 12          # 11 before the outage + 11-18
+    assert recorded_sessions(date(2026, 11, 17), real) == 11
+    assert due_session(real) is None                                  # far from the 40th
+
+
+def test_the_gate_stays_shut_on_the_amendment_day_and_without_a_session_list():
+    filtered = [trade() for _ in range(MIN_SAMPLE_N)]
+    assert "WAITING" in format_pf_sharpe_report("NIFTY", filtered, [], today=date(2026, 11, 19))
+    shut = format_pf_sharpe_report("NIFTY", filtered, [], today=GATE_MET, sessions=[])
+    assert "recorded sessions=0" in shut and "Gate MET" not in shut  # unreadable store: never opens
+    assert "Not due until" in format_equity_report({"NIFTY": filtered, "BANKNIFTY": []}, GATE_MET, sessions=[])
 
 
 # ─── closed_only ─────────────────────────────────────────────────────────
@@ -93,50 +124,49 @@ def test_pf_sharpe_report_withholds_numbers_before_gate_met():
 
 def test_pf_sharpe_report_reveals_numbers_once_gate_met():
     filtered = [trade(exit_premium=110.0 + i) for i in range(MIN_SAMPLE_N)]
-    today = date(DEPLOYED_AT.year, DEPLOYED_AT.month, DEPLOYED_AT.day)
-    from datetime import timedelta
-    today = DEPLOYED_AT + timedelta(weeks=int(MIN_WEEKS) + 1)
-    text = format_pf_sharpe_report("NIFTY", filtered, [], today=today)
+    text = format_pf_sharpe_report("NIFTY", filtered, [], today=GATE_MET)
     assert "Gate MET" in text
     assert "PF" in text and "Sharpe" in text
 
 
 def test_pf_sharpe_report_compares_against_unfiltered_same_window():
-    from datetime import timedelta
-    today = DEPLOYED_AT + timedelta(weeks=int(MIN_WEEKS) + 1)
     filtered = [trade(exit_premium=110.0) for _ in range(MIN_SAMPLE_N)]
     unfiltered = [trade(exit_premium=105.0) for _ in range(30)]
-    text = format_pf_sharpe_report("NIFTY", filtered, unfiltered, today=today)
+    text = format_pf_sharpe_report("NIFTY", filtered, unfiltered, today=GATE_MET)
     assert "Unfiltered 18 over the SAME window" in text
 
 
 def test_pf_sharpe_report_notes_no_unfiltered_comparison_available():
-    from datetime import timedelta
-    today = DEPLOYED_AT + timedelta(weeks=int(MIN_WEEKS) + 1)
     filtered = [trade(exit_premium=110.0) for _ in range(MIN_SAMPLE_N)]
-    text = format_pf_sharpe_report("NIFTY", filtered, [], today=today)
+    text = format_pf_sharpe_report("NIFTY", filtered, [], today=GATE_MET)
     assert "zero comparable closed trades" in text
 
 
-# ─── format_equity_report: no peeking before 2026-11-17 ─────────────────────
+# ─── format_equity_report: no peeking before 40 recorded sessions ───────────
 
 def test_equity_report_withholds_total_before_the_date():
-    from datetime import timedelta
-    text = format_equity_report({"NIFTY": [trade()], "BANKNIFTY": []}, today=EQUITY_DATE - timedelta(days=1))
+    text = format_equity_report({"NIFTY": [trade()], "BANKNIFTY": []}, today=BEFORE)
     assert "Not due until" in text
     assert "Final equity" not in text
 
 
+def test_equity_report_counts_trades_only_through_the_40th_recorded_session():
+    due = due_session(WEEKDAYS)
+    late = trade(exit_=f"{due + timedelta(days=7)}T09:50:00+00:00", exit_premium=500.0)
+    text = format_equity_report({"NIFTY": [trade(), late], "BANKNIFTY": []}, today=GATE_MET)
+    assert f"as of {due}" in text and "Trades counted: 1 " in text
+
+
 def test_equity_report_reveals_total_on_the_date():
     trades = {"NIFTY": [trade(entry_premium=100.0, exit_premium=110.0, quantity=65)], "BANKNIFTY": []}
-    text = format_equity_report(trades, today=EQUITY_DATE)
+    text = format_equity_report(trades, today=GATE_MET)
     assert "Final equity" in text
     assert f"Rs{BASE_CAPITAL:,.0f}" in text.split("as of")[0]
 
 
 def test_equity_report_excludes_unknown_exit_premium_trades():
     trades = {"NIFTY": [trade(exit_premium=None)], "BANKNIFTY": []}
-    text = format_equity_report(trades, today=EQUITY_DATE)
+    text = format_equity_report(trades, today=GATE_MET)
     assert "excluded 1" in text
 
 
@@ -145,7 +175,7 @@ def test_equity_report_pools_both_indices_into_one_account():
         "NIFTY": [trade(underlying="NIFTY", entry_premium=100.0, exit_premium=110.0, quantity=65)],
         "BANKNIFTY": [trade(underlying="BANKNIFTY", entry_premium=500.0, exit_premium=480.0, quantity=30)],
     }
-    text = format_equity_report(trades, today=EQUITY_DATE)
+    text = format_equity_report(trades, today=GATE_MET)
     nifty_pnl = net_pnl(trades["NIFTY"][0])
     banknifty_pnl = net_pnl(trades["BANKNIFTY"][0])
     expected_equity = BASE_CAPITAL + nifty_pnl + banknifty_pnl
@@ -157,8 +187,7 @@ def test_equity_report_pools_both_indices_into_one_account():
 # ─── 2026-09-30 addendum: two views, INCONCLUSIVE on disagreement ──────────
 
 def _gate_met_today():
-    from datetime import timedelta
-    return DEPLOYED_AT + timedelta(weeks=int(MIN_WEEKS) + 1)
+    return GATE_MET
 
 
 def test_views_agree_gives_a_plain_verdict():
@@ -217,7 +246,7 @@ def test_skip_policy_drops_expiry_days_from_the_primary_views(monkeypatch):
 
 
 def test_equity_report_shows_both_views():
-    text = format_equity_report({"NIFTY": [trade(exit_premium=1.0)], "BANKNIFTY": []}, EQUITY_DATE)
+    text = format_equity_report({"NIFTY": [trade(exit_premium=1.0)], "BANKNIFTY": []}, GATE_MET)
     assert "[as logged]" in text and "[stop enforced]" in text
 
 

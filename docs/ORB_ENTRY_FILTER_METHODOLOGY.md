@@ -225,6 +225,16 @@ N counts and the >=8-week clock are unchanged by rules 1-2 (re-marking a
 row does not add or remove it). Under rule 3's "skip", N is counted after
 the exclusion.
 
+## Amendment, 2026-11-19 (approved by the user; written before any 18b P&L was read): recorded sessions, not calendar weeks
+
+The 18b job (with candidate 18 and the stop-out probe) hung on a Fyers socket read from 2026-10-07 ~14:35 IST to 2026-11-17 23:53 IST. It recorded nothing for the 27 sessions from 2026-10-08 to 2026-11-17 (`docs/ORB_GAP_REPORT_2026-11-19.md`). The 8 calendar weeks ran out on 11-17 with only 11 sessions recorded, so calendar time no longer measures what the clause was for: that much live trading.
+
+- **Time clause:** "≥ 8 calendar weeks" becomes **≥ 40 recorded sessions** since 2026-09-22. That is about the number of NSE sessions in 8 weeks. Sessions are the bhavcopy dates in the L1 store, minus the declared outage (2026-10-08 to 2026-11-17). Any later outage the job watchdog reports is added to `OUTAGES` in `scripts/check_orb_18b_gate.py` the same way.
+- **Equity figure:** reported strictly as of the **40th recorded session** (about 2026-12-30), instead of 2026-11-17. Only trades that exit on or before that session count.
+- **Unchanged:** N ≥ 20 per index, never pooled; both conditions required; the two views and INCONCLUSIVE; the BANKNIFTY expiry policy.
+- **State on the day:** 6 entry rows (4 BANKNIFTY, 2 NIFTY) from 11 recorded sessions, counted as rows only. No PF, Sharpe or rupee figure was computed or seen.
+- **Fail-safe:** if the session list can't be read, the gate counts zero sessions and stays shut.
+
 ## What this does NOT produce, even in the best case
 
 Turning `entry_filter_enabled: true` on is a **paper-trading configuration
