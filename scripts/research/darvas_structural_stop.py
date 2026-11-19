@@ -109,8 +109,9 @@ def simulate(t: dict, data_end: str) -> dict:
     nxt = (date.fromisoformat(bo) + timedelta(days=1))
     from core.market_map.l1_store import Store
     l1 = mr.l1_for(sym, nxt, Store(STORE))
-    if "error" in l1:
-        return dict(out, structural=dict(out["atr"]), level=None, level_note=f"no read: {l1['error'][:80]}")
+    if "error" in l1 or l1.get("price") is None:            # no L1 read on that date: the ATR stop is kept
+        return dict(out, structural=dict(out["atr"]), level=None,
+                    level_note=f"no read: {(l1.get('error') or 'no price on that date')[:80]}")
     c = cd.card(sym, l1, df[df["date"] <= bo])
     lvl = call_plan.sweep_level(c, df[df["date"] <= bo], "CE") if "error" not in c else None
     if not lvl or not c.get("atr_d"):
@@ -269,4 +270,5 @@ def run(workers: int = 4) -> None:
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "worked"
-    {"worked": worked, "run": run, "score": lambda: print(score())}[cmd]()
+    {"worked": worked, "run": lambda: run(int(sys.argv[2]) if len(sys.argv) > 2 else 4),
+     "score": lambda: print(score())}[cmd]()
