@@ -1,17 +1,29 @@
 # Darvas Bucket B: structural stop vs ATR stop -- results (2026-11-19)
 
-Pre-registered in `docs/DARVAS_STRUCTURAL_STOP_PREREG_2026-11-19.md` (29fe6aa, amendment 1 347ab6a) before any code or run. Runner `scripts/research/darvas_structural_stop.py`.
+Pre-registered in `docs/DARVAS_STRUCTURAL_STOP_PREREG_2026-11-19.md` (29fe6aa, amendment 1 347ab6a) before any code or run. Reproduction gate on returns per amendment 3 (user, 2026-11-20). Runner `scripts/research/darvas_structural_stop.py`.
 
 ## discovery
 
 - trades 991: breakout not reproduced 9, not in store 77, ok 905
-- **reproduction gate:** the re-simulated ATR arm matches the cached trade on 84.5% of the 905 simulated trades (need >= 90%)
-- **GATE FAILS: no comparison is reported for this period.**
+- **reproduction gate:** the re-simulated ATR arm matches the cached trade on 98.2% of the 905 simulated trades (need >= 90%)
+- **paired difference (structural - ATR), net per trade: -0.26%**, week-bootstrap 90% CI -0.64% .. +0.11%; 2016-19 +0.19% (n 339); 2020-23 -0.54% (n 566)
+
+| | ATR arm | structural arm |
+|---|---|---|
+| mean net | +1.94% | +1.67% |
+| win rate | 46.5% | 41.1% |
+| running-sum drawdown (exit order) | 602% | 518% |
+| mean initial risk (% of entry) | 11.6% | 10.3% |
+| mean R (reported, not compared) | +0.27 | +0.24 |
+| losing stops back above entry within 15 sessions (GLAND pattern) | 44% of 466 | 52% of 517 |
+
+- initial stop differs on 660 of 905 trades (290 wider, 370 tighter); no level 245; gap at entry 1
+- level kinds: D protected 240, W protected 164, D equal lows 161, W multi-touch x3 96, M protected 56, W multi-touch x4 42, W multi-touch x5 20, EQL 16
 
 ## confirmation
 
 - trades 275: breakout not reproduced 5, ok 270
-- **reproduction gate:** the re-simulated ATR arm matches the cached trade on 98.1% of the 270 simulated trades (need >= 90%)
+- **reproduction gate:** the re-simulated ATR arm matches the cached trade on 99.6% of the 270 simulated trades (need >= 90%)
 - **paired difference (structural - ATR), net per trade: +0.42%**, week-bootstrap 90% CI -0.12% .. +0.98%; 2024-26 +0.42% (n 270)
 
 | | ATR arm | structural arm |
@@ -28,12 +40,18 @@ Pre-registered in `docs/DARVAS_STRUCTURAL_STOP_PREREG_2026-11-19.md` (29fe6aa, a
 
 ## Verdict
 
-**NO VERDICT: the reproduction gate failed or a period is missing.**
+1. discovery mean > 0 and CI lower > 0: **FAILS**
+2. both discovery halves > 0: **FAILS**
+3. confirmation mean > 0: holds
 
-## Notes (2026-11-19, after the run)
+**FAIL**
 
-- **A runner bug was fixed and only the affected trades re-run:** 42 trades crashed (`TypeError`: the L1 read returns no price on some historical dates). The pre-registered handling for "no read" is to keep the ATR stop; the runner now does that. The figures above are after the fix (discovery gate 85.1% → 84.5%).
-- **Why the discovery gate fails:** of the 140 trades that don't reproduce, **129 have an entry price more than 0.5% off and 138 have the same exit reason.** The L1 store adjusts prices for splits and bonuses up to 2026, while the OOS run adjusted only up to its 2023 data end. The same trade sits at a different price scale, and the gate as written compares absolute exit prices within 1%.
-- **Measured on returns** (exit ÷ entry within 1%, exit date within one session), the ATR arm reproduces **98.2%** of discovery trades and 99.6% of confirmation trades. The trades are the same; the gate's definition is at fault.
-- **The discovery comparison has not been computed.** Changing a gate after it failed needs the user's decision (amendment 3, proposed: a return-based reproduction check). Until then, discovery has no verdict.
-- Confirmation (2024-26), gate passed: structural − ATR **+0.42% per trade, CI −0.12% .. +0.98%**. Running-sum drawdown 164% vs 226%. The GLAND pattern is unchanged (47% vs 48% of losing stops come back above the entry within 15 sessions).
+
+## Notes
+
+- **2026-11-19, first scoring: NO VERDICT.** The reproduction gate as first written compared absolute exit prices and failed for discovery (84.5% < 90%). Cause: the L1 store adjusts for splits and bonuses up to 2026, the OOS run only to 2023, so one trade sits at two price scales (129 of the 140 misses had the entry more than 0.5% off; 138 had the same exit reason). Confirmation passed (98.1%) and was reported then: +0.42%, CI −0.12% .. +0.98%.
+- **2026-11-20, amendment 3 (user-approved, 99b358d) before the discovery comparison was computed:** the gate compares returns (exit ÷ entry within 1%, exit date within 3 days). Same stored rows, no re-simulation. Discovery now reproduces 98.2%, confirmation 99.6%.
+- **Result: FAIL, as pre-registered, not re-tuned.** Over 905 discovery trades the structural stop costs **−0.26% per trade** (CI −0.64% .. +0.11%). It helps in 2016-19 (+0.19%) and hurts in 2020-23 (−0.54%). The +0.42% in 2024-26 is the only positive period, and on its own it doesn't meet the bar.
+- **What the structural stop does:** it is tighter on more trades than it is wider (370 vs 290 in discovery), cuts the win rate from 46.5% to 41.1%, and makes the GLAND pattern **worse**: 52% of its losing stops come back above entry within 15 sessions, against 44% for the ATR stop. Map levels under the box shake out more trades that would have worked.
+- A bug fix during the run: 42 trades crashed because the L1 read returns no price on some historical dates. The pre-registered "no read" handling (keep the ATR stop) was applied, and only those trades were re-run.
+- **Consequence:** the Darvas executor keeps the ATR stop. No structural-stop paper variant.
