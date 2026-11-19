@@ -171,7 +171,11 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
   - Second chance **FAIL** (`docs/DARVAS_REENTRY_RESULTS_2026-11-19.md`): discovery n 54, +0.29R, t 0.94, 2020-23 −0.09R; confirmation −0.39R.
   - Structural stop **FAIL** (`docs/DARVAS_STRUCTURAL_STOP_RESULTS_2026-11-19.md`) after amendment 3 (return-based reproduction gate, user 2026-11-20, 99b358d, before the comparison was computed): discovery −0.26%/trade (CI −0.64 .. +0.11; 2016-19 +0.19, 2020-23 −0.54); confirmation +0.42%. The map stop shakes out more trades (losing stops back above entry 52% vs 44%).
   - **Outcome:** the Darvas executor stays as frozen (ATR stop, no re-entry). The map doesn't improve Darvas exits or re-entries.
-- [ ] E4 Momentum benchmark indices + monthly report
+- [x] E4 Momentum benchmark indices + monthly report: **DONE 2026-11-20** (3255591, deployed).
+  - Nifty200 Momentum 30 in `~/.quantos/index_bars` from 2020-08-25 (1,538 sessions, dates match NIFTY exactly); price index, not TRI. Kept apart from the map's indices.
+  - `scripts/benchmark_report.py`, timer `quantos-benchmark-report` on the 1st at 17:00 IST (enabled); Telegram + `#/reports` benchmark panel. First run 2026-11-20 sent.
+  - Both sections LOCKED until their own gates (Darvas 5 of 20 closed; momentum 1 of 4 quarters). Index funds over the same spans: Darvas since 09-28, Nifty 50 +10.23%, Momentum 30 −0.46%; momentum since 07-29, +6.31% / +0.26%.
+  - Assumed TER 0.20% / 0.40% a year; tax not modelled (short-term Darvas holds pay STCG 20% vs a fund's LTCG 12.5%; to add before the first unlock).
 - [ ] E5 One call ledger
 - [ ] E6 Evening routine
 - [ ] E7 Review at 60 calls
