@@ -174,13 +174,28 @@ def orb_report() -> dict:
 
 
 def darvas_report() -> dict:
+    """LOCKED until the 20th closed paper trade (E2, docs/DARVAS_GO_NO_GO_2026-11.md: paper returns
+    are read for the first time at that review). Until then: counts only, no prices or P&L."""
     from core.darvas_atr_stop.dry_run_log import load_dry_run_trades
+    from core.ops.benchmark import DARVAS_GATE_TRADES
     from scripts.backtest_darvas_box_width import STRESSED_COST_MODEL
 
     cfg = _config_block("darvas_atr_stop")
     capital = float(cfg.get("starting_capital") or 0.0)
+    rows = load_dry_run_trades(_quantos_dir() / "darvas_atr_stop_dry_run_trades.jsonl")
+    if len(rows) < DARVAS_GATE_TRADES:
+        return {
+            "name":     "Darvas ATR-stop — Bucket B",
+            "dry_run":  cfg.get("dry_run", True),
+            "locked":   True,
+            "closed":   len(rows),
+            "gate":     DARVAS_GATE_TRADES,
+            "note":     (f"{len(rows)} of {DARVAS_GATE_TRADES} closed paper trades. Returns stay unread until "
+                         f"the {DARVAS_GATE_TRADES}th closes (docs/DARVAS_GO_NO_GO_2026-11.md)."),
+            "backtest": BACKTEST_REFERENCE["darvas"],
+        }
     trades = []
-    for t in load_dry_run_trades(_quantos_dir() / "darvas_atr_stop_dry_run_trades.jsonl"):
+    for t in rows:
         gross = (t.boundary_price - t.entry_price) * t.quantity
         costs = STRESSED_COST_MODEL.cost_of(t.entry_price, t.boundary_price, t.quantity, "BUY")
         trades.append({
@@ -298,6 +313,20 @@ def _safe(fn) -> dict:
         return fn()
     except Exception as e:  # one broken report must not blank the other
         logger.exception("Report %s failed", fn.__name__)
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+@router.get("/benchmark")
+async def benchmark():
+    """The latest monthly benchmark report (scripts/benchmark_report.py, execution plan E4). Locked
+    sections carry counts and index returns only."""
+    import json
+    p = _quantos_dir() / "reports" / "benchmark_latest.json"
+    if not p.exists():
+        return {"error": "No benchmark report yet (scripts/benchmark_report.py runs monthly)."}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
         return {"error": f"{type(e).__name__}: {e}"}
 
 

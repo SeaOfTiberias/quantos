@@ -48,12 +48,31 @@ async def _get():
 @pytest.mark.asyncio
 async def test_empty_logs():
     body = (await _get()).json()
-    for key in ("orb", "darvas"):
-        assert body[key]["summary"]["trades"] == 0
-        assert body[key]["curve"] == []
-        assert body[key]["trades"] == []
+    assert body["orb"]["summary"]["trades"] == 0
+    assert body["orb"]["curve"] == [] and body["orb"]["trades"] == []
     assert body["orb"]["summary"]["starting_capital"] == 70000
-    assert body["darvas"]["summary"]["starting_capital"] == 250000
+    assert body["darvas"]["locked"] is True and body["darvas"]["closed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_darvas_locked_below_twenty_closed_trades(_isolated):
+    """E2 (docs/DARVAS_GO_NO_GO_2026-11.md): paper returns unread until the 20th closed trade."""
+    row = {"symbol": "AAA", "entry_timestamp": "2026-10-01", "entry_price": 100.0,
+           "exit_timestamp": "2026-10-10T04:15:00+00:00", "exit_reason": "target", "quantity": 100,
+           "box_width_pct": 40.0, "seen_ceiling": 98.0, "boundary_price": 777.0, "exit_ltp": 777.5}
+    _write_jsonl(_isolated / "darvas_atr_stop_dry_run_trades.jsonl", [row] * 19)
+    d = (await _get()).json()["darvas"]
+    assert d["locked"] is True and d["closed"] == 19 and d["gate"] == 20
+    assert "summary" not in d and "trades" not in d and "777" not in json.dumps(d)
+
+
+@pytest.mark.asyncio
+async def test_benchmark_route_missing_then_present(_isolated):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        assert "error" in (await c.get("/reports/benchmark")).json()
+        (_isolated / "reports").mkdir()
+        (_isolated / "reports" / "benchmark_latest.json").write_text(json.dumps({"as_of": "2026-12-01"}))
+        assert (await c.get("/reports/benchmark")).json() == {"as_of": "2026-12-01"}
 
 
 @pytest.mark.asyncio
@@ -84,7 +103,9 @@ async def test_orb_net_curve_and_unpriced(_isolated):
 
 
 @pytest.mark.asyncio
-async def test_darvas_net_and_drawdown(_isolated):
+async def test_darvas_net_and_drawdown(_isolated, monkeypatch):
+    import core.ops.benchmark as bm
+    monkeypatch.setattr(bm, "DARVAS_GATE_TRADES", 2)      # the unlocked view, with a two-trade gate
     rows = [
         {"symbol": "AAA", "entry_timestamp": "2026-10-01", "entry_price": 100.0,
          "exit_timestamp": "2026-10-10T04:15:00+00:00", "exit_reason": "stop",

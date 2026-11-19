@@ -45,6 +45,7 @@ OUTPUTS = {
     "quantos-fno-screener.service": "fno_screener_latest.json",
     "quantos-trade-ideas.service": "trade_ideas.json",
     "quantos-call-plans.service": "call_plans/state.json",
+    "quantos-benchmark-report.service": "reports/benchmark_latest.json",
 }
 
 

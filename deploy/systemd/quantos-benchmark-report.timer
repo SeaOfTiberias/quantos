@@ -1,0 +1,10 @@
+[Unit]
+Description=Runs the benchmark report on the 1st of each month at 17:00 IST
+
+[Timer]
+# The VM runs in Etc/UTC. 11:30 UTC = 17:00 IST, after the L1 and index refresh of the day.
+OnCalendar=*-*-01 11:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

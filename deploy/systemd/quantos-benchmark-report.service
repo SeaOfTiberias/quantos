@@ -1,0 +1,19 @@
+# Monthly benchmark report (docs/EXECUTION_PLAN_2026-11-19.md, E4): the Darvas paper record and the
+# momentum walk-forward against the Nifty 50 and Nifty200 Momentum 30 index funds. Code-only.
+# Each strategy section stays LOCKED (counts + index returns only) until its own frozen gate.
+# Enable once:
+#   sudo systemctl enable --now quantos-benchmark-report.timer
+
+[Unit]
+Description=QuantOS monthly benchmark report (systems vs index funds, Telegram + #/reports)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/benchmark_report.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=10min

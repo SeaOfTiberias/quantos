@@ -157,7 +157,67 @@ function TradeTable({ trades, kind }) {
   );
 }
 
+function LockedReport({ report }) {
+  return (
+    <Card>
+      <Label color={C.accent}>{report.name}</Label>
+      <div style={{ fontSize: 12, color: C.gold, marginTop: 10, fontWeight: 700 }}>
+        LOCKED · {report.closed} of {report.gate} closed paper trades
+      </div>
+      <div style={{ fontSize: 11, color: C.mid, marginTop: 6, lineHeight: 1.5 }}>{report.note}</div>
+    </Card>
+  );
+}
+
+const pct = v => (v == null ? "n/a" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(2)}%`);
+const IDX_LABEL = { NIFTY: "Nifty 50", NIFTY200MOM30: "Nifty200 Momentum 30" };
+
+function BenchmarkReport() {
+  // GET /reports/benchmark: the monthly E4 report (scripts/benchmark_report.py). Locked sections
+  // carry counts and index returns only, never the strategy's returns.
+  const [rep, setRep] = useState(null);
+  useEffect(() => {
+    fetch(`${CLOUD_API_URL}/reports/benchmark`).then(r => r.json()).then(setRep)
+      .catch(() => setRep({ error: "Could not reach cloud API." }));
+  }, []);
+  if (!rep) return null;
+  if (rep.error) {
+    return <Card><Label color={C.accent}>Benchmark (E4)</Label>
+      <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>{rep.error}</div></Card>;
+  }
+  const ter = Object.entries(rep.fund_ter_pct || {}).map(([k, v]) => `${IDX_LABEL[k] || k} ${v.toFixed(2)}%`).join(", ");
+  const section = (sec, spanKey, head) => (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700 }}>{sec.name}</div>
+      {sec.error ? <div style={{ fontSize: 11, color: C.red }}>{sec.error}</div> : (
+        <div style={{ fontSize: 11, color: C.mid, marginTop: 4, lineHeight: 1.6 }}>
+          <div>{head}</div>
+          <div>Index funds over the same span: {Object.entries(sec[spanKey] || {})
+            .map(([k, v]) => `${IDX_LABEL[k] || k} ${pct(v)}`).join(" · ") || "n/a"}</div>
+          {sec.locked
+            ? <div style={{ color: C.gold }}>LOCKED: {sec.note}</div>
+            : sec.mean_net != null
+              ? Object.keys(rep.fund_ter_pct).map(k => <div key={k}>Mean net {pct(sec.mean_net)} · vs {IDX_LABEL[k] || k} fund: excess {pct(sec[`mean_excess_${k}`])}, beat it {sec[`beat_${k}`]} of {sec[`n_${k}`]}</div>)
+              : Object.keys(rep.fund_ter_pct).map(k => <div key={k}>Return to {sec.marked_to} {pct(sec.ret)} · vs {IDX_LABEL[k] || k} fund {pct(sec[k])}: excess {pct(sec[`excess_${k}`])}</div>)}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <Card>
+      <Label color={C.accent}>Benchmark: the systems against the index funds (E4)</Label>
+      <div style={{ fontSize: 10, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>
+        As of {rep.as_of}. Rule: no capital for a system that can't beat the Nifty200 Momentum 30 fund after costs.
+        NSE price indices (not total return) less an assumed TER ({ter}/yr). Tax not modelled.
+      </div>
+      {section(rep.darvas, "index_since_first_entry", `Closed ${rep.darvas.closed ?? "—"}, open ${rep.darvas.open ?? "—"}, since ${rep.darvas.since || "—"}`)}
+      {section(rep.momentum, "index_since_start", `Quarters ${rep.momentum.quarters ?? 0} of ${rep.momentum.gate ?? 4}, holdings ${rep.momentum.positions ?? "—"}, since ${rep.momentum.since || "—"}`)}
+    </Card>
+  );
+}
+
 function StrategyReport({ report, kind, emptyNote }) {
+  if (report?.locked) return <LockedReport report={report} />;
   if (report?.error) {
     return (
       <Card>
@@ -401,7 +461,7 @@ export default function ReportsPage() {
         <div style={{ width: 1, height: 18, background: C.border }} />
         <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: 1.5 }}>PAPER STRATEGY REPORTS</span>
         <span style={{ marginLeft: "auto", fontSize: 10, color: C.muted }}>
-          Candidate 18b hidden until its 2026-11-17 gate (no-peeking rule)
+          Candidate 18b hidden until its 40-session gate; Darvas locked until 20 closed trades (no-peeking rules)
         </span>
       </div>
 
@@ -416,6 +476,9 @@ export default function ReportsPage() {
             <PanelBoundary name="Darvas report">
               <StrategyReport report={data.darvas} kind="darvas"
                 emptyNote="No closed paper trades yet. Open positions are on the dashboard's Darvas ATR-Stop panel; a trade appears here once its stop or target is hit." />
+            </PanelBoundary>
+            <PanelBoundary name="Benchmark report">
+              <BenchmarkReport />
             </PanelBoundary>
             {data.pilot && (
               <PanelBoundary name="Live pilot report">

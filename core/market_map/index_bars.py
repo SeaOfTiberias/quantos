@@ -1,4 +1,5 @@
-"""Daily bars for NIFTY and BANKNIFTY from NSE's public index close file (no broker login).
+"""Daily bars for NIFTY and BANKNIFTY (the map's indices) and the benchmark indices, from NSE's
+public index close file (no broker login).
 
     https://nsearchives.nseindia.com/content/indices/ind_close_all_DDMMYYYY.csv
 
@@ -19,6 +20,10 @@ import pandas as pd
 
 URL = "https://nsearchives.nseindia.com/content/indices/ind_close_all_{d:%d%m%Y}.csv"
 INDICES = {"Nifty 50": "NIFTY", "Nifty Bank": "BANKNIFTY"}
+# Benchmarks the systems must beat (execution plan E4). Stored like the map indices but not read
+# by the map, and not part of last_session(). NSE's file carries price indices only (no TRI), and
+# its first Nifty200 Momentum 30 rows (from 2020-09) give a close with no open/high/low.
+BENCHMARKS = {"Nifty200 Momentum 30": "NIFTY200MOM30"}
 # Older files name them differently (before about 2016): the same indices.
 ALIASES = {"S&P CNX Nifty": "NIFTY", "CNX Nifty": "NIFTY", "CNX Bank": "BANKNIFTY"}
 COLS = ["date", "o", "h", "l", "c", "vol", "val"]
@@ -51,7 +56,7 @@ def parse_day(body: bytes | str, d: date) -> dict[str, dict]:
     out = {}
     for row in csv.DictReader(io.StringIO(text)):
         name = (row.get("Index Name") or "").strip()
-        sym = INDICES.get(name) or ALIASES.get(name)
+        sym = INDICES.get(name) or ALIASES.get(name) or BENCHMARKS.get(name)
         if not sym:
             continue
         rd = _date((row.get("Index Date") or "").strip())
@@ -59,6 +64,8 @@ def parse_day(body: bytes | str, d: date) -> dict[str, dict]:
             continue
         o, h, l, c = (_num(row.get(k)) for k in ("Open Index Value", "High Index Value",
                                                   "Low Index Value", "Closing Index Value"))
+        if sym in BENCHMARKS.values() and c is not None:
+            h, l = h or c, l or c                  # close-only rows (early benchmark history)
         if None in (h, l, c):
             continue
         o = o if o else c        # very old files carry no open for some indices
@@ -107,7 +114,7 @@ class IndexBars:
         if fetch is None:
             from core.market_map import nse_daily as nd
             fetch = nd.fetch
-        have = {s: set(self.load(s)["date"].dt.date) for s in INDICES.values()}
+        have = {s: set(self.load(s)["date"].dt.date) for s in (*INDICES.values(), *BENCHMARKS.values())}
         added, missing = [], []
         d = start
         while d <= end:
