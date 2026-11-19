@@ -13,5 +13,7 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/record_option_chains.py
+# Start timeout (job watchdog E1, 2026-11-19): runs every minute; it hung on a Fyers read from 2026-10-07 14:33 IST for 43 days with no timeout.
+TimeoutStartSec=3min
 Environment=HOME=/home/ubuntu
 ExecCondition=/bin/sh -c '[ "$(TZ=Asia/Kolkata date +%%u)" -le 5 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -ge 0915 ] && [ "$(TZ=Asia/Kolkata date +%%H%%M)" -le 1530 ]'

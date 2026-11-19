@@ -8,6 +8,8 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/probe_goodnight_openwindow.py
+# Start timeout (job watchdog E1, 2026-11-19): a probe of a few minutes; bounded so a hung read can't block its timer.
+TimeoutStartSec=20min
 Environment=HOME=/home/ubuntu
 
 # Recurring daily feasibility-gathering job (converted 2026-09-04 from a

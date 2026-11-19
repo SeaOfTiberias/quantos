@@ -22,6 +22,8 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_paper_momentum_walkforward.py
+# Start timeout (job watchdog E1, 2026-11-19): waits on the broker token at times (2026-11-19: 07:35-09:06 IST); bounded so a hang can't last days.
+TimeoutStartSec=3h
 Environment=HOME=/home/ubuntu
 
 # No Restart= here deliberately, same reasoning as quantos-rotation.service:

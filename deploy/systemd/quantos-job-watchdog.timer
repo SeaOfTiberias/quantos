@@ -1,0 +1,12 @@
+[Unit]
+Description=Runs the job watchdog every 15 minutes, 08:30-16:15 IST on weekdays, and at 21:45 IST daily
+
+[Timer]
+# The VM runs in Etc/UTC. 03:00-10:45 UTC = 08:30-16:15 IST, every 15 minutes.
+OnCalendar=Mon..Fri *-*-* 03..10:00/15:00
+# 16:15 UTC = 21:45 IST: the evening run always sends the one-line summary.
+OnCalendar=*-*-* 16:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

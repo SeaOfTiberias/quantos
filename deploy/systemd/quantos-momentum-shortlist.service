@@ -19,6 +19,8 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/run_momentum_shortlist.py
+# Start timeout (job watchdog E1, 2026-11-19): ~500 symbols of Fyers history; no timeout let a hung read block it for good.
+TimeoutStartSec=2h
 Environment=HOME=/home/ubuntu
 
 # Run at most once per calendar day, whichever trigger gets here first.

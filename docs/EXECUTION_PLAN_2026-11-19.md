@@ -156,7 +156,11 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
 ## Tracker
 
 - [x] E0 One map, v3 everywhere: cebfb5b, deployed 2026-11-19, price-maps timer removed
-- [ ] E1 Job watchdog + ORB gap report
+- [ ] E1 Job watchdog + ORB gap report. **Built, not yet deployed (2026-11-19):**
+  - `core/ops/watchdog.py` + `scripts/job_watchdog.py` + timer; 12 tests. A read-only dry run on the VM found exactly the two real faults: the option-chain recorder STUCK since 10-07 14:33 IST, and the NSE calendar stale since 08-18.
+  - Start timeouts added to the 5 units that had none.
+  - Gap report `docs/ORB_GAP_REPORT_2026-11-19.md`: 27 sessions lost; 18b at 6 entries (4 BN, 2 NIFTY) in 11 recorded sessions; proposed amendment "8 weeks = 40 recorded sessions" (≈ 2026-12-30), awaiting the user.
+  - **Tick when:** deployed, the timer enabled, and `scripts/ops/watchdog_selftest.sh` FAILED and then cleared alerts seen on Telegram.
 - [ ] E2 Darvas go/no-go rule (before the next look at paper P&L)
 - [ ] E3 Darvas second chance run + stop-placement test
 - [ ] E4 Momentum benchmark indices + monthly report
@@ -167,3 +171,5 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
 ## Changes to the plan
 
 _Dated notes on anything a session changed for later sessions._
+
+- **2026-11-19 (E1):** the derived NSE calendar ends 2026-08-18. Anything that needs trading days after that date falls back to weekdays. Re-deriving it (`scripts/derive_nse_calendar.py`) is a small task to do before E2, which counts sessions.

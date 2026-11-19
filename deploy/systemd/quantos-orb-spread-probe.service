@@ -8,6 +8,8 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/quantos
 ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/probe_orb_scalping_real_spreads.py
+# Start timeout (job watchdog E1, 2026-11-19): a probe of a few minutes; bounded so a hung read can't block its timer.
+TimeoutStartSec=20min
 Environment=HOME=/home/ubuntu
 
 # Only sample while NSE is actually open (Mon-Fri, 09:15-15:30 IST).

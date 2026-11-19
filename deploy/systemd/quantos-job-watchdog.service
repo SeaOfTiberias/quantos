@@ -1,0 +1,18 @@
+# Job watchdog (docs/EXECUTION_PLAN_2026-11-19.md, E1): Telegrams stuck, failed, missed and
+# silent QuantOS jobs once per IST day, and a summary at 21:45 IST. Read-only: never starts,
+# stops or edits a unit. Enable once:
+#   sudo systemctl enable --now quantos-job-watchdog.timer
+
+[Unit]
+Description=QuantOS job watchdog (stuck / failed / missed / no-output alerts, read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/job_watchdog.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=5min
