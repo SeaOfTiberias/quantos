@@ -156,11 +156,12 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
 ## Tracker
 
 - [x] E0 One map, v3 everywhere: cebfb5b, deployed 2026-11-19, price-maps timer removed
-- [ ] E1 Job watchdog + ORB gap report. **Built, not yet deployed (2026-11-19):**
-  - `core/ops/watchdog.py` + `scripts/job_watchdog.py` + timer; 12 tests. A read-only dry run on the VM found exactly the two real faults: the option-chain recorder STUCK since 10-07 14:33 IST, and the NSE calendar stale since 08-18.
-  - Start timeouts added to the 5 units that had none.
-  - Gap report `docs/ORB_GAP_REPORT_2026-11-19.md`: 27 sessions lost; 18b at 6 entries (4 BN, 2 NIFTY) in 11 recorded sessions; proposed amendment "8 weeks = 40 recorded sessions" (≈ 2026-12-30), awaiting the user.
-  - **Tick when:** deployed, the timer enabled, and `scripts/ops/watchdog_selftest.sh` FAILED and then cleared alerts seen on Telegram.
+- [x] E1 Job watchdog + ORB gap report: **DONE 2026-11-19.**
+  - Watchdog live (884291b, deployed by the user; timer enabled). First run 09:45 IST: FAILED selftest + CALENDAR. After `watchdog_selftest.sh clean`, the 10:00 run cleared the selftest fault.
+  - The option-chain recorder was found STUCK since 10-07 14:33 IST; the user stopped it, and it records again from 11-19.
+  - Gap report (`docs/ORB_GAP_REPORT_2026-11-19.md`): 27 sessions lost.
+  - 18b amendment approved by the user, coded with 5 tests (244424e): 40 recorded sessions, equity figure as of the 40th (~2026-12-30). It also closes a peek: the date-only equity gate would have printed the rupee total on 11-19.
+  - Telegram send-failure handling 80a5bd2. 80a5bd2 and 244424e deploy after 15:30 IST.
 - [ ] E2 Darvas go/no-go rule (before the next look at paper P&L)
 - [ ] E3 Darvas second chance run + stop-placement test
 - [ ] E4 Momentum benchmark indices + monthly report
