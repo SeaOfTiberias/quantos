@@ -457,6 +457,40 @@ def report(store: Store, root: Path = ROOT) -> str:
     return "\n".join(lines)
 
 
+def mechanical_raw(c: dict) -> dict:
+    """A screener or Darvas call as a mechanical ledger row (E5): the call as sent, next open."""
+    darvas = c.get("src") == "Darvas"
+    return dict(symbol=c["sym"], side="long" if c["side"] == "CE" else "short",
+                who="darvas" if darvas else "screener", entry={"kind": "open"}, stop=None, target=None,
+                decision="taken", why=f"{c.get('src', 'F&O')} pick, as sent", source_ref=c["key"])
+
+
+def ledger_mechanical(root: Path, day: str, store: Store, ledger_add=None) -> list[str]:
+    """Write tonight's new calls to the call ledger as mechanical baselines. Never fails the job."""
+    try:
+        from core.ledger.schema import CallError
+        if ledger_add is None:
+            import scripts.ledger as lg
+            m = lg.Market(store)
+            refs = {x.get("source_ref") for x in lg.load_calls()}
+            ledger_add = lambda raw: lg.add(raw, m) if raw["source_ref"] not in refs else None  # noqa: E731
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        out = []
+        for p in state.values():
+            c = p["call"]
+            if c["date"] != day:
+                continue
+            try:
+                r = ledger_add(mechanical_raw(c))
+                if r:
+                    out.append(f"ledger: {r['id']}")
+            except CallError as e:
+                out.append(f"ledger: {c['key']} not written: {e}")
+        return out
+    except Exception as e:                                                 # noqa: BLE001
+        return [f"ledger: mechanical rows failed ({type(e).__name__}: {e})"]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--store", type=Path, default=None)
@@ -497,6 +531,9 @@ def main(argv=None) -> int:
         traceback.print_exc()
         return 1
     last = store.last_session()
+    if a.root == ROOT:                                                      # the live job only, never a replay
+        for line in ledger_mechanical(a.root, last.isoformat(), store):
+            print(line)
     msg = [f"🗺 Map plans for the F&O calls and Darvas breakouts · close of {last:%a %d %b}",
            "Wait for the level; enter on the reclaim; stop beyond the sweep; bank at the target. "
            "Paper plans (UNTESTED rule, scored vs the calls as sent), not orders.", ""]

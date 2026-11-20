@@ -1,0 +1,11 @@
+[Unit]
+Description=Scores the call ledger every weekday at 20:20 IST, after the call plans
+
+[Timer]
+# The VM runs in Etc/UTC. 14:50 UTC = 20:20 IST: after the L1 refresh (19:30 IST) and the call
+# plans (20:00 IST), which write the night's screener and Darvas calls as mechanical rows.
+OnCalendar=Mon..Fri *-*-* 14:50:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

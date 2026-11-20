@@ -112,6 +112,24 @@ def add(raw: dict, path: Optional[Path] = None, reader=None) -> dict:
     return idea
 
 
+def to_ledger(idea: dict, ledger_add=None) -> str:
+    """Also write the idea to the call ledger (E5, scripts/ledger.py). Never blocks the idea:
+    a refusal is printed so the caller can fix the idea (stop, salvage plan) and log it again."""
+    from core.ledger.schema import CallError, from_idea
+    raw = from_idea(idea)
+    if raw is None:
+        return "ledger: not written (no bull/bear view)"
+    try:
+        if ledger_add is None:
+            from scripts.ledger import add as ledger_add
+        c = ledger_add(raw)
+        return f"ledger: {c['id']}"
+    except CallError as e:
+        return f"ledger: NOT written: {e}"
+    except Exception as e:                                   # noqa: BLE001 -- the idea is already saved
+        return f"ledger: NOT written ({type(e).__name__}: {e})"
+
+
 def _broker():
     from agent.main import load_config
     from core.brokers import get_broker

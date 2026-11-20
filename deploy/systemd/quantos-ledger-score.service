@@ -1,0 +1,19 @@
+# Call ledger scoring (docs/EXECUTION_PLAN_2026-11-19.md, E5): re-scores every ledger call in R
+# from the L1 store against the call as sent and the map plan; writes ~/.quantos/ledger/scores.json
+# (GET /ledger, #/ledger) and Telegrams the running comparison once there is a discretionary call.
+# Code-only, records only: no order, no model. Enable once:
+#   sudo systemctl enable --now quantos-ledger-score.timer
+
+[Unit]
+Description=QuantOS call ledger scoring (R vs as-sent and map-plan baselines)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/ledger.py score
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=15min
