@@ -8,6 +8,7 @@
   5. The judgment (core/market_map/book_judge.py): index read, cancels of unfilled positions,
      index guards, and on a book day a new book. Code validates every decision.
   6. Save the books and a journal entry; Telegram the summary.
+  A new book's positions also go into the call ledger (who=book; E5, 2026-11-21).
 
 Paper only: places NO orders and touches no live job. No Fyers token needed (NSE files + the
 L1 store). Needs ANTHROPIC_API_KEY for step 5 (skip with --no-model) and the Telegram env for 6.
@@ -76,6 +77,40 @@ def setup_rows(scan_rows: list[dict], tri: list[dict]) -> tuple[list[dict], dict
                           half_risk=t["half_risk"], M=r.get("M"), W=r.get("W"), D=r.get("D"),
                           swept=plan.get("swept"), shift=plan.get("shift"), paired=t["sym"] in paired))
     return shown, plans
+
+
+def ledger_raw(book: dict, p: dict) -> dict:
+    """A new book's position as a ledger row (E5, who=book): the playbook plan as booked."""
+    st = p["setup"]
+    entry = ({"kind": "open"} if st.get("entry_at_open")
+             else {"kind": "limit", "price": st["entry"], "window": int(st.get("valid") or VALID)})
+    return dict(symbol=p["sym"], side=st["side"], who="book", entry=entry, stop=st.get("stop"),
+                target=st.get("target"), size_r=0.5 if st.get("half_risk") else 1.0, decision="taken",
+                why=f"book {book['id']} {p['id']} ({st.get('setup')}): {book.get('why') or ''}"[:500],
+                source_ref=f"book:{book['id']}:{p['id']}")
+
+
+def ledger_book(book: dict, store, ledger_add=None) -> list[str]:
+    """Write a new book's positions to the call ledger. Never fails the job; a position already in
+    the ledger (same source_ref) is skipped."""
+    try:
+        from core.ledger.schema import CallError
+        if ledger_add is None:
+            import scripts.ledger as lg
+            m = lg.Market(store)
+            refs = {x.get("source_ref") for x in lg.load_calls()}
+            ledger_add = lambda raw: lg.add(raw, m) if raw["source_ref"] not in refs else None  # noqa: E731
+        out = []
+        for p in book["positions"]:
+            try:
+                r = ledger_add(ledger_raw(book, p))
+                if r:
+                    out.append(f"ledger: {r['id']}")
+            except CallError as e:
+                out.append(f"ledger: {p['id']} not written: {e}")
+        return out
+    except Exception as e:                                                 # noqa: BLE001
+        return [f"ledger: book rows failed ({type(e).__name__}: {e})"]
 
 
 def fmt_pos(r: dict) -> str:
@@ -213,6 +248,7 @@ def main(argv=None) -> int:
             else:
                 books.append(new)
                 created.add(new["id"])
+                msgs += ledger_book(new, store)
                 walked[new["id"]] = (bk.advance(new, daily_for, lambda s: idx.get(s)), None)
 
     # re-walk, close resolved books, save

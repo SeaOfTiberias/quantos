@@ -184,6 +184,11 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
 
 _Dated notes on anything a session changed for later sessions._
 
+- **2026-11-21 (open small tasks, user OK):**
+  - The benchmark report (E4) now models tax, before either gate opens. The systems pay STCG at 20%. A fund pays LTCG at 12.5% if held over a year (buy-and-hold, sold on the report date), else STCG. Cess is 4%, and losses offset gains within a span. The Rs 1.25 lakh LTCG exemption is not counted, so the fund's bar is a floor. Rates are Finance (No. 2) Act 2024; check them after every Budget.
+  - The book job writes a new book's positions to the ledger (who=book, playbook limit entry, stop, target, P2 at 0.5R). It makes no books while its model step is off.
+  - The NSE calendar re-derivation waits on a fresh Fyers token.
+
 - **2026-11-20 (E4):** E4 as first written showed the Darvas paper record against the indices every month, but E2 (frozen later, 2026-11-19) forbids reading Darvas paper returns before the 20th closed trade, and the momentum methodology forbids a verdict before 4 completed quarters. The stricter frozen rules win: each strategy section of the benchmark report is **locked** (counts and index returns only) until its own gate. The existing `#/reports` Darvas card, which showed paper P&L, is locked behind the same 20-trade gate.
 - **2026-11-19 (user, after E3 ran):** research files that results rest on now go to the VM under `~/.quantos/research/` with sha256 in `docs/RESEARCH_DATA.md`. The two Darvas caches, the E3 outputs and the L1 snapshot are copied and verified. No off-machine backup is known yet.
 - **2026-11-19 (E2):** the calendar re-derivation wasn't needed for E2 (sessions come from the bhavcopy dates; the rule counts trades). It stays a small open task (watchdog CALENDAR fault), run on the VM with a fresh Fyers token.

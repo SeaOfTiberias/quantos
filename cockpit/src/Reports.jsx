@@ -194,11 +194,13 @@ function BenchmarkReport() {
           <div>{head}</div>
           <div>Index funds over the same span: {Object.entries(sec[spanKey] || {})
             .map(([k, v]) => `${IDX_LABEL[k] || k} ${pct(v)}`).join(" · ") || "n/a"}</div>
+          {sec[`${spanKey}_after_tax`] && <div>After tax if sold today: {Object.entries(sec[`${spanKey}_after_tax`])
+            .map(([k, v]) => `${IDX_LABEL[k] || k} ${pct(v)}`).join(" · ")}</div>}
           {sec.locked
             ? <div style={{ color: C.gold }}>LOCKED: {sec.note}</div>
             : sec.mean_net != null
-              ? Object.keys(rep.fund_ter_pct).map(k => <div key={k}>Mean net {pct(sec.mean_net)} · vs {IDX_LABEL[k] || k} fund: excess {pct(sec[`mean_excess_${k}`])}, beat it {sec[`beat_${k}`]} of {sec[`n_${k}`]}</div>)
-              : Object.keys(rep.fund_ter_pct).map(k => <div key={k}>Return to {sec.marked_to} {pct(sec.ret)} · vs {IDX_LABEL[k] || k} fund {pct(sec[k])}: excess {pct(sec[`excess_${k}`])}</div>)}
+              ? Object.keys(rep.fund_ter_pct).map(k => <div key={k}>Mean net {pct(sec.mean_net)} (after tax {pct(sec.mean_net_after_tax)}) · vs {IDX_LABEL[k] || k} fund: excess {pct(sec[`mean_excess_${k}`])} (after tax {pct(sec[`excess_after_tax_${k}`])}), beat it {sec[`beat_${k}`]} of {sec[`n_${k}`]}</div>)
+              : Object.keys(rep.fund_ter_pct).map(k => <div key={k}>Return to {sec.marked_to} {pct(sec.ret)} (after tax {pct(sec.ret_after_tax)}) · vs {IDX_LABEL[k] || k} fund {pct(sec[k])}: excess {pct(sec[`excess_${k}`])} (after tax {pct(sec[`excess_after_tax_${k}`])})</div>)}
         </div>
       )}
     </div>
@@ -208,7 +210,8 @@ function BenchmarkReport() {
       <Label color={C.accent}>Benchmark: the systems against the index funds (E4)</Label>
       <div style={{ fontSize: 10, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>
         As of {rep.as_of}. Rule: no capital for a system that can't beat the Nifty200 Momentum 30 fund after costs.
-        NSE price indices (not total return) less an assumed TER ({ter}/yr). Tax not modelled.
+        NSE price indices (not total return) less an assumed TER ({ter}/yr).
+        {rep.tax_modelled ? " After tax: systems at STCG 20%; funds at LTCG 12.5% if held over a year, else STCG; +4% cess. LTCG exemption not counted (the fund's bar is a floor)." : " Tax not modelled."}
       </div>
       {section(rep.darvas, "index_since_first_entry", `Closed ${rep.darvas.closed ?? "—"}, open ${rep.darvas.open ?? "—"}, since ${rep.darvas.since || "—"}`)}
       {section(rep.momentum, "index_since_start", `Quarters ${rep.momentum.quarters ?? 0} of ${rep.momentum.gate ?? 4}, holdings ${rep.momentum.positions ?? "—"}, since ${rep.momentum.since || "—"}`)}

@@ -102,3 +102,54 @@ def test_parse_day_reads_close_only_benchmark_rows():
     m = out["NIFTY200MOM30"]
     assert m["o"] == m["h"] == m["l"] == m["c"] == 11933.25
     assert "NIFTY200MOM30" not in ib.INDICES.values()     # the map's index list is unchanged
+
+
+# ─── tax (2026-11-21) ────────────────────────────────────────────────────────
+
+def test_tax_rate_by_holding_period_with_cess():
+    assert bm.tax_rate(0) == pytest.approx(0.208)          # STCG 20% + 4% cess
+    assert bm.tax_rate(365) == pytest.approx(0.208)        # 12 months exactly is still short term
+    assert bm.tax_rate(366) == pytest.approx(0.13)         # LTCG 12.5% + 4% cess
+
+
+def test_after_tax_taxes_gains_never_losses():
+    assert bm.after_tax(0.10, 0.208) == pytest.approx(0.0792)
+    assert bm.after_tax(-0.05, 0.208) == -0.05
+    assert bm.after_tax(None, 0.208) is None
+
+
+def test_darvas_unlocked_after_tax_vs_fund_held_since_first_entry():
+    sec = bm.darvas_section(trades(20), 0, IDX, date(2026, 1, 16), lambda e, x: x / e - 1)
+    assert sec["mean_net_after_tax"] == pytest.approx(0.10 * (1 - 0.208))
+    nifty = bm.fund_return(110 / 101 - 1, date(2026, 1, 7), date(2026, 1, 16), bm.FUND_TER["NIFTY"])
+    # 9 days since the first entry: the fund is short term too
+    assert sec["excess_after_tax_NIFTY"] == pytest.approx(0.0792 - nifty * (1 - 0.208))
+    # a flat index less TER is a loss: no tax on it
+    mom = bm.fund_return(0.0, date(2026, 1, 7), date(2026, 1, 16), bm.FUND_TER["NIFTY200MOM30"])
+    assert sec["excess_after_tax_NIFTY200MOM30"] == pytest.approx(0.0792 - mom)
+
+
+def test_locked_sections_show_fund_after_tax_only():
+    sec = bm.darvas_section(trades(5), 3, IDX, date(2026, 1, 16), lambda *_: 1 / 0)
+    assert "mean_net_after_tax" not in sec
+    v = sec["index_since_first_entry"]["NIFTY"]
+    assert sec["index_since_first_entry_after_tax"]["NIFTY"] == pytest.approx(v * (1 - 0.208))
+
+
+def test_momentum_after_tax_fund_long_term_after_a_year():
+    # 400 calendar days of a flat-then-up index: the fund pays LTCG, the rotation STCG
+    long_idx = {"NIFTY": frame(date(2025, 1, 6), [100] * 5 + [130] * 300)}
+    st = dict(initial_capital=100.0, equity_curve=[dict(date="2025-01-09", equity=100.0),
+                                                     dict(date="2026-02-13", equity=140.0)])
+    sec = bm.momentum_section(st, long_idx, date(2026, 3, 31))
+    assert not sec["locked"] and sec["ret_after_tax"] == pytest.approx(0.40 * (1 - 0.208))
+    f = sec["NIFTY"]
+    assert f > 0 and sec["excess_after_tax_NIFTY"] == pytest.approx(0.40 * 0.792 - f * (1 - 0.13))
+
+
+def test_render_mentions_tax_basis():
+    rep = dict(as_of="2026-11-20",
+               darvas=bm.darvas_section(trades(5), 3, IDX, date(2026, 1, 16), lambda *_: 1 / 0),
+               momentum=bm.momentum_section({}, IDX, date(2026, 11, 20)))
+    txt = bm.render_text(rep)
+    assert "STCG 20%" in txt and "after tax if sold today" in txt and "Tax not modelled" not in txt

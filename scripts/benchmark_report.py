@@ -65,7 +65,7 @@ def build(today, q: Path = Q, index_root: Optional[Path] = None) -> dict:
 
     last = {s: (df["date"].max().date().isoformat() if len(df) else None) for s, df in idx.items()}
     return dict(as_of=today.isoformat(), index_last_bar=last, fund_ter_pct=bm.FUND_TER,
-                price_index_not_tri=True, tax_modelled=False,
+                price_index_not_tri=True, tax_modelled=True, tax=bm.TAX,
                 darvas=_section(darvas), momentum=_section(momentum))
 
 
