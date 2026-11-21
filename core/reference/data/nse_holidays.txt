@@ -1,0 +1,29 @@
+# NSE trading holidays (equity and equity derivatives), weekdays only. Used by core/reference/calendar.py
+# to project sessions AFTER the last observed session (nse_trading_days.txt) through 31 Dec of the last
+# year listed in `published:` below. Observed sessions always win; a projected date is replaced at the
+# next run of scripts/derive_nse_calendar.py.
+#
+# Add a year when NSE publishes its "Trading holidays for the calendar year YYYY" circular (usually in
+# December), and add any holiday NSE declares later (e.g. 2026-01-15, Maharashtra municipal elections,
+# declared after the 2026 list). Weekend holidays are left out (no effect).
+#
+# 2026: list as published (NSE circulars of December 2025; copied 2026-11-21 from upstox.com/stocks-market/nse-holidays,
+# cross-checked against the observed 2026 sessions to 2026-11-20: all 13 past dates match; 2026-01-15 added by NSE later).
+# 2027: not yet published by NSE (checked 2026-11-21).
+published: 2026
+2026-01-15  Municipal corporation elections, Maharashtra (declared after the annual list)
+2026-01-26  Republic Day
+2026-03-03  Holi
+2026-03-26  Shri Ram Navami
+2026-03-31  Shri Mahavir Jayanti
+2026-04-03  Good Friday
+2026-04-14  Dr. Baba Saheb Ambedkar Jayanti
+2026-05-01  Maharashtra Day
+2026-05-28  Bakri Id
+2026-06-26  Muharram
+2026-09-14  Ganesh Chaturthi
+2026-10-02  Mahatma Gandhi Jayanti
+2026-10-20  Dussehra
+2026-11-10  Diwali Balipratipada
+2026-11-24  Prakash Gurpurb Sri Guru Nanak Dev
+2026-12-25  Christmas

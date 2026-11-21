@@ -236,3 +236,63 @@ def test_sessions_are_unique_and_sorted():
     days = cal._sessions()
     assert list(days) == sorted(days)
     assert len(set(days)) == len(days)
+
+
+# ─── projected sessions (2026-11-21) ─────────────────────────────────────────
+
+def test_project_skips_weekends_and_holidays():
+    from datetime import date
+    hol = frozenset({date(2026, 11, 24)})
+    got = cal.project(date(2026, 11, 20), 2026, hol)
+    assert got[:4] == [date(2026, 11, 23), date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)]
+    assert got[-1] == date(2026, 12, 31) and all(d.weekday() < 5 for d in got)
+    assert cal.project(date(2026, 11, 20), 0, hol) == []                 # nothing published: no projection
+
+
+def test_load_holidays_parses_published_year_and_comments(tmp_path):
+    from datetime import date
+    f = tmp_path / "h.txt"
+    f.write_text("# note\npublished: 2027\n2027-01-26  Republic Day  # inline\n\n", encoding="utf-8")
+    assert cal.load_holidays(f) == (2027, frozenset({date(2027, 1, 26)}))
+    assert cal.load_holidays(tmp_path / "missing.txt") == (0, frozenset())
+
+
+def test_real_calendar_projects_past_the_last_observed_session():
+    from datetime import date, timedelta
+    _, last_obs = cal.observed_coverage()
+    year, hol = cal.load_holidays()
+    assert cal.coverage()[1] == max(last_obs, date(year, 12, 31))
+    nxt = cal.next_trading_day(last_obs)
+    assert nxt > last_obs and cal.is_projected(nxt) and not cal.is_projected(last_obs)
+    for d in hol:
+        if d > last_obs:
+            assert not cal.is_trading_day(d), d                          # a listed holiday is never projected
+    with pytest.raises(cal.DateOutOfRange):
+        cal.is_trading_day(cal.coverage()[1] + timedelta(days=1))       # still fails closed beyond the list
+
+
+def test_holiday_list_agrees_with_observed_sessions():
+    """In every published year, up to the last observed session: no listed holiday was a session, and
+    every weekday without a session is listed. A failure means the list is wrong or NSE declared a
+    holiday after it: add it (as 2026-01-15)."""
+    from datetime import date, timedelta
+    year, hol = cal.load_holidays()
+    obs = set(cal._observed())
+    _, last = cal.observed_coverage()
+    years = sorted({d.year for d in hol})
+    assert year in years
+    for y in years:
+        d = date(y, 1, 1)
+        while d <= min(last, date(y, 12, 31)):
+            if d.weekday() < 5:
+                assert (d in obs) != (d in hol), d
+            d += timedelta(days=1)
+
+
+def test_known_projected_dates_2026():
+    from datetime import date
+    if cal.observed_coverage()[1] >= date(2026, 11, 24):
+        pytest.skip("observed past these dates")
+    assert not cal.is_trading_day(date(2026, 11, 24))                   # Guru Nanak Jayanti
+    assert cal.shift_sessions(date(2026, 11, 20), 5) == date(2026, 11, 30)
+    assert not cal.is_trading_day(date(2026, 12, 25))

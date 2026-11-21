@@ -193,7 +193,8 @@ def safe_calendar(fn: Callable[[date], bool]) -> tuple[Callable[[date], bool], l
 
 def fix_hint(f: Fault) -> str:
     if f.kind == "CALENDAR":
-        return "python scripts/derive_nse_calendar.py (see its docstring), then deploy"
+        return ("add the next year's NSE holiday list to core/reference/data/nse_holidays.txt, or run "
+                "scripts/derive_nse_calendar.py (see its docstring); then deploy")
     if f.kind == "STUCK":
         return f"sudo systemctl stop {f.unit}  (the timer starts a fresh run)"
     if f.kind in ("FAILED", "NO_OUTPUT"):

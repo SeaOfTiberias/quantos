@@ -55,17 +55,31 @@ silently answers "probably a Tuesday, so yes" for 2031 is worse than no
 calendar, because it is wrong invisibly.
 
 To extend the window, re-run the derivation script and commit the result.
+
+PROJECTED SESSIONS (2026-11-21)
+───────────────────────────────
+The derived file ends at the last session it saw, so on the next trading day
+every caller fell out of range again. Past the last observed session, and up
+to 31 Dec of the last year NSE has published a holiday list for, the calendar
+now PROJECTS sessions: weekdays that are not in `data/nse_holidays.txt`.
+
+- Observed sessions always win. Projection starts the day after the last one.
+- Beyond the last published year it still fails closed (DateOutOfRange).
+- A projection can be wrong: NSE adds holidays at short notice (2026-01-15) and
+  announces special sessions (Muhurat, Budget) that are never projected.
+  `is_projected(d)` and `observed_coverage()` say which part is which.
 """
 
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Union
 
 DATA_PATH = Path(__file__).parent / "data" / "nse_trading_days.txt"
+HOLIDAYS_PATH = Path(__file__).parent / "data" / "nse_holidays.txt"
 
 DateLike = Union[date, datetime, str]
 
@@ -99,9 +113,37 @@ def _coerce(d: DateLike) -> date:
     raise TypeError(f"unsupported date type: {type(d).__name__}")
 
 
+def load_holidays(path: Path = HOLIDAYS_PATH) -> tuple[int, frozenset[date]]:
+    """(last published year, weekday holidays). (0, empty) when the file is missing:
+    then nothing is projected and the calendar ends at the last observed session."""
+    if not path.exists():
+        return 0, frozenset()
+    year, days = 0, set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("published:"):
+            year = int(line.split(":", 1)[1])
+        else:
+            days.add(date.fromisoformat(line.split()[0]))
+    return year, frozenset(days)
+
+
+def project(after: date, through_year: int, holidays: frozenset[date]) -> list[date]:
+    """Weekdays strictly after `after` through 31 Dec `through_year` that are not holidays."""
+    out, d = [], after + timedelta(days=1)
+    end = date(through_year, 12, 31) if through_year else after
+    while d <= end:
+        if d.weekday() < 5 and d not in holidays:
+            out.append(d)
+        d += timedelta(days=1)
+    return out
+
+
 @lru_cache(maxsize=1)
-def _sessions() -> tuple[date, ...]:
-    """The sorted tuple of every known NSE session. Cached per process."""
+def _observed() -> tuple[date, ...]:
+    """The sorted tuple of every observed NSE session. Cached per process."""
     if not DATA_PATH.exists():
         raise CalendarError(
             f"trading-day data missing at {DATA_PATH}. "
@@ -118,14 +160,43 @@ def _sessions() -> tuple[date, ...]:
 
 
 @lru_cache(maxsize=1)
+def _horizon() -> date:
+    """The last date the calendar answers for: 31 Dec of the last published holiday year, or the
+    last observed session if that is later (or no list is published)."""
+    year, _ = load_holidays()
+    last = _observed()[-1]
+    return max(last, date(year, 12, 31)) if year else last
+
+
+@lru_cache(maxsize=1)
+def _sessions() -> tuple[date, ...]:
+    """Observed sessions, then projected ones up to the horizon."""
+    year, hol = load_holidays()
+    obs = _observed()
+    return obs + tuple(project(obs[-1], year, hol)) if year else obs
+
+
+@lru_cache(maxsize=1)
 def _session_set() -> frozenset[date]:
     return frozenset(_sessions())
 
 
 def coverage() -> tuple[date, date]:
-    """(first, last) date this calendar can answer for."""
-    s = _sessions()
-    return s[0], s[-1]
+    """(first, last) date this calendar can answer for (the last may be projected)."""
+    return _observed()[0], _horizon()
+
+
+def observed_coverage() -> tuple[date, date]:
+    """(first, last) observed session: everything after the last one is projected."""
+    o = _observed()
+    return o[0], o[-1]
+
+
+def is_projected(d: DateLike) -> bool:
+    """True for a date after the last observed session (inside coverage)."""
+    day = _coerce(d)
+    _require_covered(day)
+    return day > _observed()[-1]
 
 
 def _require_covered(d: date) -> None:
@@ -134,7 +205,7 @@ def _require_covered(d: date) -> None:
         raise DateOutOfRange(
             f"{d.isoformat()} is outside the derived calendar "
             f"({lo.isoformat()} .. {hi.isoformat()}). "
-            "Re-run scripts/derive_nse_calendar.py to extend it."
+            "Re-run scripts/derive_nse_calendar.py, or add the next year to data/nse_holidays.txt."
         )
 
 
