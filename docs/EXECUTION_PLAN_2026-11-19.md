@@ -176,7 +176,7 @@ The user, or Claude in a Claude Code session, turns the brief into ledger calls 
   - `scripts/benchmark_report.py`, timer `quantos-benchmark-report` on the 1st at 17:00 IST (enabled); Telegram + `#/reports` benchmark panel. First run 2026-11-20 sent.
   - Both sections LOCKED until their own gates (Darvas 5 of 20 closed; momentum 1 of 4 quarters). Index funds over the same spans: Darvas since 09-28, Nifty 50 +10.23%, Momentum 30 −0.46%; momentum since 07-29, +6.31% / +0.26%.
   - Assumed TER 0.20% / 0.40% a year; tax not modelled (short-term Darvas holds pay STCG 20% vs a fund's LTCG 12.5%; to add before the first unlock).
-- [ ] E5 One call ledger
+- [x] E5 One call ledger: **DONE 2026-11-21** (25474bd, deployed; fix e0ab5d8). Two "avoided" Claude calls on the VM, labelled "E5 test" in `why`: AXISBANK via `scripts/ledger.py add` (CLI), BANKNIFTY via `trade_ideas.py add` from a Claude Code session. Scored by `ledger.py score`; both pending until Monday's bar. `GET /ledger` serves them, nginx allowlist edited by hand. Timer `quantos-ledger-score` enabled, first run Mon 2026-11-23 20:20 IST. Found on the VM: `trade_ideas add` never called `to_ledger`, fixed with a regression test in e0ab5d8 (needs a deploy); the BANKNIFTY idea was written to the ledger through `to_ledger` directly. The book job is not wired: it makes no books while its model step is off (API credit 0). Run VM scripts with `.venv/bin/python`.
 - [ ] E6 Evening routine
 - [ ] E7 Review at 60 calls
 
