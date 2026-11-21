@@ -340,7 +340,8 @@ def pricing_check(W: World) -> list[str]:
                 for row in csv.DictReader(fh):
                     if (row["underlying"] == "NIFTY" and row["option_type"] == "CE" and row["expiry"] == r["expiry"].isoformat()
                             and abs(float(row["strike"]) - r["strike"]) < 1e-6):
-                        close, spot = float(row["close"]), float(row["underlying_close"])
+                        if row["close"] and row["underlying_close"]:
+                            close, spot = float(row["close"]), float(row["underlying_close"])
                         break
             if not close:
                 continue
