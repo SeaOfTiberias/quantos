@@ -10,7 +10,7 @@ Bars: `Bar(start, o, h, l, c, subs)`. `start` is a naive IST datetime. `subs` ar
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Callable, Optional
 
 SWING = 5
@@ -197,3 +197,79 @@ def run(bars: list[Bar], htf_bullish: Callable[[date], bool], signal_starts: dic
 
 GRID_A = {time(10, 15): "am", time(14, 15): "pm"}     # Fyers 60m: entries 11:15 / 15:15
 GRID_B = {time(10, 0): "am", time(14, 0): "pm"}       # hour-aligned: entries 11:00 / 15:00
+
+
+# ─── shared exit management (step 3: the placebo uses it; the script asserts it reproduces run()) ──
+
+def states(bars: list[Bar]) -> dict:
+    """Per bar, after its close: ATR, whether a bullish BOS fired, and the OB bottom then in force.
+    The same structure machine as run(); positions never change it (OB consumption only gates signals)."""
+    atr = wilder_atr(bars)
+    sh = sl_ = sh_prev = sl_prev = None
+    ob_bot = None
+    bos_l, ob_l = [], []
+    for t, b in enumerate(bars):
+        k = t - SWING
+        if k >= SWING:
+            hk, lk = bars[k].h, bars[k].l
+            if all(hk > bars[j].h for j in range(k - SWING, k)) and all(hk > bars[j].h for j in range(k + 1, t + 1)):
+                sh = hk
+            if all(lk < bars[j].l for j in range(k - SWING, k)) and all(lk < bars[j].l for j in range(k + 1, t + 1)):
+                sl_ = lk
+        prev_c = bars[t - 1].c if t else None
+        bos = bool(sh is not None and prev_c is not None and b.c > sh
+                   and prev_c <= (sh_prev if sh_prev is not None else sh))
+        if bos:
+            i = next((i for i in range(1, OB_SCAN + 1) if t - i >= 0 and bars[t - i].c < bars[t - i].o), 1)
+            ob_bot = bars[t - i].l
+        bos_l.append(bos)
+        ob_l.append(ob_bot)
+        sh_prev, sl_prev = sh, sl_
+    return dict(atr=atr, bos=bos_l, ob_bot=ob_l)
+
+
+SUB_MIN = 5
+
+
+def manage(bars: list[Bar], st: dict, k: int, risk: float) -> dict:
+    """A long entered at bars[k].o with `risk`, managed exactly as run() manages it. Returns the exit:
+    spot, reason, bars held, the exit bar index, and `end`: the end of the 5-minute bar the exit is priced
+    at (a fill's own 5-minute bar; for the time stop, the hour bar's last 5-minute bar)."""
+    e = bars[k].o
+    stop, tgt, stop0 = e - risk, e + RR * risk, e - risk
+    held = 0
+    for t in range(k, len(bars)):
+        b = bars[t]
+        subs = b.subs or ((b.start, b.o, b.h, b.l, b.c),)
+        out = None
+        for s in subs:
+            s0, so, shh, sll, _ = s
+            if so <= stop:
+                out = (so, "stop_gap", s0)
+            elif so >= tgt:
+                out = (so, "target_gap", s0)
+            elif sll <= stop:
+                out = (stop, "stop", s0)
+            elif shh >= tgt:
+                out = (tgt, "target", s0)
+            if out:
+                break
+        held += 1
+        if out is None and held >= MAX_HOLD:
+            out = (b.c, "time", subs[-1][0])
+        if out:
+            px, reason, s0 = out
+            if "stop" in reason and stop > stop0:
+                reason += "_raised"
+            return dict(exit=px, reason=reason, bars_held=held, t=t, end=s0 + timedelta(minutes=SUB_MIN),
+                        entry=e, stop0=stop0, target=tgt)
+        a = st["atr"][t]
+        new = stop
+        if b.h - e >= BE_R * risk:
+            new = max(new, e + BE_PLUS)
+        if a is not None and b.h - e >= TRAIL_R * risk:
+            new = max(new, b.c - TRAIL_ATR * a)
+        if st["bos"][t] and a is not None and st["ob_bot"][t] is not None and st["ob_bot"][t] > new:
+            new = max(new, st["ob_bot"][t] - ATR_BUF * a)
+        stop = max(stop, new)
+    return dict(exit=None, reason="open", bars_held=held, t=len(bars) - 1, end=None, entry=e, stop0=stop0, target=tgt)

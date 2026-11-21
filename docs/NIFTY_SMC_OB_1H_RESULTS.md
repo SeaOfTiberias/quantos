@@ -37,4 +37,37 @@ By the pre-registered rule, **grid (b) is used** (09:15–10:00, 10:00–11:00, 
 
 **Bar counts.** TradingView's "Duration (bars)" counts bars after the entry bar. The engine counts the entry bar as bar 1, which is the pre-registered reading. Both put the time stop at the same moment.
 
-**Next: step 3 (options, placebo, verdict) runs only on the user's go-ahead.**
+
+## Step 3a: discovery (2026-11-22): FAIL
+
+User's go-ahead 2026-11-22. `python scripts/research/smc_ob_1h_step3.py discovery` (grid b). Written and committed before any confirmation number was computed.
+
+**Discovery, 2019-02-11 to 2022-12-31: n = 37**
+
+| Measure | Value |
+|---|---|
+| Gate A: spot net points per trade (after 0.04% round trip) | +10.5 (gross +16.2; t 0.68) |
+| Options: mean net return on premium (Stratified) | +0.92% (median -6.82%) |
+| One-sided t | 0.19 |
+| Winners (net > 0) | 14 of 37 |
+| Mean entry premium / mean decay paid (points) | 214.6 / -12.6 |
+| Mean cost per round trip (points) | 1.43 |
+| Placebo (2000 sets, pool 1187 bars): mean of set means | +2.31% (5th–95th pct -6.67% .. +11.78%) |
+| Placebo p (share of sets ≥ real) | 0.590 |
+| Placebo, spot: mean +12.0 pts, p | 0.530 |
+| Clean / Stressed mean net | +1.38% / +1.07% |
+
+**Verdict: FAIL. H1 does not go on to confirmation.**
+
+| Bar (pre-registration §7) | Needed | Got | Result |
+|---|---|---|---|
+| Gate A | spot net > 0 | +10.5 points (t 0.68) | passes, barely |
+| Options mean net | > 0 | +0.92% | passes, barely |
+| One-sided t | ≥ 2.0 | 0.19 | **fails** |
+| Placebo p | ≤ 0.05 | 0.590 | **fails** |
+
+**What it means.** Random long entries on daily-uptrend days, in the same 11:00 and 15:00 windows and the same year, with the same risk, exits and contract, averaged **+2.31%**. That is better than the strategy's +0.92%, and the spot placebo did better too (+12.0 points against +10.5).
+- The order-block, structure and POC conditions add nothing over "buy a call on a daily-uptrend day at 11:00 or 15:00".
+- What the TradingView curve shows is the daily uptrend filter's drift, not the SMC entry.
+
+**Code fix made during this step, before any result was seen.** The first run hung. `core/orb_scalping/expiry.py`'s `next_nifty_weekly_expiry` loops forever on a holiday-adjusted expiry: expiry + 1 day is the holiday Thursday itself, which adjusts back to the same Wednesday. The script now finds "the nearest expiry with at least 6 days" by walking the search date forward. The shared module is unchanged. Its bug matters only to callers that roll from a holiday-adjusted expiry. ORB's DTE-floor roll is one such caller; it is to be checked separately.
