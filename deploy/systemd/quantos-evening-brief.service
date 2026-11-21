@@ -1,0 +1,20 @@
+# Evening brief (docs/EXECUTION_PLAN_2026-11-19.md, E6): NIFTY/BANKNIFTY v3 reads, top-500 breadth
+# (W/D structure, the day's sweeps), tonight's screener and Darvas calls with their map plans and the
+# code-flagged vetoes V1-V4 (core/ops/evening_brief.py). Writes ~/.quantos/brief/ (GET /reports/brief,
+# #/brief) and Telegrams it. Code-only: no model, no orders, no broker login. Enable once:
+#   sudo systemctl enable --now quantos-evening-brief.timer
+
+[Unit]
+Description=QuantOS evening brief (index reads, breadth, candidates with vetoes; markers, no orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quantos
+ExecStart=/home/ubuntu/quantos/.venv/bin/python /home/ubuntu/quantos/scripts/evening_brief.py
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/quantos/.env.cloud-api
+TimeoutStartSec=40min
+Nice=10

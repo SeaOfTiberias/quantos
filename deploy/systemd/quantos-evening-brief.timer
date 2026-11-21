@@ -1,0 +1,11 @@
+[Unit]
+Description=Evening brief every weekday at 20:15 IST, after the call plans
+
+[Timer]
+# The VM runs in Etc/UTC. 14:45 UTC = 20:15 IST: after the L1 refresh (19:30 IST, done ~19:42) and the
+# call plans (20:00 IST, done ~20:05), whose state.json the brief reads for tonight's calls.
+OnCalendar=Mon..Fri *-*-* 14:45:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

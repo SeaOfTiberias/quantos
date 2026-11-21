@@ -47,6 +47,7 @@ OUTPUTS = {
     "quantos-call-plans.service": "call_plans/state.json",
     "quantos-benchmark-report.service": "reports/benchmark_latest.json",
     "quantos-ledger-score.service": "ledger/scores.json",
+    "quantos-evening-brief.service": "brief/brief_latest.json",
 }
 
 

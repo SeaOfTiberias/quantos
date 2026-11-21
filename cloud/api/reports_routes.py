@@ -330,6 +330,20 @@ async def benchmark():
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+@router.get("/brief")
+async def brief():
+    """The latest evening brief (scripts/evening_brief.py, execution plan E6): index reads, breadth,
+    tonight's candidates with code-flagged vetoes. Markers, never orders."""
+    import json
+    p = _quantos_dir() / "brief" / "brief_latest.json"
+    if not p.exists():
+        return {"error": "No evening brief yet (scripts/evening_brief.py runs weekdays at 20:15 IST)."}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 @router.get("/paper-strategies")
 async def paper_strategies():
     return {"orb": _safe(orb_report), "darvas": _safe(darvas_report),
