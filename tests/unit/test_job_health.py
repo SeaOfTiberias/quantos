@@ -125,15 +125,19 @@ def test_previous_weekday_walks_back_over_a_weekend():
     assert _previous_weekday(date(2026, 8, 25)) == date(2026, 8, 24)  # Tue -> Mon
 
 
-def test_a_stale_calendar_still_measures_monday_against_friday():
-    """The derived calendar's coverage ended 2026-08-18, before this panel was
-    written, so every current date takes the DateOutOfRange branch. That
-    branch must NOT fall back to an hours window -- 72h from Friday would have
-    quietly reinstated the exact Monday false alarm the calendar was there to
-    prevent. Weekday arithmetic keeps the verdict right without holiday data.
+def test_a_stale_calendar_still_measures_monday_against_friday(monkeypatch):
+    """When the derived calendar doesn't cover today (it ends at the last run of
+    scripts/derive_nse_calendar.py), the DateOutOfRange branch must NOT fall back
+    to an hours window -- 72h from Friday would quietly reinstate the Monday false
+    alarm the calendar was there to prevent. Weekday arithmetic keeps the verdict
+    right without holiday data. The stale calendar is simulated (2026-11-21: the
+    real one was re-derived and now covers these dates).
     """
-    from core.reference.calendar import coverage
-    assert coverage()[1] < date_of(2026, 8, 24), "calendar now covers this; revisit"
+    import core.reference.calendar as cal
+
+    def stale(d):
+        raise cal.DateOutOfRange(f"{d} is outside the calendar")
+    monkeypatch.setattr(cal, "previous_trading_day", stale)
 
     monday = datetime(2026, 8, 24, 3, 0, tzinfo=UTC)
     friday_run = datetime(2026, 8, 21, 2, 15, tzinfo=UTC)
