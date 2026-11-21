@@ -236,6 +236,7 @@ def main(argv: Optional[list] = None) -> int:
         print(f"logged {idea['id']}")
         from core.market_map.read import lines
         print("\n".join(lines(idea["map_read"])))
+        print(to_ledger(idea))
     elif args.cmd in ("take", "close"):
         ideas = load()
         idea = _find(ideas, args.id)

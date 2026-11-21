@@ -117,3 +117,17 @@ async def test_ledger_route_serves_calls_newest_first_without_map_read(tmp_path,
     assert [x["who"] for x in body["calls"]] == ["user", "claude"]
     assert "map_read" not in body["calls"][0] and body["calls"][0]["map_plan"]["level"] == 97.0
     assert body["calls"][0]["score"]["call"]["state"] == "target" and body["summary"]["discretionary"]["n"] == 2
+
+
+def test_trade_ideas_add_command_writes_the_ledger(monkeypatch, capsys):
+    """Regression (2026-11-21): main's add printed the idea but never called to_ledger."""
+    import scripts.trade_ideas as ti
+    idea = dict(id="2026-11-21-SYN-avoid", symbol="SYN", view="bull", action="avoid", source="claude",
+                stop={"kind": "close_below", "level": 95}, salvage="exit below 95", note="t",
+                map_read={"symbol": "SYN", "price": 100.0})
+    monkeypatch.setattr(ti, "add", lambda raw: idea)
+    monkeypatch.setattr("core.market_map.read.lines", lambda rd: ["MAP"])
+    seen = []
+    monkeypatch.setattr(ti, "to_ledger", lambda i: seen.append(i["id"]) or "ledger: ok")
+    assert ti.main(["add", "--json", "{}"]) == 0
+    assert seen == ["2026-11-21-SYN-avoid"] and "ledger: ok" in capsys.readouterr().out
