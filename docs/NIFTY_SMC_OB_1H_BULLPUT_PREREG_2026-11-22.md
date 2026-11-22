@@ -162,4 +162,8 @@ The spread arithmetic (credit, maximum risk, R, profit-take trigger, lot lookup)
 
 ## Amendments
 
-(none)
+**1. 2026-11-23, during step 1a, before any spread was priced.** Two readings were added.
+- **Missing spot in early files.** The bhavcopy's `underlying_close` is blank in every file before 2023, which left the 2019–22 half of the calibration empty. Where it is blank, the spot is now filled with NSE's official NIFTY close from the frozen daily file (`NIFTY_daily.csv`, sha256 89ed6631…).
+  - It is the same quantity: on all 680 sessions where both exist, they agree to 0.00 points.
+  - The skew table, the pricing check and step 2 all use the filled value.
+- **Rounding.** ATM rounds half up (`bull_put.atm`), not with Python's banker's rounding. This matters only when spot ends exactly in 25.00 or 75.00.
