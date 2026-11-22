@@ -1,5 +1,7 @@
 # NIFTY 1H SMC order block: results
 
+**ARCHIVED 2026-11-22 (user):** the naked long-call variant is closed. A follow-up that changes only the option expression (bull put credit spread) is pre-registered separately in `docs/NIFTY_SMC_OB_1H_BULLPUT_PREREG_2026-11-22.md`.
+
 **Verdict: FAIL** (2026-11-22). It fails in discovery, and it would also have failed confirmation on its own bar.
 - The SMC entry does no better than buying an ITM-2 call at the same hour on a random daily-uptrend day.
 - The options version nets about +0.7–0.9% per trade, with t 0.1–0.2.
