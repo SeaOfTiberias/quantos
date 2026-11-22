@@ -1,6 +1,10 @@
 # NIFTY 1H SMC order block, bull put credit spread: results
 
-**Status: step 1 done (2026-11-23). No real trade has been priced.** Step 2 (discovery, then confirmation, then diagnostics) waits for the user.
+**Verdict: FAIL (2026-11-23).** The bull put spread on the frozen SMC-OB signal does no better than the same spread opened at a random daily-uptrend entry at the same hour.
+- Discovery: mean R +0.51%, t 0.27, placebo p 0.439.
+- Confirmation (reported only): mean R +0.36%, t 0.14, p 0.211.
+- No variant in §8 gets near the bar.
+- No re-tuning in this round. Together with the call test, this closes the SMC-OB signal: two option expressions on the same spot entries, and neither beats random uptrend entries.
 
 - Pre-registration: `docs/NIFTY_SMC_OB_1H_BULLPUT_PREREG_2026-11-22.md` (0861b92, signed off 2026-11-23; amendment 1 made during step 1a).
 - Spread arithmetic: `core/backtest/bull_put.py`, tested in `tests/unit/test_bull_put.py` (21 tests).
@@ -93,3 +97,109 @@ Lot size scales only the rupee figures; it never enters R.
 - On a 2R target it gains about 20–25 points.
 - That is roughly a symmetric bet. The time decay earned over a one- or two-bar hold is small next to the delta move: at entry the spread's delta is about +0.25.
 - The full leg prices and IVs are printed by `python scripts/research/smc_ob_1h_bullput.py cases`.
+
+## Step 2a: discovery (2026-11-23, written before confirmation was computed)
+
+The spot trades match the call test's export: 69 of 69, with identical entries and exits.
+
+**Discovery, 2019-02-11 to 2022-12-31: n = 37**
+
+| Measure | Value |
+|---|---|
+| **Mean net return on maximum risk, R (3.0-pt costs)** | **+0.51%** (median −0.27%) |
+| One-sided t | 0.27 |
+| Winners (net > 0) | 18 of 37 |
+| Mean credit / maximum risk / net (points) | 64.1 / 185.9 / +0.93 |
+| Placebo (2,000 sets, pool 1,187 bars): mean of set means | +0.13% (5th–95th pct −3.85% to +4.05%) |
+| **Placebo p (share of sets ≥ real)** | **0.439** |
+| R with Stratified / Stressed costs, both legs | +1.07% / +1.73% |
+| Net ₹ total at historical lots | +2,939 |
+
+**Discovery verdict: FAIL.** The bars needed t ≥ 2.0 and placebo p ≤ 0.05; it got t 0.27 and p 0.439. H2 does not go on. Confirmation is computed and reported for the record only.
+
+## Step 2b: confirmation (reported only; discovery had already failed)
+
+**Confirmation, 2023-01-01 to 2026-11-20: n = 32**
+
+| Measure | Value |
+|---|---|
+| **Mean net return on maximum risk, R (3.0-pt costs)** | **+0.36%** (median +1.46%) |
+| One-sided t | 0.14 |
+| Winners (net > 0) | 18 of 32 |
+| Mean credit / maximum risk / net (points) | 68.3 / 181.7 / +0.77 |
+| Placebo (2,000 sets, pool 1,074 bars): mean of set means | −1.92% (5th–95th pct −6.64% to +2.88%) |
+| **Placebo p** | **0.211** |
+| R with Stratified / Stressed costs, both legs | +0.29% / +1.49% |
+| Net ₹ total at historical lots | −2,458 |
+
+**Confirmation would also have failed its own bar** (p 0.211 against ≤ 0.10).
+
+The rupee total is negative while mean R is positive. Rupees weight each trade by its lot, and the lots ran 25 to 75 over this span.
+
+## Step 2c: diagnostics
+
+**Variants** (mean R, one-sided t, placebo p with the same variant):
+
+| Variant | Discovery | Confirmation |
+|---|---|---|
+| Scored: 250 wing, skew, frozen, 3.0 pts | +0.51% (t 0.27, p 0.439) | +0.36% (t 0.14, p 0.211) |
+| Profit-take at 70% of credit | +0.60% (t 0.31, p 0.421, fired 2) | +0.36% (t 0.14, p 0.207, fired 0) |
+| 300-point wing | +0.75% (t 0.44, p 0.434) | +0.68% (t 0.28, p 0.208) |
+| Stratified costs, both legs | +1.07% (t 0.56, p 0.435) | +0.29% (t 0.11, p 0.220) |
+| Stressed costs, both legs | +1.73% (t 0.91, p 0.436) | +1.49% (t 0.56, p 0.210) |
+| Flat IV (no skew) | +1.30% (t 0.64, p 0.476) | +1.54% (t 0.55, p 0.212) |
+| Calendar time convention | +1.51% (t 0.72, p 0.470) | +1.92% (t 0.68, p 0.176) |
+| 252-day time convention | +0.70% (t 0.37, p 0.467) | +0.68% (t 0.26, p 0.224) |
+
+**Holds by overnight gap, both periods** (mean R):
+
+| Group | n | Spot pts | R (frozen) | R (calendar) | R (252-day) |
+|---|---|---|---|---|---|
+| intraday | 14 | -54.3 | -8.48% | -8.80% | -8.24% |
+| weeknight only | 39 | +22.2 | +0.34% | +0.63% | +0.69% |
+| weekend/holiday gap | 16 | +71.2 | +8.51% | +13.49% | +8.51% |
+|   of which Friday entries | 12 | +81.0 | +8.68% | +13.83% | +8.79% |
+
+**By entry window** (mean R):
+
+| | Discovery n | Discovery R | Confirmation n | Confirmation R |
+|---|---|---|---|---|
+| 11:00 | 19 | -0.47% | 17 | -0.91% |
+| 15:00 | 18 | +1.55% | 15 | +1.81% |
+
+**By spot exit reason** (mean R):
+
+| | Discovery n | Discovery R | Confirmation n | Confirmation R |
+|---|---|---|---|---|
+| stop | 13 | -11.65% | 12 | -13.54% |
+| stop_gap | 0 | — | 1 | -31.87% |
+| stop_gap_raised | 1 | -0.27% | 1 | -5.43% |
+| stop_raised | 11 | +0.64% | 5 | +3.81% |
+| target | 5 | +14.08% | 4 | +15.97% |
+| target_gap | 2 | +17.41% | 1 | +19.20% |
+| time | 5 | +11.69% | 8 | +13.65% |
+
+**By year** (mean R):
+
+| | Discovery n | Discovery R | Confirmation n | Confirmation R |
+|---|---|---|---|---|
+| 2019 | 8 | -4.11% | 0 | — |
+| 2020 | 10 | +4.11% | 0 | — |
+| 2021 | 12 | -0.18% | 0 | — |
+| 2022 | 7 | +1.86% | 0 | — |
+| 2023 | 0 | — | 8 | +0.65% |
+| 2024 | 0 | — | 14 | +4.52% |
+| 2025 | 0 | — | 6 | +2.12% |
+| 2026 | 0 | — | 4 | -17.41% |
+
+**Rupees at historical lot sizes** (3.0-pt costs): discovery +2,939 over 37 trades; confirmation -2,458 over 32 trades.
+
+**Reading** (none of this is scored):
+- **Every variant fails against its own placebo** (p 0.18–0.48). Neither a wider wing, the profit-take, a different cost model, flat IV nor a different time convention changes the picture.
+- **The 70% profit-take almost never fires** (2 of 69). A one- or two-bar spot exit closes the spread long before 70% of the credit decays.
+- **The spread is a spot-direction bet.**
+  - Stops lose 11–14% R. Targets and time stops make 12–19%.
+  - Weekend and Friday holds look good (+8.5% R frozen), because the spot rose +71 points on average in those 16 trades. That is the same post-hoc subset the call test flagged, it is convention-dependent (+13.5% under calendar time), and it is not a result.
+- **2026 so far:** 4 trades, −17.4% R.
+
+Per-trade export: `backtest_results/SMC-OB-1H_BULLPUT_QUANTOS_NSE_NIFTY_2026-11-23.csv` (69 trades: both legs' strikes, IVs and prices, credit, debit, maximum risk, R, rupees at historical lots).
