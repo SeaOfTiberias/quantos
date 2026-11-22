@@ -358,11 +358,66 @@ def pricing_check(W: World) -> list[str]:
     return L
 
 
+EXPORT = ROOT / "backtest_results" / "SMC-OB-1H_QUANTOS_NSE_NIFTY_2026-11-22.csv"
+
+
+def export(W: World, path: Path = EXPORT) -> int:
+    """Every trade the engine took, one row each, with the TradingView trade it matches (if any).
+    Same numbers as the verdict: nothing here is re-tuned. Pre-weekly trades get spot only (not scored)."""
+    tv = {(e["ts"].date(), e["window"]): e for e in s2.tv_entries()}
+    cols = ["n", "period", "window", "signal_bar", "entry_time", "entry_spot", "risk_pts", "atr", "stop0", "target",
+            "stop_moves", "exit_time", "exit_spot", "exit_reason", "bars_held", "spot_pts", "spot_net_pts",
+            "spot_net_rs_per_lot", "expiry", "strike", "vix_in", "vix_out", "premium_in", "premium_out",
+            "decay_pts", "cost_pts_stratified", "option_net_pct", "option_net_rs_per_lot",
+            "option_net_pct_clean", "option_net_pct_stressed",
+            "tv_trade", "tv_entry_time", "tv_entry", "tv_exit_time", "tv_exit", "tv_exit_signal", "tv_spot_pts"]
+    n_rows = 0
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(cols)
+        for i, t in enumerate(W.trades, 1):
+            d = t.entry_time.date()
+            period = ("discovery" if in_period(d, DISC) else "confirmation" if in_period(d, CONF)
+                      else "pre-weekly (not scored)" if in_period(d, PRE) else "warm-up (not scored)")
+            k = W.idx[t.entry_time]
+            m = eng.manage(W.bars, W.st, k, t.risk)
+            if m["exit"] is None:
+                continue                                             # still open at the data's end
+            scored = period in ("discovery", "confirmation")
+            r = option_trade(W, k, t.risk) if scored else {}
+            x = tv.get((d, t.window))
+            xe = (x or {}).get("exit") or {}
+            spot_pts = m["exit"] - m["entry"]
+            spot_net = spot_pts - FUT_COST * m["entry"]
+            exit_at = m["end"] - timedelta(minutes=eng.SUB_MIN)      # start of the 5m bar the exit is priced in
+            opt = lambda key, fmt="{:.2f}": fmt.format(r[key]) if r else ""   # noqa: E731
+            w.writerow([
+                i, period, t.window, f"{t.signal_start:%Y-%m-%d %H:%M}", f"{t.entry_time:%Y-%m-%d %H:%M}",
+                f"{m['entry']:.2f}", f"{t.risk:.2f}", f"{t.atr:.2f}", f"{m['stop0']:.2f}", f"{m['target']:.2f}",
+                "; ".join(f"{a:%m-%d %H:%M}->{b:.2f}" for a, b in t.stops),
+                f"{exit_at:%Y-%m-%d %H:%M}", f"{m['exit']:.2f}", m["reason"], m["bars_held"],
+                f"{spot_pts:.2f}", f"{spot_net:.2f}", f"{spot_net * LOT:.0f}",
+                r.get("expiry", ""), r.get("strike", ""),
+                f"{W.vix_at(t.entry_time, 'open'):.2f}" if r else "", f"{W.vix_at(exit_at, 'close'):.2f}" if r else "",
+                opt("p_in"), opt("p_out"), opt("decay"), f"{r['cost']['stratified']:.2f}" if r else "",
+                f"{r['net'] * 100:.2f}" if r else "",
+                f"{(r['p_out'] - r['p_in'] - r['cost']['stratified']) * LOT:.0f}" if r else "",
+                f"{r['net_clean'] * 100:.2f}" if r else "", f"{r['net_stressed'] * 100:.2f}" if r else "",
+                x["n"] if x else "", f"{x['ts']:%Y-%m-%d %H:%M}" if x else "", f"{x['price']:.2f}" if x else "",
+                f"{xe['ts']:%Y-%m-%d %H:%M}" if xe else "", f"{xe['price']:.2f}" if xe else "",
+                xe.get("signal", ""), f"{xe['price'] - x['price']:.2f}" if xe else ""])
+            n_rows += 1
+    print(f"wrote {n_rows} trades to {path}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("step", choices=["discovery", "confirmation", "diagnostics"])
+    ap.add_argument("step", choices=["discovery", "confirmation", "diagnostics", "export"])
     a = ap.parse_args(argv)
     W = World()
+    if a.step == "export":
+        return export(W)
     if a.step == "discovery":
         txt, ok = summary(W, DISC, "Discovery", 0.05, need_t=True)
         print(txt)
