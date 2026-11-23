@@ -139,3 +139,12 @@ looks favorable, or waiting longer because it looks unfavorable — the
 gates above are the only trigger to look. No silent lowering of N=20 if
 events prove rarer than expected over 4 weeks; extend the time window
 instead and say so explicitly when reporting.
+
+## Amendment, 2026-11-23 (approved by the user; rows only, no spread number read)
+
+**What happened:** the Fyers token was dead from the open until 10:04 IST. The probe captured its 2026-11-23 entries at the 10:05 fire (NIFTY 25550 PE, BANKNIFTY 63300 PE), at 10:05 prices. The breakout itself came before that.
+
+**What changes:**
+- That session's rows stay in `data_cache/orb_scalping_stopout_spread_samples.csv` but are never counted. They are dropped by `EXCLUDED_TRADE_DATES` in `scripts/check_orb_stopout_probe_gate.py`.
+- Any later session with the same fault is excluded the same way: dated, with its reason, before any spread number is read.
+

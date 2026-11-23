@@ -70,7 +70,9 @@ DEPLOYED_AT = date(2026, 9, 22)     # orb_scalping_filtered.enabled flipped true
 # written before any 18b P&L was read: the units hung from 2026-10-07 ~14:35 IST to 2026-11-17 23:53 IST, so
 # "8 calendar weeks" counts as 40 RECORDED sessions, for the PF/Sharpe gate and the equity report alike.
 MIN_SESSIONS = 40
-OUTAGES = ((date(2026, 10, 8), date(2026, 11, 17)),)      # inclusive; sessions the 18b job never ran
+OUTAGES = ((date(2026, 10, 8), date(2026, 11, 17)),      # inclusive; sessions the 18b job never ran
+           # 2026-11-23 (user-approved): Fyers token dead 09:15-10:04 IST, entry window missed, no trade
+           (date(2026, 11, 23), date(2026, 11, 23)))
 SESSIONS_FILE = Path.home() / ".quantos" / "l1_store" / "bars" / "HDFCBANK.csv"   # bhavcopy dates = NSE sessions
 BASE_CAPITAL = 50_000.0
 UNDERLYINGS = ("NIFTY", "BANKNIFTY")

@@ -49,11 +49,23 @@ def gate_status(n: int, weeks: float, min_n: int = MIN_SAMPLE_N, min_weeks: floa
             "time_met": time_met, "both_met": n_met and time_met}
 
 
+# Sessions whose rows are kept in the log but never counted (docs/ORB_STOPOUT_SPREAD_PROBE_METHODOLOGY.md, amendment
+# 2026-11-23, user-approved; rows only, no spread number read).
+EXCLUDED_TRADE_DATES = {
+    "2026-11-23": "Fyers token dead 09:15-10:04 IST; the entry was captured late, at 10:05 prices",
+}
+
+
+def counted_exit_rows(rows, underlying: str, excluded=EXCLUDED_TRADE_DATES) -> list[dict]:
+    """Pure: the exit events that count toward the gate."""
+    return [r for r in rows if r["underlying"] == underlying and r["event"] == "exit"
+            and r["trade_date"] not in excluded]
+
+
 def _load_exit_rows(underlying: str) -> list[dict]:
     if not LOG_PATH.exists():
         return []
-    rows = csv.DictReader(LOG_PATH.open(newline="", encoding="utf-8"))
-    return [r for r in rows if r["underlying"] == underlying and r["event"] == "exit"]
+    return counted_exit_rows(csv.DictReader(LOG_PATH.open(newline="", encoding="utf-8")), underlying)
 
 
 def format_report(underlying: str, rows: list[dict], status: dict) -> str:

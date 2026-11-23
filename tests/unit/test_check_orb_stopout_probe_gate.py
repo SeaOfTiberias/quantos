@@ -105,3 +105,15 @@ def test_report_breaks_down_by_trigger_reason_only_after_gate_met():
     report = format_report("NIFTY", rows, status)
     assert "stop: n=1" in report
     assert "premium_stop: n=1" in report
+
+
+# ─── excluded sessions (amendment 2026-11-23) ────────────────────────────
+
+def test_excluded_trade_date_rows_are_not_counted():
+    from scripts.check_orb_stopout_probe_gate import EXCLUDED_TRADE_DATES, counted_exit_rows
+    rows = [{"underlying": "NIFTY", "event": "exit", "trade_date": "2026-11-20"},
+            {"underlying": "NIFTY", "event": "exit", "trade_date": "2026-11-23"},
+            {"underlying": "NIFTY", "event": "entry", "trade_date": "2026-11-24"},
+            {"underlying": "BANKNIFTY", "event": "exit", "trade_date": "2026-11-20"}]
+    assert "2026-11-23" in EXCLUDED_TRADE_DATES
+    assert [r["trade_date"] for r in counted_exit_rows(rows, "NIFTY")] == ["2026-11-20"]

@@ -235,6 +235,14 @@ The 18b job (with candidate 18 and the stop-out probe) hung on a Fyers socket re
 - **State on the day:** 6 entry rows (4 BANKNIFTY, 2 NIFTY) from 11 recorded sessions, counted as rows only. No PF, Sharpe or rupee figure was computed or seen.
 - **Fail-safe:** if the session list can't be read, the gate counts zero sessions and stays shut.
 
+## Amendment, 2026-11-23 (approved by the user; no 18b P&L read): 2026-11-23 is not a recorded session
+
+The Fyers token was dead from the open until 10:04 IST, so every 18 and 18b fire failed until then. At 10:05 both jobs reconnected and correctly declined a late entry ("entry window already passed"), so no trade was taken in either arm.
+
+- 2026-11-23 is added to `OUTAGES` in `scripts/check_orb_18b_gate.py`, so it does not count toward the 40 recorded sessions.
+- The 40th recorded session moves one session later.
+- Nothing else changes.
+
 ## What this does NOT produce, even in the best case
 
 Turning `entry_filter_enabled: true` on is a **paper-trading configuration

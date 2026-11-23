@@ -254,3 +254,9 @@ def test_equity_report_shows_both_views():
 def test_policy_is_skip_after_the_2026_09_30_fix2_decision():
     import scripts.check_orb_18b_gate as gate
     assert gate.BANKNIFTY_EXPIRY_POLICY == "skip"
+
+
+def test_2026_11_23_token_outage_is_not_a_recorded_session():
+    from scripts.check_orb_18b_gate import recorded_sessions
+    s = [date(2026, 11, 20), date(2026, 11, 23), date(2026, 11, 25)]
+    assert recorded_sessions(date(2026, 11, 26), s, start=date(2026, 11, 20)) == 2
