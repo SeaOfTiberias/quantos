@@ -78,6 +78,32 @@ def test_next_weekly_expiry_across_thursday_tuesday_cutover():
     assert nxt == date(2025, 9, 2)
 
 
+def test_next_weekly_expiry_after_a_holiday_moved_expiry():
+    # Raw Tuesday 2026-07-07 is a holiday, so the weekly moved to Monday the 6th.
+    # expiry + 1 day is the holiday itself, which adjusts straight back to the 6th;
+    # the next expiry must be the following Tuesday, not the same date again.
+    trading_days = {date(2026, 7, 3), date(2026, 7, 6), date(2026, 7, 8), date(2026, 7, 14)}
+    current = nifty_weekly_expiry(date(2026, 7, 1), trading_days)
+    assert current == date(2026, 7, 6)
+    assert next_nifty_weekly_expiry(current, trading_days) == date(2026, 7, 14)
+
+
+def test_next_weekly_expiry_dte_floor_rolls_past_a_holiday_moved_expiry():
+    # The backtest's DTE-floor path: entry on the Friday before a holiday-moved
+    # Monday expiry (DTE 3 calendar days is fine), and entry on the Monday itself
+    # (DTE 0 -> roll) must land on a strictly later contract.
+    from core.orb_scalping.backtest import resolve_nifty_expiry
+    trading_days = {date(2026, 7, 3), date(2026, 7, 6), date(2026, 7, 8), date(2026, 7, 14)}
+    expiry, tier = resolve_nifty_expiry(date(2026, 7, 6), trading_days)
+    assert (expiry, tier) == (date(2026, 7, 14), "next_week")
+
+
+def test_next_weekly_expiry_past_the_known_calendar_is_the_raw_weekday():
+    # trading_days ends at the current expiry (a backtest's last loaded bar):
+    # no holiday information after it, so the next weekly is the raw Tuesday.
+    assert next_nifty_weekly_expiry(date(2026, 7, 7), {date(2026, 7, 7)}) == date(2026, 7, 14)
+
+
 def test_is_nifty_weekly_expiry_day_true_only_on_the_expiry_date():
     trading_days = {date(2026, 7, 1), date(2026, 7, 7)}
     assert is_nifty_weekly_expiry_day(date(2026, 7, 7), trading_days) is True

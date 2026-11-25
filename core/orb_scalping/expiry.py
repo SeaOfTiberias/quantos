@@ -55,8 +55,24 @@ def next_nifty_weekly_expiry(expiry: date, trading_days: set) -> date:
     """The weekly expiry immediately after `expiry` — used by the DTE-floor
     rule (methodology doc's Contract selection section): when an entry's
     days_to_expiry on the nearest weekly is <2, roll to this contract
-    instead."""
-    return nifty_weekly_expiry(expiry + timedelta(days=1), trading_days)
+    instead.
+
+    Always strictly after `expiry`. When `expiry` was moved earlier for a
+    holiday (raw Tuesday a holiday -> Monday), expiry + 1 day IS that holiday,
+    whose nearest weekly adjusts straight back to `expiry`; searching one day
+    later each time reaches the following cycle within a week (two cycles
+    allowed as a bound). A raw expiry past the last date in `trading_days`
+    is returned unadjusted: the calendar says nothing about holidays there
+    (backtests build `trading_days` from the bars they loaded)."""
+    last_known = max(trading_days)
+    for days in range(1, 15):
+        raw = nifty_weekly_expiry_unadjusted(expiry + timedelta(days=days))
+        if raw > last_known:
+            return raw
+        nxt = adjust_for_holiday(raw, trading_days)
+        if nxt > expiry:
+            return nxt
+    raise ValueError(f"no NIFTY weekly expiry after {expiry} within two weeks of trading_days")
 
 
 def is_nifty_weekly_expiry_day(trade_date: date, trading_days: set) -> bool:
