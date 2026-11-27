@@ -696,7 +696,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at d2b2d7d on the F&O files and NSE sector lists as of the run date: byte for byte."
    }
   },
   {
@@ -804,7 +806,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 3ec38bb on the F&O files and NSE sector lists as of the run date: byte for byte. (Without the July sector lists the script fetches today's constituents live: FMCG has 14 members now, 13 then.)"
    }
   },
   {
@@ -827,7 +831,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 1e231e7 on the F&O bhavcopy files as they stood on the run date: byte for byte."
    }
   },
   {

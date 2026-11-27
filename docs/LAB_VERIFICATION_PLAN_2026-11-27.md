@@ -56,6 +56,7 @@ Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. 
 | 2026-11-28 | VRP strangle | **Reproduced** with the data that existed on the run date. With today's data one more cycle settles (expiry after the run): net PF 1.044, Sharpe 0.117. Verdict unchanged. |
 | 2026-11-28 | Earnings-gap drift | **Reproduced** exactly on the original 2,586 sessions. 10 special weekend sessions added to the cache later shift the counts slightly; verdict unchanged. |
 | 2026-11-28 | PCA stat-arb | **Reproduced with differences**: the script always runs to today. 2020-2025 rows identical, verdict unchanged. |
+| 2026-11-28 | Expiry-day effect, pairs v1, pairs v2 | **Reproduced** byte for byte on the F&O files and sector lists as of their run dates. (Pairs fetches NSE sector constituents live when they aren't cached; FMCG membership changed since July.) |
 
 Lessons for the remaining runs:
 - Spot-check trades against exchange prices, not only totals: S7-3's totals reproduced while its pairing was wrong.
@@ -67,3 +68,4 @@ Lessons for the remaining runs:
 - Pin every date a script takes from "today" (end dates, rolling windows) to the original run's date.
 - Data caches grow. When a re-run differs, rebuild the input as it stood on the run date (hard-link only the files older than the run) before calling it a difference.
 - Special weekend sessions (Muhurat, Budget, DR drills) now sit in the equity cache. Any script that treats every file as a trading day picks them up. New tests should exclude them explicitly.
+- Some scripts fetch reference data live (NSE sector constituents) when it isn't cached. Supply the cached copy as of the run date, or the universe silently changes.
