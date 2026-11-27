@@ -181,31 +181,57 @@ def parse_tradingview_csv(
 
 
 def _parse_trades(csv_content: str, cost_model: CostModel = DEFAULT_COST_MODEL) -> list[BacktestTrade]:
-    """Parse raw CSV into BacktestTrade objects."""
+    """Parse raw CSV into BacktestTrade objects.
+
+    TradingView splits each trade into an entry row and an exit row, and its newer
+    exports list the EXIT row first. When a trade-number column is present ("Trade
+    number" / "Trade #"), rows are paired by that number in either order (an open
+    trade with no exit row is skipped). Without one, rows are paired in sequence.
+    Fixed 2026-11-27: pairing in sequence on exit-first exports joined each exit to
+    the previous trade's entry and dropped every symbol's first trade (found
+    re-verifying S7-3, docs/S7_3_BACKTEST_RESULTS.md correction)."""
     reader = csv.DictReader(io.StringIO(csv_content))
     if not reader.fieldnames:
         return []
+    num_col = next((c for c in reader.fieldnames if c and c.strip().lower() in ("trade number", "trade #", "trade no")), None)
+
+    def kind(row):
+        t = (row.get("Type", "") or row.get("type", "")).strip().lower()
+        return "entry" if "entry" in t else "exit" if "exit" in t else None
 
     trades = []
-    entry_row = None   # TradingView splits entry and exit into separate rows
-    trade_num = 0
-
-    for row in reader:
-        # Detect entry vs exit row (TradingView format)
-        trade_type = (row.get("Type", "") or row.get("type", "")).strip()
-        if not trade_type:
-            continue
-
-        if "Entry" in trade_type or "entry" in trade_type.lower():
-            entry_row = row
-            trade_num += 1
-            continue
-
-        if ("Exit" in trade_type or "exit" in trade_type.lower()) and entry_row:
-            trade = _parse_trade_pair(trade_num, entry_row, row, cost_model)
-            if trade:
-                trades.append(trade)
-            entry_row = None
+    if num_col:
+        legs: dict = {}
+        order: list = []
+        for row in reader:
+            k = kind(row)
+            n = (row.get(num_col) or "").strip()
+            if not k or not n:
+                continue
+            if n not in legs:
+                legs[n] = {}
+                order.append(n)
+            legs[n][k] = row
+        for i, n in enumerate(order, 1):
+            pair = legs[n]
+            if "entry" in pair and "exit" in pair:
+                trade = _parse_trade_pair(int(n) if n.isdigit() else i, pair["entry"], pair["exit"], cost_model)
+                if trade:
+                    trades.append(trade)
+        trades.sort(key=lambda t: (t.entry_date, t.trade_num))
+    else:
+        entry_row = None
+        trade_num = 0
+        for row in reader:
+            k = kind(row)
+            if k == "entry":
+                entry_row = row
+                trade_num += 1
+            elif k == "exit" and entry_row:
+                trade = _parse_trade_pair(trade_num, entry_row, row, cost_model)
+                if trade:
+                    trades.append(trade)
+                entry_row = None
 
     logger.info("Parsed %d trades from TradingView CSV", len(trades))
     return trades

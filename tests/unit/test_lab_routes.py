@@ -12,6 +12,7 @@ from cloud.api import lab_routes as lab
 
 REPO = Path(__file__).resolve().parents[2]
 STATUSES = {"FAIL", "PAPER", "SHELVED", "CLOSED", "PENDING"}
+VERIF = {"reproduced", "reproduced_with_differences", "corrected", "cannot_reproduce", "saved_at_run", "not_attempted"}
 REQUIRED = ("id", "name", "family", "tested", "status", "rationale", "test", "result", "why", "metrics", "docs", "trades")
 
 
@@ -28,7 +29,8 @@ def test_registry_is_complete_and_its_links_exist():
             assert (REPO / d).exists(), (s["id"], d)
         if s["trades"]:
             assert (lab.LAB / "trades" / f"{s['trades']}.csv").exists(), s["id"]
-            assert s.get("pnl_unit") in ("inr", "bps"), s["id"]
+            assert s.get("pnl_unit") in ("inr", "bps", "pct"), s["id"]
+        assert (s.get("verification") or {}).get("status") in VERIF, s["id"]
     tested = [s["tested"] for s in reg]
     assert tested == sorted(tested, reverse=True)                          # newest first
 
@@ -57,14 +59,41 @@ def test_daily_bars_index_then_stock_store(tmp_path):
     (tmp_path / "index_bars" / "NIFTY.csv").write_text(
         "date,o,h,l,c,vol,val\n2024-01-01,1,2,0.5,1.5,1,1\n2024-01-02,2,3,1,2.5,1,1\n2024-02-01,9,9,9,9,1,1\n")
     (tmp_path / "l1_store" / "bars").mkdir(parents=True)
-    (tmp_path / "l1_store" / "bars" / "TCS.csv").write_text(
-        "date,series,o,h,l,c,vol,val\n2024-01-01,EQ,10,11,9,10.5,1,1\n2024-01-01,EQ,10,11,9,10.6,1,1\n2024-01-02,XX,1,1,1,1,1,1\n")
+    (tmp_path / "l1_store" / "bars" / "TCS.csv").write_text("date,series,o,h,l,c,vol,val\n")
     b = lab.daily_bars("nifty", date(2024, 1, 1), date(2024, 1, 31), tmp_path)
     assert [x["time"] for x in b] == ["2024-01-01", "2024-01-02"] and b[1]["close"] == 2.5
-    t = lab.daily_bars("TCS", date(2024, 1, 1), date(2024, 1, 31), tmp_path)
-    assert t == [{"time": "2024-01-01", "open": 10.0, "high": 11.0, "low": 9.0, "close": 10.6}]   # last duplicate wins
+    import pandas as pd
+    seen = {}
+
+    def frame(sym, home, as_of):
+        seen["as_of"] = as_of
+        return pd.DataFrame({"date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+                             "series": ["EQ", "XX", "EQ"], "o": [10, 1, 11], "h": [11, 1, 12], "l": [9, 1, 10], "c": [10.5, 1, 11.5]})
+    t = lab.daily_bars("TCS", date(2024, 1, 1), date(2024, 1, 31), tmp_path, as_of=date(2026, 7, 19), frame_fn=frame)
+    assert [x["time"] for x in t] == ["2024-01-01", "2024-01-03"] and seen["as_of"] == date(2026, 7, 19)
     with pytest.raises(lab.HTTPException):
         lab.daily_bars("NOPE", date(2024, 1, 1), date(2024, 1, 31), tmp_path)
+
+
+def test_stock_frame_adjusts_only_for_actions_up_to_as_of(monkeypatch, tmp_path):
+    calls = {}
+
+    class FakeStore:
+        def __init__(self, root):
+            pass
+
+        def actions(self):
+            return {"X": [{"ex": "2024-06-01", "factor": 0.5}, {"ex": "2026-11-04", "factor": 0.5}]}
+
+        def adjusted(self, sym, actions):
+            calls["acts"] = actions[sym]
+            return "df", []
+    import core.market_map.l1_store as l1
+    monkeypatch.setattr(l1, "Store", FakeStore)
+    lab._stock_frame("X", tmp_path, date(2026, 7, 19))
+    assert [a["ex"] for a in calls["acts"]] == ["2024-06-01"]
+    lab._stock_frame("X", tmp_path, None)
+    assert len(calls["acts"]) == 2
 
 
 def test_routes(tmp_path, monkeypatch):

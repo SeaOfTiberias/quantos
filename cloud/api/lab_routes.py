@@ -7,8 +7,9 @@ normalized trade file (research/lab/trades/<id>.csv, scripts/lab_build_trades.py
   GET /lab/strategies                 the dropdown: id, name, family, status, tested, has_trades
   GET /lab/strategies/{id}            the entry, summary stats, equity curve(s) and the trades
   GET /lab/strategies/{id}/trades.csv the trade file as a download
-  GET /lab/bars?symbol=&start=&end=   daily candles for the trade chart (index_bars for NIFTY /
-                                      BANKNIFTY, else the L1 stock store), raw prices
+  GET /lab/bars?symbol=&start=&end=&as_of=  daily candles for the trade chart (index_bars for NIFTY /
+                                      BANKNIFTY, else the L1 stock store adjusted for splits/bonuses
+                                      up to as_of = the strategy's test date)
 
 Research records only: backtest trades, no account data, no orders. Stats are arithmetic on the
 file (sum, mean, win share, profit factor, drawdown of the cumulative curve) in the strategy's own
@@ -105,6 +106,7 @@ def list_strategies():
     out = []
     for s in registry():
         out.append({k: s.get(k) for k in ("id", "name", "family", "status", "tested")} |
+                   {"verification": (s.get("verification") or {}).get("status")} |
                    {"has_trades": _trades_path(s) is not None})
     return {"strategies": out}
 
@@ -127,33 +129,57 @@ def trades_csv(sid: str):
     return FileResponse(p, media_type="text/csv", filename=f"{sid}_trades.csv")
 
 
-def daily_bars(symbol: str, start: date, end: date, home: Optional[Path] = None) -> list[dict]:
+def _stock_frame(sym: str, home: Path, as_of: Optional[date]):
+    """Split/bonus-adjusted daily bars, adjusting only for actions with ex-date <= as_of: the
+    prices a backtest saw on the day it ran (2026-11-27: S7-3's TradingView export and the ML
+    factor run both match this; a later bonus would otherwise move the chart under the markers)."""
+    from core.market_map.l1_store import Store
+    st = Store(home / "l1_store")
+    acts = st.actions().get(sym, [])
+    if as_of is not None:
+        acts = [a for a in acts if str(a.get("ex", ""))[:10] <= as_of.isoformat()]
+    df, _ = st.adjusted(sym, {sym: acts})
+    return df
+
+
+def daily_bars(symbol: str, start: date, end: date, home: Optional[Path] = None,
+               as_of: Optional[date] = None, frame_fn=None) -> list[dict]:
     home = home or _home()
     sym = symbol.strip().upper()
     idx = home / "index_bars" / f"{sym}.csv"
-    p = idx if idx.exists() else home / "l1_store" / "bars" / f"{sym}.csv"
-    if not p.exists():
-        raise HTTPException(404, f"no daily bars for {sym}")
     out = []
-    with p.open(encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            try:
-                d = date.fromisoformat(r["date"][:10])
-            except ValueError:
-                continue
-            if start <= d <= end and r.get("series", "EQ") in ("EQ", "BE", ""):
-                out.append({"time": d.isoformat(), "open": float(r["o"]), "high": float(r["h"]),
-                            "low": float(r["l"]), "close": float(r["c"])})
+    if idx.exists():                                    # indices: no corporate actions
+        with idx.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                try:
+                    d = date.fromisoformat(r["date"][:10])
+                except ValueError:
+                    continue
+                if start <= d <= end:
+                    out.append({"time": d.isoformat(), "open": float(r["o"]), "high": float(r["h"]),
+                                "low": float(r["l"]), "close": float(r["c"])})
+    else:
+        if not (home / "l1_store" / "bars" / f"{sym}.csv").exists():
+            raise HTTPException(404, f"no daily bars for {sym}")
+        df = (frame_fn or _stock_frame)(sym, home, as_of)
+        for r in df.itertuples(index=False):
+            d = date.fromisoformat(str(r.date)[:10])
+            if start <= d <= end and getattr(r, "series", "EQ") in ("EQ", "BE"):
+                out.append({"time": d.isoformat(), "open": round(float(r.o), 4), "high": round(float(r.h), 4),
+                            "low": round(float(r.l), 4), "close": round(float(r.c), 4)})
     dedup = {b["time"]: b for b in out}
     return [dedup[k] for k in sorted(dedup)]
 
 
 @router.get("/bars")
-def bars(symbol: str, start: str, end: str):
+def bars(symbol: str, start: str, end: str, as_of: Optional[str] = None):
+    """as_of (YYYY-MM-DD): adjust stock prices only for corporate actions up to this date (the
+    strategy's test date). Omitted: adjusted for every action on record."""
     try:
         a, b = date.fromisoformat(start[:10]), date.fromisoformat(end[:10])
+        ao = date.fromisoformat(as_of[:10]) if as_of and len(as_of) >= 10 else None
     except ValueError:
-        raise HTTPException(400, "start/end must be YYYY-MM-DD")
+        raise HTTPException(400, "start/end/as_of must be YYYY-MM-DD")
     if (b - a).days > 3700:
         raise HTTPException(400, "range too long (max ~10 years)")
-    return {"symbol": symbol.upper(), "bars": daily_bars(symbol, a, b)}
+    return {"symbol": symbol.upper(), "as_of": ao.isoformat() if ao else None, "bars": daily_bars(symbol, a, b, as_of=ao)}

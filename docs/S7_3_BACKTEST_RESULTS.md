@@ -94,3 +94,27 @@ DOMS.csv was excluded (exported in SEK, not INR — needs re-export). Given
 one more symbol is very unlikely to change the verdict, but re-running with
 the full 40 once DOMS is fixed would complete the pre-committed sample
 properly.
+
+## Correction (2026-11-27): trade pairing bug, re-verified
+
+While re-verifying this result for the Strategy Lab (`docs/LAB_VERIFICATION_PLAN_2026-11-27.md`), a spot-check found that `core/backtest/parser.py` paired TradingView's rows in sequence. These exports list each trade's **Exit row before its Entry row**, so:
+- every exit was joined to the previous trade's entry;
+- each symbol's first trade was dropped (690 parsed instead of 729);
+- costs were computed on the wrong entry price.
+
+The P&L % per trade came from the exit row and was mostly right. The parser now pairs by trade number (`tests/unit/test_backtest_parser_pairing.py`).
+
+**Reproduction first:** the script at f8f6498 on the same 40 exports regenerates the verdict sections above byte for byte. The sensitivity table was added by hand and its 0 bps figures also reproduce.
+
+**Corrected figures** (same exports, same cost model, pairing fixed; July's metric code):
+
+| Slippage/leg | Trades | Win rate | Profit factor | Sharpe | Net % | Verdict |
+|---|---|---|---|---|---|---|
+| 20 bps (realistic) | 729 | 29.2% | 0.77 | -1.15 | -230.6% | NO demonstrated edge |
+| 0 bps (best case) | 729 | 34.6% | 1.14 | 0.31 | +61.3% | NO demonstrated edge (Sharpe < 0.5) |
+
+With the current metric code (Sharpe annualised by each trade set's own frequency, d8c1293), the 20 bps Sharpe is -1.49 and the 0 bps Sharpe 0.40. Both are still below 0.5.
+
+**The verdict is unchanged: no demonstrated edge.**
+
+Spot-check against NSE prices: 6 random trades were checked; every entry and exit lies within that day's high-low once split/bonus adjustments up to the test date are applied (NBCC 1:2 bonus, DRREDDY 5:1 split). The 729 corrected trades are in `research/lab/trades/s7_3_darvas.csv`.

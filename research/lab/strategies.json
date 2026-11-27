@@ -19,7 +19,10 @@
    "docs": [
     "docs/E1_RESULTS_VOL_PREREG_2026-11-27.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "e3_overnight",
@@ -44,7 +47,11 @@
    ],
    "trades": "e3_overnight",
    "pnl_unit": "bps",
-   "trades_note": "One row per night per index, in bps of notional, at 2026 costs (the verdict basis). The totals add both indices' nights."
+   "trades_note": "One row per night per index, in bps of notional, at 2026 costs (the verdict basis). The totals add both indices' nights.",
+   "verification": {
+    "status": "saved_at_run",
+    "detail": "Trades or results were written by the run itself; not independently re-run yet."
+   }
   },
   {
    "id": "alpha50_rebuild",
@@ -69,7 +76,10 @@
     "docs/ALPHA50_REBUILD_V2_PREREG_2026-11-27.md",
     "docs/ALPHA50_REBUILD_V2_RESULTS_2026-11-27.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "ma_cross",
@@ -85,7 +95,10 @@
    "docs": [
     "docs/MA_CROSS_PREREG_2026-11-27.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "smc_ob_bullput",
@@ -105,7 +118,10 @@
     "docs/NIFTY_SMC_OB_1H_BULLPUT_PREREG_2026-11-22.md",
     "docs/NIFTY_SMC_OB_1H_BULLPUT_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "smc_ob_1h",
@@ -124,7 +140,10 @@
     "docs/NIFTY_SMC_OB_1H_PREREG_2026-11-22.md",
     "docs/NIFTY_SMC_OB_1H_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "darvas_structural_stop",
@@ -141,7 +160,10 @@
     "docs/DARVAS_STRUCTURAL_STOP_PREREG_2026-11-19.md",
     "docs/DARVAS_STRUCTURAL_STOP_RESULTS_2026-11-19.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "darvas_reentry",
@@ -161,7 +183,10 @@
     "docs/DARVAS_REENTRY_PREREG_2026-11-17.md",
     "docs/DARVAS_REENTRY_RESULTS_2026-11-19.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "cci_cpr",
@@ -181,7 +206,10 @@
     "docs/CCI_CPR_SIGNAL_AND_FILTERS_PREREG_2026-11-07.md",
     "docs/CCI_CPR_SIGNAL_AND_FILTERS_RESULTS_2026-11-07.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "techno_funda",
@@ -198,7 +226,10 @@
     "docs/TECHNO_FUNDA_PREREG_2026-11-01.md",
     "docs/TECHNO_FUNDA_DATA_GATES.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "cci_sma_cross",
@@ -217,7 +248,10 @@
     "docs/CCI_SMA_CROSS_SIGNALS_PREREG_2026-10-26.md",
     "docs/CCI_SMA_CROSS_SIGNALS_RESULTS_2026-10-26.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "fno_indicator_filter",
@@ -236,7 +270,10 @@
     "docs/FNO_INDICATOR_FILTER_PREREG_2026-10-26.md",
     "docs/FNO_INDICATOR_FILTER_RESULTS_2026-10-26.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "emt_vwap",
@@ -257,7 +294,10 @@
     "docs/EMT_VWAP_RESULTS.md",
     "docs/EMT_VWAP_RESULTS_BANKNIFTY.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "earnings_gap_drift",
@@ -273,7 +313,10 @@
    "docs": [
     "docs/EARNINGS_GAP_DRIFT_GUTCHECK.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "surge_23b",
@@ -293,7 +336,10 @@
     "docs/SURGE_23B_METHODOLOGY.md",
     "docs/SURGE_23B_PERSISTENCE_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "statarb_pca",
@@ -311,7 +357,10 @@
     "docs/STATARB_NIFTY50_RESULTS.md",
     "docs/STATARB_BANKNIFTY_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "vrp_iv_gated",
@@ -331,7 +380,10 @@
     "docs/VRP_IV_GATED_METHODOLOGY.md",
     "docs/VRP_IV_GATED_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "darvas_atr_stop",
@@ -354,7 +406,10 @@
     "docs/DARVAS_ATR_STOP_FALSIFICATION.md",
     "docs/DARVAS_GO_NO_GO_2026-11.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "trend_day",
@@ -370,7 +425,10 @@
    "docs": [
     "docs/TREND_DAY_FILTER_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "orb_18",
@@ -391,7 +449,12 @@
     "docs/ORB_SCALPING_RESULTS.md",
     "docs/ORB_TIME_CONVENTION_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "reproduced",
+    "date": "2026-11-27",
+    "detail": "Re-run at d78cfd0 on the cached candles: the results doc regenerates byte for byte. Trade export not added yet."
+   }
   },
   {
    "id": "orb_18b",
@@ -408,7 +471,10 @@
     "docs/ORB_ENTRY_FILTER_METHODOLOGY.md",
     "docs/ORB_18B_FILTER_INDEX_POINTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "darvas_box_width",
@@ -425,7 +491,10 @@
     "docs/DARVAS_BOX_WIDTH_BACKTEST_METHODOLOGY.md",
     "docs/DARVAS_BOX_WIDTH_BACKTEST_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "darvas_trailing",
@@ -442,7 +511,10 @@
     "docs/DARVAS_TRAILING_STOP_BACKTEST_METHODOLOGY.md",
     "docs/DARVAS_TRAILING_STOP_BACKTEST_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "goodnight_scalper",
@@ -462,7 +534,10 @@
     "docs/GOODNIGHT_SCALPER_METHODOLOGY.md",
     "docs/GOODNIGHT_SCALPER_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "candle_confirm",
@@ -481,7 +556,10 @@
     "docs/CANDLE_CONFIRM_MOMENTUM_GUTCHECK_METHODOLOGY.md",
     "docs/CANDLE_CONFIRM_MOMENTUM_GUTCHECK_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "event_proximity",
@@ -501,7 +579,10 @@
     "docs/EVENT_PROXIMITY_VALIDATION.md",
     "docs/EVENT_PROXIMITY_VALIDATION_BANKNIFTY.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "cand11_momentum_turnover",
@@ -518,7 +599,10 @@
     "docs/MOMENTUM_TURNOVER_ABLATION_RESULTS.md",
     "docs/MOMENTUM_TURNOVER_WALKFORWARD_METHODOLOGY.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "breakout_1010",
@@ -539,7 +623,11 @@
    ],
    "trades": "breakout_1010",
    "pnl_unit": "inr",
-   "trades_note": "Premiums are Black-Scholes estimates, not traded prices (expired option prices can't be fetched). On these modelled prices it clears the bar; real bid-ask spreads are larger than the edge, which is why it was closed."
+   "trades_note": "Premiums are Black-Scholes estimates, not traded prices (expired option prices can't be fetched). On these modelled prices it clears the bar; real bid-ask spreads are larger than the edge, which is why it was closed.",
+   "verification": {
+    "status": "saved_at_run",
+    "detail": "Trades or results were written by the run itself; not independently re-run yet."
+   }
   },
   {
    "id": "ml_factor",
@@ -561,7 +649,11 @@
    ],
    "trades": "ml_factor",
    "pnl_unit": "inr",
-   "trades_note": "Per-trade costs weren't recorded, so these trades are GROSS. The ML run paid ₹41,128 in costs in total: 4.4% net vs 8.3% gross over the test period. Its 'win' over the baseline is a turnover artifact; with costs removed the single-factor baseline is at least as good."
+   "trades_note": "Per-trade costs weren't recorded, so these trades are GROSS. The ML run paid ₹41,128 in costs in total: 4.4% net vs 8.3% gross over the test period. Its 'win' over the baseline is a turnover artifact; with costs removed the single-factor baseline is at least as good.",
+   "verification": {
+    "status": "saved_at_run",
+    "detail": "Trades or results were written by the run itself; not independently re-run yet."
+   }
   },
   {
    "id": "pairs_v2",
@@ -578,7 +670,10 @@
     "docs/PAIRS_TRADING_V2_METHODOLOGY.md",
     "docs/PAIRS_TRADING_V2_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "vol_spread",
@@ -598,7 +693,10 @@
     "docs/VOL_SPREAD_METHODOLOGY.md",
     "docs/VOL_SPREAD_VALIDATION.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "vol_term_structure",
@@ -616,7 +714,10 @@
     "docs/VOL_TERM_STRUCTURE_VALIDATION.md",
     "docs/VOL_TERM_STRUCTURE_VALIDATION_BANKNIFTY.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "s1_dual_momentum",
@@ -633,7 +734,10 @@
     "docs/S1_DUAL_MOMENTUM_METHODOLOGY.md",
     "docs/S1_DUAL_MOMENTUM_BACKTEST_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "dow_theory",
@@ -652,7 +756,10 @@
     "docs/DOW_THEORY_TREND_METHODOLOGY.md",
     "docs/DOW_THEORY_TREND_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "pairs_v1",
@@ -669,7 +776,10 @@
     "docs/PAIRS_TRADING_METHODOLOGY.md",
     "docs/PAIRS_TRADING_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "expiry_day",
@@ -689,7 +799,10 @@
     "docs/EXPIRY_DAY_EFFECT_GUTCHECK_METHODOLOGY.md",
     "docs/EXPIRY_DAY_EFFECT_GUTCHECK_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "vol_skew",
@@ -707,7 +820,10 @@
     "docs/VOL_SKEW_VALIDATION.md",
     "docs/VOL_SKEW_VALIDATION_BANKNIFTY.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "vrp_strangle",
@@ -727,7 +843,10 @@
     "docs/VRP_METHODOLOGY.md",
     "docs/VRP_BACKTEST_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "s8_3_rotation",
@@ -745,7 +864,10 @@
     "docs/S8_3_BACKTEST_RESULTS.md",
     "docs/S8_3_EQUITY_CURVE_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "s8_4_ema_options",
@@ -763,7 +885,10 @@
    "docs": [
     "docs/S8_4_BACKTEST_RESULTS.md"
    ],
-   "trades": null
+   "trades": null,
+   "verification": {
+    "status": "not_attempted"
+   }
   },
   {
    "id": "s7_3_darvas",
@@ -773,16 +898,26 @@
    "status": "FAIL",
    "rationale": "Nicolas Darvas' method: buy stocks breaking out of a consolidation box to new highs.",
    "test": "Go/no-go: PF > 1.0 and Sharpe > 0.5 net, on 40 pre-committed symbols (survivorship-biased, so an upper bound).",
-   "result": "NO demonstrated edge: PF 0.75-1.11, Sharpe 0.22.",
+   "result": "NO demonstrated edge. As corrected 2026-11-27 (pairing bug): 729 trades, PF 0.77, net -230.6% at 20 bps slippage; even at 0 bps PF 1.14 with Sharpe 0.31, under the 0.5 bar. (Published July figures: 690 trades, PF 0.75, Sharpe -1.25.)",
    "why": "Even with survivorship bias helping, costs beat the edge. Load-bearing for the project: the classic breakout has no edge here.",
    "metrics": {
-    "PF": "0.75-1.11",
-    "Sharpe": "0.22"
+    "Trades": "729",
+    "PF (20 bps)": "0.77",
+    "Net": "-230.6%",
+    "PF (0 bps)": "1.14",
+    "Sharpe (0 bps)": "0.31"
    },
    "docs": [
     "docs/S7_3_BACKTEST_RESULTS.md"
    ],
-   "trades": null
+   "trades": "s7_3_darvas",
+   "pnl_unit": "pct",
+   "trades_note": "Per-trade P&L in % of the trade's notional, net of NSE costs plus 20 bps slippage per leg. Prices are TradingView's split/bonus-adjusted prices as of the July 2026 export.",
+   "verification": {
+    "status": "corrected",
+    "date": "2026-11-27",
+    "detail": "Reproduced byte for byte at f8f6498. A spot-check then found the TradingView row-pairing bug; corrected figures above, verdict unchanged. 6 random trades match NSE prices (adjusted)."
+   }
   }
  ]
 }

@@ -17,7 +17,15 @@ const STATUS = {
   CLOSED: { tone: "amber", label: "Closed", why: "Why it was closed" },
   PENDING: { tone: "amber", label: "Pending", why: "Status" },
 };
-const UNIT = { inr: v => `₹${Math.round(v).toLocaleString("en-IN")}`, bps: v => `${v.toFixed(2)} bps` };
+const UNIT = { inr: v => `₹${Math.round(v).toLocaleString("en-IN")}`, bps: v => `${v.toFixed(2)} bps`, pct: v => `${v.toFixed(2)}%` };
+const VERIF = {
+  reproduced: { tone: "green", label: "Reproduced" },
+  reproduced_with_differences: { tone: "amber", label: "Reproduced, with differences" },
+  corrected: { tone: "amber", label: "Re-verified, corrected" },
+  cannot_reproduce: { tone: "red", label: "Can't reproduce" },
+  saved_at_run: { tone: "blue", label: "Trades saved at run" },
+  not_attempted: { tone: "", label: "Not yet verified" },
+};
 const PAGE = 50;
 const SERIES_COLORS = [T.blue, T.amber, T.green];
 
@@ -77,7 +85,7 @@ const shift = (iso, days) => {
   return d.toISOString().slice(0, 10);
 };
 
-function TradeChart({ trade }) {
+function TradeChart({ trade, asOf }) {
   const [ref, chart] = useChart(340);
   const [res, setRes] = useState({ id: null, msg: "" });       // the last load's message, tagged by trade
   const msg = !trade.chart_symbol ? "No price chart for this instrument."
@@ -86,7 +94,7 @@ function TradeChart({ trade }) {
     if (!chart || !trade || !trade.chart_symbol) return undefined;
     let series = null;
     let gone = false;
-    getJson(`/lab/bars?symbol=${encodeURIComponent(trade.chart_symbol)}&start=${shift(trade.entry_time, -90)}&end=${shift(trade.exit_time, 45)}`)
+    getJson(`/lab/bars?symbol=${encodeURIComponent(trade.chart_symbol)}&start=${shift(trade.entry_time, -90)}&end=${shift(trade.exit_time, 45)}&as_of=${asOf || ""}`)
       .then(d => {
         if (gone) return;
         if (!d || !d.bars || !d.bars.length) { setRes({ id: trade.trade_id, msg: `No daily bars for ${trade.chart_symbol} on the VM.` }); return; }
@@ -106,7 +114,7 @@ function TradeChart({ trade }) {
         chart.timeScale().fitContent();
       });
     return () => { gone = true; if (series) chart.removeSeries(series); };
-  }, [chart, trade]);
+  }, [chart, trade, asOf]);
   return (
     <div>
       <div ref={ref} style={{ width: "100%", display: msg ? "none" : "block" }} />
@@ -164,6 +172,14 @@ function Detail({ d }) {
           <span className={`q-pill ${st.tone}`}><span className="dot" />{st.label}</span>
           <span className="q-muted">{d.family} · tested {d.tested}</span>
         </div>
+        {d.verification && (
+          <div className="q-row" style={{ gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <span className={`q-pill ${(VERIF[d.verification.status] || VERIF.not_attempted).tone}`}>
+              {(VERIF[d.verification.status] || VERIF.not_attempted).label}{d.verification.date ? ` · ${d.verification.date}` : ""}
+            </span>
+            {d.verification.detail && <span className="q-muted" style={{ fontSize: 13 }}>{d.verification.detail}</span>}
+          </div>
+        )}
         <div className="q-grid" style={{ marginTop: 16 }}>
           <div><div className="q-label">Why we tested it</div><p>{d.rationale}</p></div>
           <div><div className="q-label">The pre-registered test</div><p>{d.test}</p></div>
@@ -193,7 +209,7 @@ function Detail({ d }) {
       {d.trade_rows && d.trade_rows.length ? <>
         <div className="q-card">
           <div className="q-row q-between" style={{ alignItems: "center", marginBottom: 10 }}>
-            <div className="q-label">Equity curve: cumulative net ({unit === "bps" ? "bps of notional" : "₹"}), by exit date</div>
+            <div className="q-label">Equity curve: cumulative net ({unit === "bps" ? "bps of notional" : unit === "pct" ? "sum of % per trade" : "₹"}), by exit date</div>
             <a className="q-btn" href={`${CLOUD_API_URL}/lab/strategies/${d.id}/trades.csv`} download>Download trades (CSV)</a>
           </div>
           {d.trades_note && <div className="q-banner amber" style={{ marginBottom: 10 }}>{d.trades_note}</div>}
@@ -201,9 +217,9 @@ function Detail({ d }) {
         </div>
         <div className="q-card">
           <div className="q-label" style={{ marginBottom: 10 }}>
-            {picked ? `Trade #${picked.trade_id}: ${picked.symbol}, daily candles for ${picked.chart_symbol || "—"}` : "Click a trade to chart it"}
+            {picked ? `Trade #${picked.trade_id}: ${picked.symbol}, daily candles for ${picked.chart_symbol || "—"} (prices as of ${d.tested})` : "Click a trade to chart it"}
           </div>
-          {picked && <TradeChart trade={picked} />}
+          {picked && <TradeChart trade={picked} asOf={d.tested && d.tested.length >= 10 ? d.tested : ""} />}
           <div style={{ marginTop: 12 }}><Trades key={d.id} rows={d.trade_rows} unit={unit} onPick={setPicked} picked={picked} /></div>
         </div>
       </> : (
@@ -251,7 +267,7 @@ export default function LabPage({ hash }) {
                   style={{ minWidth: 340 }}>
             {families.map(([fam, ss]) => (
               <optgroup key={fam} label={fam}>
-                {ss.map(s => <option key={s.id} value={s.id}>{s.name} · {(STATUS[s.status] || {}).label || s.status}{s.has_trades ? " · trades" : ""}</option>)}
+                {ss.map(s => <option key={s.id} value={s.id}>{s.name} · {(STATUS[s.status] || {}).label || s.status}{s.has_trades ? " · trades" : ""}{s.verification === "reproduced" || s.verification === "corrected" ? " · verified" : ""}</option>)}
               </optgroup>
             ))}
           </select>
