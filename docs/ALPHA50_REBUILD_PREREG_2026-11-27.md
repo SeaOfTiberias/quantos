@@ -83,3 +83,9 @@ Then step 1 runs. Step 2 runs once, only if step 1 passes.
 ## If it passes
 
 The median version becomes a candidate for a quarterly paper portfolio, scored on its own, beside candidate 11's walk-forward (which it does not replace or touch). Real money still needs the user's go-ahead, and trading stays paused until the user lifts it.
+
+## Amendment 1 (2026-11-27, before any code was written or run; mechanics only)
+
+- **Stock data starts 2015-01-01**, not 2016-01-01, so every version's alpha window is complete at the first review (S = 2, L = 12 needs about 14 months before 2017-02-28). NSE's corporate-actions list on hand starts in 2016, so 2015 splits and bonuses are caught only by the loader's standard-fraction jump fix. Measurement still starts 2017-03-31.
+- **Order of the eligibility rules:** the 300 by average traded value are ranked among all stocks that traded in the 6 months; the one-year listing and 100% trading-frequency rules are then applied to those 300.
+- **Alpha windows that start before the trading-frequency year** (the skip versions): returns are taken over consecutive sessions where both bars exist; a stock needs bars on at least 95% of the window's sessions, else it is not eligible for that version at that review.
