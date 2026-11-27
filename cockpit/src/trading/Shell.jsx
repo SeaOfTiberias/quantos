@@ -173,6 +173,7 @@ export default function Shell({ active, children }) {
           <a href="#/ledger" className={active === "ledger" ? "on" : ""}>Ledger</a>
           <a href="#/map" className={active === "map" ? "on" : ""}>Map</a>
           <a href="#/screen" className={active === "screen" ? "on" : ""}>Screen</a>
+          <a href="#/lab" className={active === "lab" ? "on" : ""}>Lab</a>
           <a href="#/reports">Reports</a>
           <a href="#/">Dashboard</a>
         </nav>

@@ -1,0 +1,788 @@
+{
+ "_about": "Strategy Lab registry (cockpit #/lab). One entry per tested strategy, written from its results doc. status: FAIL | PAPER (running on paper under its own gate) | SHELVED (never run to a verdict) | CLOSED (stopped before a test, e.g. no data) | PENDING (pre-registered, not yet run). trades: a file id in research/lab/trades/ (scripts/lab_build_trades.py), or null when the old backtest never saved its trades (phase 2 adds them). pnl_unit tells the page how to read net P&L in that file.",
+ "strategies": [
+  {
+   "id": "e1_results_vol",
+   "name": "E1 Results-day straddle",
+   "family": "Desk edges (premia and flows)",
+   "tested": "2026-11-27",
+   "status": "PENDING",
+   "rationale": "Retail buys stock options into results. If that demand overprices the straddle, selling the ATM straddle at the last close before the broadcast and buying it back at the next close earns money, more than the same trade on an ordinary day.",
+   "test": "5,136 results events, 320 stocks, 2019-02 to 2026-10. ALIVE only if net mean > 0 (monthly-cluster t >= 2), > 0 in both halves, and it beats a same-stock control 10 sessions earlier (paired t >= 2). 2026 costs plus a live-calibrated spread haircut.",
+   "result": "Not yet run. Spread calibration on 2026-11-30, then one run.",
+   "why": "Pending.",
+   "metrics": {
+    "Events": "5,136",
+    "Stocks": "320",
+    "Paired controls": "4,904"
+   },
+   "docs": [
+    "docs/E1_RESULTS_VOL_PREREG_2026-11-27.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "e3_overnight",
+   "name": "E3 Overnight vs intraday (index futures)",
+   "family": "Desk edges (premia and flows)",
+   "tested": "2026-11-27",
+   "status": "FAIL",
+   "rationale": "Holding through the overnight gap is a risk day traders avoid, and in many markets most of the index's drift accrues overnight. Buy NIFTY/BANKNIFTY futures at the close, sell at the next open.",
+   "test": "1,908 nights 2019-02 to 2026-11 per index. Alive only if the net overnight mean at 2026 costs (+3 bps slippage) is > 0 with t >= 2.24 and > 0 in both halves.",
+   "result": "NIFTY net -7.09 bps a night (t -4.69), BANKNIFTY -6.30 (t -3.47); negative in both halves and even at each year's own cost rates.",
+   "why": "The premium is real but tiny: about +2 to +3 bps a night gross, against ~9 bps for one futures round trip at 2026 STT (0.05% sell side). Costs are 3-4x the edge.",
+   "metrics": {
+    "NIFTY gross": "+2.00 bps",
+    "BANKNIFTY gross": "+2.78 bps",
+    "Cost": "9.1 bps",
+    "NIFTY net": "-7.09 bps",
+    "BANKNIFTY net": "-6.30 bps"
+   },
+   "docs": [
+    "docs/E3_OVERNIGHT_PREREG_2026-11-27.md",
+    "docs/E3_OVERNIGHT_RESULTS_2026-11-27.md"
+   ],
+   "trades": "e3_overnight",
+   "pnl_unit": "bps",
+   "trades_note": "One row per night per index, in bps of notional, at 2026 costs (the verdict basis). The totals add both indices' nights."
+  },
+  {
+   "id": "alpha50_rebuild",
+   "name": "NIFTY Alpha 50 rebuild + skip-month / market filter",
+   "family": "Stock momentum and trend",
+   "tested": "2026-11-27",
+   "status": "FAIL",
+   "rationale": "Alpha 50 is the bar our momentum ideas kept losing to. Rebuild it from NSE's rules, then test two changes: alpha that skips the latest month(s), and holding cash when NIFTY 500 is below its 150/200-day average.",
+   "test": "Step 1: the rebuild must track the index (corr >= 0.90, CAGR within 3 pp). Step 2: the median of 12 versions must beat the base on Sharpe (bootstrap >= 90%), drawdown, breadth 9/12, both halves and walk-forward.",
+   "result": "Round 1 (turnover universe): step 1 FAIL, CAGR +3.35 pp. Round 2 (AMFI market-cap universe): step 1 PASS (corr 0.944, +1.86 pp); step 2 FAIL 0 of 5. Median version Sharpe 1.10 vs base 1.24.",
+   "why": "Neither change helps. The filter halves the worst fall (-20% to -29% vs -39%) but sits in cash a third of the time and lowers Sharpe; skipping months lowers it too. The base rules already match the ETF.",
+   "metrics": {
+    "Base CAGR (net)": "+24.1%",
+    "Base Sharpe": "1.24",
+    "Median Sharpe": "1.10",
+    "Bootstrap": "3.9%",
+    "Versions above base": "2 of 12"
+   },
+   "docs": [
+    "docs/ALPHA50_REBUILD_PREREG_2026-11-27.md",
+    "docs/ALPHA50_REBUILD_RESULTS_2026-11-27.md",
+    "docs/ALPHA50_REBUILD_V2_PREREG_2026-11-27.md",
+    "docs/ALPHA50_REBUILD_V2_RESULTS_2026-11-27.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "ma_cross",
+   "name": "50/200 DMA cross + price over 50 DMA",
+   "family": "Stock momentum and trend",
+   "tested": "2026-11-27",
+   "status": "SHELVED",
+   "rationale": "A classic trend filter: enter when the 50-day average crosses the 200-day and price holds above the 50-day, exit on an ATR or structure stop.",
+   "test": "Pre-registered with a grid scored on the median version; code and worked cases done.",
+   "result": "Never run: shelved by the user on 2026-11-27 in favour of the Alpha 50 rebuild.",
+   "why": "Not tested yet. Resuming means one run of the frozen grid.",
+   "metrics": {},
+   "docs": [
+    "docs/MA_CROSS_PREREG_2026-11-27.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "smc_ob_bullput",
+   "name": "SMC order block, bull put spread",
+   "family": "Map and levels",
+   "tested": "2026-11-23",
+   "status": "FAIL",
+   "rationale": "If the 1-hour order-block signal has any directional value, a defined-risk bull put spread opened on it should beat the same spread opened at a random uptrend entry.",
+   "test": "Discovery needs t >= 2.0 and placebo p <= 0.05.",
+   "result": "t 0.27, placebo p 0.439. Confirmation would also have failed (p 0.211).",
+   "why": "No better than a random entry at the same hour: the signal carries no information the placebo doesn't.",
+   "metrics": {
+    "t": "0.27",
+    "Placebo p": "0.439"
+   },
+   "docs": [
+    "docs/NIFTY_SMC_OB_1H_BULLPUT_PREREG_2026-11-22.md",
+    "docs/NIFTY_SMC_OB_1H_BULLPUT_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "smc_ob_1h",
+   "name": "SMC order block (NIFTY 1H)",
+   "family": "Map and levels",
+   "tested": "2026-11-22",
+   "status": "FAIL",
+   "rationale": "Smart-money-concept order blocks mark where institutions left orders; price returning to one should react in the block's direction.",
+   "test": "Reproduction gate, then discovery against placebo levels, then confirmation.",
+   "result": "Reproduction passed; discovery FAILED (placebo p 0.59 / 0.39, option returns +0.9% / +0.7% with t < 0.2).",
+   "why": "Order-block levels did no better than randomly placed levels.",
+   "metrics": {
+    "Placebo p": "0.59 / 0.39"
+   },
+   "docs": [
+    "docs/NIFTY_SMC_OB_1H_PREREG_2026-11-22.md",
+    "docs/NIFTY_SMC_OB_1H_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "darvas_structural_stop",
+   "name": "Darvas structural stop",
+   "family": "Darvas family",
+   "tested": "2026-11-19",
+   "status": "FAIL",
+   "rationale": "Place the Darvas stop under the box's structure instead of a fixed ATR distance, so normal retests don't stop the trade out.",
+   "test": "Discovery mean > 0 with CI lower bound > 0, and both halves > 0.",
+   "result": "Both discovery conditions fail.",
+   "why": "Structural stops did not improve the ATR-stop version's trades.",
+   "metrics": {},
+   "docs": [
+    "docs/DARVAS_STRUCTURAL_STOP_PREREG_2026-11-19.md",
+    "docs/DARVAS_STRUCTURAL_STOP_RESULTS_2026-11-19.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "darvas_reentry",
+   "name": "Darvas second chance (re-entry)",
+   "family": "Darvas family",
+   "tested": "2026-11-19",
+   "status": "FAIL",
+   "rationale": "After a Darvas stop-out, re-enter if the stock breaks out of its box again: the trend may still be intact.",
+   "test": "Discovery: n >= 60, t >= 2, both halves > 0.",
+   "result": "n 54 < 60, t 0.94, and 2020-23 below 0: three of four discovery conditions fail.",
+   "why": "Too few re-entries, and those there were didn't make money reliably.",
+   "metrics": {
+    "n": "54",
+    "t": "0.94"
+   },
+   "docs": [
+    "docs/DARVAS_REENTRY_PREREG_2026-11-17.md",
+    "docs/DARVAS_REENTRY_RESULTS_2026-11-19.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "cci_cpr",
+   "name": "CCI / SMA52 + 5SMA over monthly CPR",
+   "family": "Index direction (signals)",
+   "tested": "2026-11-07",
+   "status": "FAIL",
+   "rationale": "The user's discretionary rule: CCI momentum with price above its 52-SMA, confirmed by the 5-SMA above the monthly central pivot range, plus CCI/RSI filters on option entries.",
+   "test": "Each signal and filter must beat its baseline with Holm-corrected significance in both halves.",
+   "result": "0 of 8 pass. Long mean -0.02% (n 11,934); short +0.16% but fails Holm.",
+   "why": "The signal's returns are indistinguishable from zero, and the filters don't improve the option baselines.",
+   "metrics": {
+    "Passed": "0 of 8",
+    "Long n": "11,934"
+   },
+   "docs": [
+    "docs/CCI_CPR_SIGNAL_AND_FILTERS_PREREG_2026-11-07.md",
+    "docs/CCI_CPR_SIGNAL_AND_FILTERS_RESULTS_2026-11-07.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "techno_funda",
+   "name": "Techno-funda momentum",
+   "family": "Stock momentum and trend",
+   "tested": "2026-11-03",
+   "status": "SHELVED",
+   "rationale": "Combine fundamental quality gates with technical momentum.",
+   "test": "Data gates D1-D4 before any backtest.",
+   "result": "Stopped at data gate D4. Next step agreed: a 2021-26 backtest pre-registration; a paper scanner only if that passes.",
+   "why": "Not tested: the data didn't clear its own gates.",
+   "metrics": {},
+   "docs": [
+    "docs/TECHNO_FUNDA_PREREG_2026-11-01.md",
+    "docs/TECHNO_FUNDA_DATA_GATES.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "cci_sma_cross",
+   "name": "CCI / SMA cross signals",
+   "family": "Index direction (signals)",
+   "tested": "2026-10-26",
+   "status": "FAIL",
+   "rationale": "CCI and moving-average crosses as entry signals on F&O stocks, scored against NIFTY over the same holding period.",
+   "test": "12 signal x exit x side combinations, each needing a positive excess return with t >= 2 in both halves.",
+   "result": "0 of 12 pass.",
+   "why": "No combination beat simply holding NIFTY.",
+   "metrics": {
+    "Passed": "0 of 12"
+   },
+   "docs": [
+    "docs/CCI_SMA_CROSS_SIGNALS_PREREG_2026-10-26.md",
+    "docs/CCI_SMA_CROSS_SIGNALS_RESULTS_2026-10-26.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "fno_indicator_filter",
+   "name": "F&O indicator filters (CCI / SMA)",
+   "family": "Index direction (signals)",
+   "tested": "2026-10-26",
+   "status": "FAIL",
+   "rationale": "Filter the existing option-entry baselines with CCI and SMA conditions, hoping to keep the better trades.",
+   "test": "Each filter x baseline cell must improve on the unfiltered baseline (day-clustered t, both halves).",
+   "result": "8 of 9 cells FAIL; PE baseline x SMA passed on its own. Kept trades average -0.11% either way.",
+   "why": "The filters mostly just cut trade count without improving the average trade; one isolated pass in nine is what chance produces.",
+   "metrics": {
+    "Cells passed": "1 of 9"
+   },
+   "docs": [
+    "docs/FNO_INDICATOR_FILTER_PREREG_2026-10-26.md",
+    "docs/FNO_INDICATOR_FILTER_RESULTS_2026-10-26.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "emt_vwap",
+   "name": "EMT VWAP",
+   "family": "Index direction (intraday)",
+   "tested": "2026-10-26",
+   "status": "FAIL",
+   "rationale": "Intraday index entries off VWAP and EMA alignment.",
+   "test": "Out-of-sample: n >= 40, net > 0, PF >= 1.2.",
+   "result": "n 921, net -2.59 points per trade, PF 0.77.",
+   "why": "Loses money out of sample.",
+   "metrics": {
+    "n": "921",
+    "PF": "0.77"
+   },
+   "docs": [
+    "docs/EMT_VWAP_METHODOLOGY.md",
+    "docs/EMT_VWAP_RESULTS.md",
+    "docs/EMT_VWAP_RESULTS_BANKNIFTY.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "earnings_gap_drift",
+   "name": "Earnings gap drift",
+   "family": "Event and calendar",
+   "tested": "2026-10-21",
+   "status": "FAIL",
+   "rationale": "After a big results-day gap, stocks are said to keep drifting the same way for weeks (post-earnings drift).",
+   "test": "Excess return of the expected sign in both halves (2016-2020 and 2021-2026).",
+   "result": "Long side: sign flips between halves (FAIL). Short side: right sign but small (-1% to -2% over 20 sessions) and not significant recently.",
+   "why": "The typical up-gapper lags the market; the small positive mean comes from a few large winners. Down-gappers drift weakly and reversed in 2025-26.",
+   "metrics": {},
+   "docs": [
+    "docs/EARNINGS_GAP_DRIFT_GUTCHECK.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "surge_23b",
+   "name": "Surge 23b persistence",
+   "family": "Event and calendar",
+   "tested": "2026-10-15",
+   "status": "FAIL",
+   "rationale": "A surge signal's strength in one month should predict the next month's outcome.",
+   "test": "Spearman correlation > 0 with p < 0.05, and better outcomes when the predictor is positive.",
+   "result": "Spearman 0.149, p 0.137; outcomes +0.25% when positive vs +0.31% otherwise.",
+   "why": "No persistence. The surge strategy itself has no P&L read before 60 closed trades.",
+   "metrics": {
+    "Spearman": "0.149",
+    "p": "0.137"
+   },
+   "docs": [
+    "docs/SURGE_23B_METHODOLOGY.md",
+    "docs/SURGE_23B_PERSISTENCE_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "statarb_pca",
+   "name": "PCA statistical arbitrage",
+   "family": "Relative value",
+   "tested": "2026-10-14",
+   "status": "FAIL",
+   "rationale": "Trade stocks' residuals after removing the top principal components of NIFTY 50 returns, betting the residuals revert.",
+   "test": "PF > 1 and Sharpe > 0.5, and PF > 1 in the first half.",
+   "result": "FAIL on every check (PCA5 primary).",
+   "why": "Residual reversion is too weak to pay for trading it.",
+   "metrics": {},
+   "docs": [
+    "docs/STATARB_NIFTY50_METHODOLOGY.md",
+    "docs/STATARB_NIFTY50_RESULTS.md",
+    "docs/STATARB_BANKNIFTY_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "vrp_iv_gated",
+   "name": "VRP, IV-gated",
+   "family": "Volatility timing",
+   "tested": "2026-10-06",
+   "status": "FAIL",
+   "rationale": "Sell NIFTY strangles only when implied vol is high relative to its history, when the premium should be richest.",
+   "test": "Fresh 2019-2023 segment: PF > 1.0 and Sharpe > 0.5, and the gate must beat always-on.",
+   "result": "Strangle PF 0.709, Sharpe -0.397; the gate made it worse (ungated 0.153). Straddle and condor also fail.",
+   "why": "Timing short vol by IV level doesn't help; it picks the worst moments.",
+   "metrics": {
+    "PF": "0.709",
+    "Sharpe": "-0.397"
+   },
+   "docs": [
+    "docs/VRP_IV_GATED_METHODOLOGY.md",
+    "docs/VRP_IV_GATED_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "darvas_atr_stop",
+   "name": "Darvas ATR-stop (Bucket B)",
+   "family": "Darvas family",
+   "tested": "2026-10-05",
+   "status": "PAPER",
+   "rationale": "Darvas box breakouts with an ATR-based stop instead of the box low, in the box-width bucket that looked best.",
+   "test": "Out-of-sample 2016-23 on the full point-in-time universe, net of stressed costs, against an equal-weight universe benchmark.",
+   "result": "OOS PASS: 991 trades, PF 1.46, +0.70% per trade vs the equal-weight universe. But the confidence interval only just clears 0 and rests on a few trades.",
+   "why": "Not failed: not capital-ready. Running on paper with a frozen go/no-go reviewed at the 20th closed trade (~2027-04); paper returns are not read before then.",
+   "metrics": {
+    "OOS trades": "991",
+    "PF": "1.46",
+    "Excess/trade": "+0.70%"
+   },
+   "docs": [
+    "docs/DARVAS_ATR_STOP_BACKTEST_METHODOLOGY.md",
+    "docs/DARVAS_ATR_STOP_OOS_RESULTS.md",
+    "docs/DARVAS_ATR_STOP_FALSIFICATION.md",
+    "docs/DARVAS_GO_NO_GO_2026-11.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "trend_day",
+   "name": "Trend-day filter (candidate 21)",
+   "family": "Index direction (intraday)",
+   "tested": "2026-10-01",
+   "status": "FAIL",
+   "rationale": "Identify trend days early and only trade intraday direction on them.",
+   "test": "Stage 1 on each index.",
+   "result": "FAIL on both NIFTY and BANKNIFTY.",
+   "why": "Makes intraday index direction 4 for 4 dead.",
+   "metrics": {},
+   "docs": [
+    "docs/TREND_DAY_FILTER_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "orb_18",
+   "name": "ORB options scalping (candidate 18)",
+   "family": "Index direction (intraday)",
+   "tested": "2026-09-30",
+   "status": "FAIL",
+   "rationale": "Trade the opening-range breakout on NIFTY/BANKNIFTY by buying options in the breakout's direction, exiting the same day.",
+   "test": "PF > 1.0 and Sharpe > 0.5 net of stressed costs, then under a holdout-validated time-decay convention.",
+   "result": "Passed under the original convention (NIFTY PF 1.26, Sharpe 1.03), then FAILED under the calibrated decay convention (PF 0.85 / 0.82).",
+   "why": "The edge came from how option time decay was modelled. With a convention validated on held-out data it disappears.",
+   "metrics": {
+    "PF (original)": "1.26",
+    "PF (calibrated)": "0.85 / 0.82"
+   },
+   "docs": [
+    "docs/ORB_OPTIONS_SCALPING_METHODOLOGY.md",
+    "docs/ORB_SCALPING_RESULTS.md",
+    "docs/ORB_TIME_CONVENTION_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "orb_18b",
+   "name": "ORB entry filter (candidate 18b)",
+   "family": "Index direction (intraday)",
+   "tested": "2026-09-22",
+   "status": "PAPER",
+   "rationale": "Candidate 18 with an entry filter on the opening move, recorded live on paper to judge it on real fills.",
+   "test": "Gate at 40 recorded sessions (outage days excluded); P&L is not looked at before the gate.",
+   "result": "Accruing on paper.",
+   "why": "Pending its gate.",
+   "metrics": {},
+   "docs": [
+    "docs/ORB_ENTRY_FILTER_METHODOLOGY.md",
+    "docs/ORB_18B_FILTER_INDEX_POINTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "darvas_box_width",
+   "name": "Darvas box-width buckets",
+   "family": "Darvas family",
+   "tested": "2026-09-22",
+   "status": "FAIL",
+   "rationale": "Narrow Darvas boxes might break out more cleanly than wide ones; test returns by box width.",
+   "test": "Managed backtest (real stop/target), full point-in-time Nifty 500, 80/20 mining/holdout, PF > 1 and Sharpe > 0.5.",
+   "result": "Every bucket fails the bar.",
+   "why": "No width bucket has a net edge; it reconfirms S7-3.",
+   "metrics": {},
+   "docs": [
+    "docs/DARVAS_BOX_WIDTH_BACKTEST_METHODOLOGY.md",
+    "docs/DARVAS_BOX_WIDTH_BACKTEST_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "darvas_trailing",
+   "name": "Darvas trailing stop",
+   "family": "Darvas family",
+   "tested": "2026-09-22",
+   "status": "FAIL",
+   "rationale": "Trail the stop behind new box lows to keep more of each winner.",
+   "test": "PF > 1 and Sharpe > 0.5 net, mining and holdout.",
+   "result": "Improves every cell but still fails the bar: the closest miss in the Darvas family.",
+   "why": "Better exits can't create an entry edge that isn't there.",
+   "metrics": {},
+   "docs": [
+    "docs/DARVAS_TRAILING_STOP_BACKTEST_METHODOLOGY.md",
+    "docs/DARVAS_TRAILING_STOP_BACKTEST_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "goodnight_scalper",
+   "name": "Goodnight scalper (candidate 20)",
+   "family": "Index direction (intraday)",
+   "tested": "2026-09-17",
+   "status": "FAIL",
+   "rationale": "Scalp the late-session move into the close.",
+   "test": "PF > 1.0 and Sharpe > 0.5 on stressed costs.",
+   "result": "PF 0.54, Sharpe -2.80.",
+   "why": "Loses money before liquidity concerns even come in.",
+   "metrics": {
+    "PF": "0.54",
+    "Sharpe": "-2.80"
+   },
+   "docs": [
+    "docs/GOODNIGHT_SCALPER_METHODOLOGY.md",
+    "docs/GOODNIGHT_SCALPER_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "candle_confirm",
+   "name": "Candle-confirm momentum (candidate 19)",
+   "family": "Stock momentum and trend",
+   "tested": "2026-08-04",
+   "status": "FAIL",
+   "rationale": "Enter momentum names only after a confirming candle, to avoid false starts.",
+   "test": "Gut-check before a full backtest.",
+   "result": "About a 50% win rate with no payoff skew to compensate.",
+   "why": "Indistinguishable from a coin flip at the gut-check, so no full backtest was run.",
+   "metrics": {
+    "Win rate": "~50%"
+   },
+   "docs": [
+    "docs/CANDLE_CONFIRM_MOMENTUM_GUTCHECK_METHODOLOGY.md",
+    "docs/CANDLE_CONFIRM_MOMENTUM_GUTCHECK_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "event_proximity",
+   "name": "Event proximity (5th vol attempt)",
+   "family": "Volatility timing",
+   "tested": "2026-07-28",
+   "status": "FAIL",
+   "rationale": "Scheduled events (RBI policy, budget) should raise forward realized vol, so option prices near them could be timed.",
+   "test": "Event days must show materially higher mean forward realized vol.",
+   "result": "FAIL; RBI-only days were 1.76 vol points LOWER (n 35).",
+   "why": "Wrong direction: event days were not more volatile after all. This closed the vol-conditioning search 5 for 5: no vol signal tested here times option selling.",
+   "metrics": {
+    "RBI gap": "-1.76 vol pts"
+   },
+   "docs": [
+    "docs/EVENT_PROXIMITY_METHODOLOGY.md",
+    "docs/EVENT_PROXIMITY_VALIDATION.md",
+    "docs/EVENT_PROXIMITY_VALIDATION_BANKNIFTY.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "cand11_momentum_turnover",
+   "name": "Momentum with turnover control (candidate 11)",
+   "family": "Stock momentum and trend",
+   "tested": "2026-07-27",
+   "status": "PAPER",
+   "rationale": "Cross-sectional momentum with a turnover penalty, so the portfolio only trades when ranks change enough to pay for it.",
+   "test": "Out-of-sample walk-forward on paper; no verdict before ~2027-Q3.",
+   "result": "Live on the VM, paper only, since 2026-07-27. Closed ~40% of the gap to Alpha 50 in backtest.",
+   "why": "Pending its walk-forward verdict. The real-capital pilot was retired on 2026-09-30.",
+   "metrics": {},
+   "docs": [
+    "docs/MOMENTUM_TURNOVER_ABLATION_RESULTS.md",
+    "docs/MOMENTUM_TURNOVER_WALKFORWARD_METHODOLOGY.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "breakout_1010",
+   "name": "10:10 breakout (candidate 15)",
+   "family": "Index direction (intraday)",
+   "tested": "2026-07-27",
+   "status": "FAIL",
+   "rationale": "BANKNIFTY breakouts of the first hour's range after 10:10, traded with options.",
+   "test": "PF > 1.0 and Sharpe > 0.5 on Black-Scholes premiums, then a check against realistic spreads.",
+   "result": "Passed the bar on theoretical premiums, then closed: the edge is smaller than a realistic bid-ask spread.",
+   "why": "Expired option prices aren't available, so premiums were modelled; the modelled edge doesn't survive real spreads.",
+   "metrics": {
+    "Trades": "1,273"
+   },
+   "docs": [
+    "docs/BREAKOUT_1010_METHODOLOGY.md",
+    "docs/BREAKOUT_1010_RESULTS.md"
+   ],
+   "trades": "breakout_1010",
+   "pnl_unit": "inr",
+   "trades_note": "Premiums are Black-Scholes estimates, not traded prices (expired option prices can't be fetched). On these modelled prices it clears the bar; real bid-ask spreads are larger than the edge, which is why it was closed."
+  },
+  {
+   "id": "ml_factor",
+   "name": "ML factor combination (candidate 16)",
+   "family": "Stock momentum and trend",
+   "tested": "2026-07-27",
+   "status": "FAIL",
+   "rationale": "Combine several stock factors with a machine-learning model instead of picking one by hand.",
+   "test": "CAGR > 0 and Sharpe > 0.5, and beat Nifty 500 and Alpha 50 buy-and-hold.",
+   "result": "CAGR 4.1%, Sharpe 0.29: FAIL. It beat the benchmarks only through a turnover-cost artifact; the simple baseline wins gross.",
+   "why": "The model's extra turnover eats any gain from combining factors.",
+   "metrics": {
+    "CAGR": "4.1%",
+    "Sharpe": "0.29"
+   },
+   "docs": [
+    "docs/ML_FACTOR_COMBINATION_METHODOLOGY.md",
+    "docs/ML_FACTOR_COMBINATION_RESULTS.md"
+   ],
+   "trades": "ml_factor",
+   "pnl_unit": "inr",
+   "trades_note": "Per-trade costs weren't recorded, so these trades are GROSS. The ML run paid ₹41,128 in costs in total: 4.4% net vs 8.3% gross over the test period. Its 'win' over the baseline is a turnover artifact; with costs removed the single-factor baseline is at least as good."
+  },
+  {
+   "id": "pairs_v2",
+   "name": "Pairs trading v2 (candidate 17)",
+   "family": "Relative value",
+   "tested": "2026-07-27",
+   "status": "FAIL",
+   "rationale": "Pairs v1 with its two construction bugs fixed (corporate actions, formation leakage).",
+   "test": "PF > 1.0 and Sharpe > 0.5, pooled out-of-sample trades net of costs.",
+   "result": "FAIL again; the per-fold collapse is a real regime shift, not a bug.",
+   "why": "Cointegration found in formation doesn't hold in the trading window.",
+   "metrics": {},
+   "docs": [
+    "docs/PAIRS_TRADING_V2_METHODOLOGY.md",
+    "docs/PAIRS_TRADING_V2_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "vol_spread",
+   "name": "Vol spread (IV minus realized)",
+   "family": "Volatility timing",
+   "tested": "2026-07-27",
+   "status": "FAIL",
+   "rationale": "Use the spread between implied and realized vol to time when to sell options.",
+   "test": "The signal must sort forward realized vol in the expected direction.",
+   "result": "Highest-spread quintile earned LESS premium than the lowest: +2.51 vs +3.04 vol points, hit rate 76% vs 82%.",
+   "why": "A wide implied-over-realized spread did not mark better times to sell options; if anything the reverse.",
+   "metrics": {
+    "Q5 premium": "+2.51 vol pts",
+    "Q1 premium": "+3.04 vol pts"
+   },
+   "docs": [
+    "docs/VOL_SPREAD_METHODOLOGY.md",
+    "docs/VOL_SPREAD_VALIDATION.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "vol_term_structure",
+   "name": "Vol term structure",
+   "family": "Volatility timing",
+   "tested": "2026-07-27",
+   "status": "FAIL",
+   "rationale": "The slope between near and far implied vol may predict forward realized vol.",
+   "test": "Quintiles must be monotonic and Q5 > Q1.",
+   "result": "FAIL on both indices.",
+   "why": "The slope doesn't sort forward volatility.",
+   "metrics": {},
+   "docs": [
+    "docs/VOL_TERM_STRUCTURE_METHODOLOGY.md",
+    "docs/VOL_TERM_STRUCTURE_VALIDATION.md",
+    "docs/VOL_TERM_STRUCTURE_VALIDATION_BANKNIFTY.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "s1_dual_momentum",
+   "name": "Dual momentum (S1)",
+   "family": "Stock momentum and trend",
+   "tested": "2026-07-27",
+   "status": "FAIL",
+   "rationale": "Absolute plus relative momentum: hold the strongest assets only while they beat cash.",
+   "test": "Pooled PF > 1.0 and Sharpe > 0.5, and compared with Alpha 50.",
+   "result": "Cleared the PF/Sharpe bar but lost to NIFTY Alpha 50 by about 12 points of CAGR.",
+   "why": "A positive edge that's worse than simply buying the Alpha 50 ETF isn't worth running.",
+   "metrics": {},
+   "docs": [
+    "docs/S1_DUAL_MOMENTUM_METHODOLOGY.md",
+    "docs/S1_DUAL_MOMENTUM_BACKTEST_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "dow_theory",
+   "name": "Dow theory trend (candidate 14)",
+   "family": "Index direction (signals)",
+   "tested": "2026-07-26",
+   "status": "FAIL",
+   "rationale": "Trade index futures in the direction of the Dow-theory trend (higher highs and higher lows).",
+   "test": "PF > 1.0 and Sharpe > 0.5 net of futures costs.",
+   "result": "Net loss: costs were 2.6x the gross edge.",
+   "why": "The trend signal has a small gross edge that trading costs swamp.",
+   "metrics": {
+    "Costs / gross edge": "2.6x"
+   },
+   "docs": [
+    "docs/DOW_THEORY_TREND_METHODOLOGY.md",
+    "docs/DOW_THEORY_TREND_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "pairs_v1",
+   "name": "Pairs trading (candidate 12)",
+   "family": "Relative value",
+   "tested": "2026-07-26",
+   "status": "FAIL",
+   "rationale": "Trade cointegrated stock-futures pairs when their spread stretches, betting on reversion.",
+   "test": "PF > 1.0 and Sharpe > 0.5, pooled trading-window trades net of costs.",
+   "result": "FAIL. A review found two real bugs; fixing them (v2) didn't change the verdict.",
+   "why": "Pairs that look cointegrated in formation drift apart in the trading window.",
+   "metrics": {},
+   "docs": [
+    "docs/PAIRS_TRADING_METHODOLOGY.md",
+    "docs/PAIRS_TRADING_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "expiry_day",
+   "name": "Expiry-day effect (candidate 13)",
+   "family": "Event and calendar",
+   "tested": "2026-07-26",
+   "status": "FAIL",
+   "rationale": "Expiry days are said to be more volatile (pinning, unwinding), which option strategies could exploit.",
+   "test": "Expiry days must be materially more volatile than baseline days.",
+   "result": "Expiry days moved less than other days: mean |return| 0.555% vs 0.616% (n 31 vs 538).",
+   "why": "The premise is wrong in this data.",
+   "metrics": {
+    "Expiry |ret|": "0.555%",
+    "Other |ret|": "0.616%"
+   },
+   "docs": [
+    "docs/EXPIRY_DAY_EFFECT_GUTCHECK_METHODOLOGY.md",
+    "docs/EXPIRY_DAY_EFFECT_GUTCHECK_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "vol_skew",
+   "name": "Vol skew",
+   "family": "Volatility timing",
+   "tested": "2026-07-25",
+   "status": "FAIL",
+   "rationale": "Put-call skew may predict forward realized vol or direction.",
+   "test": "Quintiles must be monotonic and Q5 > Q1.",
+   "result": "FAIL on both indices.",
+   "why": "Skew doesn't sort forward volatility.",
+   "metrics": {},
+   "docs": [
+    "docs/VOL_SKEW_METHODOLOGY.md",
+    "docs/VOL_SKEW_VALIDATION.md",
+    "docs/VOL_SKEW_VALIDATION_BANKNIFTY.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "vrp_strangle",
+   "name": "VRP short strangle (weekly NIFTY)",
+   "family": "Volatility timing",
+   "tested": "2026-07-23",
+   "status": "FAIL",
+   "rationale": "Implied vol usually exceeds realized vol, so selling options systematically should earn a premium. The best-supported edge in the literature.",
+   "test": "PF > 1.0 and Sharpe > 0.5 net of real, time-varying NSE costs, 2023-07 to 2026-07.",
+   "result": "Net PF 1.034 but Sharpe 0.092.",
+   "why": "The premium exists but is thin and noisy after costs: weekly NIFTY options are crowded with sellers.",
+   "metrics": {
+    "PF": "1.034",
+    "Sharpe": "0.092"
+   },
+   "docs": [
+    "docs/VRP_METHODOLOGY.md",
+    "docs/VRP_BACKTEST_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "s8_3_rotation",
+   "name": "RS momentum rotation (S8-3)",
+   "family": "Stock momentum and trend",
+   "tested": "2026-07-23",
+   "status": "FAIL",
+   "rationale": "Rotate into the strongest relative-strength stocks each period.",
+   "test": "Net edge, then the same test on a survivorship-free universe.",
+   "result": "First looked positive (+8 points of alpha), but that alpha was survivorship bias: on a point-in-time universe it loses to both benchmarks. Retired 2026-08-18.",
+   "why": "Testing on today's index members flattered it; on the real historical universe there is no edge.",
+   "metrics": {},
+   "docs": [
+    "docs/S8_3_MOMENTUM_METHODOLOGY.md",
+    "docs/S8_3_BACKTEST_RESULTS.md",
+    "docs/S8_3_EQUITY_CURVE_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "s8_4_ema_options",
+   "name": "NIFTY EMA options (S8-4)",
+   "family": "Index direction (signals)",
+   "tested": "2026-07-19",
+   "status": "FAIL",
+   "rationale": "Buy NIFTY options on EMA trend signals.",
+   "test": "PF > 1.0 and Sharpe > 0.5.",
+   "result": "Sharpe 0.19, barely break-even (option P&L approximated with a fixed delta).",
+   "why": "No meaningful edge after costs.",
+   "metrics": {
+    "Sharpe": "0.19"
+   },
+   "docs": [
+    "docs/S8_4_BACKTEST_RESULTS.md"
+   ],
+   "trades": null
+  },
+  {
+   "id": "s7_3_darvas",
+   "name": "Darvas box breakout (S7-3)",
+   "family": "Darvas family",
+   "tested": "2026-07-19",
+   "status": "FAIL",
+   "rationale": "Nicolas Darvas' method: buy stocks breaking out of a consolidation box to new highs.",
+   "test": "Go/no-go: PF > 1.0 and Sharpe > 0.5 net, on 40 pre-committed symbols (survivorship-biased, so an upper bound).",
+   "result": "NO demonstrated edge: PF 0.75-1.11, Sharpe 0.22.",
+   "why": "Even with survivorship bias helping, costs beat the edge. Load-bearing for the project: the classic breakout has no edge here.",
+   "metrics": {
+    "PF": "0.75-1.11",
+    "Sharpe": "0.22"
+   },
+   "docs": [
+    "docs/S7_3_BACKTEST_RESULTS.md"
+   ],
+   "trades": null
+  }
+ ]
+}
