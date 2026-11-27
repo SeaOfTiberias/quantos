@@ -46,17 +46,23 @@ def _f(x: str) -> Optional[float]:
     return float(x) if x else None
 
 
-def parse_csv(text: str, trade_date: date, symbols: Iterable[str] = ("NIFTY", "BANKNIFTY")) -> list[FutRow]:
-    want = set(symbols)
+_KINDS = {"index": ("FUTIDX", "IDF"), "stock": ("FUTSTK", "STF")}
+
+
+def parse_csv(text: str, trade_date: date, symbols: Optional[Iterable[str]] = ("NIFTY", "BANKNIFTY"),
+              kind: str = "index") -> list[FutRow]:
+    """kind 'index' = index futures, 'stock' = stock futures. symbols=None keeps every underlying."""
+    want = set(symbols) if symbols is not None else None
+    legacy_tp, new_tp = _KINDS[kind]
     rows: list[FutRow] = []
     lines = text.splitlines()
-    if lines:                                     # speed: only index-future lines reach the CSV parser
-        lines = [lines[0]] + [ln for ln in lines[1:] if "FUTIDX" in ln or ",IDF," in ln]
+    if lines:                                     # speed: only matching future lines reach the CSV parser
+        lines = [lines[0]] + [ln for ln in lines[1:] if legacy_tp in ln or f",{new_tp}," in ln]
     rd = csv.DictReader(io.StringIO("\n".join(lines)))
     new = "TradDt" in (rd.fieldnames or [])
     for r in rd:
         if new:
-            if r.get("FinInstrmTp") != "IDF" or r.get("TckrSymb") not in want:
+            if r.get("FinInstrmTp") != new_tp or (want is not None and r.get("TckrSymb") not in want):
                 continue
             lot = _f(r.get("NewBrdLotQty", ""))
             rows.append(FutRow(trade_date, r["TckrSymb"], date.fromisoformat(r["XpryDt"]),
@@ -65,7 +71,8 @@ def parse_csv(text: str, trade_date: date, symbols: Iterable[str] = ("NIFTY", "B
                                int(float(r["TtlTradgVol"] or 0)), int(float(r["OpnIntrst"] or 0)),
                                int(lot) if lot else None))
         else:
-            if (r.get("INSTRUMENT") or "").strip() != "FUTIDX" or (r.get("SYMBOL") or "").strip() not in want:
+            if (r.get("INSTRUMENT") or "").strip() != legacy_tp or (
+                    want is not None and (r.get("SYMBOL") or "").strip() not in want):
                 continue
             rows.append(FutRow(trade_date, r["SYMBOL"].strip(),
                                datetime.strptime(r["EXPIRY_DT"].strip(), "%d-%b-%Y").date(),
