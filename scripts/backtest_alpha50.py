@@ -564,6 +564,143 @@ def step1(base_gross) -> tuple[bool, str]:
     return ok, txt
 
 
+# ─── step 2: the grid (prereg 0a01741 step 2; round 2 window from the first effective close) ──
+
+def window_sharpe(rets: list[tuple[date, float]], a: date, b: date) -> float:
+    return sharpe([r for d, r in rets if a <= d <= b])
+
+
+def median_version(scores: dict[Version, float]) -> Version:
+    """The 12 ranked lowest to highest by score; the median is the 6th (lower of the middle two)."""
+    ranked = sorted(scores, key=lambda v: (scores[v], v.skip, v.lookback, v.filt or 0))
+    return ranked[(len(ranked) - 1) // 2]
+
+
+def walk_forward(rets: dict[Version, list[tuple[date, float]]], start: date,
+                 years=WF_YEARS) -> tuple[list[tuple[date, float]], dict[int, Version]]:
+    """Each year: the version with the best Sharpe from `start` to the end of the year before;
+    its daily returns for that year are kept (switching costs ignored)."""
+    stitched, choice = [], {}
+    for y in years:
+        fit = {v: window_sharpe(r, start, date(y - 1, 12, 31)) for v, r in rets.items()}
+        best = max(fit, key=lambda v: (fit[v], -v.skip, -v.lookback, -(v.filt or 0)))
+        choice[y] = best
+        stitched += [(d, x) for d, x in rets[best] if d.year == y]
+    return stitched, choice
+
+
+def step2_verdict(runs: dict[Version, dict], base: dict, start: date, end: date = MEASURE_TO,
+                  boot: int = BOOT) -> dict:
+    """The five pass criteria. runs: the 12 grid versions' walk() output, base: the base's; net of costs."""
+    rets = {v: [(d, x) for d, x in daily_returns(w["values"]) if start <= d <= end] for v, w in runs.items()}
+    brets = [(d, x) for d, x in daily_returns(base["values"]) if start <= d <= end]
+    score = {v: sharpe([x for _, x in r]) for v, r in rets.items()}
+    b_score = sharpe([x for _, x in brets])
+    med = median_version(score)
+    mm, bm = monthly_returns(runs[med]["values"]), monthly_returns(base["values"])
+    keys = sorted(k for k in set(mm) & set(bm) if date(k[0], k[1], 1) >= date(start.year, start.month, 1))
+    share = block_bootstrap_share([mm[k] for k in keys], [bm[k] for k in keys], boot=boot)
+    halves = [(start, HALF_SPLIT - timedelta(days=1)), (HALF_SPLIT, end)]
+    half_med = [window_sharpe(rets[med], a, b) for a, b in halves]
+    half_base = [window_sharpe(brets, a, b) for a, b in halves]
+    stitched, choice = walk_forward(rets, start)
+    wf_from = date(WF_YEARS[0], 1, 1)
+    wf_s, wf_b = sharpe([x for _, x in stitched]), window_sharpe(brets, wf_from, end)
+    dd_med = max_drawdown([(d, x) for d, x in runs[med]["values"] if start <= d <= end])
+    dd_base = max_drawdown([(d, x) for d, x in base["values"] if start <= d <= end])
+    above = sum(s > b_score for s in score.values())
+    checks = {
+        "1 better risk-adjusted (Sharpe above base, bootstrap >= 90%)": score[med] > b_score and share >= 0.90,
+        "2 smaller max drawdown": dd_med > dd_base,          # drawdowns are negative: closer to 0 is smaller
+        "3 breadth: >= 9 of 12 above base": above >= 9,
+        "4 both halves above base": all(m > b for m, b in zip(half_med, half_base)),
+        "5 walk-forward above base 2019-23": wf_s > wf_b,
+    }
+    return dict(score=score, base_score=b_score, median=med, share=share, half_med=half_med,
+                half_base=half_base, halves=halves, wf_sharpe=wf_s, wf_base=wf_b, wf_choice=choice,
+                dd_med=dd_med, dd_base=dd_base, above=above, checks=checks, passed=all(checks.values()))
+
+
+def per_year(values: list[tuple[date, float]]) -> dict[int, float]:
+    out, prev = {}, values[0][1]
+    for y in sorted({d.year for d, _ in values}):
+        last = [x for d, x in values if d.year == y][-1]
+        out[y], prev = last / prev - 1, last
+    return out
+
+
+def step2_report(runs, base, ver, start, rate, a50, n500) -> str:
+    def row(name, w):
+        vals = [(d, x) for d, x in w["values"] if start <= d <= MEASURE_TO]
+        yrs = (vals[-1][0] - vals[0][0]).days / 365.25
+        avg = statistics.mean(x for _, x in vals)
+        tax = w["sold_short"] / (w["sold_short"] + w["sold_long"]) if w["sold_short"] + w["sold_long"] else float("nan")
+        return (f"| {name} | {cagr(vals):+.2%} | {sharpe([x for _, x in daily_returns(vals)]):.2f} | "
+                f"{max_drawdown(vals):.1%} | {w['in_cash_days'] / len(vals):.0%} | {w['traded'] / avg / yrs:.2f}x | {tax:.0%} |")
+    med = ver["median"]
+    out = [f"Window {start} to {MEASURE_TO}, net of costs at {rate * 1e4:.1f} bps per side.", "",
+           "## Pass criteria", ""]
+    out += [f"- {k}: **{'PASS' if ok else 'FAIL'}**" for k, ok in ver["checks"].items()]
+    out += ["", f"**Step 2 {'PASS' if ver['passed'] else 'FAIL'}**", "",
+            f"Median version (6th of 12 by Sharpe): **{med.name}**, Sharpe {ver['score'][med]:.3f} vs base {ver['base_score']:.3f}; "
+            f"bootstrap share {ver['share']:.1%} (need >= 90%); max drawdown {ver['dd_med']:.1%} vs base {ver['dd_base']:.1%}; "
+            f"{ver['above']} of 12 above the base.", "",
+            "| Half | Median | Base |", "|---|---|---|"]
+    for (a, b), m, bs in zip(ver["halves"], ver["half_med"], ver["half_base"]):
+        out.append(f"| {a} to {b} | {m:.3f} | {bs:.3f} |")
+    out += ["", f"Walk-forward 2019-23: stitched Sharpe {ver['wf_sharpe']:.3f} vs base {ver['wf_base']:.3f}. Choices: "
+            + "; ".join(f"{y} {v.name}" for y, v in ver["wf_choice"].items()) + ".", "",
+            "## All versions (reported, not scored)", "",
+            "| Version | CAGR | Sharpe | Max DD | Time in cash | Turnover/yr | Sold < 1 yr (short-term tax) |",
+            "|---|---|---|---|---|---|---|", row(BASE.name, base)]
+    for v in sorted(runs, key=lambda v: -ver["score"][v]):
+        out.append(row(v.name + (" ← median" if v == med else ""), runs[v]))
+    common = [d for d, _ in runs[med]["values"] if start <= d <= MEASURE_TO and d in a50 and d in n500]
+    out += ["", f"## Median and base vs the indices ({common[0]} to {common[-1]}, price indices, ours net of costs)", "",
+            "| Series | CAGR | Sharpe | Max DD |", "|---|---|---|---|"]
+    for name, ser in [("median version", dict(runs[med]["values"])), ("base", dict(base["values"])),
+                      ("NIFTY Alpha 50", a50), ("NIFTY 500", n500)]:
+        vals = [(d, ser[d]) for d in common]
+        out.append(f"| {name} | {cagr(vals):+.2%} | {sharpe([x for _, x in daily_returns(vals)]):.2f} | {max_drawdown(vals):.1%} |")
+    py = {n: per_year([(d, s[d]) for d in common]) for n, s in
+          [("median", dict(runs[med]["values"])), ("base", dict(base["values"])), ("Alpha 50", a50)]}
+    out += ["", "## Per year (first year part-year)", "", "| Year | Median | Base | Alpha 50 |", "|---|---|---|---|"]
+    for y in sorted(py["base"]):
+        out.append(f"| {y} | {py['median'][y]:+.1%} | {py['base'][y]:+.1%} | {py['Alpha 50'][y]:+.1%} |")
+    out += ["", "## Largest single-stock weight per review (median version)", "",
+            " ".join(f"{x['cutoff']}: {max(x['weights'].values()):.1%}" for x in runs[med]["detail"] if x["weights"]), "",
+            "2024-26 (newer price store, survivorship-biased): reported later from the VM, not part of the verdict.", ""]
+    return "\n".join(out)
+
+
+def worked2(bars, sessions, mkt, revs, n500) -> str:
+    """Step 2 mechanics, no returns: one skip window, the filter switches in the window, the cost rate."""
+    cut, eff = revs[0]
+    v = Version(2, 9)
+    ci = bisect.bisect_right(sessions, cut) - 1
+    e, s = ci - v.skip * SESS_PER_MONTH, ci - v.skip * SESS_PER_MONTH - v.lookback * SESS_PER_MONTH
+    pool = pool_at(bars, sessions, cut)
+    al = {x: a for x in pool if (a := window_alpha(bars[x], mkt, sessions, cut, v))}
+    top = sorted(al, key=lambda x: -al[x][0])[:5]
+    out = [f"## {v.name} at cut-off {cut}", "",
+           f"Alpha window: {sessions[s]} to {sessions[e]} ({e - s} returns), ending {v.skip * SESS_PER_MONTH} sessions before the cut-off.",
+           f"{len(al)} of {len(pool)} eligible have >= 95% coverage. Top 5: "
+           + ", ".join(f"{x} {al[x][0]:+.1%} (beta {al[x][1]:.2f})" for x in top), ""]
+    for n in (150, 200):
+        sw, prev = [], None
+        for d in sorted(month_ends(sessions)):
+            x = sma_at(n500, d, n)
+            if not x or d < eff:
+                continue
+            st = x[0] >= x[1]
+            if prev is not None and st != prev:
+                sw.append(f"{d} {'in' if st else 'out'} ({x[0]:.0f} vs {x[1]:.0f})")
+            prev = st
+        out.append(f"SMA{n} month-end switches from {eff}: {len(sw)}: " + "; ".join(sw))
+    out += ["", f"Cost per side: {cost_rate() * 1e4:.2f} bps of rupees traded.", ""]
+    return "\n".join(out) + "\n"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--worked", action="store_true")
@@ -571,6 +708,7 @@ def main(argv=None) -> int:
     ap.add_argument("--universe", choices=["turnover", "amfi"], default="turnover",
                     help="turnover = round 1; amfi = round 2 (AMFI average market cap top 300)")
     ap.add_argument("--mechanics", action="store_true", help="round 2: universe tables only, no returns")
+    ap.add_argument("--worked2", action="store_true", help="step 2 mechanics only, no returns")
     a = ap.parse_args(argv)
     global UNIVERSE
     UNIVERSE = a.universe
@@ -582,6 +720,9 @@ def main(argv=None) -> int:
     if a.mechanics:
         sys.stdout.buffer.write(amfi_mechanics(bars, sessions, revs).encode("utf-8"))
         return 0
+    if a.worked2:
+        sys.stdout.buffer.write(worked2(bars, sessions, mkt, revs, n500).encode("utf-8"))
+        return 0
     if a.worked:
         sys.stdout.buffer.write(worked(bars, sessions, mkt, revs, n500).encode("utf-8"))
         return 0
@@ -590,7 +731,17 @@ def main(argv=None) -> int:
     sys.stdout.buffer.write(txt.encode("utf-8"))
     if a.step1 or not ok:
         return 0
-    raise SystemExit("step 2: run after step 1 is reviewed")
+    rate = cost_rate()
+    start = revs[0][1] if UNIVERSE == "amfi" else MEASURE_FROM
+    base = run_version(BASE, bars, sessions, mkt, revs, n500, rate)
+    runs = {}
+    for v in GRID:
+        runs[v] = run_version(v, bars, sessions, mkt, revs, n500, rate)
+        print(f"  ran {v.name}", flush=True)
+    ver = step2_verdict(runs, base, start)
+    rep = step2_report(runs, base, ver, start, rate, dict(read_index("NIFTYALPHA50")), dict(n500))
+    sys.stdout.buffer.write(("\n## Step 1\n\n" + txt + "\n# Step 2\n\n" + rep).encode("utf-8"))
+    return 0
 
 
 if __name__ == "__main__":

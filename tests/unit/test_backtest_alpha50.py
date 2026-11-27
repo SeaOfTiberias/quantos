@@ -185,3 +185,48 @@ def test_eligible_amfi_skips_unmatched_but_does_not_replace_failures():
     assert matched == ["A", "NEW", "C"]          # GONE has no bars: skipped, next rank fills in
     assert un == ["GONE"]
     assert el == ["A", "C"]                      # NEW too young: dropped, D does NOT replace it
+
+
+# ─── step 2 verdict logic ─────────────────────────────────────────────────────
+
+def test_median_version_is_the_sixth_of_twelve():
+    scores = {v: float(i) for i, v in enumerate(ab.GRID)}          # GRID[0] lowest ... GRID[11] highest
+    assert ab.median_version(scores) == ab.GRID[5]
+
+
+def test_walk_forward_picks_last_years_best_without_peeking():
+    days = weekdays(date(2018, 4, 2), date(2023, 12, 29))
+    good, bad = ab.GRID[0], ab.GRID[1]
+    rng = random.Random(5)
+    # 'good' wins up to 2020, 'bad' wins after: the 2021 choice must still be 'good' (fit ends 2020-12-31)
+    rets = {good: [(d, rng.gauss(0.002 if d.year <= 2020 else -0.002, 0.01)) for d in days],
+            bad: [(d, rng.gauss(-0.002 if d.year <= 2020 else 0.004, 0.01)) for d in days]}
+    stitched, choice = ab.walk_forward(rets, date(2018, 3, 28))
+    assert choice[2019] == good and choice[2020] == good and choice[2021] == good
+    assert choice[2023] == bad                                          # by end-2022 'bad' has caught up
+    assert [d for d, _ in stitched] == [d for d in days if d.year >= 2019]
+    assert dict(stitched)[days[-1]] == dict(rets[bad])[days[-1]]
+
+
+def test_step2_verdict_passes_a_clearly_better_grid_and_fails_a_worse_one():
+    days = weekdays(date(2018, 3, 28), date(2023, 12, 29))
+    rng = random.Random(7)
+    noise = [rng.gauss(0, 0.01) for _ in days]
+    def run(mu, crash=0.0):
+        v, out = 100.0, []
+        for i, (d, e) in enumerate(zip(days, noise)):
+            v *= 1 + mu + e + (crash if d == date(2020, 3, 23) else 0.0)
+            out.append((d, v))
+        return {"values": out}
+    base = run(0.0002, crash=-0.30)
+    better = {v: run(0.0008 + i * 1e-5, crash=-0.10) for i, v in enumerate(ab.GRID)}
+    ok = ab.step2_verdict(better, base, date(2018, 3, 28), boot=300)
+    assert ok["passed"] and ok["above"] == 12
+    worse = {v: run(-0.0002 - i * 1e-5, crash=-0.35) for i, v in enumerate(ab.GRID)}
+    bad = ab.step2_verdict(worse, base, date(2018, 3, 28), boot=300)
+    assert not bad["passed"] and bad["above"] == 0 and not any(bad["checks"].values())
+
+
+def test_per_year():
+    v = [(date(2018, 3, 28), 100.0), (date(2018, 12, 31), 110.0), (date(2019, 12, 31), 99.0)]
+    assert ab.per_year(v) == pytest.approx({2018: 0.10, 2019: -0.10})

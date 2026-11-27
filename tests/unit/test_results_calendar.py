@@ -103,7 +103,8 @@ def test_event_filter_service_blocks_on_nse_results(tmp_path):
     svc.refresh_results()                                              # reload doesn't duplicate
     assert sum(e.symbol == "ADANIENT" for e in svc.calendar._events) == 1
     assert all(e.symbol is None for e in svc.calendar.upcoming_events(7))        # feed hidden by default
-    assert [e.symbol for e in svc.calendar.upcoming_events(7, {"adanient"})] == ["ADANIENT"]
+    # market-wide events (e.g. an RBI policy date inside the 7 days) always show; compare stock events only
+    assert [e.symbol for e in svc.calendar.upcoming_events(7, {"adanient"}) if e.symbol] == ["ADANIENT"]
 
 
 def test_event_filter_service_survives_a_dead_feed(tmp_path):
