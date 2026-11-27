@@ -13,6 +13,16 @@ The overnight premium exists but is small: about 2-3 bps a night gross, and most
 
 Not a result, noted for the record only: the futures price also carries the cost-of-carry premium over spot, which decays toward expiry, so part of any overnight move on futures is carry, not market return. It doesn't change the verdict: the gross is below the cost either way.
 
+## Post-run note (2026-11-27): Muhurat sessions
+
+The trading calendar counts NSE's one-hour Muhurat sessions as ordinary days. The weekend filter excluded the ones on Saturdays and Sundays, but the four on weekdays (2021-11-04, 2022-10-24, 2024-11-01, 2025-10-21) stayed in. That's 8 nights per index whose open or close is a Muhurat session.
+
+Recomputed without them, from the run's own trade file (`research/lab/trades/e3_overnight.csv`), report only:
+- NIFTY: net −7.24 bps, t −4.77 (was −7.09, t −4.69), n 1,900.
+- BANKNIFTY: net −6.43 bps, t −3.53 (was −6.30, t −3.47), n 1,898.
+
+The verdict is unchanged, and the pre-registered numbers above stand as run. E1 excludes these sessions by an amendment made before its run.
+
 ## Full output
 
 Window 2019-02-11 to 2026-11-27. Costs: charges at 2026 rates (STT 0.05% sell side) plus 3 bps slippage per round trip, on every night (the verdict).

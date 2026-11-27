@@ -90,3 +90,13 @@ Run 2026-11-27, no P&L computed.
 - **Usable by year:** 2019 477, 2020 477, 2021 562, 2022 658, 2023 683, 2024 674, 2025 849, 2026 756.
 - **Paired with a clean control:** 4,904. Controls lost: 114 not traded at R, 50 no traded straddle at P, 46 missing file, 16 not in F&O, 4 no clean session, 2 no future at R.
 - **Days from P to option expiry:** quartiles 11 / 18 / 25.
+
+## Amendment 1 (2026-11-27, after sign-off, before any P&L; mechanics only)
+
+**Muhurat sessions are excluded from the session list.** These are NSE's one-hour Diwali sessions: 2019-10-27, 2020-11-14, 2021-11-04, 2022-10-24, 2023-11-12, 2024-11-01, 2025-10-21 and 2026-11-08.
+
+The trading calendar is derived from the bhavcopy files, so it counts them as ordinary sessions, and the weekend filter missed the four that fell on weekdays. A worked case showed the problem: IGL, reaction day 2022-10-24.
+
+With them excluded, an event whose next session would have been a Muhurat session takes the next full session as R, and controls skip them the same way.
+
+Nothing else changes: the verdict, costs, haircut rule and window stay as signed off. The data-check counts above were taken before this amendment; the run reports the new counts.

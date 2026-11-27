@@ -41,6 +41,10 @@ SPREAD_HALF = None                                       # half-spread per leg p
 T_PASS = 2.0
 RAW = Path("data_cache/nse_bhavcopy/raw")
 STAMP_BUY = 0.00003                                      # stamp duty on option buys, 0.003% of premium
+# Amendment 1: Muhurat sessions (one-hour Diwali sessions) are in the bhavcopy-derived calendar as
+# ordinary days; weekday ones are dropped from the session list like the weekend specials.
+MUHURAT = {date(2019, 10, 27), date(2020, 11, 14), date(2021, 11, 4), date(2022, 10, 24), date(2023, 11, 12),
+           date(2024, 11, 1), date(2025, 10, 21), date(2026, 11, 8)}
 
 
 @dataclass(frozen=True)
@@ -184,7 +188,7 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--worked", action="store_true")
     a = ap.parse_args(argv)
-    sessions = [d for d in trading_days(date(2019, 1, 1), date(2026, 11, 27)) if d.weekday() < 5]
+    sessions = [d for d in trading_days(date(2019, 1, 1), date(2026, 11, 27)) if d.weekday() < 5 and d not in MUHURAT]
     events = [e for e in rev.load_events() if START <= e.broadcast.date() <= END]
     rows, need = plan(events, sessions)
     print(f"{len(events)} results events {START}..{END}; {len(need)} session files needed", flush=True)
