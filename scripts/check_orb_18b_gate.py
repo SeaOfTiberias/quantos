@@ -72,7 +72,9 @@ DEPLOYED_AT = date(2026, 9, 22)     # orb_scalping_filtered.enabled flipped true
 MIN_SESSIONS = 40
 OUTAGES = ((date(2026, 10, 8), date(2026, 11, 17)),      # inclusive; sessions the 18b job never ran
            # 2026-11-23 (user-approved): Fyers token dead 09:15-10:04 IST, entry window missed, no trade
-           (date(2026, 11, 23), date(2026, 11, 23)))
+           (date(2026, 11, 23), date(2026, 11, 23)),
+           # 2026-11-26 (user-approved 11-27): Fyers token dead the whole session, every fire failed, no trade
+           (date(2026, 11, 26), date(2026, 11, 26)))
 SESSIONS_FILE = Path.home() / ".quantos" / "l1_store" / "bars" / "HDFCBANK.csv"   # bhavcopy dates = NSE sessions
 BASE_CAPITAL = 50_000.0
 UNDERLYINGS = ("NIFTY", "BANKNIFTY")

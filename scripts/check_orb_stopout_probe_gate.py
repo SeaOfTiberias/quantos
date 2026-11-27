@@ -53,6 +53,7 @@ def gate_status(n: int, weeks: float, min_n: int = MIN_SAMPLE_N, min_weeks: floa
 # 2026-11-23, user-approved; rows only, no spread number read).
 EXCLUDED_TRADE_DATES = {
     "2026-11-23": "Fyers token dead 09:15-10:04 IST; the entry was captured late, at 10:05 prices",
+    "2026-11-26": "Fyers token dead the whole session; no row was written (listed for the record)",
 }
 
 

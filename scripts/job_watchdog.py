@@ -7,7 +7,9 @@ systemd, checks them (core/ops/watchdog.py) and Telegrams each fault once per IS
 and a "cleared" line when it goes away. The run at or after 21:00 IST always sends a
 one-line summary, so a silent evening means the watchdog itself is down.
 
-Read-only: it never starts, stops or edits a unit.
+Read-only: it never starts, stops or edits a unit. On trading days from 08:45 to 15:30 IST it
+also makes one live Fyers call (get_profile) and alerts TOKEN when it fails; only the error code
+and message are kept, never profile data.
 
     .venv/bin/python scripts/job_watchdog.py              # check, send
     .venv/bin/python scripts/job_watchdog.py --dry-run    # print, send nothing, keep no state
@@ -20,6 +22,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -33,6 +36,8 @@ STATE = HOME / "job_watchdog_state.json"
 SUMMARY_FROM_HOUR = 21                     # IST
 LOOKBACK_H = 26                            # calendar fires looked for in the last 26 hours
 ITERATIONS = 2000                          # enough for an every-minute calendar over 26 hours
+CONFIG = Path(__file__).resolve().parent.parent / "agent" / "config.yaml"
+TOKEN_PROBE_TIMEOUT_S = 30                 # a hung Fyers socket must not hold the watchdog
 SHOW = ["Type", "ActiveState", "Result", "InactiveExitTimestamp", "TimeoutStartUSec"]
 
 
@@ -92,6 +97,26 @@ def gather(now: datetime) -> list[wd.Unit]:
     return units
 
 
+def probe_fyers(timeout_s: float = TOKEN_PROBE_TIMEOUT_S) -> Optional[str]:
+    """None when a live Fyers call works, else a short reason with no account data."""
+    box: dict = {}
+
+    def go():
+        try:
+            import yaml
+            from core.brokers import FyersBroker
+            config = yaml.safe_load(CONFIG.read_text())
+            FyersBroker(config).connect()
+            box["err"] = None
+        except Exception as e:                            # noqa: BLE001 -- any failure is the finding
+            box["err"] = wd.fyers_reason(str(e))
+
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    return box["err"] if "err" in box else f"no answer from Fyers in {timeout_s:.0f} s"
+
+
 def send(msg: str) -> bool:
     """True when Telegram took the message; a failure is printed to the journal."""
     from cloud.api.notifier import send_telegram
@@ -114,6 +139,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     units = gather(now)
     cal, notes = wd.safe_calendar(is_trading_day)
     faults = wd.check(units, now, cal) + notes
+    if wd.in_token_window(now, cal):
+        faults += wd.token_faults(probe_fyers(), now, cal)
     state = {}
     if STATE.exists():
         try:

@@ -260,3 +260,9 @@ def test_2026_11_23_token_outage_is_not_a_recorded_session():
     from scripts.check_orb_18b_gate import recorded_sessions
     s = [date(2026, 11, 20), date(2026, 11, 23), date(2026, 11, 25)]
     assert recorded_sessions(date(2026, 11, 26), s, start=date(2026, 11, 20)) == 2
+
+
+def test_2026_11_26_token_outage_is_not_a_recorded_session():
+    from scripts.check_orb_18b_gate import recorded_sessions
+    s = [date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)]
+    assert recorded_sessions(date(2026, 11, 28), s, start=date(2026, 11, 25)) == 2

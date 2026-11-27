@@ -115,5 +115,5 @@ def test_excluded_trade_date_rows_are_not_counted():
             {"underlying": "NIFTY", "event": "exit", "trade_date": "2026-11-23"},
             {"underlying": "NIFTY", "event": "entry", "trade_date": "2026-11-24"},
             {"underlying": "BANKNIFTY", "event": "exit", "trade_date": "2026-11-20"}]
-    assert "2026-11-23" in EXCLUDED_TRADE_DATES
+    assert "2026-11-23" in EXCLUDED_TRADE_DATES and "2026-11-26" in EXCLUDED_TRADE_DATES
     assert [r["trade_date"] for r in counted_exit_rows(rows, "NIFTY")] == ["2026-11-20"]

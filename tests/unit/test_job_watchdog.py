@@ -117,3 +117,36 @@ def test_repeated_timerscalendar_lines_keep_every_schedule():
     two = wd.parse_show("TimersCalendar={ OnCalendar=*-*-* 09:45:00 ; next_elapse=n/a }\n"
                         "TimersCalendar={ OnCalendar=*-*-* 04:05:00 ; next_elapse=n/a }")
     assert wd.calendar_specs(two["TimersCalendar"]) == ["*-*-* 09:45:00", "*-*-* 04:05:00"]
+
+
+# ─── TOKEN (2026-11-27, after the 11-26 dead-token day) ──────────────────
+
+def test_token_fault_only_on_trading_days_inside_the_window():
+    at = lambda h, m: datetime(2026, 11, 26, h, m, tzinfo=UTC) - timedelta(hours=5, minutes=30)   # IST wall time
+    err = "code -16: Token is Invalid or Expired"
+    assert wd.token_faults(err, at(8, 30), TRADING) == []          # before 08:45: the overnight expiry, not news
+    [f] = wd.token_faults(err, at(8, 45), TRADING)
+    assert f.kind == "TOKEN" and "Token is Invalid" in f.detail and "08:45 IST" in f.detail
+    assert wd.token_faults(err, at(15, 30), TRADING) != []
+    assert wd.token_faults(err, at(15, 45), TRADING) == []
+    assert wd.token_faults(err, at(10, 0), HOLIDAY) == []
+    assert wd.token_faults(None, at(10, 0), TRADING) == []         # the call worked
+
+
+def test_token_fault_is_sent_once_then_cleared_after_the_refresh():
+    f = wd.Fault("fyers-token", "TOKEN", "live Fyers check failed")
+    d = date(2026, 11, 26)
+    msgs, st = wd.notify([f], {}, d)
+    assert len(msgs) == 1 and "TOKEN fyers-token" in msgs[0] and "refresh the Fyers token" in msgs[0]
+    assert wd.notify([f], st, d)[0] == []
+    msgs, _ = wd.notify([], st, d)
+    assert msgs == ["✅ cleared TOKEN fyers-token"]
+
+
+def test_fyers_reason_keeps_only_code_and_message():
+    raw = ("Fyers connect error: Fyers connection failed: "
+           "{'s': 'error', 'code': -16, 'message': 'Token is Invalid or Expired'}")
+    assert wd.fyers_reason(raw) == "code -16: Token is Invalid or Expired"
+    leaky = "Fyers connection failed: {'code': 500, 'message': 'x', 'data': {'name': 'SYNTHETIC USER'}}"
+    assert "SYNTHETIC" not in wd.fyers_reason(leaky)
+    assert wd.fyers_reason("HTTPSConnectionPool: read timed out\nmore") == "HTTPSConnectionPool: read timed out"

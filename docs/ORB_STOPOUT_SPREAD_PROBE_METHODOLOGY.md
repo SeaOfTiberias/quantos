@@ -148,3 +148,7 @@ instead and say so explicitly when reporting.
 - That session's rows stay in `data_cache/orb_scalping_stopout_spread_samples.csv` but are never counted. They are dropped by `EXCLUDED_TRADE_DATES` in `scripts/check_orb_stopout_probe_gate.py`.
 - Any later session with the same fault is excluded the same way: dated, with its reason, before any spread number is read.
 
+## Amendment, 2026-11-27 (approved by the user; rows only, no spread number read)
+
+2026-11-26: the Fyers token was dead for the whole session, and the probe wrote no row that day (counted 0 rows). The date is added to `EXCLUDED_TRADE_DATES` for the record. It changes no count.
+

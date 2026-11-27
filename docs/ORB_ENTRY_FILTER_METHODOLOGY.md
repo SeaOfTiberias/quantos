@@ -243,6 +243,15 @@ The Fyers token was dead from the open until 10:04 IST, so every 18 and 18b fire
 - The 40th recorded session moves one session later.
 - Nothing else changes.
 
+## Amendment, 2026-11-27 (approved by the user; no 18b P&L read): 2026-11-26 is not a recorded session
+
+The Fyers token was dead for the whole session ("Token is Invalid or Expired" on every fire, 09:15-15:30 IST), so 18 and 18b never connected and took no trade.
+
+- 2026-11-26 is added to `OUTAGES` in `scripts/check_orb_18b_gate.py`, so it does not count toward the 40 recorded sessions.
+- The 40th recorded session moves one more session later.
+- The job watchdog now checks the Fyers token live on trading days from 08:45 IST (TOKEN alert), so a dead token is flagged before the open.
+- Nothing else changes.
+
 ## What this does NOT produce, even in the best case
 
 Turning `entry_filter_enabled: true` on is a **paper-trading configuration

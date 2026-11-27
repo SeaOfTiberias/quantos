@@ -19,6 +19,9 @@ Faults, one key per unit and kind:
              an NSE trading day, or an always-on service is not active.
   NO_OUTPUT  a run finished with success on a trading day, but the file the job writes is
              older than the run's start (OUTPUTS).
+  TOKEN      on a trading day inside TOKEN_WINDOW, a live Fyers call (get_profile) failed:
+             every Fyers job will fail until the token is refreshed. Added 2026-11-27 after
+             11-26, when the token was dead all day and 11 jobs failed one by one.
 
 A fault is sent once per IST day while it lasts; when it goes away a "cleared" line is sent.
 """
@@ -37,6 +40,10 @@ SLACK_S = 60                       # systemd needs a moment to act on its own ti
 GRACE_S = 5 * 60                   # a fire this recent may not have triggered yet
 OUTPUT_SLACK_S = 120               # an output written just before the run start still counts
 MARKET = (time(9, 20), time(15, 25))   # IST window in which daemons must be running
+# IST window for the live Fyers token check. 08:45 is the first watchdog run that leaves time to
+# refresh before the Darvas pre-open (09:02 IST); the token expires overnight, so earlier runs
+# would alert every morning.
+TOKEN_WINDOW = (time(8, 45), time(15, 30))
 ALWAYS_ON = ("quantos-cloud-api.service", "quantos-agent.service")
 # The file (under ~/.quantos) each job writes on a successful run; {today} = the IST date.
 OUTPUTS = {
@@ -176,6 +183,29 @@ def check(units: list[Unit], now: datetime, is_trading_day: Callable[[date], boo
     return out
 
 
+def in_token_window(now: datetime, is_trading_day: Callable[[date], bool]) -> bool:
+    ist = now.astimezone(IST)
+    return is_trading_day(ist.date()) and TOKEN_WINDOW[0] <= ist.time() <= TOKEN_WINDOW[1]
+
+
+def fyers_reason(err: str) -> str:
+    """A Fyers connect error -> 'code -16: Token is Invalid or Expired'. Only the code and message
+    are kept, so no profile or account field reaches a log or a Telegram message."""
+    code = re.search(r"'code':\s*(-?\d+)", err or "")
+    msg = re.search(r"'message':\s*'([^']{0,120})'", err or "")
+    if code or msg:
+        return f"code {code.group(1) if code else '?'}: {msg.group(1) if msg else 'no message'}"
+    return (err or "unknown error").splitlines()[0][:120]
+
+
+def token_faults(probe_error: Optional[str], now: datetime, is_trading_day: Callable[[date], bool]) -> list[Fault]:
+    """probe_error: None when the live Fyers call worked, else a short reason (no account data).
+    A fault only on a trading day inside TOKEN_WINDOW."""
+    if probe_error is None or not in_token_window(now, is_trading_day):
+        return []
+    return [Fault("fyers-token", "TOKEN", f"live Fyers check failed at {_ist(now)}: {probe_error[:140]}")]
+
+
 def safe_calendar(fn: Callable[[date], bool]) -> tuple[Callable[[date], bool], list[Fault]]:
     """The NSE calendar, falling back to weekdays when it doesn't cover a date (it raises); the
     returned list gets one CALENDAR fault the first time that happens."""
@@ -195,6 +225,8 @@ def fix_hint(f: Fault) -> str:
     if f.kind == "CALENDAR":
         return ("add the next year's NSE holiday list to core/reference/data/nse_holidays.txt, or run "
                 "scripts/derive_nse_calendar.py (see its docstring); then deploy")
+    if f.kind == "TOKEN":
+        return "refresh the Fyers token (cockpit button); Fyers jobs that already failed today do not re-run by themselves"
     if f.kind == "STUCK":
         return f"sudo systemctl stop {f.unit}  (the timer starts a fresh run)"
     if f.kind in ("FAILED", "NO_OUTPUT"):
