@@ -19,9 +19,11 @@ Faults, one key per unit and kind:
              an NSE trading day, or an always-on service is not active.
   NO_OUTPUT  a run finished with success on a trading day, but the file the job writes is
              older than the run's start (OUTPUTS).
-  TOKEN      on a trading day inside TOKEN_WINDOW, a live Fyers call (get_profile) failed:
-             every Fyers job will fail until the token is refreshed. Added 2026-11-27 after
-             11-26, when the token was dead all day and 11 jobs failed one by one.
+  TOKEN      on a trading day inside TOKEN_WINDOW, a live broker call failed: fyers-token
+             (get_profile; every Fyers job fails until it is refreshed) or icici-token (today's
+             saved Breeze session + get_funds; order release and the position manager's exits
+             fail without it). Added 2026-11-27 after 11-26, when the Fyers token was dead all
+             day and 11 jobs failed one by one.
 
 A fault is sent once per IST day while it lasts; when it goes away a "cleared" line is sent.
 """
@@ -198,12 +200,28 @@ def fyers_reason(err: str) -> str:
     return (err or "unknown error").splitlines()[0][:120]
 
 
-def token_faults(probe_error: Optional[str], now: datetime, is_trading_day: Callable[[date], bool]) -> list[Fault]:
-    """probe_error: None when the live Fyers call worked, else a short reason (no account data).
+BROKER_LABEL = {"fyers": "Fyers", "icici": "ICICI Direct (Breeze)"}
+
+
+def breeze_reason(resp: Optional[dict]) -> Optional[str]:
+    """A Breeze API response -> None when Status is 200, else 'status N: <Error>'. Only Status
+    and Error are read, so no funds or account field reaches a log or a Telegram message."""
+    if not isinstance(resp, dict):
+        return "no response from ICICI"
+    if resp.get("Status") == 200:
+        return None
+    err = resp.get("Error")
+    return f"status {resp.get('Status', '?')}: {str(err)[:120] if err else 'no error message'}"
+
+
+def token_faults(probe_error: Optional[str], now: datetime, is_trading_day: Callable[[date], bool],
+                 broker: str = "fyers") -> list[Fault]:
+    """probe_error: None when the live broker call worked, else a short reason (no account data).
     A fault only on a trading day inside TOKEN_WINDOW."""
     if probe_error is None or not in_token_window(now, is_trading_day):
         return []
-    return [Fault("fyers-token", "TOKEN", f"live Fyers check failed at {_ist(now)}: {probe_error[:140]}")]
+    return [Fault(f"{broker}-token", "TOKEN",
+                  f"live {BROKER_LABEL[broker]} check failed at {_ist(now)}: {probe_error[:140]}")]
 
 
 def safe_calendar(fn: Callable[[date], bool]) -> tuple[Callable[[date], bool], list[Fault]]:
@@ -225,6 +243,9 @@ def fix_hint(f: Fault) -> str:
     if f.kind == "CALENDAR":
         return ("add the next year's NSE holiday list to core/reference/data/nse_holidays.txt, or run "
                 "scripts/derive_nse_calendar.py (see its docstring); then deploy")
+    if f.kind == "TOKEN" and f.unit == "icici-token":
+        return ("log in to ICICI Direct from the cockpit; until then orders can't be released and the "
+                "position manager can't place or manage exits")
     if f.kind == "TOKEN":
         return "refresh the Fyers token (cockpit button); Fyers jobs that already failed today do not re-run by themselves"
     if f.kind == "STUCK":

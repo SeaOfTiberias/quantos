@@ -8,8 +8,9 @@ and a "cleared" line when it goes away. The run at or after 21:00 IST always sen
 one-line summary, so a silent evening means the watchdog itself is down.
 
 Read-only: it never starts, stops or edits a unit. On trading days from 08:45 to 15:30 IST it
-also makes one live Fyers call (get_profile) and alerts TOKEN when it fails; only the error code
-and message are kept, never profile data.
+also makes one live Fyers call (get_profile) and one live ICICI Direct call (today's saved Breeze
+session, get_funds) and alerts TOKEN when either fails; only error codes and messages are kept,
+never profile, funds or account data.
 
     .venv/bin/python scripts/job_watchdog.py              # check, send
     .venv/bin/python scripts/job_watchdog.py --dry-run    # print, send nothing, keep no state
@@ -97,24 +98,42 @@ def gather(now: datetime) -> list[wd.Unit]:
     return units
 
 
-def probe_fyers(timeout_s: float = TOKEN_PROBE_TIMEOUT_S) -> Optional[str]:
-    """None when a live Fyers call works, else a short reason with no account data."""
+def _with_timeout(fn, name: str, timeout_s: float) -> Optional[str]:
+    """fn() -> None or a reason, run in a daemon thread so a hung socket can't hold the watchdog."""
     box: dict = {}
 
     def go():
-        try:
-            import yaml
-            from core.brokers import FyersBroker
-            config = yaml.safe_load(CONFIG.read_text())
-            FyersBroker(config).connect()
-            box["err"] = None
-        except Exception as e:                            # noqa: BLE001 -- any failure is the finding
-            box["err"] = wd.fyers_reason(str(e))
+        box["err"] = fn()
 
     t = threading.Thread(target=go, daemon=True)
     t.start()
     t.join(timeout_s)
-    return box["err"] if "err" in box else f"no answer from Fyers in {timeout_s:.0f} s"
+    return box["err"] if "err" in box else f"no answer from {name} in {timeout_s:.0f} s"
+
+
+def probe_fyers(timeout_s: float = TOKEN_PROBE_TIMEOUT_S) -> Optional[str]:
+    """None when a live Fyers call works, else a short reason with no account data."""
+    def go():
+        try:
+            import yaml
+            from core.brokers import FyersBroker
+            FyersBroker(yaml.safe_load(CONFIG.read_text())).connect()
+            return None
+        except Exception as e:                            # noqa: BLE001 -- any failure is the finding
+            return wd.fyers_reason(str(e))
+    return _with_timeout(go, "Fyers", timeout_s)
+
+
+def probe_icici(timeout_s: float = TOKEN_PROBE_TIMEOUT_S) -> Optional[str]:
+    """None when today's saved Breeze session answers a live read call, else a short reason.
+    Only Status/Error of the response are looked at; the funds figures are dropped unread."""
+    def go():
+        try:
+            from agent.auth import breeze_auth
+            return wd.breeze_reason(breeze_auth.connect().get_funds())
+        except Exception as e:                            # noqa: BLE001 -- any failure is the finding
+            return str(e).splitlines()[0][:120] if str(e) else type(e).__name__
+    return _with_timeout(go, "ICICI", timeout_s)
 
 
 def send(msg: str) -> bool:
@@ -140,7 +159,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     cal, notes = wd.safe_calendar(is_trading_day)
     faults = wd.check(units, now, cal) + notes
     if wd.in_token_window(now, cal):
-        faults += wd.token_faults(probe_fyers(), now, cal)
+        faults += wd.token_faults(probe_fyers(), now, cal, "fyers")
+        faults += wd.token_faults(probe_icici(), now, cal, "icici")
     state = {}
     if STATE.exists():
         try:

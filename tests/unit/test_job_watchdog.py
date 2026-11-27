@@ -150,3 +150,20 @@ def test_fyers_reason_keeps_only_code_and_message():
     leaky = "Fyers connection failed: {'code': 500, 'message': 'x', 'data': {'name': 'SYNTHETIC USER'}}"
     assert "SYNTHETIC" not in wd.fyers_reason(leaky)
     assert wd.fyers_reason("HTTPSConnectionPool: read timed out\nmore") == "HTTPSConnectionPool: read timed out"
+
+
+def test_icici_token_fault_names_the_broker_and_its_fix():
+    now = datetime(2026, 11, 26, 4, 0, tzinfo=UTC)                 # 09:30 IST
+    [f] = wd.token_faults("no ICICI Direct session for today", now, TRADING, "icici")
+    assert f.unit == "icici-token" and "ICICI Direct" in f.detail
+    msgs, _ = wd.notify([f], {}, date(2026, 11, 26))
+    assert "TOKEN icici-token" in msgs[0] and "log in to ICICI Direct" in msgs[0]
+    assert wd.token_faults(None, now, TRADING, "icici") == []
+
+
+def test_breeze_reason_reads_only_status_and_error():
+    assert wd.breeze_reason({"Status": 200, "Success": {"total_bank_balance": 12345.0}, "Error": None}) is None
+    r = wd.breeze_reason({"Status": 401, "Success": {"total_bank_balance": 12345.0}, "Error": "Session key is expired"})
+    assert r == "status 401: Session key is expired" and "12345" not in r
+    assert wd.breeze_reason(None) == "no response from ICICI"
+    assert "no error message" in wd.breeze_reason({"Status": 500})
