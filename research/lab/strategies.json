@@ -327,7 +327,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 9df8245 on the 2,586 sessions of the original range: every figure identical. The cache now also holds 10 special weekend sessions added later; with them the counts shift slightly (1,878 up events) and the verdict is the same."
    }
   },
   {
@@ -350,7 +352,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at f100b1e: byte for byte (Spearman 0.149, p 0.137)."
    }
   },
   {
@@ -371,7 +375,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced_with_differences",
+    "date": "2026-11-28",
+    "detail": "Re-run at b1f10d1 (scripts/statarb_residual.py --universe nifty50 backtest). The script always runs to today, so it now covers to 2026-11-27: every 2020-2025 yearly row identical; 2026 and the halves shift; PF 0.86 -> 0.87; still a FAIL."
    }
   },
   {
@@ -394,7 +400,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at cabfda0: every generated figure identical; only the hand-written 'Reading the result' section isn't regenerated."
    }
   },
   {
@@ -439,7 +447,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at a29be87 on the cached candles: byte for byte."
    }
   },
   {
@@ -593,7 +603,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 8a362f8 (end date pinned to 2026-07-27): byte for byte, NIFTY and BANKNIFTY."
    }
   },
   {
@@ -728,7 +740,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 555a546 (end date pinned to 2026-07-27): byte for byte, NIFTY and BANKNIFTY."
    }
   },
   {
@@ -834,7 +848,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 8a9bb76: byte for byte, but only with scripts/validate_vol_spread_signal.py from 04787d2: the published run imported a helper that wasn't committed until two days later."
    }
   },
   {
@@ -857,7 +873,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 5a9a744 with the bhavcopy files that existed on the run date: identical. With today's data one more cycle settles (its expiry, 2026-07-28, came after the run): 158 trades, net PF 1.044, Sharpe 0.117; still a FAIL."
    }
   },
   {

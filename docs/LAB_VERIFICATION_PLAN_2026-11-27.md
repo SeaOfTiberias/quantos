@@ -50,6 +50,12 @@ Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. 
 | 2026-11-28 | CCI/CPR, CCI/SMA cross, F&O indicator filter | **Reproduced** byte for byte (8c2beb5, 89c8cf1, 6a5a51b). |
 | 2026-11-28 | SMC order block 1H, SMC bull put | **Reproduced**: input files match their pinned SHA-256 hashes, and every table matches the doc (bull put: only typeset minus signs differ). |
 | 2026-11-28 | Alpha 50 rebuild (both rounds) | **Reproduced**: every reported line identical. |
+| 2026-11-28 | Trend-day filter, vol term structure, event proximity, surge 23b | **Reproduced** byte for byte (end dates pinned to the original runs). |
+| 2026-11-28 | Vol skew | **Reproduced** byte for byte, but only with a helper module committed two days after the result: the published run used code not yet in git. |
+| 2026-11-28 | VRP IV-gated | **Reproduced**: all generated figures identical; only hand-written commentary isn't regenerated. |
+| 2026-11-28 | VRP strangle | **Reproduced** with the data that existed on the run date. With today's data one more cycle settles (expiry after the run): net PF 1.044, Sharpe 0.117. Verdict unchanged. |
+| 2026-11-28 | Earnings-gap drift | **Reproduced** exactly on the original 2,586 sessions. 10 special weekend sessions added to the cache later shift the counts slightly; verdict unchanged. |
+| 2026-11-28 | PCA stat-arb | **Reproduced with differences**: the script always runs to today. 2020-2025 rows identical, verdict unchanged. |
 
 Lessons for the remaining runs:
 - Spot-check trades against exchange prices, not only totals: S7-3's totals reproduced while its pairing was wrong.
@@ -58,3 +64,6 @@ Lessons for the remaining runs:
 - Research scripts can silently skip missing inputs. The SMC pricing check printed "0 trades" instead of failing when its folder was absent. A missing input should stop the run; new scripts should assert their data.
 - Several scripts print tables that were pasted into the doc. Compare printed output to the doc, not just `git diff`.
 - Set `PYTHONIOENCODING=utf-8` (≥ and − signs crash a cp1252 console).
+- Pin every date a script takes from "today" (end dates, rolling windows) to the original run's date.
+- Data caches grow. When a re-run differs, rebuild the input as it stood on the run date (hard-link only the files older than the run) before calling it a difference.
+- Special weekend sessions (Muhurat, Budget, DR drills) now sit in the equity cache. Any script that treats every file as a trading day picks them up. New tests should exclude them explicitly.
