@@ -47,7 +47,14 @@ Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. 
 |---|---|---|
 | 2026-11-27 | ORB candidate 18 | **Reproduced** byte for byte (d78cfd0). Trade export still to add. |
 | 2026-11-27 | S7-3 Darvas | **Reproduced**, then **corrected**: a spot-check found the TradingView row-pairing bug in `core/backtest/parser.py` (fixed, 6050691). 729 trades instead of 690, PF 0.77 instead of 0.75; verdict unchanged. Trades in the Lab; 6 of 6 spot-checks match NSE prices after adjustment. |
+| 2026-11-28 | CCI/CPR, CCI/SMA cross, F&O indicator filter | **Reproduced** byte for byte (8c2beb5, 89c8cf1, 6a5a51b). |
+| 2026-11-28 | SMC order block 1H, SMC bull put | **Reproduced**: input files match their pinned SHA-256 hashes, and every table matches the doc (bull put: only typeset minus signs differ). |
+| 2026-11-28 | Alpha 50 rebuild (both rounds) | **Reproduced**: every reported line identical. |
 
 Lessons for the remaining runs:
 - Spot-check trades against exchange prices, not only totals: S7-3's totals reproduced while its pairing was wrong.
 - Compare prices adjusted for corporate actions **up to the test date** (what the backtest saw).
+- `data_cache/` has tracked files, so a worktree already has the folder: link each needed subfolder inside it (PowerShell `New-Item -ItemType Junction`), and check the link before trusting a run.
+- Research scripts can silently skip missing inputs. The SMC pricing check printed "0 trades" instead of failing when its folder was absent. A missing input should stop the run; new scripts should assert their data.
+- Several scripts print tables that were pasted into the doc. Compare printed output to the doc, not just `git diff`.
+- Set `PYTHONIOENCODING=utf-8` (≥ and − signs crash a cp1252 console).

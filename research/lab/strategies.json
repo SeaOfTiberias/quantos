@@ -78,7 +78,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Round 1 step 1 (5595816) and round 2 steps 1-2 (ddf0da8) re-run: every reported line identical."
    }
   },
   {
@@ -120,7 +122,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 6d1e20e: every number matches; the doc only typesets minus signs."
    }
   },
   {
@@ -142,7 +146,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Input files match their pinned SHA-256 hashes. Re-run at bde7e92: discovery, confirmation and diagnostics tables match the doc line for line."
    }
   },
   {
@@ -208,7 +214,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 8c2beb5 on the same cached panel: the results doc regenerates byte for byte."
    }
   },
   {
@@ -250,7 +258,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 89c8cf1 on the same F&O cache (bt_fno, 2026-10-23): byte for byte."
    }
   },
   {
@@ -272,7 +282,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 6a5a51b on the same F&O cache: byte for byte."
    }
   },
   {
