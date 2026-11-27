@@ -40,3 +40,14 @@ Each registry entry gets a `verification` field shown on the Lab page.
 Results are committed as they land. The Lab shows each strategy's verification status.
 
 Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. It is not research data and stays out of the Lab and git.
+
+## Progress
+
+| Date | Strategy | Outcome |
+|---|---|---|
+| 2026-11-27 | ORB candidate 18 | **Reproduced** byte for byte (d78cfd0). Trade export still to add. |
+| 2026-11-27 | S7-3 Darvas | **Reproduced**, then **corrected**: a spot-check found the TradingView row-pairing bug in `core/backtest/parser.py` (fixed, 6050691). 729 trades instead of 690, PF 0.77 instead of 0.75; verdict unchanged. Trades in the Lab; 6 of 6 spot-checks match NSE prices after adjustment. |
+
+Lessons for the remaining runs:
+- Spot-check trades against exchange prices, not only totals: S7-3's totals reproduced while its pairing was wrong.
+- Compare prices adjusted for corporate actions **up to the test date** (what the backtest saw).
