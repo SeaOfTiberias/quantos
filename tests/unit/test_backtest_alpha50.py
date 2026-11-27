@@ -134,5 +134,11 @@ def test_stats():
     assert ab.block_bootstrap_share(base, better, boot=500) < 0.01
 
 
+def test_correlation():
+    assert ab.correlation([1, 2, 3, 4], [2, 4, 6, 8]) == pytest.approx(1.0)
+    assert ab.correlation([1, 2, 3, 4], [4, 3, 2, 1]) == pytest.approx(-1.0)
+    assert ab.correlation([1, 2, 3, 4], [1, 3, 2, 4]) == pytest.approx(0.8)
+
+
 def test_grid_is_twelve_versions_without_the_base():
     assert len(ab.GRID) == 12 and ab.BASE not in ab.GRID

@@ -368,7 +368,11 @@ def block_bootstrap_share(a: list[float], b: list[float], block: int = BLOCK, bo
 
 
 def correlation(x: list[float], y: list[float]) -> float:
-    return statistics.correlation(x, y)
+    """Pearson (statistics.correlation needs Python 3.10)."""
+    mx, my = sum(x) / len(x), sum(y) / len(y)
+    sxy = sum((a - mx) * (b - my) for a, b in zip(x, y))
+    sxx, syy = sum((a - mx) ** 2 for a in x), sum((b - my) ** 2 for b in y)
+    return sxy / math.sqrt(sxx * syy)
 
 
 # ─── data ────────────────────────────────────────────────────────────────────
