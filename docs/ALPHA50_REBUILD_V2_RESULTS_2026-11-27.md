@@ -1,5 +1,7 @@
 # NIFTY Alpha 50 rebuild, round 2 (AMFI market-cap universe): results, 2026-11-27
 
+**Verdict: step 1 PASS, step 2 FAIL (0 of 5 criteria).** Neither change (skip-month alpha, NIFTY 500 SMA filter) beats the index rules on risk-adjusted return. Reported as failed; not re-tuned. The Alpha 50 rebuild line is closed for these changes.
+
 Pre-registration: `docs/ALPHA50_REBUILD_V2_PREREG_2026-11-27.md` (cf85c05, amendment 1 in bbf81d8, both before any run). Code: `scripts/backtest_alpha50.py --universe amfi`, parser `scripts/parse_amfi_mcap.py`. Research only; trading stays paused.
 
 ## Step 1: tracking check — PASS
@@ -78,6 +80,76 @@ Failed the listing/frequency rules, not replaced (21): HDFCLIFE, GICRE, SBILIFE,
 Round-1 names dropped (76): 8KMILES, ABAN, ALBK, ANDHRABANK, APTECHT, BAJAJELEC, BALRAMCHIN, BEPL, BFUTILITIE, BOMDYEING, CHENNPETRO, CYIENT, DCBBANK, DELTACORP, DREDGECORP, EQUITAS, FSL, GHCL, GITANJALI, GNFC, GRANULES, GSFC, HCC, HCL-INSYS, HDIL, HEG, HFCL, HINDOILEXP, HSCL, ICIL, IFCI, INDIACEM, INDIAGLYCO, ITI, JAICORPLTD, JETAIRWAYS, JINDALSAW, JISLJALEQS, JKTYRE, JPASSOCIAT, JUSTDIAL, KIRIINDUS, KPIT, KSCL, KTKBANK, MCX, MEGH, MOIL, NCC, NIITTECH, NOCIL, ORIENTBANK, PHILIPCARB, PRAJIND, PTC, PVR, RADICO, RAYMOND, RCF, RCOM, RELIGARE, RIIL, SAREGAMA, SOBHA, SOUTHBANK, SREINFRA, TATAELXSI, TATAMTRDVR, TATASPONGE, TFCILTD, TINPLATE, TIRUMALCHM, TWL, UJJIVAN, UNITECH, VENKEYS.
 
 
-## Next
+## Step 2: the grid — FAIL (code 59d218c, run once)
 
-Step 2 (12-version grid, prereg 0a01741, window from the March 2018 expiry) runs once, as pre-registered. Its code is not yet written; worked cases come first.
+
+Window 2018-03-28 to 2023-12-29, net of costs at 36.1 bps per side.
+
+## Pass criteria
+
+- 1 better risk-adjusted (Sharpe above base, bootstrap >= 90%): **FAIL**
+- 2 smaller max drawdown: **FAIL**
+- 3 breadth: >= 9 of 12 above base: **FAIL**
+- 4 both halves above base: **FAIL**
+- 5 walk-forward above base 2019-23: **FAIL**
+
+**Step 2 FAIL**
+
+Median version (6th of 12 by Sharpe): **skip 2m, 9m, no filter**, Sharpe 1.097 vs base 1.242; bootstrap share 3.9% (need >= 90%); max drawdown -40.7% vs base -38.7%; 2 of 12 above the base.
+
+| Half | Median | Base |
+|---|---|---|
+| 2018-03-28 to 2020-06-30 | 0.035 | 0.297 |
+| 2020-07-01 to 2023-12-29 | 1.947 | 1.996 |
+
+Walk-forward 2019-23: stitched Sharpe 1.348 vs base 1.429. Choices: 2019 skip 1m, 12m, no filter; 2020 skip 1m, 9m, no filter; 2021 skip 1m, 9m, no filter; 2022 skip 2m, 9m, SMA200; 2023 skip 1m, 9m, no filter.
+
+## All versions (reported, not scored)
+
+| Version | CAGR | Sharpe | Max DD | Time in cash | Turnover/yr | Sold < 1 yr (short-term tax) |
+|---|---|---|---|---|---|---|
+| base (index rules) | +24.12% | 1.24 | -38.7% | 0% | 2.80x | 81% |
+| skip 1m, 9m, no filter | +25.43% | 1.29 | -38.0% | 0% | 3.32x | 89% |
+| skip 1m, 9m, SMA150 | +17.66% | 1.24 | -19.5% | 34% | 4.44x | 98% |
+| skip 1m, 12m, no filter | +23.28% | 1.20 | -38.9% | 0% | 2.89x | 83% |
+| skip 1m, 12m, SMA150 | +15.84% | 1.16 | -21.2% | 34% | 4.14x | 97% |
+| skip 2m, 9m, SMA150 | +15.74% | 1.14 | -22.6% | 34% | 4.54x | 98% |
+| skip 1m, 9m, SMA200 | +16.46% | 1.12 | -24.1% | 29% | 4.85x | 98% |
+| skip 2m, 9m, no filter ← median | +21.17% | 1.10 | -40.7% | 0% | 3.51x | 90% |
+| skip 1m, 12m, SMA200 | +14.52% | 1.03 | -23.4% | 29% | 4.56x | 97% |
+| skip 2m, 12m, no filter | +17.43% | 0.94 | -42.8% | 0% | 3.04x | 86% |
+| skip 2m, 9m, SMA200 | +13.24% | 0.94 | -26.0% | 29% | 4.97x | 98% |
+| skip 2m, 12m, SMA150 | +11.24% | 0.87 | -29.3% | 34% | 4.30x | 97% |
+| skip 2m, 12m, SMA200 | +9.70% | 0.73 | -29.2% | 29% | 4.70x | 97% |
+
+## Median and base vs the indices (2018-03-28 to 2023-12-29, price indices, ours net of costs)
+
+| Series | CAGR | Sharpe | Max DD |
+|---|---|---|---|
+| median version | +21.17% | 1.10 | -40.7% |
+| base | +24.12% | 1.24 | -38.7% |
+| NIFTY Alpha 50 | +23.50% | 1.12 | -40.0% |
+| NIFTY 500 | +14.50% | 0.87 | -38.3% |
+
+## Per year (first year part-year)
+
+| Year | Median | Base | Alpha 50 |
+|---|---|---|---|
+| 2018 | -7.0% | -2.3% | -2.9% |
+| 2019 | +4.7% | +12.6% | +7.2% |
+| 2020 | +38.8% | +39.4% | +51.8% |
+| 2021 | +57.4% | +60.0% | +74.4% |
+| 2022 | -6.3% | -7.5% | -14.2% |
+| 2023 | +51.6% | +52.8% | +42.5% |
+
+## Largest single-stock weight per review (median version)
+
+2018-02-28: 5.6% 2018-05-31: 7.1% 2018-08-31: 8.0% 2018-11-30: 5.3% 2019-02-28: 6.2% 2019-05-31: 7.7% 2019-08-30: 5.5% 2019-11-29: 4.3% 2020-02-28: 8.7% 2020-05-29: 7.7% 2020-08-31: 8.3% 2020-11-27: 5.5% 2021-02-26: 5.1% 2021-05-31: 4.3% 2021-08-31: 4.2% 2021-11-30: 4.1% 2022-02-28: 4.5% 2022-05-31: 4.5% 2022-08-30: 4.0% 2022-11-30: 4.1% 2023-02-28: 4.8% 2023-05-31: 4.7% 2023-08-31: 7.0% 2023-11-30: 4.1%
+
+2024-26 (newer price store, survivorship-biased): reported later from the VM, not part of the verdict.
+
+## What this does and does not say
+
+- The market filter **halved the worst fall** (about -20% to -29% against -39%) but gave up more return than it saved: every filtered version's Sharpe is at or below the base's, it is in cash about a third of the time (earning nothing, as pre-registered), and it trades ~1.5x more, nearly all short-term for tax. That trade-off is reported, not a pass: criterion 2 is judged on the median version, which is unfiltered.
+- Skipping the latest month(s) of alpha does not help: only skip-1/9-month (Sharpe 1.29) and the 150-day filter on it (1.24, a tie) are at or above the base's 1.24, 2 of 12 versions.
+- The base itself (the index rules, net of 36 bps per side) ran close to the real index: CAGR +24.1% vs +23.5%, Sharpe 1.24 vs 1.12. Buying the ETF gets this without the rebuild.
