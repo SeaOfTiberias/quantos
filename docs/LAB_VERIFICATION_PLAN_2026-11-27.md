@@ -1,0 +1,42 @@
+# Strategy Lab: verifying old results (triage and method, 2026-11-27)
+
+Most tested strategies saved only summary numbers, not their trades. This plan backs each result with data in two steps:
+
+1. **Reproduce** the published result from the code as it was.
+2. **Export** its trades into the Lab (`research/lab/trades/`).
+
+## Method
+
+1. Check out the result's commit into a separate git worktree. Main is never touched, and almost every script rewrites its own results doc when run.
+2. Copy in the gitignored data the script reads.
+3. Run the script unchanged.
+4. Compare the regenerated results doc with the committed one (`git diff`):
+   - **Reproduced exactly:** no diff.
+   - **Reproduced with differences:** the diff and its cause are recorded (usually data refreshed since).
+   - **Can't reproduce:** the reason is recorded (data gone, API limit).
+5. Only then add a trade export, run from current code, and check its totals against the reproduced summary, so the Lab's trades are shown to belong to the published result.
+6. Spot-check 3–5 trades per strategy against raw exchange prices.
+
+Each registry entry gets a `verification` field shown on the Lab page.
+
+**Pilot, 2026-11-27: ORB candidate 18** (`scripts/backtest_orb_time_convention.py` at d78cfd0, cached candles). The regenerated `docs/ORB_TIME_CONVENTION_RESULTS.md` is byte-identical to the committed one. **Reproduced exactly.**
+
+## Triage (no re-runs except the pilot)
+
+| Group | Strategies | What it needs |
+|---|---|---|
+| **A. Trades already on disk** | S7-3 Darvas (TradingView exports, 40 symbols in `backtest_results/`) | Convert only. |
+| **B. Cached data, local re-run** | ORB 18 (done), trend-day filter, CCI/CPR (`data_cache/cci_cpr`), VRP strangle and IV-gated (F&O bhavcopy), vol skew and term structure, event proximity, expiry-day effect, earnings-gap drift, CCI/SMA cross, F&O indicator filter, SMC order block (1H) and bull put, Darvas ATR-stop OOS / re-entry / structural stop (equity bhavcopy), pairs v2, RS-momentum family (S8-3, S1, candidate 11), Alpha 50 rebuild, surge 23b | Re-run in a worktree; confirm each one's cache is complete when it runs. |
+| **C. Needs Fyers data again (VM)** | Darvas box-width and trailing stop, EMT VWAP, goodnight scalper, Dow theory, pairs v1, vol spread, candle confirm, S8-4 EMA options | Daily history is deep and re-fetchable. Old intraday history may no longer be served (Fyers serves ~100 days per call); any that can't be fetched are marked "can't reproduce" with the reason. |
+| **D. Nothing to verify** | MA cross and techno-funda (never run), E1 (pending), ORB 18b | 18b's protocol forbids looking at its P&L before its gate. |
+| **E. No producing script found** | PCA stat-arb (code in `core/statarb`; how it was run is unclear) | Find the entry point first. |
+
+## Order
+
+1. Group A.
+2. Group B, newest first.
+3. Group C on the VM.
+
+Results are committed as they land. The Lab shows each strategy's verification status.
+
+Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. It is not research data and stays out of the Lab and git.
