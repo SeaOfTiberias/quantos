@@ -48,3 +48,9 @@ Shown to the user, mechanics only:
 - the parser's row counts per AMFI file against each file's last rank.
 
 Then step 1 runs once.
+
+## Amendment 1 (2026-11-27, after sign-off, before any run; mechanics only)
+
+- **Step 1 starts at the first effective close, 2018-03-28** (the March 2018 expiry), not 2018-03-14: round 2's first review is the 2018-02-28 cut-off, so the rebuild holds nothing before that close. The index is compared over exactly the same dates, the end stays 2023-12-29, and both thresholds are unchanged.
+- **NSE symbol on a list:** AMFI prints the BSE symbol, then the NSE symbol (then MSEI's); empty cells vanish from the PDF text. The NSE symbol is the **second** symbol printed; a row with **one** symbol printed (the same symbol on both exchanges, or one exchange only) uses that one. A row's text is split at its last ISIN (wrapped company names can leak a fragment into the line); `*` and `$` marks are stripped. Parser: `scripts/parse_amfi_mcap.py`.
+- "Has bars in our NSE EQ data" means the symbol is in the loaded bar store (round 1's loader, symbols with at least 120 bars 2015-23). A matched name with no bars near the cut-off then fails the frequency rule and is not replaced, as the rules say.

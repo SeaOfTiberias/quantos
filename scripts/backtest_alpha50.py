@@ -103,25 +103,67 @@ def months_before(d: date, n: int) -> date:
     return date(y, m, min(d.day, 28))
 
 
+def listing_and_frequency(ranked: list[str], bars: dict[str, dict[date, dict]], sessions: list[date],
+                          cutoff: date) -> list[str]:
+    """Bars from at least one year before the cut-off and on every session of the year to it."""
+    year = [d for d in sessions if months_before(cutoff, 12) < d <= cutoff]
+    out = []
+    for s in ranked:
+        b = bars[s]
+        if min(b) <= cutoff - timedelta(days=365) and all(d in b for d in year):
+            out.append(s)
+    return out
+
+
 def eligible(bars: dict[str, dict[date, dict]], sessions: list[date], cutoff: date,
              top: int = TOP_LIQ) -> list[str]:
-    """Top `top` by average daily traded value over the 6 months to the cut-off, then the
+    """Round 1: top `top` by average daily traded value over the 6 months to the cut-off, then the
     1-year listing and 100% trading-frequency rules (amendment 1 order)."""
     six = months_before(cutoff, 6)
-    year = [d for d in sessions if months_before(cutoff, 12) < d <= cutoff]
     liq = {}
     for s, b in bars.items():
         vals = [r["val"] for d, r in b.items() if six < d <= cutoff]
         if vals:
             liq[s] = sum(vals) / len(vals)
     ranked = sorted(liq, key=lambda s: (-liq[s], s))[:top]
-    out = []
-    for s in ranked:
-        b = bars[s]
-        first = min(b)
-        if first <= cutoff - timedelta(days=365) and all(d in b for d in year):
+    return listing_and_frequency(ranked, bars, sessions, cutoff)
+
+
+# ─── round 2 universe: AMFI average market cap (docs/ALPHA50_REBUILD_V2_PREREG_2026-11-27.md) ──
+
+AMFI = Path("data_cache/amfi_mcap")
+AMFI_FIRST_YEAR = 2018            # first cut-off with a public list: 2018-02-28 (Jul-Dec 2017 list)
+
+
+def amfi_period(cutoff: date) -> str:
+    """Feb/May cut-offs use the previous year's Jul-Dec list, Aug/Nov the same year's Jan-Jun list."""
+    return f"{cutoff.year - 1}H2" if cutoff.month <= 6 else f"{cutoff.year}H1"
+
+
+def read_amfi(period: str, root: Path = AMFI) -> list[str]:
+    """NSE symbols in AMFI rank order (scripts/parse_amfi_mcap.py output); blanks and repeats dropped."""
+    with (root / f"amfi_{period}.csv").open(encoding="utf-8") as f:
+        rows = sorted(csv.DictReader(f), key=lambda r: int(r["rank"]))
+    out, seen = [], set()
+    for r in rows:
+        s = r["nse_symbol"].strip()
+        if s and s not in seen:
+            seen.add(s)
             out.append(s)
     return out
+
+
+def eligible_amfi(bars: dict[str, dict[date, dict]], sessions: list[date], cutoff: date,
+                  ranked: list[str], top: int = TOP_LIQ) -> tuple[list[str], list[str], list[str]]:
+    """(eligible, matched top `top`, unmatched skipped): the `top` highest-ranked AMFI names that have
+    bars in our data (an unmatched name is skipped and the next rank fills in), then round 1's listing
+    and frequency rules, with no replacement for stocks that fail them."""
+    matched, unmatched = [], []
+    for s in ranked:
+        if len(matched) == top:
+            break
+        (matched if s in bars else unmatched).append(s)
+    return listing_and_frequency(matched, bars, sessions, cutoff), matched, unmatched
 
 
 def ols_alpha(r: list[float], m: list[float]) -> tuple[float, float]:
@@ -404,6 +446,17 @@ def cost_rate() -> float:
 
 
 _POOLS: dict = {}
+UNIVERSE = "turnover"             # round 1; "amfi" = round 2
+
+
+def pool_at(bars, sessions, cut) -> list[str]:
+    key = (UNIVERSE, cut)
+    if key not in _POOLS:
+        if UNIVERSE == "amfi":
+            _POOLS[key] = eligible_amfi(bars, sessions, cut, read_amfi(amfi_period(cut)))[0]
+        else:
+            _POOLS[key] = eligible(bars, sessions, cut)
+    return _POOLS[key]
 
 
 def build_targets(v: Version, bars, sessions, mkt, revs) -> tuple[list, list]:
@@ -411,9 +464,7 @@ def build_targets(v: Version, bars, sessions, mkt, revs) -> tuple[list, list]:
     existing: set[str] = set()
     out, detail = [], []
     for cut, eff in revs:
-        if cut not in _POOLS:
-            _POOLS[cut] = eligible(bars, sessions, cut)
-        pool = _POOLS[cut]
+        pool = pool_at(bars, sessions, cut)
         al, betas = {}, {}
         for s in pool:
             x = window_alpha(bars[s], mkt, sessions, cut, v)
@@ -470,6 +521,34 @@ def worked(bars, sessions, mkt, revs, n500) -> str:
     return "\n".join(out) + "\n"
 
 
+def amfi_mechanics(bars, sessions, revs) -> str:
+    """Round 2 'before the full run' tables: parser counts, per-review overlap with round 1, no returns."""
+    out = ["## AMFI lists (parser rows vs last rank)", "", "| List | Rows | Last rank | Rank-300 NSE symbol |", "|---|---|---|---|"]
+    for p in sorted({amfi_period(c) for c, _ in revs}):
+        with (AMFI / f"amfi_{p}.csv").open(encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        r300 = [r["nse_symbol"] for r in rows if r["rank"] == "300"]
+        out.append(f"| {p} | {len(rows)} | {max(int(r['rank']) for r in rows)} | {r300[0] if r300 else '?'} |")
+    out += ["", "## Per review", "",
+            "| Cut-off | List | Top-300 matched | Unmatched skipped | Eligible (round 2) | Eligible (round 1) | In both | Round-1 names dropped |",
+            "|---|---|---|---|---|---|---|---|"]
+    first = None
+    for cut, eff in revs:
+        el, matched, un = eligible_amfi(bars, sessions, cut, read_amfi(amfi_period(cut)))
+        r1 = eligible(bars, sessions, cut)
+        both = set(el) & set(r1)
+        out.append(f"| {cut} | {amfi_period(cut)} | {len(matched)} | {len(un)} | {len(el)} | {len(r1)} | {len(both)} | {len(set(r1) - set(el))} |")
+        if first is None:
+            first = (cut, el, matched, un, r1)
+    cut, el, matched, un, r1 = first
+    out += ["", f"## First review, cut-off {cut}", "",
+            f"Unmatched top-300 names skipped ({len(un)}): {', '.join(un) or 'none'}.", "",
+            f"Failed the listing/frequency rules, not replaced ({len(matched) - len(el)}): "
+            f"{', '.join(s for s in matched if s not in el) or 'none'}.", "",
+            f"Round-1 names dropped ({len(set(r1) - set(el))}): {', '.join(sorted(set(r1) - set(el)))}.", ""]
+    return "\n".join(out) + "\n"
+
+
 def step1(base_gross) -> tuple[bool, str]:
     a50 = dict(read_index("NIFTYALPHA50"))
     vals = [(d, x) for d, x in base_gross["values"] if GATE_FROM <= d <= MEASURE_TO and d in a50]
@@ -489,12 +568,20 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--worked", action="store_true")
     ap.add_argument("--step1", action="store_true")
+    ap.add_argument("--universe", choices=["turnover", "amfi"], default="turnover",
+                    help="turnover = round 1; amfi = round 2 (AMFI average market cap top 300)")
+    ap.add_argument("--mechanics", action="store_true", help="round 2: universe tables only, no returns")
     a = ap.parse_args(argv)
+    global UNIVERSE
+    UNIVERSE = a.universe
     bars, sessions = load()
     mkt = dict(read_index("NIFTY50"))
     n500 = read_index("NIFTY500")
-    revs = reviews(sessions)
-    print(f"{len(bars)} symbols, {len(sessions)} sessions, {len(revs)} reviews", flush=True)
+    revs = reviews(sessions, AMFI_FIRST_YEAR if UNIVERSE == "amfi" else 2017)
+    print(f"{len(bars)} symbols, {len(sessions)} sessions, {len(revs)} reviews, universe {UNIVERSE}", flush=True)
+    if a.mechanics:
+        sys.stdout.buffer.write(amfi_mechanics(bars, sessions, revs).encode("utf-8"))
+        return 0
     if a.worked:
         sys.stdout.buffer.write(worked(bars, sessions, mkt, revs, n500).encode("utf-8"))
         return 0

@@ -142,3 +142,46 @@ def test_correlation():
 
 def test_grid_is_twelve_versions_without_the_base():
     assert len(ab.GRID) == 12 and ab.BASE not in ab.GRID
+
+
+# ─── round 2: AMFI market-cap universe (docs/ALPHA50_REBUILD_V2_PREREG_2026-11-27.md) ──
+
+def test_amfi_period_uses_the_list_public_before_the_cutoff():
+    assert ab.amfi_period(date(2018, 2, 28)) == "2017H2"
+    assert ab.amfi_period(date(2018, 5, 31)) == "2017H2"
+    assert ab.amfi_period(date(2018, 8, 31)) == "2018H1"
+    assert ab.amfi_period(date(2018, 11, 30)) == "2018H1"
+
+
+def test_parse_amfi_line_takes_nse_symbol_and_splits_at_last_isin():
+    from scripts.parse_amfi_mcap import parse_line
+    r = parse_line("64 United Spirits Ltd INE854D01024 UNITDSPR 40,123.10 MCDOWELL-N 40,200.50 40,161.80 Large Cap")
+    assert r[0] == 64 and r[1] == "INE854D01024" and r[4] == "MCDOWELL-N" and r[5] == pytest.approx(40161.80)
+    r = parse_line("26 NESTLE INDIA LTD. INE239A01016 NESTLEIND 1,05,857.24  1,05,857.24  Large Cap")
+    assert r[4] == "NESTLEIND" and r[5] == pytest.approx(105857.24)
+    r = parse_line("129 GAS LTD. INE203G01027 IGL 21,120.37     IGL 21,134.69     21,127.53     Mid Cap")
+    assert r[3] == "IGL IGL" and r[4] == "IGL"
+    r = parse_line("130 FOO INDUSTRIES LTD., INE111A01011 BAR INE787D01026 BALKRISIND 1.0 BALKRISIND* 2.0 1.5 Mid Cap")
+    assert r[1] == "INE787D01026" and r[4] == "BALKRISIND"            # wrapped name: last ISIN wins, '*' stripped
+    assert parse_line("5085 Govind Poy Oxygen Ltd., INE00ZH01011 ZGOVPOOX -  -  Small Cap") is None
+    assert parse_line("Sr. No. Company name ISIN") is None
+
+
+def test_read_amfi_orders_by_rank_and_drops_blanks(tmp_path):
+    (tmp_path / "amfi_2018H1.csv").write_text(
+        "rank,isin,name,symbols,nse_symbol,avg_mcap_cr,category\n"
+        "2,INE2,B,BB B,B,90,Large\n1,INE1,A,A A,A,100,Large\n3,INE3,C,C,,80,Mid\n4,INE4,D,B B,B,70,Mid\n",
+        encoding="utf-8")
+    assert ab.read_amfi("2018H1", tmp_path) == ["A", "B"]
+
+
+def test_eligible_amfi_skips_unmatched_but_does_not_replace_failures():
+    sessions = weekdays(date(2015, 1, 1), date(2017, 2, 28))
+    def b(start=sessions[0], skip=()):
+        return {d: {"c": 100, "val": 1} for d in sessions if d >= start and d not in skip}
+    bars = {"A": b(), "NEW": b(start=date(2016, 9, 1)), "C": b(), "D": b(), "E": b()}
+    ranked = ["A", "GONE", "NEW", "C", "D", "E"]
+    el, matched, un = ab.eligible_amfi(bars, sessions, date(2017, 2, 28), ranked, top=3)
+    assert matched == ["A", "NEW", "C"]          # GONE has no bars: skipped, next rank fills in
+    assert un == ["GONE"]
+    assert el == ["A", "C"]                      # NEW too young: dropped, D does NOT replace it
