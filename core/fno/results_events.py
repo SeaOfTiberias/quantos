@@ -40,11 +40,14 @@ def _ts(s: str) -> Optional[datetime]:
 
 
 def events_from_filings(filings: list[dict]) -> list[Event]:
+    """Both NSE schemas: the results feed (broadCastDate, toDate) and, from April 2025, the
+    integrated-filing feed (broadcast_Date, qe_Date)."""
     first: dict[tuple[str, date], datetime] = {}
     for f in filings:
-        sym, ts = (f.get("symbol") or "").strip(), _ts(f.get("broadCastDate") or "")
+        sym = (f.get("symbol") or "").strip()
+        ts = _ts(f.get("broadCastDate") or f.get("broadcast_Date") or "")
         try:
-            pe = datetime.strptime((f.get("toDate") or "").strip(), "%d-%b-%Y").date()
+            pe = datetime.strptime((f.get("toDate") or f.get("qe_Date") or "").strip(), "%d-%b-%Y").date()
         except ValueError:
             continue
         if not sym or ts is None:
@@ -55,12 +58,16 @@ def events_from_filings(filings: list[dict]) -> list[Event]:
     return sorted((Event(s, p, t) for (s, p), t in first.items()), key=lambda e: (e.broadcast, e.symbol))
 
 
-def load_events(meta_dir: Path = META_DIR) -> list[Event]:
+IF_META_DIR = Path("data_cache/pead_nse/if_metadata_raw")
+
+
+def load_events(meta_dirs: tuple[Path, ...] = (META_DIR, IF_META_DIR)) -> list[Event]:
     filings: list[dict] = []
-    for p in sorted(glob.glob(str(meta_dir / "*.json"))):
-        with open(p, encoding="utf-8") as fh:
-            d = json.load(fh)
-        filings += d if isinstance(d, list) else d.get("data", [])
+    for md in meta_dirs:
+        for p in sorted(glob.glob(str(md / "*.json"))):
+            with open(p, encoding="utf-8") as fh:
+                d = json.load(fh)
+            filings += d if isinstance(d, list) else d.get("data", [])
     return events_from_filings(filings)
 
 

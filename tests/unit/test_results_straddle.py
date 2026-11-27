@@ -105,3 +105,12 @@ def test_verdict_alive_and_control():
     assert v["alive"] and all(v["checks"].values())
     flat = [tr(d, 50.0, 50.0 + (1 if i % 2 else -1)) for i, d in enumerate(days)]
     assert not mr.verdict(flat, list(zip(flat, flat)), 0.0)["alive"]
+
+
+def test_integrated_filing_schema_merges_with_the_old_one():
+    f = [{"symbol": "ABC", "toDate": "31-Mar-2025", "broadCastDate": "02-May-2025 18:00:00"},
+         {"symbol": "ABC", "qe_Date": "31-MAR-2025", "broadcast_Date": "02-May-2025 17:10:05"},   # same period, earlier
+         {"symbol": "ABC", "qe_Date": "30-JUN-2025", "broadcast_Date": "29-Aug-2025 18:04:23"}]
+    ev = rev.events_from_filings(f)
+    assert [(e.period_end, e.broadcast) for e in ev] == [
+        (date(2025, 3, 31), datetime(2025, 5, 2, 17, 10, 5)), (date(2025, 6, 30), datetime(2025, 8, 29, 18, 4, 23))]
