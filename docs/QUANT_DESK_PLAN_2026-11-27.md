@@ -97,10 +97,10 @@ The v3 map is for **placing risk**: strikes, stops, hedge levels. It is not a so
 
 | # | Item | Status | Prereg | Result |
 |---|---|---|---|---|
-| E3 | Overnight vs intraday, phase 1 | next | — | — |
-| E1 | Results-day vol, phase 1 | after E3 | — | — |
+| E3 | Overnight vs intraday, phase 1 | **DEAD 2026-11-27** (net −7.1 / −6.3 bps a night at 2026 costs); closed | 0169450 | see `E3_OVERNIGHT_RESULTS_2026-11-27.md` |
+| E1 | Results-day vol, phase 1 | next | — | — |
 | E2 | Implied-correlation premium, phase 1 | after E1 | — | — |
-| — | Widen `bhavcopy.py` beyond NIFTY (BANKNIFTY, futures, stock options) | needed by E1/E2/E3 | — | — |
+| — | Widen the bhavcopy reader | index futures done (`core/fno/bhavcopy_futures.py`, ae333f8); stock options needed for E1/E2 | — | — |
 
 Parked (only when the user asks): MA cross run (`MA_CROSS_PREREG_2026-11-27.md`, code ready), Darvas exit pre-registration, map v3 test.
 Due: NSE 2027 holiday list in December (else the CALENDAR fault fires on 2027-01-01).
