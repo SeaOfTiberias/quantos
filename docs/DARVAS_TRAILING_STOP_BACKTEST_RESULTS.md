@@ -41,3 +41,7 @@ Errored symbols (excluded): ABLBL, ACMESOLAR, AEGISVOPAK, AFCONS, AGARWALEYE, AN
 
 **DOES NOT CLEAR ITS BAR -- trailing the stop/target does not rescue this.**
 
+
+## Correction (2026-11-28, Lab verification): stop fills
+
+This report regenerates byte for byte from the saved trades (080256a). But a stop is filled at the stop price whenever the day's low reaches it, even when the stock opened below it. A raised stop often sits above the current price, so 364 of 2,280 stop exits are above the exit day's open and 248 above that day's high: prices that never traded. With a stop above the open filled at the open (`scripts/research/gap_fill_check/box_width_trailing.py`, Stressed costs), every cell falls below PF 1. Bucket B: mining 1.00 → 0.68, holdout 1.27 → 0.92. The "improves every cell" finding was mostly these fills. The verdict (FAIL) stands.

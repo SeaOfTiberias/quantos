@@ -20,6 +20,7 @@ import csv
 import sys
 from datetime import date, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -115,7 +116,44 @@ def orb_18() -> list[dict]:
     return out
 
 
-CONVERTERS = {"breakout_1010": breakout_1010, "ml_factor": ml_factor, "e3_overnight": e3_overnight, "orb_18": orb_18}
+def _darvas_managed(mod_name: str, cache: str, skip_reason: Optional[str]) -> list[dict]:
+    """The trades a Darvas managed-exit backtest saved at run time (~/.quantos/<cache>), costed by the
+    script's own _make_trade at the stressed cost model (what gates its verdict), Rs 1 lakh per trade.
+    `skip_reason` trades are left out of the script's metrics and so out of the Lab."""
+    import importlib
+    import json as _json
+    m = importlib.import_module(f"scripts.{mod_name}")
+    box = importlib.import_module("scripts.backtest_darvas_box_width")
+    results = _json.loads((Path.home() / ".quantos" / cache).read_text())
+    split = box.MINING_HOLDOUT_SPLIT.isoformat()
+    out = []
+    for raw in sorted(m.all_trades(results), key=lambda t: (t["entry_date"], t["symbol"])):
+        if raw["reason"] == skip_reason:
+            continue
+        t = box._make_trade(0, raw, box.STRESSED_COST_MODEL)
+        bucket = next((lab for lab, pred in box.BUCKETS if pred(raw["width_pct"])), "over 100%, in no bucket")
+        out.append(dict(symbol=raw["symbol"], side="long", entry_time=raw["entry_date"][:10],
+                        entry_price=_r(t.entry_price), exit_time=raw["exit_date"][:10], exit_price=_r(t.exit_price),
+                        qty=f"{t.qty:g}", gross=_r(t.profit), cost=_r(t.costs), net=_r(t.profit - t.costs),
+                        chart_symbol=raw["symbol"],
+                        note=f"width {raw['width_pct']}% ({bucket}); {raw['reason']}; "
+                             f"{'mining' if raw['breakout_date'] < split else 'holdout'}"))
+    return out
+
+
+def darvas_box_width() -> list[dict]:
+    """scripts/backtest_darvas_box_width.py: static stop/target, 60-session time stop."""
+    return _darvas_managed("backtest_darvas_box_width", "darvas_width_backtest_results.json", "data-ended")
+
+
+def darvas_trailing() -> list[dict]:
+    """scripts/backtest_darvas_trailing_stop.py: stop and target raised with each new box; still-open
+    trades are marked to the window's last close and count (pre-registered)."""
+    return _darvas_managed("backtest_darvas_trailing_stop", "darvas_trailing_stop_results.json", None)
+
+
+CONVERTERS = {"breakout_1010": breakout_1010, "ml_factor": ml_factor, "e3_overnight": e3_overnight, "orb_18": orb_18,
+              "darvas_box_width": darvas_box_width, "darvas_trailing": darvas_trailing}
 
 
 def main(argv=None) -> int:

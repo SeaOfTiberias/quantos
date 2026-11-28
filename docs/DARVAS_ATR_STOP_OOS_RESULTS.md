@@ -33,3 +33,22 @@ Per year (mean net): 2016: +0.25% (n=68), 2017: +3.34% (n=148), 2018: -4.12% (n=
   2022 +0.66%, 2023 +0.05% (positive in 6 of 8 years).
 - Concentration: total net +2143%; without the top 5% of trades still +665%.
 - Raw losing years: 2018 -4.12%/trade, 2019 -0.88%, 2022 -0.12% -- expect drawdowns when mid/small caps fall.
+
+## Correction (2026-11-28, Lab verification): the PASS rests on impossible stop fills
+
+This report regenerates exactly from its code and data (67de055). But the exit simulation (`_simulate_exit_atr`, shared with the in-sample backtest) fills every stop at the stop price whenever the day's low reaches it, even when the stock opened below the stop. A trailed stop (new box ceiling − 2 × ATR) often lands **above** the current price, so the next bar "hits" it at a price that never traded. 1,857 of the 7,130 trades exit this way; for 1,330 of them the fill is above that day's high.
+
+This was first found on 2026-10-24 (`docs/DARVAS_CUES_PREREG_2026-10-23.md`, "Why the baseline fell from +2.16% to +0.38%"), but was not carried into this report, the Lab or the go/no-go.
+
+Same trades, same costs, scored by this script's own `summarize`, with a stop above the exit day's open filled at the open (what a live stop above the market gets): `scripts/research/gap_fill_check/atr_stop_oos.py`.
+
+| Bucket B (35-50%) | Published | Stop filled at the open on a gap |
+|---|---|---|
+| Win rate | 47.2% | 39.5% |
+| PF / Sharpe | 1.46 / 1.79 | 1.09 / 0.39 |
+| Mean net per trade | +2.16% | +0.48% |
+| Minus EW universe | +0.70% | −0.98% |
+| 90% CI (week bootstrap) | +1.23% .. +3.08% | −0.47% .. +1.43% |
+| V1 / V2 / V3 | holds / holds / holds | **fails / fails / fails** |
+
+Under realistic fills the pre-registered verdict is **FAIL**. The in-sample 2024-26 Bucket B trades move the same way: PF 1.15 → 0.82, mean net +0.70% → −0.97% (`scripts/research/gap_fill_check/atr_stop_bucket_b_l1.py`, 274 of 277 checked against NSE prices).

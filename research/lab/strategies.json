@@ -170,7 +170,7 @@
    "verification": {
     "status": "reproduced",
     "date": "2026-11-28",
-    "detail": "Re-run from scratch at 62c2373 on the frozen L1 snapshot: all 991 discovery and 275 confirmation rows identical to the originals. The regenerated doc differs only in the discovery CI lower bound (-0.65% vs -0.64%): the original file had 42 crashed trades re-run and appended, and the seeded bootstrap depends on row order. Scoring the original rows with the same code gives -0.64% exactly. Verdict unchanged."
+    "detail": "Re-run from scratch at 62c2373 on the frozen L1 snapshot: all 991 discovery and 275 confirmation rows identical to the originals. The regenerated doc differs only in the discovery CI lower bound (-0.65% vs -0.64%): the original file had 42 crashed trades re-run and appended, and the seeded bootstrap depends on row order. Scoring the original rows with the same code gives -0.64% exactly. Verdict unchanged. Note: both arms use the ATR-stop backtest's stop fill (filled at the stop even below the open, see darvas_atr_stop); the paired comparison was not re-scored for that."
    }
   },
   {
@@ -417,24 +417,25 @@
    "status": "PAPER",
    "rationale": "Darvas box breakouts with an ATR-based stop instead of the box low, in the box-width bucket that looked best.",
    "test": "Out-of-sample 2016-23 on the full point-in-time universe, net of stressed costs, against an equal-weight universe benchmark.",
-   "result": "OOS PASS: 991 trades, PF 1.46, +0.70% per trade vs the equal-weight universe. But the confidence interval only just clears 0 and rests on a few trades.",
-   "why": "Not failed: not capital-ready. Running on paper with a frozen go/no-go reviewed at the 20th closed trade (~2027-04); paper returns are not read before then.",
+   "result": "Published as an OOS PASS (991 trades, PF 1.46, +0.70% per trade vs the equal-weight universe). Corrected 2026-11-28: that rests on impossible stop fills. With a stop above the open filled at the open, Bucket B makes +0.48% net and -0.98% vs the universe, PF 1.09, CI -0.47% .. +1.43%: all three pre-registered checks FAIL. In-sample 2024-26 the same way: PF 1.15 -> 0.82.",
+   "why": "The backtest sold at a trailed stop that sat above the market, at prices that never traded (1,330 fills above the day's high). Under realistic fills there is no edge. First seen 2026-10-24 in the cues diagnostic, not carried forward until this verification. The paper executor still runs; what to do with it and the frozen go/no-go is the user's decision.",
    "metrics": {
     "OOS trades": "991",
-    "PF": "1.46",
-    "Excess/trade": "+0.70%"
+    "PF published -> realistic fills": "1.46 -> 1.09",
+    "Excess/trade published -> realistic": "+0.70% -> -0.98%"
    },
    "docs": [
     "docs/DARVAS_ATR_STOP_BACKTEST_METHODOLOGY.md",
     "docs/DARVAS_ATR_STOP_OOS_RESULTS.md",
     "docs/DARVAS_ATR_STOP_FALSIFICATION.md",
-    "docs/DARVAS_GO_NO_GO_2026-11.md"
+    "docs/DARVAS_GO_NO_GO_2026-11.md",
+    "docs/DARVAS_CUES_PREREG_2026-10-23.md"
    ],
    "trades": null,
    "verification": {
-    "status": "reproduced",
+    "status": "corrected",
     "date": "2026-11-28",
-    "detail": "OOS 2016-23 recomputed from scratch at 67de055 on the 2,586 equity bhavcopy sessions as of 2026-10-05: every generated line identical (991 trades, PF 1.46, +0.70% vs EW universe). In-sample runs and the re-entry/structural-stop variants used the VM store: not yet verified."
+    "detail": "OOS recomputed from scratch at 67de055: every generated line identical. Then the gap check: 1,857 of 7,130 stop exits sit above the exit day's open (1,330 above its high). Filled at the open and scored by the script's own summarize (scripts/research/gap_fill_check/atr_stop_oos.py), the verdict flips PASS -> FAIL. Correction appended to the results doc."
    }
   },
   {
@@ -521,10 +522,14 @@
     "docs/DARVAS_BOX_WIDTH_BACKTEST_METHODOLOGY.md",
     "docs/DARVAS_BOX_WIDTH_BACKTEST_RESULTS.md"
    ],
-   "trades": null,
+   "trades": "darvas_box_width",
    "verification": {
-    "status": "not_attempted"
-   }
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Report regenerates byte for byte from the saved trades at 30695c3 (script's own summarize; a fresh Fyers fetch not needed). 5 random trades: entries equal the NSE open (adjusted to 2026-09-22), exits inside the day's range. Small stop-fill correction appended to the doc; verdict unchanged."
+   },
+   "pnl_unit": "inr",
+   "trades_note": "The saved run's trades (Rs 1 lakh each, whole shares, Stressed costs), excluding 'data-ended' as the script does. 106 stop fills sit above the exit day's open; filled at the open, PFs move by about 0.01."
   },
   {
    "id": "darvas_trailing",
@@ -534,17 +539,21 @@
    "status": "FAIL",
    "rationale": "Trail the stop behind new box lows to keep more of each winner.",
    "test": "PF > 1 and Sharpe > 0.5 net, mining and holdout.",
-   "result": "Improves every cell but still fails the bar: the closest miss in the Darvas family.",
-   "why": "Better exits can't create an entry edge that isn't there.",
+   "result": "Published as improving every cell but still failing (Bucket B holdout PF 1.27). Corrected 2026-11-28: with realistic stop fills every cell is below PF 1 (Bucket B holdout 0.92).",
+   "why": "Raised stops were filled above the market (248 fills above the day's high); the improvement was mostly those fills.",
    "metrics": {},
    "docs": [
     "docs/DARVAS_TRAILING_STOP_BACKTEST_METHODOLOGY.md",
     "docs/DARVAS_TRAILING_STOP_BACKTEST_RESULTS.md"
    ],
-   "trades": null,
+   "trades": "darvas_trailing",
    "verification": {
-    "status": "not_attempted"
-   }
+    "status": "corrected",
+    "date": "2026-11-28",
+    "detail": "Report regenerates byte for byte from the saved trades at 080256a (scored by the script's own summarize). Spot-check: entries equal the NSE open exactly; 3 trailing exits checked were all above the day's high, which led to the gap-fill correction. Verdict FAIL unchanged."
+   },
+   "pnl_unit": "inr",
+   "trades_note": "The saved run's trades as published (Rs 1 lakh each, whole shares, Stressed costs; 'still-open' marked to the last close). Stop fills are as the backtest made them: 364 sit above the exit day's open. See the correction in the results doc."
   },
   {
    "id": "goodnight_scalper",

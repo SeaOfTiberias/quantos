@@ -41,3 +41,7 @@ Errored symbols (excluded): ABLBL, ACMESOLAR, AEGISVOPAK, AFCONS, AGARWALEYE, AN
 
 **DOES NOT CLEAR ITS BAR -- no dashboard change is warranted.**
 
+
+## Correction (2026-11-28, Lab verification): stop fills
+
+This report regenerates byte for byte from the saved trades (30695c3). The static stop has the same fill rule as the trailing and ATR-stop backtests (filled at the stop even when the stock opened below it), but it bites rarely here: 106 stop exits above the exit day's open, 19 above the day's high. Filled at the open instead, every PF falls by about 0.01 (Bucket B holdout 0.86 → 0.85; `scripts/research/gap_fill_check/box_width_trailing.py`). Verdict unchanged.
