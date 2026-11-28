@@ -428,7 +428,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "OOS 2016-23 recomputed from scratch at 67de055 on the 2,586 equity bhavcopy sessions as of 2026-10-05: every generated line identical (991 trades, PF 1.46, +0.70% vs EW universe). In-sample runs and the re-entry/structural-stop variants used the VM store: not yet verified."
    }
   },
   {

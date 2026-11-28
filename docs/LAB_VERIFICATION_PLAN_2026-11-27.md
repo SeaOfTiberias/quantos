@@ -57,6 +57,7 @@ Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. 
 | 2026-11-28 | Earnings-gap drift | **Reproduced** exactly on the original 2,586 sessions. 10 special weekend sessions added to the cache later shift the counts slightly; verdict unchanged. |
 | 2026-11-28 | PCA stat-arb | **Reproduced with differences**: the script always runs to today. 2020-2025 rows identical, verdict unchanged. |
 | 2026-11-28 | Expiry-day effect, pairs v1, pairs v2 | **Reproduced** byte for byte on the F&O files and sector lists as of their run dates. (Pairs fetches NSE sector constituents live when they aren't cached; FMCG membership changed since July.) |
+| 2026-11-28 | Darvas ATR-stop OOS 2016-23 | **Reproduced**: recomputed from scratch at 67de055 (cache set aside) on the 2,586 equity sessions as of 2026-10-05. Every generated line identical: 991 trades, PF 1.46, +0.70% vs the equal-weight universe. Only the hand-written post-run notes aren't regenerated. 21 of 38 verified. |
 
 Lessons for the remaining runs:
 - Spot-check trades against exchange prices, not only totals: S7-3's totals reproduced while its pairing was wrong.
