@@ -473,12 +473,14 @@
     "docs/ORB_SCALPING_RESULTS.md",
     "docs/ORB_TIME_CONVENTION_RESULTS.md"
    ],
-   "trades": null,
+   "trades": "orb_18",
    "verification": {
-    "status": "reproduced",
-    "date": "2026-11-27",
-    "detail": "Re-run at d78cfd0 on the cached candles: the results doc regenerates byte for byte. Trade export not added yet."
-   }
+    "status": "corrected",
+    "date": "2026-11-28",
+    "detail": "Reproduced byte for byte at d78cfd0. Today's code includes a later fix (dade93a, 2026-11-25): on entries just before a holiday-moved NIFTY weekly expiry, the old code rolled to the same contract. It changes 17 of 1,056 NIFTY trades: net Rs -195,691 instead of -181,838, PF 0.84 instead of 0.85, Sharpe -1.19 instead of -1.14. BANKNIFTY unchanged (1,223 trades, Rs -371,312). Verdict unchanged."
+   },
+   "pnl_unit": "inr",
+   "trades_note": "The verdict run's trades: frozen calibrated convention, stratified costs, 1 lot, BANKNIFTY expiry day skipped. Premiums are modelled from index and India VIX candles, not traded prices. Exported with today's code, which includes the 2026-11-25 NIFTY expiry-roll fix (17 NIFTY trades differ from the published run)."
   },
   {
    "id": "orb_18b",

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import csv
 import sys
-from datetime import date
+from datetime import date, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -90,7 +90,32 @@ def e3_overnight() -> list[dict]:
     return out
 
 
-CONVERTERS = {"breakout_1010": breakout_1010, "ml_factor": ml_factor, "e3_overnight": e3_overnight}
+def orb_18() -> list[dict]:
+    """Candidate 18's verdict run (scripts/backtest_orb_time_convention.py): the frozen calibrated
+    convention, stratified costs, 1 lot, BANKNIFTY expiry day skipped. Premiums are modelled from the
+    index and India VIX candles (data_cache/orb_fix2_candles.pkl), not traded prices. Rupees per lot."""
+    import pickle
+    from core.orb_scalping.backtest import run_index_backtest
+    from core.orb_scalping.premium import TimeWeights
+    from scripts import backtest_orb_time_convention as tc
+    frozen, _ = tc.load_frozen(tc.CALIBRATION_DOC.read_text(encoding="utf-8"))
+    data = pickle.loads(tc.CANDLES.read_bytes())
+    fw = TimeWeights(frozen["session"], frozen["weeknight"], frozen["weekend"])
+    ist = timezone(timedelta(hours=5, minutes=30))                     # candles are UTC-aware
+    out = []
+    for und, key, k in (("NIFTY", "nifty", frozen["k_nifty"]), ("BANKNIFTY", "banknifty", frozen["k_banknifty"])):
+        for t in run_index_backtest(data[key], data["vix"], underlying=und, banknifty_expiry_policy="skip",
+                                    vol_scale=k, time_weights=fw)[5]:
+            out.append(dict(symbol=f"{und} option (modelled)", side="long", entry_time=f"{t.entry_date.astimezone(ist):%Y-%m-%d %H:%M}",
+                            entry_price=_r(t.entry_price), exit_time=f"{t.exit_date.astimezone(ist):%Y-%m-%d %H:%M}",
+                            exit_price=_r(t.exit_price), qty=f"{t.qty:g}", gross=_r(t.profit), cost=_r(t.costs),
+                            net=_r(t.profit - t.costs), chart_symbol=und,
+                            note=f"call or put in the breakout's direction; {t.bars_held} five-minute bars"))
+    out.sort(key=lambda r: (r["entry_time"], r["symbol"]))
+    return out
+
+
+CONVERTERS = {"breakout_1010": breakout_1010, "ml_factor": ml_factor, "e3_overnight": e3_overnight, "orb_18": orb_18}
 
 
 def main(argv=None) -> int:

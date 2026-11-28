@@ -22,3 +22,7 @@ Frozen convention from `docs\ORB_TIME_CONVENTION_CALIBRATION.md`: session 1.85, 
 
 NIFTY FAIL, BANKNIFTY FAIL under the frozen convention -> candidate 18 **FAILS**. Recommendation: close candidate 18 (the user decides).
 
+
+## Correction (2026-11-28, Lab verification)
+
+This report regenerates byte for byte from d78cfd0. A later fix (dade93a, 2026-11-25) corrected the NIFTY DTE-floor roll: on an entry less than two days before a weekly expiry moved earlier for a holiday, the old code rolled to the same contract. Re-run with that fix, 17 of the 1,056 NIFTY trades change. NIFTY under the frozen convention: PF 0.84 (was 0.85), Sharpe -1.19 (was -1.14), net Rs -195,691 (was -181,838). BANKNIFTY is unchanged. The verdict stands: candidate 18 fails. The Strategy Lab's trade file (`research/lab/trades/orb_18.csv`) holds the corrected trades.
