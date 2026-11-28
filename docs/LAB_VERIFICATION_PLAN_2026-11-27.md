@@ -59,6 +59,7 @@ Household data: `FyersBackTestResults/` (untracked) is a real broker tradebook. 
 | 2026-11-28 | Expiry-day effect, pairs v1, pairs v2 | **Reproduced** byte for byte on the F&O files and sector lists as of their run dates. (Pairs fetches NSE sector constituents live when they aren't cached; FMCG membership changed since July.) |
 | 2026-11-28 | Darvas ATR-stop OOS 2016-23 | **Reproduced**: recomputed from scratch at 67de055 (cache set aside) on the 2,586 equity sessions as of 2026-10-05. Every generated line identical: 991 trades, PF 1.46, +0.70% vs the equal-weight universe. Only the hand-written post-run notes aren't regenerated. 21 of 38 verified. |
 | 2026-11-28 | ORB candidate 18, trade export | **Corrected**: exporting with today's code changes 17 of 1,056 NIFTY trades, because of the 2026-11-25 expiry-roll fix (dade93a), which had not been re-run against this result. NIFTY PF 0.84 (was 0.85), net Rs -195,691 (was -181,838); BANKNIFTY identical. Verdict unchanged. 2,279 trades in the Lab, times in IST. Premiums are modelled, so there are no traded prices to spot-check. |
+| 2026-11-28 | Darvas second chance (re-entry), Darvas structural stop | **Reproduced** on the frozen L1 snapshot (57672cd, 62c2373). Re-entry: pick files and replay states byte-identical. Structural stop: every row identical; the doc's discovery CI lower bound comes out -0.65% instead of -0.64% only because the rows are in a different order (the original appended 42 re-run trades) and the seeded bootstrap depends on order. 23 of 38 verified. |
 
 Lessons for the remaining runs:
 - Spot-check trades against exchange prices, not only totals: S7-3's totals reproduced while its pairing was wrong.
@@ -71,3 +72,4 @@ Lessons for the remaining runs:
 - Data caches grow. When a re-run differs, rebuild the input as it stood on the run date (hard-link only the files older than the run) before calling it a difference.
 - Special weekend sessions (Muhurat, Budget, DR drills) now sit in the equity cache. Any script that treats every file as a trading day picks them up. New tests should exclude them explicitly.
 - Some scripts fetch reference data live (NSE sector constituents) when it isn't cached. Supply the cached copy as of the run date, or the universe silently changes.
+- A seeded bootstrap still depends on the order of its input rows. New scripts should sort rows by a stable key before resampling.

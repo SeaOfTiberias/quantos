@@ -168,7 +168,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run from scratch at 62c2373 on the frozen L1 snapshot: all 991 discovery and 275 confirmation rows identical to the originals. The regenerated doc differs only in the discovery CI lower bound (-0.65% vs -0.64%): the original file had 42 crashed trades re-run and appended, and the seeded bootstrap depends on row order. Scoring the original rows with the same code gives -0.64% exactly. Verdict unchanged."
    }
   },
   {
@@ -191,7 +193,9 @@
    ],
    "trades": null,
    "verification": {
-    "status": "not_attempted"
+    "status": "reproduced",
+    "date": "2026-11-28",
+    "detail": "Re-run at 57672cd on the frozen L1 snapshot (l1_snap_20261113): the three pick files and all three replay states are byte-identical to the originals, so the scored entries are too."
    }
   },
   {
